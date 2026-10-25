@@ -155,4 +155,134 @@
 
   // ---- Auto-dismiss success alerts ----
   $$('[data-autodismiss]').forEach((el) => setTimeout(() => { el.style.transition = 'opacity .5s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 500); }, 6000));
+
+  // ---- Site-wide Browser Notification Prompt on Website Open ----
+  const initBrowserNotificationPrompt = () => {
+    if (!('Notification' in window)) return;
+
+    const promptEl = $('#nexus-browser-notif-prompt');
+    const getBaseUrl = () => {
+      const meta = document.querySelector('meta[name="base-url"]');
+      if (meta && meta.content) return meta.content.replace(/\/+$/, '') + '/';
+      const a = document.querySelector('a[href$="/inbox"]');
+      if (a && a.href) return a.href.replace(/\/inbox\/?$/, '') + '/';
+      return location.origin + '/';
+    };
+    const BASE_URL = getBaseUrl();
+    const csrfMeta = document.querySelector('meta[name="X-CSRF-TOKEN"]');
+
+    const saveFcmToken = (token) => {
+      if (!token) return;
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      };
+      if (csrfMeta && csrfMeta.content) headers['X-CSRF-TOKEN'] = csrfMeta.content;
+
+      fetch(`${BASE_URL}inbox/token`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: headers,
+        body: JSON.stringify({ token, device_type: 'web' })
+      })
+      .then((r) => r.json())
+      .then((j) => {
+        if (csrfMeta && j && j.csrf) csrfMeta.content = j.csrf;
+      })
+      .catch((err) => console.warn('[FCM] Token register error:', err));
+    };
+
+    const registerServiceWorker = () => {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register(`${BASE_URL}firebase-messaging-sw.js`)
+          .then((reg) => {
+            if (reg.pushManager) {
+              reg.pushManager.getSubscription().then((sub) => {
+                if (sub && sub.endpoint) saveFcmToken(sub.endpoint);
+              }).catch(() => {});
+            }
+          })
+          .catch((err) => console.warn('[FCM] SW registration failed:', err));
+      }
+    };
+
+    const playNotificationChime = () => {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const now = ctx.currentTime;
+        const playTone = (freq, start, duration) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, start);
+          gain.gain.setValueAtTime(0, start);
+          gain.gain.linearRampToValueAtTime(0.2, start + 0.03);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(start);
+          osc.stop(start + duration);
+        };
+        playTone(523.25, now, 0.15);
+        playTone(659.25, now + 0.12, 0.15);
+        playTone(783.99, now + 0.24, 0.28);
+      } catch (_) {}
+    };
+
+    const showSiteToast = (msg) => {
+      const toast = document.createElement('div');
+      toast.className = 'glass';
+      toast.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:10000;padding:12px 18px;border-radius:10px;background:#10b981;color:#fff;font-weight:600;font-size:13px;box-shadow:0 8px 24px rgba(16,185,129,.35);transition:all .3s ease;';
+      toast.innerHTML = `<span style="margin-right:6px">✓</span> ${msg}`;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(10px)';
+        setTimeout(() => toast.remove(), 350);
+      }, 4000);
+    };
+
+    const hidePrompt = () => {
+      if (!promptEl) return;
+      promptEl.classList.add('nb-fade-out');
+      setTimeout(() => promptEl.classList.add('hidden'), 260);
+    };
+
+    if (Notification.permission === 'granted') {
+      registerServiceWorker();
+      return;
+    }
+
+    if (Notification.permission === 'default' && promptEl) {
+      const dismissed = sessionStorage.getItem('nexusl:notif_prompt_dismissed') === '1';
+      if (!dismissed) {
+        setTimeout(() => {
+          promptEl.classList.remove('hidden');
+        }, 800);
+      }
+
+      $('#nb-btn-allow')?.addEventListener('click', () => {
+        Notification.requestPermission().then((permission) => {
+          hidePrompt();
+          if (permission === 'granted') {
+            playNotificationChime();
+            registerServiceWorker();
+            showSiteToast('Desktop & browser notifications enabled successfully!');
+          }
+        });
+      });
+
+      const dismissAction = () => {
+        try { sessionStorage.setItem('nexusl:notif_prompt_dismissed', '1'); } catch (_) {}
+        hidePrompt();
+      };
+
+      $('#nb-btn-dismiss')?.addEventListener('click', dismissAction);
+      $('#nb-btn-close')?.addEventListener('click', dismissAction);
+    }
+  };
+
+  initBrowserNotificationPrompt();
 })();

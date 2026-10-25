@@ -6,6 +6,7 @@
     <meta name="robots" content="noindex, nofollow">
     <meta name="referrer" content="same-origin">
     <?= csrf_meta() ?>
+    <meta name="base-url" content="<?= rtrim(base_url(), '/') . '/' ?>">
     <title><?= esc($title ?? 'NEXUS-L') ?> · NEXUS-L</title>
     <link rel="icon" href="<?= base_url('favicon.ico') ?>">
     <link rel="stylesheet" href="<?= base_url('assets/css/dash.css') ?>?v=<?= @filemtime(FCPATH . 'assets/css/dash.css') ?>">
@@ -16,6 +17,7 @@
 
     <div class="shell">
         <?= view('partials/header') ?>
+        <?= view('partials/browser_notification_prompt') ?>
 
         <main>
             <?= view('partials/auth_flash') ?>
