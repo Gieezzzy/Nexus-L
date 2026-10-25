@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+/* Scan CodeIgniter views for class names */
+@source "../../app/Views";
+
+@theme {
+  --font-sans: "Segoe UI", "Inter", system-ui, sans-serif;
+  --color-nexus-50: #ecfeff;
+  --color-nexus-300: #67e8f9;
+  --color-nexus-400: #22d3ee;
+  --color-nexus-500: #06b6d4;
+  --color-nexus-600: #0891b2;
+  --color-nexus-900: #083344;
+
+  --animate-blob: blob 18s ease-in-out infinite;
+  --animate-spin3d: spin3d 24s linear infinite;
+  --animate-float: float 9s ease-in-out infinite;
+
+  @keyframes blob {
+    0%, 100% { transform: translate(0, 0) scale(1) rotate(0deg); border-radius: 42% 58% 70% 30% / 45% 45% 55% 55%; }
+    25%      { transform: translate(12vw, -8vh) scale(1.15) rotate(60deg); border-radius: 70% 30% 50% 50% / 30% 30% 70% 70%; }
+    50%      { transform: translate(-6vw, 10vh) scale(0.9) rotate(140deg); border-radius: 30% 70% 70% 30% / 50% 60% 40% 50%; }
+    75%      { transform: translate(-12vw, -6vh) scale(1.1) rotate(220deg); border-radius: 55% 45% 35% 65% / 60% 35% 65% 40%; }
+  }
+  @keyframes spin3d {
+    from { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg); }
+    to   { transform: rotateX(360deg) rotateY(720deg) rotateZ(360deg); }
+  }
+  @keyframes float {
+    0%, 100% { translate: 0 0; }
+    50%      { translate: 0 -40px; }
+  }
+}
+
+@layer components {
+  /* ---------- Liquid glass ---------- */
+  .glass {
+    @apply relative overflow-hidden rounded-3xl border border-white/25 bg-white/10 shadow-2xl backdrop-blur-2xl backdrop-saturate-150;
+    box-shadow:
+      0 30px 60px -15px rgb(0 0 0 / 0.45),
+      inset 0 1px 0 0 rgb(255 255 255 / 0.35),
+      inset 0 -1px 0 0 rgb(255 255 255 / 0.08);
+  }
+  .glass::before { /* specular highlight */
+    content: "";
+    @apply pointer-events-none absolute inset-0 rounded-[inherit];
+    background: linear-gradient(135deg, rgb(255 255 255 / 0.35) 0%, rgb(255 255 255 / 0.05) 35%, transparent 60%);
+    mask: linear-gradient(#000, transparent 70%);
+  }
+  .glass-input {
+    @apply w-full rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-white placeholder-white/50
+      outline-none transition focus:border-nexus-300 focus:bg-white/15 focus:ring-4 focus:ring-nexus-400/25;
+  }
+  .glass-btn {
+    @apply inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-nexus-500 to-indigo-500 px-4 py-3
+      font-semibold text-white shadow-lg shadow-nexus-500/30 transition hover:brightness-110 active:scale-[0.98]
+      disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .glass-label { @apply mb-1.5 block text-sm font-medium text-white/80; }
+  .glass-link  { @apply font-medium text-nexus-300 hover:text-white hover:underline; }
+
+  /* ---------- 3D background shapes ---------- */
+  .blob { @apply absolute rounded-full opacity-70 mix-blend-screen blur-3xl animate-blob; }
+  .scene { perspective: 1200px; @apply absolute; }
+  .cube { transform-style: preserve-3d; @apply relative animate-spin3d; }
+  .cube > span {
+    @apply absolute inset-0 rounded-2xl border border-white/30 backdrop-blur-sm;
+    background: linear-gradient(135deg, rgb(255 255 255 / 0.18), rgb(255 255 255 / 0.02));
+  }
+  .ring3d {
+    transform-style: preserve-3d;
+    @apply absolute inset-0 rounded-full border-[14px] border-white/20 animate-spin3d;
+    box-shadow: 0 0 40px rgb(103 232 249 / 0.35), inset 0 0 30px rgb(167 139 250 / 0.35);
+  }
+
+  /* ---------- App shell ---------- */
+  .nav-link { @apply flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-white/10 hover:text-white; }
+  .nav-link.active { @apply bg-gradient-to-r from-nexus-500/30 to-indigo-500/20 text-white ring-1 ring-white/15; }
+  .card { @apply rounded-2xl border border-white/10 bg-white/5 p-5 shadow-xl backdrop-blur-xl; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blob, .cube, .ring3d, .animate-float { animation: none !important; }
+}
