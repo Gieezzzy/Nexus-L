@@ -53,7 +53,17 @@
   const show = (n, on) => n.classList.toggle('hidden', !on);
   const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
   const enc = encodeURIComponent;
-  const quick = () => { try { const q = JSON.parse(localStorage.getItem('nexusl:quick') || 'null'); return Array.isArray(q) && q.length === 6 ? q : DEFAULT_QUICK; } catch (_) { return DEFAULT_QUICK; } };
+  const quick = () => {
+    try {
+      const q = JSON.parse(localStorage.getItem('nexusl:quick') || 'null');
+      if (Array.isArray(q) && q.length === 6) return q;
+    } catch (_) {}
+    if (currentThemeKey === 'christmas') return ['❄️', '☃️', '🎄', '🎅', '🎁', '❤️'];
+    if (currentThemeKey === 'sadako' || currentThemeKey === 'holloween') return ['👻', '🎃', '💀', '😱', '🩸', '🔪'];
+    if (currentThemeKey === 'valentines') return ['❤️', '🥰', '💖', '🌹', '💌', '✨'];
+    if (currentThemeKey === 'anime_cyberpunk') return ['⚡', '🤖', '👾', '✨', '🔥', '🚀'];
+    return DEFAULT_QUICK;
+  };
   const banner = (t) => { el.banner.textContent = t || ''; show(el.banner, !!t); };
   const flashErr = (t) => { el.err.textContent = t || ''; show(el.err, !!t); if (t) setTimeout(() => show(el.err, false), 6000); };
 
@@ -187,6 +197,7 @@
 
     const t = THEMES.find((x) => x.key === themeKey) || THEMES[0];
     if (el.infThemeName) el.infThemeName.textContent = t.name;
+    updateSend();
 
     // Trigger visual/audio animations
     if (animate) {
@@ -525,8 +536,7 @@
     si.addEventListener('input', () => {
       const q = si.value.trim();
       if (!q) { cat(0); return; }
-      // no emoji names offline: filter by exact character, otherwise show everything
-      const hit = E.all.filter((e) => e.includes(q));
+      const hit = E.search ? E.search(q) : E.all.filter((e) => e.includes(q));
       title.textContent = hit.length ? `Search results (${hit.length})` : 'No match - showing all'; fill(hit.length ? hit : E.all);
     });
     box.append(sbox, tabs, title, grid); cat(0);
@@ -766,7 +776,8 @@
   // ---------- sending ----------
   const updateSend = () => {
     const hasText = el.input.value.trim() !== '', hasFiles = pending.length > 0;
-    const q = settings && settings.emoji ? settings.emoji : '👍';
+    const themeDefault = (THEMES.find((t) => t.key === currentThemeKey) || {}).emoji || '👍';
+    const q = settings && settings.emoji ? settings.emoji : themeDefault;
     const showQuick = !hasText && !hasFiles;
     el.sendQuick.textContent = q; show(el.sendQuick, showQuick); show(el.sendIco, !showQuick);
     $('msgr-send').setAttribute('aria-label', showQuick ? 'Send ' + q : 'Send');
