@@ -15,7 +15,12 @@
     msgs: $('msgr-msgs'), form: $('msgr-form'), input: $('msgr-input'), name: $('msgr-name'), sub: $('msgr-sub'),
     av: $('msgr-av'), err: $('msgr-err'), back: $('msgr-back'), banner: $('msgr-banner'), atts: $('msgr-atts'),
     ctx: $('msgr-ctx'), attMenu: $('msgr-attach-menu'), emojiPop: $('msgr-emoji-pop'), dlg: $('dlg'), dlgCard: $('dlg-card'),
-    sendIco: $('msgr-send-ico'), sendQuick: $('msgr-send-quick'), imgIn: $('msgr-file-img'), anyIn: $('msgr-file-any') };
+    sendIco: $('msgr-send-ico'), sendQuick: $('msgr-send-quick'), imgIn: $('msgr-file-img'), anyIn: $('msgr-file-any'),
+    particleCanvas: $('msgr-particle-canvas'), cinemaOverlay: $('msgr-cinema-overlay'),
+    approvalBanner: $('msgr-approval-banner'), abActions: $('ab-actions'), abApprove: $('ab-btn-approve'), abReject: $('ab-btn-reject'),
+    abTitle: $('ab-title'), abDesc: $('ab-desc'), disappearingBar: $('msgr-disappearing-bar'), disappearingTxt: $('msgr-disappearing-txt'),
+    infThemeBtn: $('inf-theme-btn'), infThemeName: $('inf-theme-name'), infDisBtn: $('inf-dis-btn'),
+    infMembersBtn: $('inf-members-btn'), infMembersCount: $('inf-members-count') };
 
   // ---------- state ----------
   let key = null, peer = null, me = '';
@@ -25,6 +30,9 @@
   let pending = [];                       // files waiting to be sent
   let replyTo = null;                     // message being replied to {id, from, text, image, file}
   let people = [], convCache = [];
+  let currentThemeKey = 'default';
+  let particleAnimId = null;
+  let particles = [];
 
   // ---------- helpers ----------
   const initials = (n) => String(n).trim().split(/\s+/).slice(0, 2).map((p) => p[0] || '').join('').toUpperCase() || '?';
@@ -146,6 +154,340 @@
     });
   };
 
+  // ---------- Themes Catalog & Particle Engine ----------
+  const THEMES = [
+    { key: 'default', name: 'Default RMS Blue', primary: '#2563EB', bubble_me: '#2563EB', bubble_them: '#e6eaf1', emoji: '👍', desc: 'Standard RMS Blue theme' },
+    { key: 'christmas', name: 'Christmas Holidays', primary: '#DC2626', bubble_me: '#DC2626', bubble_them: '#DCFCE7', emoji: '❄️', desc: 'Falling snow particles, sleigh bells chime & Santa' },
+    { key: 'sadako', name: 'Sadako Horror', primary: '#7F1D1D', bubble_me: '#7F1D1D', bubble_them: '#1E293B', emoji: '👻', desc: 'Cursed well, wall cracks, creeping crawler & screen shake' },
+    { key: 'valentines', name: 'Sweet Valentines', primary: '#EC4899', bubble_me: '#EC4899', bubble_them: '#FCE7F3', emoji: '❤️', desc: 'Romantic pastel theme with rising 3D hearts burst' },
+    { key: 'anime_cyberpunk', name: 'Anime Cyberpunk', primary: '#8B5CF6', bubble_me: '#8B5CF6', bubble_them: '#0F172A', emoji: '⚡', desc: 'Neon electric glow, laser bursts & electric sparks' },
+  ];
+
+  const initCanvas = () => {
+    if (!el.particleCanvas) return null;
+    const c = el.particleCanvas;
+    const rect = c.parentElement.getBoundingClientRect();
+    c.width = rect.width;
+    c.height = rect.height;
+    return c.getContext('2d');
+  };
+
+  const applyTheme = (themeKey, animate = true) => {
+    if (!themeKey) themeKey = 'default';
+    currentThemeKey = themeKey;
+    root.dataset.theme = themeKey;
+    if (el.pane) el.pane.dataset.theme = themeKey;
+    const t = THEMES.find((x) => x.key === themeKey) || THEMES[0];
+    if (el.infThemeName) el.infThemeName.textContent = t.name;
+
+    // Trigger visual/audio animations
+    if (animate) {
+      if (themeKey === 'christmas') {
+        triggerSnowAnimation();
+        triggerSleighBells();
+      } else if (themeKey === 'sadako') {
+        triggerSadakoAnimation();
+        triggerHorrorSound();
+      } else if (themeKey === 'valentines') {
+        triggerHeartsAnimation();
+        triggerLoveSound();
+      } else if (themeKey === 'anime_cyberpunk') {
+        triggerSparklesAnimation();
+        triggerLaserSound();
+      } else {
+        stopParticles();
+      }
+    }
+  };
+
+  const stopParticles = () => {
+    if (particleAnimId) {
+      cancelAnimationFrame(particleAnimId);
+      particleAnimId = null;
+    }
+    particles = [];
+    if (el.particleCanvas) {
+      const ctx = el.particleCanvas.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, el.particleCanvas.width, el.particleCanvas.height);
+    }
+  };
+
+  const triggerSnowAnimation = () => {
+    stopParticles();
+    const ctx = initCanvas();
+    if (!ctx) return;
+    const W = el.particleCanvas.width, H = el.particleCanvas.height;
+    for (let i = 0; i < 70; i++) {
+      particles.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        r: Math.random() * 3 + 1.5,
+        d: Math.random() * 1.5 + 0.5,
+        s: Math.random() * 1.2 - 0.6,
+        alpha: Math.random() * 0.7 + 0.3,
+      });
+    }
+    let frames = 0;
+    const loop = () => {
+      ctx.clearRect(0, 0, W, H);
+      particles.forEach((p) => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 255, 255, ${p.alpha})`;
+        ctx.fill();
+        p.y += p.d;
+        p.x += Math.sin(p.y * 0.02) * p.s;
+        if (p.y > H) { p.y = -5; p.x = Math.random() * W; }
+      });
+      frames++;
+      if (frames < 360) {
+        particleAnimId = requestAnimationFrame(loop);
+      } else {
+        stopParticles();
+      }
+    };
+    particleAnimId = requestAnimationFrame(loop);
+  };
+
+  const triggerHeartsAnimation = () => {
+    stopParticles();
+    const ctx = initCanvas();
+    if (!ctx) return;
+    const W = el.particleCanvas.width, H = el.particleCanvas.height;
+    for (let i = 0; i < 24; i++) {
+      particles.push({
+        x: W * 0.2 + Math.random() * W * 0.6,
+        y: H + Math.random() * 80,
+        size: Math.random() * 18 + 14,
+        speed: Math.random() * 2 + 1.2,
+        drift: Math.random() * 1.6 - 0.8,
+        alpha: 1,
+      });
+    }
+    let frames = 0;
+    const loop = () => {
+      ctx.clearRect(0, 0, W, H);
+      particles.forEach((p) => {
+        ctx.font = `${p.size}px serif`;
+        ctx.globalAlpha = p.alpha;
+        ctx.fillText('❤️', p.x, p.y);
+        p.y -= p.speed;
+        p.x += p.drift;
+        p.alpha = Math.max(0, p.alpha - 0.005);
+      });
+      ctx.globalAlpha = 1;
+      frames++;
+      if (frames < 240) {
+        particleAnimId = requestAnimationFrame(loop);
+      } else {
+        stopParticles();
+      }
+    };
+    particleAnimId = requestAnimationFrame(loop);
+  };
+
+  const triggerSparklesAnimation = () => {
+    stopParticles();
+    const ctx = initCanvas();
+    if (!ctx) return;
+    const W = el.particleCanvas.width, H = el.particleCanvas.height;
+    for (let i = 0; i < 50; i++) {
+      particles.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        vx: (Math.random() - 0.5) * 4,
+        vy: (Math.random() - 0.5) * 4,
+        size: Math.random() * 3 + 2,
+        life: 1,
+        color: ['#8B5CF6', '#06B6D4', '#F43F5E', '#38BDF8'][Math.floor(Math.random() * 4)],
+      });
+    }
+    let frames = 0;
+    const loop = () => {
+      ctx.clearRect(0, 0, W, H);
+      particles.forEach((p) => {
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.life;
+        ctx.fillRect(p.x, p.y, p.size, p.size);
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 0.015;
+      });
+      ctx.globalAlpha = 1;
+      frames++;
+      if (frames < 120) {
+        particleAnimId = requestAnimationFrame(loop);
+      } else {
+        stopParticles();
+      }
+    };
+    particleAnimId = requestAnimationFrame(loop);
+  };
+
+  const triggerSadakoAnimation = () => {
+    if (!el.cinemaOverlay) return;
+    const ov = el.cinemaOverlay;
+    ov.textContent = '';
+    show(ov, true);
+
+    // Screen Shake
+    const chatPane = $('msgr-chat');
+    chatPane?.classList.add('msgr-shake');
+    setTimeout(() => chatPane?.classList.remove('msgr-shake'), 1200);
+
+    // Well overlay and Wall Cracks
+    const bg = mk('div', 'horror-well-bg active');
+    const crack = mk('div', 'horror-crack active');
+    crack.innerHTML = `
+      <svg viewBox="0 0 500 500" style="width:100%;height:100%;stroke:#ef4444;stroke-width:1.8;fill:none;opacity:0.7">
+        <path d="M 250,250 L 220,180 L 230,130 L 190,80 L 170,20 M 250,250 L 310,210 L 370,220 L 420,170 L 480,150 M 250,250 L 260,330 L 220,380 L 250,440 M 250,250 L 180,270 L 130,310 L 70,330"/>
+      </svg>
+    `;
+    const crawler = mk('div', 'horror-crawler');
+    crawler.innerHTML = `
+      <svg viewBox="0 0 100 130" style="width:100%;height:100%">
+        <path d="M 50,20 C 35,20 25,35 25,60 C 25,85 30,110 50,110 C 70,110 75,85 75,60 C 75,35 65,20 50,20 Z" fill="#050811"/>
+        <path d="M 30,30 Q 50,5 70,30 Q 75,60 70,95 Q 50,110 30,95 Z" fill="#090d16"/>
+        <path d="M 45,65 Q 40,85 35,110 M 55,65 Q 60,85 65,110" stroke="#f1f5f9" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="44" cy="52" r="3.5" fill="#ef4444"/>
+        <circle cx="56" cy="52" r="3.5" fill="#ef4444"/>
+      </svg>
+    `;
+    ov.append(bg, crack, crawler);
+    requestAnimationFrame(() => crawler.classList.add('crawling'));
+
+    setTimeout(() => {
+      ov.textContent = '';
+      show(ov, false);
+    }, 3500);
+  };
+
+  const triggerSleighBells = () => {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC();
+      [0, 0.12, 0.24, 0.4].forEach((delay, idx) => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(2489 + idx * 200, ctx.currentTime + delay);
+        g.gain.setValueAtTime(0.08, ctx.currentTime + delay);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.18);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(ctx.currentTime + delay);
+        osc.stop(ctx.currentTime + delay + 0.19);
+      });
+    } catch (_) {}
+  };
+
+  const triggerHorrorSound = () => {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC();
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(55, ctx.currentTime + 1.2);
+      g.gain.setValueAtTime(0.2, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.3);
+      osc.connect(g);
+      g.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 1.35);
+    } catch (_) {}
+  };
+
+  const triggerLoveSound = () => {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC();
+      [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(f, ctx.currentTime + i * 0.08);
+        g.gain.setValueAtTime(0.12, ctx.currentTime + i * 0.08);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.08 + 0.35);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(ctx.currentTime + i * 0.08);
+        osc.stop(ctx.currentTime + i * 0.08 + 0.36);
+      });
+    } catch (_) {}
+  };
+
+  const triggerLaserSound = () => {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC();
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(110, ctx.currentTime + 0.25);
+      g.gain.setValueAtTime(0.18, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.26);
+      osc.connect(g);
+      g.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.27);
+    } catch (_) {}
+  };
+
+  const checkTriggerEmoji = (text) => {
+    if (!text) return;
+    if (text.includes('❄️')) { triggerSnowAnimation(); triggerSleighBells(); }
+    else if (text.includes('👻')) { triggerSadakoAnimation(); triggerHorrorSound(); }
+    else if (text.includes('❤️')) { triggerHeartsAnimation(); triggerLoveSound(); }
+    else if (text.includes('⚡')) { triggerSparklesAnimation(); triggerLaserSound(); }
+  };
+
+  const updateDisappearingUI = (status) => {
+    if (!el.disappearingBar) return;
+    if (status === 'on') {
+      show(el.disappearingBar, true);
+      if (el.disappearingTxt) el.disappearingTxt.textContent = '⏱ Disappearing messages are turned ON. Messages disappear automatically.';
+    } else if (status === 'pending') {
+      show(el.disappearingBar, true);
+      if (el.disappearingTxt) el.disappearingTxt.textContent = '⏱ Disappearing messages requested. Waiting for peer approval.';
+    } else {
+      show(el.disappearingBar, false);
+    }
+    if (el.infDis) {
+      el.infDis.textContent = { on: 'On', pending: 'Waiting for approval', off: 'Off' }[status] || 'Off';
+    }
+  };
+
+  const updateApprovalBanner = (group) => {
+    if (!el.approvalBanner) return;
+    const isPending = group && (group.pendingApproval || String(group.policies || '').includes('PendingAdminApproval'));
+    if (!isPending) {
+      show(el.approvalBanner, false);
+      if (el.input) el.input.disabled = false;
+      const sendBtn = $('msgr-send');
+      if (sendBtn) sendBtn.disabled = false;
+      return;
+    }
+    show(el.approvalBanner, true);
+    if (ADMIN) {
+      show(el.abActions, true);
+      el.abDesc.textContent = `This group has ${group.memberCount || '> 50'} members and is awaiting your approval as an Administrator.`;
+      if (el.input) el.input.disabled = false;
+    } else {
+      show(el.abActions, false);
+      el.abDesc.textContent = `This group has ${group.memberCount || '> 50'} members and is pending administrator authorization before messaging can begin.`;
+      if (el.input) el.input.disabled = true;
+      const sendBtn = $('msgr-send');
+      if (sendBtn) sendBtn.disabled = true;
+    }
+  };
+
   const api = (path, opts) => fetch(`${BASE}/${path}`, Object.assign({ credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } }, opts))
     .then((r) => {
       if (r.status === 401) { location.href = BASE.replace(/inbox$/, 'login'); throw new Error('auth'); }
@@ -188,8 +530,16 @@
     const b = mk('button', 'row' + (p.key === key ? ' active' : '') + (conv && p.unread > 0 ? ' unread' : '')); b.type = 'button';
     const a = mk('span', 'av'); avatar(a, p);
     const m = mk('span', 'meta'); const n = mk('b', '', p.name);
-    if (ADMIN) n.append(mk('i', 'src ' + p.src, SYS[p.src]));
-    const s = mk('small', '', conv ? ((p.mine ? 'You: ' : '') + p.last) : (p.username ? '@' + p.username : (p.dept || '')));
+    if (p.isGroup) {
+      n.append(mk('i', 'src ' + p.src, p.src === 'rg' ? 'RMS Group' : 'Group'));
+    } else if (ADMIN) {
+      n.append(mk('i', 'src ' + p.src, SYS[p.src]));
+    }
+    const s = mk('small');
+    if (p.isGroup && p.pendingApproval) {
+      s.append(mk('span', 'grp-pending-chip', '⚠️ Pending Approval'), document.createTextNode(' '));
+    }
+    s.append(document.createTextNode(conv ? ((p.mine ? 'You: ' : '') + p.last) : (p.username ? '@' + p.username : (p.dept || ''))));
     m.append(n, s); b.append(a, m);
     if (conv) {
       b.append(mk('span', 'when', fmtShort(p.at)));
@@ -233,6 +583,13 @@
   const core = (m) => {
     const mine = m.from === me;
     const b = mk('div', 'm ' + (mine ? 'me' : 'them')); b.dataset.id = m.id; b.title = fmtTime(parse(m.at));
+    if (peer && (peer.isGroup || peer.src === 'g' || peer.src === 'rg') && !mine) {
+      const snd = mk('div', 'm-group-sender');
+      const a = mk('span', 'av xs');
+      avatar(a, { id: m.from, name: m.fromName || ('User ' + m.from), avatar: m.fromAvatar, online: false });
+      snd.append(a, mk('span', '', m.fromName || ('User ' + m.from)));
+      b.append(snd);
+    }
     if (m.image) {
       const a = mk('a', 'pimg'); a.href = m.image; a.setAttribute('aria-label', 'View image');
       const img = mk('img', 'pic'); img.src = m.image; img.alt = 'Image'; img.loading = 'lazy'; a.append(img); b.append(a); b.classList.add('has-pic');
@@ -335,6 +692,16 @@
 
   // ---------- thread loading ----------
   const headerFor = () => {
+    if (peer && (peer.isGroup || peer.src === 'g' || peer.src === 'rg')) {
+      el.name.textContent = peer.name;
+      el.sub.textContent = `Group · ${peer.memberCount || 0} members` + (ADMIN ? ` · ${peer.src === 'rg' ? 'RMS' : 'NEXUS-L'}` : '');
+      if (el.infMembersBtn) {
+        show(el.infMembersBtn, true);
+        if (el.infMembersCount) el.infMembersCount.textContent = `${peer.memberCount || 0} members`;
+      }
+      return;
+    }
+    if (el.infMembersBtn) show(el.infMembersBtn, false);
     const nk = nicks.peer;
     el.name.textContent = nk || peer.name;
     el.sub.textContent = (nk ? peer.name + ' · ' : (peer.username ? '@' + peer.username + ' · ' : '')) + (ADMIN ? SYS[peer.src] : '');
@@ -347,6 +714,14 @@
     return api(`thread/${enc(k)}?after=${full && !first ? 0 : lastId}`).then((d) => {
       if (k !== key) return;
       me = String(d.me); nicks = d.nicknames || nicks; headerFor();
+      if (d.group) {
+        peer = Object.assign(peer, d.group);
+        if (d.group.theme && d.group.theme !== currentThemeKey) {
+          applyTheme(d.group.theme, true);
+        }
+        updateDisappearingUI(d.group.disappearing ? 'on' : 'off');
+        updateApprovalBanner(d.group);
+      }
       const stick = first || nearBottom(); seenEl?.remove(); seenEl = null;
       let added = 0;
       d.messages.forEach((m) => {
@@ -355,8 +730,9 @@
         } else {
           addMsg(m);
           added++;
-          if (!first && m.from !== me) {
-            notifyDesktop(m);
+          if (!first) {
+            checkTriggerEmoji(m.text);
+            if (m.from !== me) notifyDesktop(m);
           }
         }
       });
@@ -371,6 +747,9 @@
     key = p.key; peer = p; replyTo = null; show($('msgr-reply'), false); resetThread(); el.q.value = ''; people = []; nicks = { me: '', peer: '' }; pending = []; renderPending();
     show(el.blank, false); show(el.pane, true); root.classList.add('open'); show(el.err, false);
     avatar(el.av, p); headerFor(); renderList(); closePops(); updateSend();
+    applyTheme(p.theme || 'default', false);
+    updateDisappearingUI(p.disappearing ? 'on' : 'off');
+    updateApprovalBanner(p);
     onPeerChange();
     pull(true).then(() => { loadList(); el.input.focus(); });
   };
@@ -385,6 +764,7 @@
     $('msgr-send').setAttribute('aria-label', showQuick ? 'Send ' + q : 'Send');
   };
   const sendText = (text) => {
+    checkTriggerEmoji(text);
     const btn = $('msgr-send'); btn.disabled = true; flashErr('');
     return post(`send/${enc(key)}`, { body: text, reply_to: replyTo ? replyTo.id : 0 }).then((j) => {
       clearReply(); if (j.message) addMsg(j.message); seenEl?.remove(); seenEl = null; el.msgs.scrollTop = el.msgs.scrollHeight; loadList();
@@ -565,7 +945,14 @@
   const showView = (v) => { show(inf.main, v === 'main'); show(inf.sub, v !== 'main'); show(inf.qbox, v === 'search'); inf.grid.textContent = ''; inf.list.textContent = ''; show(inf.more, false); show(inf.empty, false); };
   const applySettings = (s) => {
     settings = s; inf.rr.checked = s.readReceipts; inf.sec.checked = s.secured; inf.emoji.textContent = s.emoji;
-    inf.pinN.textContent = s.pinned && s.pinned.length ? `${s.pinned.length}/8` : ''; inf.dis.textContent = { off: 'Off', on: 'On', pending: 'Waiting for approval' }[s.disappearing] || 'Off';
+    inf.pinN.textContent = s.pinned && s.pinned.length ? `${s.pinned.length}/8` : '';
+    if (s.theme && s.theme !== currentThemeKey) {
+      applyTheme(s.theme, false);
+    }
+    updateDisappearingUI(s.disappearing);
+    if (s.members && s.members.length && el.infMembersCount) {
+      el.infMembersCount.textContent = `${s.members.length} members`;
+    }
     nicks = s.nicknames || nicks; headerFor(); updateSend();
   };
   const loadDetails = () => {
@@ -573,8 +960,15 @@
     const k = key; infErr(''); showView('main'); show($('inf-files-btn'), peer.src === 'n');
     inf.name.textContent = nicks.peer || peer.name; inf.user.textContent = peer.username ? '@' + peer.username : ''; avatar(inf.av, peer);
     inf.status.textContent = peer.src === 'r' ? (peer.online ? '● Online' : '● Offline') : ''; inf.status.classList.toggle('on', !!peer.online);
-    api(`details/${enc(k)}`).then((d) => { if (k !== key) return; peer = Object.assign(peer, d.peer); applySettings(d.settings);
-      inf.name.textContent = nicks.peer || peer.name; if (peer.src === 'r') { inf.status.textContent = peer.online ? '● Online' : '● Offline'; inf.status.classList.toggle('on', !!peer.online); }
+    api(`details/${enc(k)}`).then((d) => {
+      if (k !== key) return;
+      peer = Object.assign(peer, d.peer);
+      applySettings(d.settings);
+      inf.name.textContent = nicks.peer || peer.name;
+      if (peer.src === 'r') {
+        inf.status.textContent = peer.online ? '● Online' : '● Offline';
+        inf.status.classList.toggle('on', !!peer.online);
+      }
     }).catch((e) => infErr(e.message));
   };
   onPeerChange = () => { settings = null; updateSend(); closeDlg(); if (!inf.box.classList.contains('hidden')) loadDetails(); else api(`details/${enc(key)}`).then((d) => { if (d && key === peer.key) applySettings(d.settings); }).catch(() => {}); };
@@ -587,6 +981,67 @@
     const on = inf.sec.checked;
     if (!on && !confirm('Turn off Secure Messaging?\n\nFuture messages in this chat will be sent as unencrypted plain text.')) { inf.sec.checked = true; return; }
     post(`setting/${enc(key)}`, { key: 'SecuredChat', value: on ? 'Yes' : 'No' }).then((d) => applySettings(d.settings)).catch((x) => { infErr(x.message); inf.sec.checked = !on; });
+  });
+
+  // Theme Picker Dialog
+  const openThemeDialog = () => {
+    const grid = mk('div', 'theme-grid');
+    THEMES.forEach((t) => {
+      const card = mk('button', 'theme-card' + (t.key === currentThemeKey ? ' active' : ''));
+      card.type = 'button';
+      const top = mk('div', 'tc-top');
+      top.append(mk('span', 'tc-emoji', t.emoji));
+      const colors = mk('div', 'tc-colors');
+      [t.primary, t.bubble_me, t.bubble_them].forEach((c) => {
+        const sw = mk('span', 'tc-swatch');
+        sw.style.background = c;
+        colors.append(sw);
+      });
+      top.append(colors);
+      card.append(top, mk('span', 'tc-name', t.name), mk('span', 'tc-desc', t.desc));
+      card.addEventListener('click', () => {
+        applyTheme(t.key, true);
+        post(`setting/${enc(key)}`, { key: 'CurrentTheme', value: t.key })
+          .then((d) => {
+            if (d && d.settings) applySettings(d.settings);
+            closeDlg();
+            toast(`Theme changed to ${t.name}!`);
+          })
+          .catch((err) => flashErr(err.message));
+      });
+      grid.append(card);
+    });
+    openDlg('Choose Chat Theme', grid);
+  };
+  $('inf-theme-btn')?.addEventListener('click', openThemeDialog);
+
+  // Disappearing Messages Toggle
+  $('inf-dis-btn')?.addEventListener('click', () => {
+    post(`disappearing/${enc(key)}`, { mode: 'toggle' }).then((j) => {
+      if (settings) settings.disappearing = j.disappearing;
+      updateDisappearingUI(j.disappearing);
+      toast(j.disappearing === 'on' ? 'Disappearing messages turned ON!' : (j.disappearing === 'pending' ? 'Disappearing messages requested (pending approval)' : 'Disappearing messages turned OFF'));
+    }).catch((e) => flashErr(e.message));
+  });
+
+  // Group Admin Approval Actions
+  el.abApprove?.addEventListener('click', () => {
+    post(`group/approve/${enc(key)}`, { action: 'approve' }).then(() => {
+      toast('Group approved! Messaging is now active for all members.');
+      show(el.approvalBanner, false);
+      if (peer) peer.pendingApproval = false;
+      loadList();
+    }).catch((e) => flashErr(e.message));
+  });
+
+  el.abReject?.addEventListener('click', () => {
+    if (!confirm('Are you sure you want to reject this group?')) return;
+    post(`group/approve/${enc(key)}`, { action: 'reject' }).then(() => {
+      toast('Group rejected.');
+      show(el.approvalBanner, false);
+      loadList();
+      root.classList.remove('open');
+    }).catch((e) => flashErr(e.message));
   });
 
   // nicknames: list of members -> click one -> dialog to set a custom nickname (as in the app)
@@ -615,7 +1070,7 @@
   };
   $('inf-nick-btn').addEventListener('click', () => openDlg('Nicknames', nickList()));
 
-  // sub views: pinned / search / media / files
+  // sub views: pinned / search / media / files / members
   const li = (m, withUnpin) => {
     const l = mk('li'); l.append(mk('span', '', m.text || (m.image ? '🖼 Image' : m.file ? '📄 ' + m.file.name : '')));
     l.append(mk('small', '', `${m.from === me ? 'You' : (nicks.peer || peer.name)} · ${fmtShort(m.at)}`));
@@ -635,13 +1090,29 @@
       if (!inf.grid.children.length && !inf.list.children.length) showEmpty(files ? 'No files shared yet.' : 'No media shared yet.');
     }).catch((e) => showEmpty(e.message));
   };
+  const loadMembers = () => {
+    inf.list.textContent = '';
+    const mems = (settings && settings.members) || [];
+    if (!mems.length) { showEmpty('No members found.'); return; }
+    mems.forEach((m) => {
+      const it = mk('li', 'roster-item');
+      const av = mk('span', 'av sm'); avatar(av, m);
+      const meta = mk('div', 'meta');
+      meta.append(mk('b', '', m.name || ('User ' + m.id)), mk('small', '', m.username ? '@' + m.username : ''));
+      const role = mk('span', 'role-tag' + (m.role === 'Admin' ? ' admin' : ''), m.role || 'Member');
+      it.append(av, meta, role);
+      inf.list.append(it);
+    });
+  };
+
   document.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => {
     const go = b.dataset.go; showView(go);
-    inf.title.textContent = { pinned: 'Pinned messages', search: 'Search in conversation', media: 'Media (attachments)', files: 'Files' }[go];
+    inf.title.textContent = { pinned: 'Pinned messages', search: 'Search in conversation', media: 'Media (attachments)', files: 'Files', members: 'Group Members' }[go] || 'Details';
     if (go === 'pinned') api(`pinned/${enc(key)}`).then((d) => { d.messages.forEach((m) => inf.list.append(li(m, true))); if (!d.messages.length) showEmpty('No pinned messages.'); }).catch((e) => showEmpty(e.message));
     if (go === 'search') { inf.q.value = ''; inf.q.focus(); }
     if (go === 'media') loadMedia(true, false);
     if (go === 'files') loadMedia(true, true);
+    if (go === 'members') loadMembers();
   }));
   let st; inf.q.addEventListener('input', () => { clearTimeout(st); st = setTimeout(() => {
     const q = inf.q.value.trim(); inf.list.textContent = ''; show(inf.empty, false); if (q.length < 2) return;
@@ -665,7 +1136,6 @@
     const thumbs = mk('div', 'lb-thumbs');
     box.append(top, stage, thumbs); document.body.append(box);
     Object.assign(lb, { box, cap, dl, stage, img, prev, next, thumbs });
-    // click image: toggle zoom at the clicked point; drag to pan while zoomed
     img.addEventListener('click', (e) => { if (lb.moved) { lb.moved = false; return; } lbZoom(!lb.zoom, e); });
     img.addEventListener('pointerdown', (e) => { if (!lb.zoom) return; lb.drag = { x: e.clientX, y: e.clientY, sx: stage.scrollLeft, sy: stage.scrollTop }; lb.moved = false; img.setPointerCapture(e.pointerId); });
     img.addEventListener('pointermove', (e) => { if (!lb.drag) return; const dx = e.clientX - lb.drag.x, dy = e.clientY - lb.drag.y; if (Math.abs(dx) + Math.abs(dy) > 4) lb.moved = true; stage.scrollLeft = lb.drag.sx - dx; stage.scrollTop = lb.drag.sy - dy; });
@@ -710,47 +1180,85 @@
     openViewer(items, [...inf.grid.querySelectorAll('a')].indexOf(a));
   });
 
-  // ---------- New message (same flow as the RMS app's "+" button) ----------
-  // search a person -> pick them (chip) -> write the first message -> send -> the chat opens.
-  // The app also creates group chats when several people are picked; groups are not on the web yet, so one person at a time.
-  const newChatDialog = () => {
-    let sel = null, via = null;
+  // ---------- New Message & Group Messaging (with 50-member limit) ----------
+  const newChatDialog = (forceGroup = false) => {
+    const selected = new Map(); // id => person object
+    let via = 'n';
     const search = mk('input', 'dlg-in'); search.type = 'search'; search.placeholder = 'Search for Name'; search.maxLength = 50; search.setAttribute('aria-label', 'Search for Name');
     const chips = mk('div', 'nc-chips'), grid = mk('div', 'nc-grid'), note = mk('p', 'nc-note hidden');
     const viaBox = mk('div', 'nc-via hidden');
-    const body = mk('textarea', 'dlg-text'); body.rows = 2; body.maxLength = 2000; body.placeholder = 'Write a message'; body.setAttribute('aria-label', 'Write a message');
-    const send = mk('button', 'msgr-send nc-send'); send.type = 'button'; send.setAttribute('aria-label', 'Send message'); send.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M3.4 20.4l17.4-7.5a1 1 0 000-1.8L3.4 3.6a.8.8 0 00-1.1.9L3.5 10l9 2-9 2-1.2 5.5a.8.8 0 001.1.9z"/></svg>';
+
+    // Group specific inputs
+    const grpNameWrap = mk('div', 'dlg-inwrap hidden');
+    const grpNameInput = mk('input', 'dlg-in'); grpNameInput.type = 'text'; grpNameInput.maxLength = 100; grpNameInput.placeholder = 'Group Name (e.g. Audit QC Team)';
+    grpNameWrap.append(grpNameInput);
+
+    const memberCounter = mk('span', 'limit-badge', '0 / 50 members');
+
+    const body = mk('textarea', 'dlg-text'); body.rows = 2; body.maxLength = 2000; body.placeholder = 'Write a message (optional for groups)'; body.setAttribute('aria-label', 'Write a message');
+    const send = mk('button', 'msgr-send nc-send'); send.type = 'button'; send.setAttribute('aria-label', 'Submit'); send.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M3.4 20.4l17.4-7.5a1 1 0 000-1.8L3.4 3.6a.8.8 0 00-1.1.9L3.5 10l9 2-9 2-1.2 5.5a.8.8 0 001.1.9z"/></svg>';
     const err = mk('p', 'msgr-err hidden'); err.setAttribute('role', 'alert');
     const row2 = mk('div', 'nc-compose'); row2.append(body, send);
     const lab = (t) => mk('div', 'nc-lab', t);
     const sysName = { n: 'NEXUS-L (web)', r: 'RMS (Android app)' };
 
     const personFor = (u, src) => ({ key: u.systems[src], id: u.systems[src].split(':')[1], name: u.name, username: u.username, avatar: u.avatar, online: u.online, src, dept: u.dept });
-    const defaultVia = (u) => {
-      const keys = Object.values(u.systems), hit = convCache.find((c) => keys.includes(c.key));   // continue where you already talk
-      return hit ? hit.src : (u.systems.n ? 'n' : 'r');
-    };
+
     const renderChips = () => {
       chips.textContent = '';
-      if (!sel) { chips.append(mk('span', 'nc-none', 'No contact selected yet')); return; }
-      const c = mk('span', 'nc-chip'); const a = mk('span', 'av sm'); avatar(a, { key: sel.id, id: sel.id, name: sel.name, avatar: sel.avatar, online: false });
-      const x = mk('button', '', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Remove ' + sel.name); x.addEventListener('click', () => { sel = null; via = null; renderChips(); renderVia(); markCards(); });
-      c.append(a, mk('span', '', sel.name), x); chips.append(c);
+      const count = selected.size;
+      const isGrp = forceGroup || count > 1;
+      show(grpNameWrap, isGrp);
+      memberCounter.textContent = `${count} / 50 members`;
+      memberCounter.classList.toggle('warn', count > 50);
+
+      if (count > 50) {
+        note.textContent = `⚠️ You selected ${count} members (> 50). This group will require Administrator approval before regular members can start messaging.`;
+        show(note, true);
+      } else {
+        show(note, false);
+      }
+
+      if (count === 0) {
+        chips.append(mk('span', 'nc-none', 'No contacts selected yet'));
+        return;
+      }
+
+      selected.forEach((u) => {
+        const c = mk('span', 'nc-chip');
+        const a = mk('span', 'av sm');
+        avatar(a, { key: u.id, id: u.id, name: u.name, avatar: u.avatar, online: false });
+        const x = mk('button', '', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Remove ' + u.name);
+        x.addEventListener('click', () => { selected.delete(u.id); renderChips(); renderVia(); markCards(); });
+        c.append(a, mk('span', '', u.name), x); chips.append(c);
+      });
     };
+
     const renderVia = () => {
-      viaBox.textContent = ''; const both = sel && sel.systems.n && sel.systems.r; show(viaBox, !!both); if (!both) return;
-      viaBox.append(mk('span', 'nc-lab', 'Send via'));
-      ['n', 'r'].forEach((s) => { const l = mk('label', 'nc-radio'); const r = mk('input'); r.type = 'radio'; r.name = 'nc-via'; r.value = s; r.checked = via === s; r.addEventListener('change', () => { via = s; });
-        l.append(r, document.createTextNode(' ' + sysName[s])); viaBox.append(l); });
+      viaBox.textContent = '';
+      if (!ADMIN) return;
+      viaBox.append(mk('span', 'nc-lab', 'System'));
+      ['n', 'r'].forEach((s) => {
+        const l = mk('label', 'nc-radio');
+        const r = mk('input'); r.type = 'radio'; r.name = 'nc-via'; r.value = s; r.checked = via === s;
+        r.addEventListener('change', () => { via = s; });
+        l.append(r, document.createTextNode(' ' + sysName[s]));
+        viaBox.append(l);
+      });
+      show(viaBox, true);
     };
-    const markCards = () => [...grid.children].forEach((c) => c.classList.toggle('on', !!sel && c.dataset.id === sel.id));
+
+    const markCards = () => [...grid.children].forEach((c) => c.classList.toggle('on', selected.has(c.dataset.id)));
+
     const pick = (u) => {
-      show(note, false);
-      if (sel && sel.id === u.id) { sel = null; via = null; }                         // click again = deselect (as in the app)
-      else if (sel) { note.textContent = 'Group chats are not available on the web yet. You can message one person at a time. Remove the selected contact first.'; show(note, true); return; }
-      else { sel = u; via = defaultVia(u); }
+      if (selected.has(u.id)) {
+        selected.delete(u.id);
+      } else {
+        selected.set(u.id, u);
+      }
       renderChips(); renderVia(); markCards();
     };
+
     const card = (u) => {
       const b = mk('button', 'nc-card'); b.type = 'button'; b.dataset.id = u.id;
       const a = mk('span', 'av'); avatar(a, { key: u.id, id: u.id, name: u.name, avatar: u.avatar, online: u.online });
@@ -759,31 +1267,79 @@
       m.append(n, mk('small', '', u.username ? '@' + u.username : (u.dept || '')));
       b.append(a, m); b.addEventListener('click', () => pick(u)); return b;
     };
+
     const load = (q) => api(`users?q=${enc(q)}`).then((d) => {
       grid.textContent = ''; d.users.forEach((u) => grid.append(card(u)));
       if (!d.users.length) grid.append(mk('p', 'msgr-empty', q ? 'No people found.' : 'No contacts available.'));
       if (d.warnings && d.warnings.length) { err.textContent = d.warnings.join(' '); show(err, true); } else if (!err.dataset.keep) show(err, false);
       markCards();
     }).catch((e) => { err.textContent = e.message; show(err, true); });
+
     let t; search.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => load(search.value.trim()), 250); });
 
     const submitNew = () => {
       err.dataset.keep = '';
-      if (!sel) { err.textContent = 'Please select at least one contact first'; err.dataset.keep = '1'; show(err, true); return; }
-      const text = body.value.trim();
-      if (!text) { err.textContent = 'Please write a message first'; err.dataset.keep = '1'; show(err, true); return; }
-      const p = personFor(sel, via || defaultVia(sel)); send.disabled = true; show(err, false);
-      post(`send/${enc(p.key)}`, { body: text }).then(() => {
-        closeDlg(); toast('Message sent!'); open(p); loadList();
-      }).catch((e) => { err.textContent = 'Failed to send: ' + e.message; err.dataset.keep = '1'; show(err, true); send.disabled = false; });
+      const count = selected.size;
+      if (count === 0) {
+        err.textContent = 'Please select at least one contact.';
+        err.dataset.keep = '1'; show(err, true); return;
+      }
+
+      const isGrp = forceGroup || count > 1;
+      if (isGrp) {
+        const grpName = grpNameInput.value.trim() || `Group (${count + 1} members)`;
+        const memberIds = [...selected.values()].map((u) => {
+          const sys = u.systems[via] || u.systems.n || u.systems.r;
+          return sys.split(':')[1];
+        });
+        send.disabled = true; show(err, false);
+        post('group/create', { name: grpName, members: memberIds, source: via }).then((j) => {
+          closeDlg();
+          toast(j.message || 'Group created!');
+          const groupObj = {
+            id: j.groupId,
+            groupId: j.groupId,
+            key: j.key,
+            isGroup: true,
+            name: j.name,
+            pendingApproval: j.pendingApproval,
+            memberCount: j.memberCount,
+            src: via === 'r' ? 'rg' : 'g',
+          };
+          open(groupObj);
+          loadList();
+        }).catch((e) => {
+          err.textContent = 'Failed to create group: ' + e.message;
+          err.dataset.keep = '1'; show(err, true); send.disabled = false;
+        });
+      } else {
+        const singleSel = [...selected.values()][0];
+        const text = body.value.trim();
+        if (!text) { err.textContent = 'Please write a message first'; err.dataset.keep = '1'; show(err, true); return; }
+        const p = personFor(singleSel, via);
+        send.disabled = true; show(err, false);
+        post(`send/${enc(p.key)}`, { body: text }).then(() => {
+          closeDlg(); toast('Message sent!'); open(p); loadList();
+        }).catch((e) => {
+          err.textContent = 'Failed to send: ' + e.message;
+          err.dataset.keep = '1'; show(err, true); send.disabled = false;
+        });
+      }
     };
+
     send.addEventListener('click', submitNew);
     body.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitNew(); } });
 
-    openDlg('New Message', search, lab('Selected Contact'), chips, note, viaBox, lab('Suggested Contact'), grid, row2, err);
-    el.dlgCard.classList.add('wide'); renderChips(); load(''); search.focus();
+    const headerTitle = forceGroup ? 'New Group' : 'New Message';
+    const chipsHeader = mk('div', 'dlg-head');
+    chipsHeader.append(lab('Selected Members'), memberCounter);
+
+    openDlg(headerTitle, grpNameWrap, search, chipsHeader, chips, note, viaBox, lab('Contacts'), grid, row2, err);
+    el.dlgCard.classList.add('wide'); renderChips(); renderVia(); load(''); search.focus();
   };
-  $('msgr-new').addEventListener('click', newChatDialog);
+
+  $('msgr-new').addEventListener('click', () => newChatDialog(false));
+  $('msgr-new-group')?.addEventListener('click', () => newChatDialog(true));
 
   // ---------- polling (paused while the tab is hidden) ----------
   updateSend(); loadList(); initNotifBanner();

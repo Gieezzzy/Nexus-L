@@ -36,7 +36,7 @@ class RmsStore extends ChatStore
 
     protected function tables(): array
     {
-        return ['{M}' => 'dbo.tbl_Messages', '{S}' => 'dbo.SingleUserMessage'];
+        return ['{M}' => 'dbo.tbl_Messages', '{S}' => 'dbo.SingleUserMessage', '{G}' => 'dbo.tbl_GroupMessage'];
     }
 
     protected function imageWhere(): string
@@ -53,6 +53,34 @@ class RmsStore extends ChatStore
     protected function insertParams(string $me, string $peer, string $cv, string $stored, array $att): array
     {
         return [$me, $stored, $peer, $att['imagePath'] ?? null, $cv];
+    }
+
+    protected function insertGroupSql(array $att): string
+    {
+        return "INSERT INTO {M} (TargetReferenceID, SenderID, MessageContent, IsSyncedToSynology, ReceiverID, ConnectedID, imagePath, IsGroup, GroupID, IsRead, DateSent)
+                OUTPUT INSERTED.MessageID VALUES ('WEB_NEXUS', ?, ?, 1, ?, '0', ?, 'Yes', ?, 0, GETDATE())";
+    }
+
+    protected function insertGroupParams(string $me, string $groupId, string $stored, array $att): array
+    {
+        return [$me, $stored, $groupId, $att['imagePath'] ?? null, $groupId];
+    }
+
+    public function createGroupRecord(string $creator, string $name, array $members, string $policies, ?string $pic = null): int
+    {
+        $mList = array_values(array_unique(array_filter(array_map('trim', $members))));
+        if (! in_array($creator, $mList, true)) {
+            $mList[] = $creator;
+        }
+        $formattedMembers = ';' . implode(';', $mList) . ';';
+        $rows = RmsDb::rows(
+            "INSERT INTO dbo.tbl_GroupMessage (GroupName, members, Admin, Policies, GroupPic, CurrentEmoji, CurrentTheme, CreatedAt, UpdatedAt)
+             OUTPUT INSERTED.GroupID
+             VALUES (?, ?, ?, ?, ?, '👍', 'default', GETDATE(), GETDATE())",
+            [$name, $formattedMembers, $creator, $policies, $pic]
+        );
+
+        return (int) ($rows[0]['GroupID'] ?? 0);
     }
 
     public static function mediaUrl(string $relative): string

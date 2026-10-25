@@ -27,6 +27,12 @@ abstract class ChatStore
     /** Execute an INSERT into {M} and return the new MessageID. */
     abstract protected function insertMessage(string $sql, array $params): int;
 
+    abstract protected function insertGroupSql(array $att): string;
+
+    abstract protected function insertGroupParams(string $me, string $groupId, string $stored, array $att): array;
+
+    abstract public function createGroupRecord(string $creator, string $name, array $members, string $policies, ?string $pic = null): int;
+
     /** Row-limit clause that goes after ORDER BY. */
     abstract protected function lim(int $n): string;
 
@@ -100,38 +106,106 @@ abstract class ChatStore
              ) t GROUP BY t.Partner ORDER BY LastID DESC " . $this->lim(100),
             [$me, $me, $me],
         );
-        if (! $partners) {
-            return [];
-        }
-
-        $ids  = array_map(static fn ($r) => (int) $r['LastID'], $partners);
-        $in   = implode(',', $ids);
-        $last = [];
-        foreach ($this->q("SELECT MessageID, SenderID, MessageContent, DateSent, imagePath{$this->extraCols()} FROM {M} WHERE MessageID IN ({$in})") as $r) {
-            $last[(int) $r['MessageID']] = $r;
-        }
-        $unread = [];
-        foreach ($this->q("SELECT SenderID, COUNT(*) AS n FROM {M} WHERE ReceiverID = ? AND COALESCE(IsRead, 0) = 0 GROUP BY SenderID", [$me]) as $u) {
-            $unread[(string) $u['SenderID']] = (int) $u['n'];
-        }
-        $people = $this->people(array_map(static fn ($r) => (string) $r['PeerID'], $partners));
 
         $out = [];
-        foreach ($partners as $p) {
-            $peer = (string) $p['PeerID'];
-            $m    = $last[(int) $p['LastID']] ?? null;
-            if ($m === null) {
-                continue;
+        if ($partners) {
+            $ids  = array_map(static fn ($r) => (int) $r['LastID'], $partners);
+            $in   = implode(',', $ids);
+            $last = [];
+            foreach ($this->q("SELECT MessageID, SenderID, MessageContent, DateSent, imagePath{$this->extraCols()} FROM {M} WHERE MessageID IN ({$in})") as $r) {
+                $last[(int) $r['MessageID']] = $r;
             }
-            $body = $this->display((string) $m['MessageContent'], self::singleId($me, $peer), [])['text'];
-            if ($this->hasAttachment($m)) {
-                $body = $body === '' || $body === '[Image Attachment]' ? ($this->isImageRow($m) ? 'Sent an image' : 'Sent a file') : $body;
+            $unread = [];
+            foreach ($this->q("SELECT SenderID, COUNT(*) AS n FROM {M} WHERE ReceiverID = ? AND COALESCE(IsRead, 0) = 0 GROUP BY SenderID", [$me]) as $u) {
+                $unread[(string) $u['SenderID']] = (int) $u['n'];
             }
-            $pp    = $people[$peer] ?? ['id' => $peer, 'name' => $peer, 'username' => '', 'online' => false, 'avatar' => null];
-            $out[] = $pp + [
-                'last' => $body, 'mine' => (string) $m['SenderID'] === $me, 'at' => (string) $m['DateSent'],
-                'unread' => $unread[$peer] ?? 0, 'lastId' => (int) $p['LastID'],
-            ];
+            $people = $this->people(array_map(static fn ($r) => (string) $r['PeerID'], $partners));
+
+            foreach ($partners as $p) {
+                $peer = (string) $p['PeerID'];
+                $m    = $last[(int) $p['LastID']] ?? null;
+                if ($m === null) {
+                    continue;
+                }
+                $body = $this->display((string) $m['MessageContent'], self::singleId($me, $peer), [])['text'];
+                if ($this->hasAttachment($m)) {
+                    $body = $body === '' || $body === '[Image Attachment]' ? ($this->isImageRow($m) ? 'Sent an image' : 'Sent a file') : $body;
+                }
+                $pp    = $people[$peer] ?? ['id' => $peer, 'name' => $peer, 'username' => '', 'online' => false, 'avatar' => null];
+                $out[] = $pp + [
+                    'last' => $body, 'mine' => (string) $m['SenderID'] === $me, 'at' => (string) $m['DateSent'],
+                    'unread' => $unread[$peer] ?? 0, 'lastId' => (int) $p['LastID'], 'isGroup' => false,
+                ];
+            }
+        }
+
+        // Include Active Groups
+        try {
+            $likeMe = '%;' . $me . ';%';
+            $groupRows = $this->q(
+                "SELECT GroupID, GroupName, GroupPic, Admin, Policies, CurrentTheme, CurrentEmoji, IsDisapearingMessage, CreatedAt
+                 FROM {G}
+                 WHERE (members LIKE ? OR members LIKE ? OR Admin = ?) AND (Policies IS NULL OR Policies NOT LIKE 'Rejected%')
+                 ORDER BY UpdatedAt DESC",
+                [$likeMe, '%' . $me . '%', $me]
+            );
+            foreach ($groupRows as $g) {
+                $gid = (string) $g['GroupID'];
+                $lastMsg = $this->q(
+                    "SELECT MessageID, SenderID, MessageContent, DateSent, imagePath{$this->extraCols()}
+                     FROM {M} WHERE IsGroup = 'Yes' AND GroupID = ? ORDER BY MessageID DESC " . $this->lim(1),
+                    [$gid]
+                )[0] ?? null;
+
+                $gUnread = (int) ($this->q(
+                    "SELECT COUNT(*) AS n FROM {M} WHERE IsGroup = 'Yes' AND GroupID = ? AND SenderID <> ? AND (IsRead = 0 OR IsRead IS NULL)",
+                    [$gid, $me]
+                )[0]['n'] ?? 0);
+
+                $memList = array_values(array_filter(explode(';', (string) ($g['members'] ?? ''))));
+                $memberCount = count($memList);
+                $body = '';
+                $mine = false;
+                $at = (string) ($lastMsg['DateSent'] ?? $g['CreatedAt'] ?? self::now());
+                $lastId = (int) ($lastMsg['MessageID'] ?? 0);
+
+                if ($lastMsg) {
+                    $body = $this->display((string) $lastMsg['MessageContent'], "group_{$gid}", [])['text'];
+                    if ($this->hasAttachment($lastMsg)) {
+                        $body = $body === '' || $body === '[Image Attachment]' ? ($this->isImageRow($lastMsg) ? 'Sent an image' : 'Sent a file') : $body;
+                    }
+                    $mine = (string) $lastMsg['SenderID'] === $me;
+                } else {
+                    $body = 'Group created';
+                }
+
+                $policies = (string) ($g['Policies'] ?? '');
+                $pendingApproval = str_contains($policies, 'PendingAdminApproval');
+
+                $out[] = [
+                    'id'              => $gid,
+                    'groupId'         => $gid,
+                    'isGroup'         => true,
+                    'name'            => (string) $g['GroupName'],
+                    'username'        => 'Group · ' . $memberCount . ' members',
+                    'online'          => false,
+                    'avatar'          => $g['GroupPic'] ?? null,
+                    'admin'           => (string) $g['Admin'],
+                    'policies'        => $policies,
+                    'pendingApproval' => $pendingApproval,
+                    'theme'           => trim((string) ($g['CurrentTheme'] ?? '')) !== '' ? trim((string) $g['CurrentTheme']) : 'default',
+                    'emoji'           => trim((string) ($g['CurrentEmoji'] ?? '')) !== '' ? trim((string) $g['CurrentEmoji']) : '👍',
+                    'disappearing'    => trim((string) ($g['IsDisapearingMessage'] ?? '')) !== '',
+                    'memberCount'     => $memberCount,
+                    'last'            => $body,
+                    'mine'            => $mine,
+                    'at'              => $at,
+                    'unread'          => $gUnread,
+                    'lastId'          => $lastId,
+                ];
+            }
+        } catch (\Throwable $e) {
+            log_message('error', '[ChatStore] Group query error: ' . $e->getMessage());
         }
 
         return $out;
@@ -139,7 +213,18 @@ abstract class ChatStore
 
     public function unreadCount(string $me): int
     {
-        return (int) ($this->q("SELECT COUNT(*) AS n FROM {M} WHERE ReceiverID = ? AND COALESCE(IsRead, 0) = 0 AND ReceiverID NOT LIKE '%;%'", [$me])[0]['n'] ?? 0);
+        $single = (int) ($this->q("SELECT COUNT(*) AS n FROM {M} WHERE ReceiverID = ? AND COALESCE(IsRead, 0) = 0 AND ReceiverID NOT LIKE '%;%'", [$me])[0]['n'] ?? 0);
+        $groups = 0;
+        try {
+            $likeMe = '%;' . $me . ';%';
+            $groups = (int) ($this->q(
+                "SELECT COUNT(*) AS n FROM {M} m INNER JOIN {G} g ON m.GroupID = g.GroupID
+                 WHERE m.IsGroup = 'Yes' AND (g.members LIKE ? OR g.Admin = ?) AND m.SenderID <> ? AND (m.IsRead = 0 OR m.IsRead IS NULL)",
+                [$likeMe, $me, $me]
+            )[0]['n'] ?? 0);
+        } catch (\Throwable $e) {}
+
+        return $single + $groups;
     }
 
     // ---------- thread ----------
@@ -174,6 +259,66 @@ abstract class ChatStore
         $seen = (int) ($this->q("SELECT MAX(MessageID) AS m FROM {M} WHERE SenderID = ? AND ReceiverID = ? AND COALESCE(IsRead, 0) = 1", [$me, $peer])[0]['m'] ?? 0);
 
         return ['messages' => $this->attachQuotes($msgs, $me, $peer, $cv), 'seen' => $seen];
+    }
+
+    /** @return array{messages:array,group:array} */
+    public function groupThread(string $me, string $groupId, int $after = 0, int $limit = 60): array
+    {
+        $limit = max(1, min(200, $limit));
+        $rows  = array_reverse($this->q(
+            "SELECT MessageID, SenderID, ConnectedID, MessageContent, DateSent, COALESCE(IsRead, 0) AS IsRead, imagePath, EmoteTag{$this->extraCols()}
+             FROM {M} WHERE IsGroup = 'Yes' AND GroupID = ? AND MessageID > ?
+             ORDER BY MessageID DESC " . $this->lim($limit),
+            [$groupId, $after],
+        ));
+
+        $cv    = "group_{$groupId}";
+        $ids   = [];
+        foreach ($rows as $r) {
+            $ids[] = (string) $r['SenderID'];
+            if (preg_match_all('/@u:(\d+)/i', $this->plain((string) $r['MessageContent'], $cv), $mm)) {
+                array_push($ids, ...$mm[1]);
+            }
+        }
+        $people = $this->people(array_values(array_unique($ids)));
+        $names  = [];
+        foreach ($people as $id => $pp) {
+            $names[(string) $id] = $pp['name'];
+        }
+
+        $msgs = [];
+        foreach ($rows as $r) {
+            $s = $this->shape($r, $cv, $names);
+            $sender = $people[(string) $r['SenderID']] ?? null;
+            $s['fromName'] = $sender['name'] ?? ('User ' . $r['SenderID']);
+            $s['fromAvatar'] = $sender['avatar'] ?? null;
+            $msgs[] = $s;
+        }
+
+        // Mark read for this user
+        $this->x("UPDATE {M} SET IsRead = 1 WHERE IsGroup = 'Yes' AND GroupID = ? AND SenderID <> ? AND (IsRead = 0 OR IsRead IS NULL)", [$groupId, $me]);
+
+        // Group metadata
+        $g = $this->q("SELECT GroupID, GroupName, GroupPic, Admin, Policies, CurrentTheme, CurrentEmoji, IsDisapearingMessage, PinnedMessage, members FROM {G} WHERE GroupID = ?", [$groupId])[0] ?? [];
+        $memList = array_values(array_filter(explode(';', (string) ($g['members'] ?? ''))));
+        $policies = (string) ($g['Policies'] ?? '');
+
+        $groupInfo = [
+            'id'              => (string) ($g['GroupID'] ?? $groupId),
+            'groupId'         => (string) ($g['GroupID'] ?? $groupId),
+            'name'            => (string) ($g['GroupName'] ?? 'Group ' . $groupId),
+            'avatar'          => $g['GroupPic'] ?? null,
+            'admin'           => (string) ($g['Admin'] ?? ''),
+            'policies'        => $policies,
+            'pendingApproval' => str_contains($policies, 'PendingAdminApproval'),
+            'theme'           => trim((string) ($g['CurrentTheme'] ?? '')) !== '' ? trim((string) $g['CurrentTheme']) : 'default',
+            'emoji'           => trim((string) ($g['CurrentEmoji'] ?? '')) !== '' ? trim((string) $g['CurrentEmoji']) : '👍',
+            'disappearing'    => trim((string) ($g['IsDisapearingMessage'] ?? '')) !== '',
+            'memberCount'     => count($memList),
+            'pinned'          => $this->pinIds($g['PinnedMessage'] ?? ''),
+        ];
+
+        return ['messages' => $this->attachQuotesGroup($msgs, $groupId), 'group' => $groupInfo];
     }
 
     /** One message row in client shape (null when it is not part of this chat). */
@@ -400,6 +545,218 @@ abstract class ChatStore
         return $msgs;
     }
 
+    protected function attachQuotesGroup(array $msgs, string $groupId): array
+    {
+        $ids = array_values(array_unique(array_filter(array_column($msgs, 'replyTo'))));
+        if (! $ids) {
+            return $msgs;
+        }
+        $in   = implode(',', array_map('intval', $ids));
+        $rows = $this->q(
+            "SELECT MessageID, SenderID, MessageContent, imagePath{$this->extraCols()} FROM {M}
+             WHERE MessageID IN ({$in}) AND IsGroup = 'Yes' AND GroupID = ?",
+            [$groupId],
+        );
+        $map = [];
+        $cv  = "group_{$groupId}";
+        foreach ($rows as $r) {
+            $t  = $this->display((string) $r['MessageContent'], $cv, [])['text'];
+            $fn = trim((string) ($r['FileName'] ?? ''));
+            $map[(int) $r['MessageID']] = [
+                'id' => (int) $r['MessageID'], 'from' => (string) $r['SenderID'], 'text' => mb_strimwidth($t, 0, 140, '…'),
+                'image' => $this->isImageRow($r), 'file' => $fn !== '' && ! $this->isImageRow($r) ? $fn : null,
+            ];
+        }
+        foreach ($msgs as &$m) {
+            if (! empty($m['replyTo'])) {
+                if (isset($map[$m['replyTo']])) {
+                    $dbQuote = $map[$m['replyTo']];
+                    if (! empty($m['quote']) && ! empty($m['quote']['fromName'])) {
+                        $dbQuote['fromName'] = $m['quote']['fromName'];
+                    }
+                    $m['quote'] = $dbQuote;
+                } elseif (empty($m['quote'])) {
+                    $m['quote'] = ['id' => $m['replyTo'], 'gone' => true];
+                }
+            }
+        }
+
+        return $msgs;
+    }
+
+    public function rawGroupMessage(string $groupId, int $id): ?array
+    {
+        return $this->q(
+            "SELECT * FROM {M} WHERE MessageID = ? AND IsGroup = 'Yes' AND GroupID = ?",
+            [$id, $groupId],
+        )[0] ?? null;
+    }
+
+    public function groupMessage(string $groupId, int $id): ?array
+    {
+        $r = $this->rawGroupMessage($groupId, $id);
+        if ($r === null) {
+            return null;
+        }
+        $cv = "group_{$groupId}";
+        $m = $this->shape($r, $cv, []);
+        $sender = $this->person((string) $r['SenderID']);
+        $m['fromName'] = $sender['name'] ?? ('User ' . $r['SenderID']);
+        $m['fromAvatar'] = $sender['avatar'] ?? null;
+
+        return $this->attachQuotesGroup([$m], $groupId)[0];
+    }
+
+    public function sendGroup(string $me, string $groupId, string $text, array $att = [], ?int $replyTo = null, bool $isAdmin = false): int
+    {
+        $g = $this->q("SELECT GroupID, GroupName, Admin, Policies, SecuredChat FROM {G} WHERE GroupID = ?", [$groupId])[0] ?? null;
+        if (! $g) {
+            throw new \InvalidArgumentException('Group not found.');
+        }
+
+        // Limit rule: > 50 members requires admin approval
+        $policies = (string) ($g['Policies'] ?? '');
+        if (str_contains($policies, 'PendingAdminApproval') && ! $isAdmin) {
+            throw new \InvalidArgumentException('This group has > 50 members and is pending administrator approval before messages can be sent.');
+        }
+
+        $cv = "group_{$groupId}";
+        $prefix = '';
+        $wireText = $text;
+        if ($replyTo) {
+            $parent = $this->rawGroupMessage($groupId, $replyTo);
+            if ($parent === null) {
+                throw new \InvalidArgumentException('The message you are replying to no longer exists.');
+            }
+            $parts = array_values(array_filter(explode(',', trim((string) ($parent['ConnectedID'] ?? ''))), 'strlen'));
+            if (! $parts || end($parts) !== (string) $replyTo) {
+                $parts = [(string) $replyTo];
+            }
+            $prefix = implode(',', $parts) . ',';
+
+            $parentSenderId = (string) ($parent['SenderID'] ?? '');
+            $parentPerson   = $this->person($parentSenderId);
+            $parentSenderName = $parentPerson['name'] ?? ($parentSenderId === $me ? 'You' : 'User ' . $parentSenderId);
+            $parentPlain = $this->display((string) ($parent['MessageContent'] ?? ''), $cv, [])['text'];
+            if ($this->hasAttachment($parent)) {
+                $snippet = $this->isImageRow($parent) ? 'Photo' : ($parent['FileName'] ?? 'Attachment');
+            } else {
+                $cleanPlain = preg_replace('/[\r\n\t]+/', ' ', $parentPlain);
+                $snippet = mb_strimwidth(str_replace(':', ' ', trim($cleanPlain)), 0, 40, '…');
+            }
+            $wireText = "[REPLY:{$replyTo}:{$parentSenderId}:{$parentSenderName}:{$snippet}]{$text}";
+        }
+
+        $stored = $wireText !== '' && self::yes($g['SecuredChat'] ?? null, true) ? RmsCrypto::encrypt($wireText, $cv) : $wireText;
+        $id     = $this->insertMessage($this->insertGroupSql($att), $this->insertGroupParams($me, $groupId, $stored, $att));
+        $this->x('UPDATE {M} SET ConnectedID = ? WHERE MessageID = ?', [$prefix . $id, $id]);
+        if ($replyTo) {
+            try {
+                $this->x('UPDATE {M} SET ReplyToMessageID = ?, ReplyToSenderName = ?, ReplySnippet = ? WHERE MessageID = ?', [$replyTo, $parentSenderName, $snippet, $id]);
+            } catch (\Throwable $e) {}
+        }
+
+        return $id;
+    }
+
+    public function groupDetails(string $me, string $groupId): array
+    {
+        $g = $this->q("SELECT * FROM {G} WHERE GroupID = ?", [$groupId])[0] ?? null;
+        if (! $g) {
+            throw new \InvalidArgumentException('Group not found.');
+        }
+        $memIds = array_values(array_filter(explode(';', (string) ($g['members'] ?? ''))));
+        $people = $this->people($memIds);
+        $roster = [];
+        $creator = (string) ($g['Admin'] ?? '');
+        foreach ($memIds as $uid) {
+            $p = $people[$uid] ?? ['id' => $uid, 'name' => 'User ' . $uid, 'username' => '', 'online' => false, 'avatar' => null];
+            $p['role'] = ($uid === $creator) ? 'Admin' : 'Member';
+            $roster[] = $p;
+        }
+
+        $policies = (string) ($g['Policies'] ?? '');
+        $dis = (string) ($g['IsDisapearingMessage'] ?? '');
+
+        return [
+            'id'              => (string) $g['GroupID'],
+            'groupId'         => (string) $g['GroupID'],
+            'name'            => (string) $g['GroupName'],
+            'avatar'          => $g['GroupPic'] ?? null,
+            'admin'           => $creator,
+            'policies'        => $policies,
+            'pendingApproval' => str_contains($policies, 'PendingAdminApproval'),
+            'theme'           => trim((string) ($g['CurrentTheme'] ?? '')) !== '' ? trim((string) $g['CurrentTheme']) : 'default',
+            'emoji'           => trim((string) ($g['CurrentEmoji'] ?? '')) !== '' ? trim((string) $g['CurrentEmoji']) : '👍',
+            'disappearing'    => trim($dis) === '' ? 'off' : 'on',
+            'members'         => $roster,
+            'memberCount'     => count($roster),
+            'pinned'          => $this->pinIds($g['PinnedMessage'] ?? ''),
+        ];
+    }
+
+    public function approveGroup(string $groupId, bool $approve = true): void
+    {
+        $policy = $approve ? 'Active;' : 'Rejected;';
+        $this->x("UPDATE {G} SET Policies = ?, UpdatedAt = ? WHERE GroupID = ?", [$policy, self::now(), $groupId]);
+    }
+
+    public function setGroupSetting(string $groupId, string $key, string $value): void
+    {
+        $value = trim($value);
+        if ($key === 'CurrentEmoji' && mb_strlen($value) > 8) {
+            throw new \InvalidArgumentException('Invalid emoji.');
+        }
+        if ($key === 'CurrentTheme' && mb_strlen($value) > 50) {
+            throw new \InvalidArgumentException('Invalid theme.');
+        }
+        if (! in_array($key, ['CurrentEmoji', 'CurrentTheme', 'GroupName'], true)) {
+            throw new \InvalidArgumentException('Unknown setting.');
+        }
+        $this->x("UPDATE {G} SET {$key} = ?, UpdatedAt = ? WHERE GroupID = ?", [$value, self::now(), $groupId]);
+    }
+
+    public function setDisappearingMode(string $me, string $peer, string $mode): array
+    {
+        $cv = $this->ensureConversation($me, $peer);
+        $curr = (string) ($this->q('SELECT IsDisapearingMessage FROM {S} WHERE SingleID = ?', [$cv])[0]['IsDisapearingMessage'] ?? '');
+        $newVal = '';
+        if ($mode === 'off') {
+            $newVal = '';
+        } elseif ($mode === 'approve') {
+            $newVal = "{$me}-Yes;{$peer}-Yes;";
+        } elseif ($mode === 'on' || $mode === 'toggle') {
+            if ($curr === '' || $curr === null) {
+                // Request to turn on (peer approval required)
+                $newVal = "{$me}-Yes;{$peer}-ForApproval;";
+            } elseif (str_contains($curr, 'ForApproval')) {
+                // Already waiting: activate
+                $newVal = "{$me}-Yes;{$peer}-Yes;";
+            } else {
+                // Currently ON: toggle turns it OFF
+                $newVal = '';
+            }
+        }
+        $this->x('UPDATE {S} SET IsDisapearingMessage = ?, UpdatedAt = ? WHERE SingleID = ?', [$newVal, self::now(), $cv]);
+
+        return [
+            'raw'    => $newVal,
+            'status' => $newVal === '' || $newVal === null ? 'off' : (str_contains($newVal, 'ForApproval') ? 'pending' : 'on'),
+        ];
+    }
+
+    public function setGroupDisappearingMode(string $groupId, string $mode): array
+    {
+        $curr = (string) ($this->q('SELECT IsDisapearingMessage FROM {G} WHERE GroupID = ?', [$groupId])[0]['IsDisapearingMessage'] ?? '');
+        $newVal = ($mode === 'off' || ($mode === 'toggle' && $curr !== '')) ? '' : 'ON';
+        $this->x('UPDATE {G} SET IsDisapearingMessage = ?, UpdatedAt = ? WHERE GroupID = ?', [$newVal, self::now(), $groupId]);
+
+        return [
+            'raw'    => $newVal,
+            'status' => $newVal === '' ? 'off' : 'on',
+        ];
+    }
+
     abstract protected function insertSql(array $att): string;
 
     abstract protected function insertParams(string $me, string $peer, string $cv, string $stored, array $att): array;
@@ -522,7 +879,7 @@ abstract class ChatStore
     public function details(string $me, string $peer): array
     {
         $cv  = self::singleId($me, $peer);
-        $r   = $this->q('SELECT SecuredChat, IsMute, IsReadReceipt, CurrentEmoji, IsDisapearingMessage, PinnedMessage FROM {S} WHERE SingleID = ?', [$cv])[0] ?? [];
+        $r   = $this->q('SELECT SecuredChat, IsMute, IsReadReceipt, CurrentEmoji, CurrentTheme, IsDisapearingMessage, PinnedMessage FROM {S} WHERE SingleID = ?', [$cv])[0] ?? [];
         $nick = $this->nickMap($cv);
         $dis = (string) ($r['IsDisapearingMessage'] ?? '');
 
@@ -530,6 +887,7 @@ abstract class ChatStore
             'secured'      => self::yes($r['SecuredChat'] ?? null, true),
             'readReceipts' => self::yes($r['IsReadReceipt'] ?? null, true),
             'emoji'        => trim((string) ($r['CurrentEmoji'] ?? '')) !== '' ? trim((string) $r['CurrentEmoji']) : '👍',
+            'theme'        => trim((string) ($r['CurrentTheme'] ?? '')) !== '' ? trim((string) $r['CurrentTheme']) : 'default',
             'disappearing' => trim($dis) === '' ? 'off' : (str_contains($dis, 'ForApproval') ? 'pending' : 'on'),
             'nicknames'    => ['me' => $nick[$me] ?? '', 'peer' => $nick[$peer] ?? ''],
             'pinned'       => $this->pinIds($r['PinnedMessage'] ?? ''),
@@ -550,6 +908,11 @@ abstract class ChatStore
             case 'CurrentEmoji':
                 if ($value === '' || mb_strlen($value) > 8) {
                     throw new \InvalidArgumentException('Invalid emoji.');
+                }
+                break;
+            case 'CurrentTheme':
+                if ($value === '' || mb_strlen($value) > 50) {
+                    throw new \InvalidArgumentException('Invalid theme.');
                 }
                 break;
             default:

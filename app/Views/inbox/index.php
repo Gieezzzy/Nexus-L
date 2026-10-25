@@ -2,9 +2,14 @@
     <aside class="msgr-list glass" id="msgr-list">
         <div class="msgr-head">
             <h2>Chats</h2>
-            <button type="button" id="msgr-new" class="msgr-new" aria-label="New message" title="New message">
-                <svg fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-            </button>
+            <div class="msgr-head-acts">
+                <button type="button" id="msgr-new-group" class="msgr-icon-btn" aria-label="New group" title="New group (up to 50 members)">
+                    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                </button>
+                <button type="button" id="msgr-new" class="msgr-new" aria-label="New message" title="New message">
+                    <svg fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+            </div>
         </div>
         <div id="msgr-notif-banner" class="msgr-notif-banner hidden" role="region" aria-label="Desktop notifications">
             <div class="notif-banner-icon">
@@ -35,6 +40,10 @@
         </div>
 
         <div id="msgr-pane" class="msgr-pane hidden">
+            <!-- Cinema & Particle Animation Layers -->
+            <canvas id="msgr-particle-canvas" class="msgr-particle-canvas pointer-events-none"></canvas>
+            <div id="msgr-cinema-overlay" class="msgr-cinema-overlay hidden pointer-events-none"></div>
+
             <header class="msgr-bar">
                 <button type="button" id="msgr-back" class="msgr-back" aria-label="Back to chats">
                     <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
@@ -45,6 +54,25 @@
                     <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
                 </button>
             </header>
+
+            <!-- Group Approval Banner (when >50 members pending admin approval) -->
+            <div id="msgr-approval-banner" class="msgr-approval-banner hidden" role="alert">
+                <div class="ab-icon">⚠️</div>
+                <div class="ab-content">
+                    <b id="ab-title">Group Pending Administrator Approval</b>
+                    <p id="ab-desc">This group exceeds 50 members and requires administrator authorization before messaging can begin.</p>
+                </div>
+                <div id="ab-actions" class="ab-actions hidden">
+                    <button type="button" id="ab-btn-approve" class="ab-btn approve">Approve Group</button>
+                    <button type="button" id="ab-btn-reject" class="ab-btn reject">Reject</button>
+                </div>
+            </div>
+
+            <!-- Disappearing Messages Notice -->
+            <div id="msgr-disappearing-bar" class="msgr-disappearing-bar hidden" role="status">
+                <span class="dis-ico">⏱</span>
+                <span id="msgr-disappearing-txt">Disappearing messages are turned ON</span>
+            </div>
 
             <div id="msgr-msgs" class="msgr-msgs" aria-live="polite"></div>
 
@@ -83,10 +111,12 @@
             </div>
 
             <h4>Chat info</h4>
+            <button type="button" class="inf-row hidden" id="inf-members-btn" data-go="members"><span>Group members</span><em id="inf-members-count"></em></button>
             <button type="button" class="inf-row" data-go="pinned"><span>View pinned messages</span><em id="inf-pinned-n"></em></button>
             <button type="button" class="inf-row" data-go="search"><span>Search in conversation</span></button>
 
             <h4>Customize chat</h4>
+            <button type="button" class="inf-row" id="inf-theme-btn"><span>Theme</span><em id="inf-theme-name">Default RMS</em></button>
             <button type="button" class="inf-row" id="inf-emoji-btn"><span>Change emoji</span><em id="inf-emoji"></em></button>
             <button type="button" class="inf-row" id="inf-nick-btn"><span>Edit nicknames</span></button>
 
@@ -95,7 +125,7 @@
             <button type="button" class="inf-row" data-go="files" id="inf-files-btn"><span>Files</span></button>
 
             <h4>Privacy &amp; support</h4>
-            <div class="inf-row static"><span>Disappearing messages</span><em id="inf-dis"></em></div>
+            <button type="button" class="inf-row" id="inf-dis-btn"><span>Disappearing messages</span><em id="inf-dis">Off</em></button>
             <label class="inf-row toggle"><span>Read receipts</span><input type="checkbox" id="inf-rr"></label>
             <label class="inf-row toggle"><span>Secure messaging (E2EE)</span><input type="checkbox" id="inf-sec"></label>
             <p id="inf-err" class="msgr-err hidden" role="alert"></p>

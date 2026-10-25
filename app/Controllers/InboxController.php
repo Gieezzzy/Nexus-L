@@ -106,30 +106,42 @@ class InboxController extends BaseController
     public function thread(string $key)
     {
         return $this->guard(function () use ($key) {
-            [$s, $me, $peer, $person] = $this->scope($key);
+            [$s, $me, $targetId, $person, , $isGroup] = $this->scope($key);
             $after = max(0, (int) $this->request->getGet('after'));
-            $data  = $s->thread($me, $peer, $after, $after > 0 ? 100 : 60);
-            $s->markRead($me, $peer);
+            if ($isGroup) {
+                $data = $s->groupThread($me, $targetId, $after, $after > 0 ? 100 : 60);
+                $data['messages'] = $this->withUrls($data['messages'], $key);
+
+                return ['peer' => $this->tag($person, $s), 'me' => $me, 'isGroup' => true, 'group' => $data['group']] + $data;
+            }
+
+            $data  = $s->thread($me, $targetId, $after, $after > 0 ? 100 : 60);
+            $s->markRead($me, $targetId);
             $data['messages'] = $this->withUrls($data['messages'], $key);
 
-            return ['peer' => $this->tag($person, $s), 'me' => $me, 'nicknames' => $s->nicknames($me, $peer)] + $data;
+            return ['peer' => $this->tag($person, $s), 'me' => $me, 'isGroup' => false, 'nicknames' => $s->nicknames($me, $targetId)] + $data;
         });
     }
 
     public function send(string $key)
     {
         return $this->guard(function () use ($key) {
-            [$s, $me, $peer, $person, $myName] = $this->scope($key);
+            [$s, $me, $targetId, $person, $myName, $isGroup] = $this->scope($key);
             $this->throttle($me);
             $in   = $this->input();
             $body = trim((string) ($in['body'] ?? ''));
             if ($body === '' || mb_strlen($body) > 2000) {
                 throw new \InvalidArgumentException('Message must be 1–2000 characters.');
             }
-            $id = $s->send($me, $peer, $body, [], (int) ($in['reply_to'] ?? 0) ?: null);
-            $this->notify($s, $me, $myName, $peer, $person, $body);
+            if ($isGroup) {
+                $id = $s->sendGroup($me, $targetId, $body, [], (int) ($in['reply_to'] ?? 0) ?: null, $this->admin);
 
-            return ['id' => $id, 'message' => $this->one($s, $me, $peer, $id, $key)];
+                return ['id' => $id, 'message' => $this->one($s, $me, $targetId, $id, $key, true)];
+            }
+            $id = $s->send($me, $targetId, $body, [], (int) ($in['reply_to'] ?? 0) ?: null);
+            $this->notify($s, $me, $myName, $targetId, $person, $body);
+
+            return ['id' => $id, 'message' => $this->one($s, $me, $targetId, $id, $key, false)];
         });
     }
 
@@ -139,7 +151,7 @@ class InboxController extends BaseController
     public function upload(string $key)
     {
         return $this->guard(function () use ($key) {
-            [$s, $me, $peer, $person, $myName] = $this->scope($key);
+            [$s, $me, $targetId, $person, $myName, $isGroup] = $this->scope($key);
             $this->throttle($me);
             $files = $this->request->getFileMultiple('files') ?: array_filter([$this->request->getFile('file')]);
             if (! $files || count($files) > 5) {
@@ -155,11 +167,17 @@ class InboxController extends BaseController
                 if (! $f->isValid() || $f->getSize() > self::MAX_FILE) {
                     throw new \InvalidArgumentException('Each file must be valid and at most 10 MB.');
                 }
-                $att  = $s instanceof RmsStore ? $this->rmsAttachment($s, $me, $peer, $f) : $this->nexusAttachment($f);
+                $att  = $s instanceof RmsStore ? $this->rmsAttachment($s, $me, $targetId, $f) : $this->nexusAttachment($f);
                 $text = $i === 0 ? $caption : '';
-                $id   = $s->send($me, $peer, $text, $att, $i === 0 ? ((int) $this->request->getPost('reply_to') ?: null) : null);
-                $out[] = $this->one($s, $me, $peer, $id, $key);
-                $this->notify($s, $me, $myName, $peer, $person, $text !== '' ? $text : ($att['name'] ?? 'Sent an attachment'));
+                $replyId = $i === 0 ? ((int) $this->request->getPost('reply_to') ?: null) : null;
+                if ($isGroup) {
+                    $id = $s->sendGroup($me, $targetId, $text, $att, $replyId, $this->admin);
+                    $out[] = $this->one($s, $me, $targetId, $id, $key, true);
+                } else {
+                    $id = $s->send($me, $targetId, $text, $att, $replyId);
+                    $out[] = $this->one($s, $me, $targetId, $id, $key, false);
+                    $this->notify($s, $me, $myName, $targetId, $person, $text !== '' ? $text : ($att['name'] ?? 'Sent an attachment'));
+                }
             }
 
             return ['messages' => $out];
@@ -326,26 +344,137 @@ class InboxController extends BaseController
     public function details(string $key)
     {
         return $this->guard(function () use ($key) {
-            [$s, $me, $peer, $person] = $this->scope($key);
-            $d = $s->details($me, $peer);
+            [$s, $me, $targetId, $person, , $isGroup] = $this->scope($key);
+            if ($isGroup) {
+                return ['peer' => $this->tag($person, $s), 'isGroup' => true, 'settings' => $this->settings($person)];
+            }
+            $d = $s->details($me, $targetId);
 
-            return ['peer' => $this->tag($person, $s), 'settings' => $this->settings($d)];
+            return ['peer' => $this->tag($person, $s), 'isGroup' => false, 'settings' => $this->settings($d)];
         });
     }
 
-    /** POST {key, value} (SecuredChat | IsReadReceipt | CurrentEmoji) or {nickname_for: me|peer, nickname}. */
+    /** POST {key, value} (SecuredChat | IsReadReceipt | CurrentEmoji | CurrentTheme) or {nickname_for: me|peer, nickname}. */
     public function setting(string $key)
     {
         return $this->guard(function () use ($key) {
-            [$s, $me, $peer] = $this->scope($key);
+            [$s, $me, $targetId, , , $isGroup] = $this->scope($key);
             $in = $this->input();
+            if ($isGroup) {
+                if (isset($in['key']) && isset($in['value'])) {
+                    $s->setGroupSetting($targetId, (string) $in['key'], (string) $in['value']);
+                }
+
+                return ['settings' => $s->groupDetails($me, $targetId)];
+            }
             if (isset($in['nickname_for'])) {
-                $s->setNickname($me, $peer, (string) $in['nickname_for'] === 'me' ? $me : $peer, (string) ($in['nickname'] ?? ''));
+                $s->setNickname($me, $targetId, (string) $in['nickname_for'] === 'me' ? $me : $targetId, (string) ($in['nickname'] ?? ''));
             } else {
-                $s->setSetting($me, $peer, (string) ($in['key'] ?? ''), (string) ($in['value'] ?? ''));
+                $s->setSetting($me, $targetId, (string) ($in['key'] ?? ''), (string) ($in['value'] ?? ''));
             }
 
-            return ['settings' => $this->settings($s->details($me, $peer))];
+            return ['settings' => $this->settings($s->details($me, $targetId))];
+        });
+    }
+
+    /** POST create a new group. Enforces 50-member limit (requires Admin approval if > 50). */
+    public function createGroup()
+    {
+        return $this->guard(function () {
+            $in      = $this->input();
+            $name    = trim((string) ($in['name'] ?? ''));
+            $members = (array) ($in['members'] ?? []);
+            $src     = trim((string) ($in['source'] ?? 'n'));
+
+            if ($name === '' || mb_strlen($name) > 100) {
+                throw new \InvalidArgumentException('Group name must be between 1 and 100 characters.');
+            }
+
+            $isRms = ($src === 'r' || $src === 'rg');
+            if ($isRms) {
+                if (! $this->admin) {
+                    throw new \DomainException('Admin permission required for RMS groups.', 403);
+                }
+                $store   = new RmsStore();
+                $creator = $this->synologyId();
+            } else {
+                $store   = new NexusStore();
+                $creator = (string) $this->webUser['UserID'];
+            }
+
+            // Clean members
+            $cleanMembers = array_values(array_unique(array_filter(array_map('trim', $members))));
+            if (! in_array($creator, $cleanMembers, true)) {
+                $cleanMembers[] = $creator;
+            }
+
+            $totalCount = count($cleanMembers);
+            if ($totalCount < 2) {
+                throw new \InvalidArgumentException('Please select at least 1 other member to create a group.');
+            }
+
+            // Limit of 50 members: Above 50 requires Administrator approval
+            $pendingApproval = false;
+            if ($totalCount > 50) {
+                if ($this->admin) {
+                    $policies = 'Active;MemberCount=' . $totalCount . ';';
+                } else {
+                    $policies = 'PendingAdminApproval;MemberCount=' . $totalCount . ';';
+                    $pendingApproval = true;
+                }
+            } else {
+                $policies = 'Active;MemberCount=' . $totalCount . ';';
+            }
+
+            $gid = $store->createGroupRecord($creator, $name, $cleanMembers, $policies);
+            $key = ($isRms ? 'rg:' : 'g:') . $gid;
+
+            return [
+                'ok'              => true,
+                'groupId'         => (string) $gid,
+                'key'             => $key,
+                'name'            => $name,
+                'memberCount'     => $totalCount,
+                'pendingApproval' => $pendingApproval,
+                'message'         => $pendingApproval ? 'Group created. Because it has over 50 members, it is pending Admin approval.' : 'Group created successfully.',
+            ];
+        });
+    }
+
+    /** POST approve or reject group with >50 members (Admins only). */
+    public function approveGroup(string $key)
+    {
+        return $this->guard(function () use ($key) {
+            if (! $this->admin) {
+                throw new \DomainException('Only administrators can approve or reject groups.', 403);
+            }
+            [$s, , $targetId, , , $isGroup] = $this->scope($key);
+            if (! $isGroup) {
+                throw new \InvalidArgumentException('Not a group chat.');
+            }
+            $in     = $this->input();
+            $action = trim((string) ($in['action'] ?? 'approve'));
+            $approve = ($action === 'approve');
+            $s->approveGroup($targetId, $approve);
+
+            return ['ok' => true, 'action' => $action, 'group' => $s->groupDetails('', $targetId)];
+        });
+    }
+
+    /** POST toggle or approve disappearing messages (1:1 or Group). */
+    public function setDisappearing(string $key)
+    {
+        return $this->guard(function () use ($key) {
+            [$s, $me, $targetId, , , $isGroup] = $this->scope($key);
+            $in   = $this->input();
+            $mode = trim((string) ($in['mode'] ?? 'toggle'));
+            if ($isGroup) {
+                $res = $s->setGroupDisappearingMode($targetId, $mode);
+            } else {
+                $res = $s->setDisappearingMode($me, $targetId, $mode);
+            }
+
+            return ['ok' => true, 'disappearing' => $res['status'], 'raw' => $res['raw']];
         });
     }
 
@@ -434,21 +563,74 @@ class InboxController extends BaseController
         });
     }
 
-    /** GET returns active themes from tbl_themes */
+    /** GET returns active themes matching Android Studio theme studio */
     public function themes()
     {
         return $this->guard(function () {
-            $db = db_connect();
-            if (! $db->tableExists('tbl_themes')) {
-                return ['themes' => []];
-            }
-            $rows = $db->table('tbl_themes')
-                ->where('is_active', 1)
-                ->orderBy('theme_id', 'ASC')
-                ->get()
-                ->getResultArray();
-
-            return ['themes' => $rows];
+            return [
+                'themes' => [
+                    [
+                        'key'         => 'default',
+                        'name'        => 'Default RMS Blue',
+                        'primary'     => '#2563EB',
+                        'secondary'   => '#3B82F6',
+                        'accent'      => '#60A5FA',
+                        'bubble_me'   => '#2563EB',
+                        'bubble_them' => '#F1F5F9',
+                        'bg'          => '#FFFFFF',
+                        'trigger'     => '👍',
+                        'description' => 'Classic clean RMS Blue interface',
+                    ],
+                    [
+                        'key'         => 'christmas',
+                        'name'        => 'Christmas Holidays',
+                        'primary'     => '#DC2626',
+                        'secondary'   => '#166534',
+                        'accent'      => '#F59E0B',
+                        'bubble_me'   => '#DC2626',
+                        'bubble_them' => '#DCFCE7',
+                        'bg'          => '#FEF2F2',
+                        'trigger'     => '❄️',
+                        'description' => 'Festive snow particles, sleigh bells chime & Santa greetings',
+                    ],
+                    [
+                        'key'         => 'sadako',
+                        'name'        => 'Sadako Cursed Horror',
+                        'primary'     => '#7F1D1D',
+                        'secondary'   => '#0F172A',
+                        'accent'      => '#EF4444',
+                        'bubble_me'   => '#7F1D1D',
+                        'bubble_them' => '#1E293B',
+                        'bg'          => '#090D16',
+                        'trigger'     => '👻',
+                        'description' => 'Cursed well, wall cracks, creepy crawling sequence & scream audio',
+                    ],
+                    [
+                        'key'         => 'valentines',
+                        'name'        => 'Sweet Valentines',
+                        'primary'     => '#EC4899',
+                        'secondary'   => '#BE185D',
+                        'accent'      => '#F472B6',
+                        'bubble_me'   => '#EC4899',
+                        'bubble_them' => '#FCE7F3',
+                        'bg'          => '#FFF1F2',
+                        'trigger'     => '❤️',
+                        'description' => 'Romantic pastel atmosphere with floating 3D hearts burst',
+                    ],
+                    [
+                        'key'         => 'anime_cyberpunk',
+                        'name'        => 'Anime Cyberpunk',
+                        'primary'     => '#8B5CF6',
+                        'secondary'   => '#06B6D4',
+                        'accent'      => '#F43F5E',
+                        'bubble_me'   => '#8B5CF6',
+                        'bubble_them' => '#0F172A',
+                        'bg'          => '#030712',
+                        'trigger'     => '⚡',
+                        'description' => 'Electric neon grid, laser bursts & neon sparkle animations',
+                    ],
+                ],
+            ];
         });
     }
 
@@ -456,7 +638,7 @@ class InboxController extends BaseController
 
     private function settings(array $d): array
     {
-        $d['pinnedCount'] = count($d['pinned']);
+        $d['pinnedCount'] = count($d['pinned'] ?? []);
 
         return $d;
     }
@@ -500,14 +682,17 @@ class InboxController extends BaseController
         return $out;
     }
 
-    /** @return array{0:ChatStore,1:string,2:string,3:array,4:string} store, my id, peer id, peer person, my display name */
+    /** @return array{0:ChatStore,1:string,2:string,3:array,4:string,5:bool} store, my id, peer/group id, peer/group info, my display name, isGroup */
     private function scope(string $key): array
     {
-        if (! preg_match('/^([nr]):([A-Za-z0-9_.\-]{1,100})$/', $key, $m)) {
+        if (! preg_match('/^(n|r|g|rg):([A-Za-z0-9_.\-]{1,100})$/', $key, $m)) {
             throw new \DomainException('Chat not found.', 404);
         }
-        [, $src, $peer] = $m;
-        if ($src === 'r') {
+        [, $src, $targetId] = $m;
+        $isGroup = ($src === 'g' || $src === 'rg');
+        $isRms   = ($src === 'r' || $src === 'rg');
+
+        if ($isRms) {
             if (! $this->admin) {
                 throw new \DomainException('Chat not found.', 404);
             }
@@ -522,25 +707,33 @@ class InboxController extends BaseController
             $me    = (string) $this->webUser['UserID'];
             $name  = (string) $this->webUser['FullName'];
         }
-        $person = $peer === $me
-            ? ($store->person($me) ?? ['id' => $me, 'name' => $name, 'username' => '', 'online' => true, 'avatar' => null, 'src' => $src])
-            : ($store->person($peer) ?? ['id' => $peer, 'name' => 'User ' . $peer, 'username' => '', 'online' => false, 'avatar' => null, 'src' => $src]);
 
-        return [$store, $me, $peer, $person, $name];
+        if ($isGroup) {
+            $person = $store->groupDetails($me, $targetId);
+            $person['src'] = $isRms ? 'rg' : 'g';
+        } else {
+            $person = $targetId === $me
+                ? ($store->person($me) ?? ['id' => $me, 'name' => $name, 'username' => '', 'online' => true, 'avatar' => null, 'src' => $src])
+                : ($store->person($targetId) ?? ['id' => $targetId, 'name' => 'User ' . $targetId, 'username' => '', 'online' => false, 'avatar' => null, 'src' => $src]);
+        }
+
+        return [$store, $me, $targetId, $person, $name, $isGroup];
     }
 
     private function tag(array $row, ChatStore $s): array
     {
-        $row['src'] = $s->source();
-        $row['key'] = $s->source() . ':' . $row['id'];
+        $isGroup = ! empty($row['isGroup']);
+        $srcTag  = $isGroup ? ($s->source() === 'r' ? 'rg' : 'g') : $s->source();
+        $row['src'] = $srcTag;
+        $row['key'] = $srcTag . ':' . $row['id'];
         unset($row['synologyId']);
 
         return $row;
     }
 
-    private function one(ChatStore $s, string $me, string $peer, int $id, string $key): ?array
+    private function one(ChatStore $s, string $me, string $targetId, int $id, string $key, bool $isGroup = false): ?array
     {
-        $m = $s->message($me, $peer, $id);
+        $m = $isGroup ? $s->groupMessage($targetId, $id) : $s->message($me, $targetId, $id);
 
         return $m === null ? null : $this->withUrls([$m], $key)[0];
     }

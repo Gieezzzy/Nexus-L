@@ -51,4 +51,7 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->get('inbox/media/(:segment)', 'InboxController::media/$1');
     $routes->post('inbox/token', 'InboxController::saveToken');
     $routes->get('inbox/themes', 'InboxController::themes');
+    $routes->post('inbox/group/create', 'InboxController::createGroup');
+    $routes->post('inbox/group/approve/(:segment)', 'InboxController::approveGroup/$1');
+    $routes->post('inbox/disappearing/(:segment)', 'InboxController::setDisappearing/$1');
 });

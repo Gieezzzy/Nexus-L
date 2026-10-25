@@ -46,7 +46,7 @@ class NexusStore extends ChatStore
 
     protected function tables(): array
     {
-        return ['{M}' => 'tbl_Messages', '{S}' => 'SingleUserMessage'];
+        return ['{M}' => 'tbl_Messages', '{S}' => 'SingleUserMessage', '{G}' => 'tbl_groupmessage'];
     }
 
     protected function extraCols(): string
@@ -73,6 +73,46 @@ class NexusStore extends ChatStore
     protected function insertParams(string $me, string $peer, string $cv, string $stored, array $att): array
     {
         return [$me, $stored, $peer, $cv, self::now(), $att['path'] ?? null, $att['name'] ?? null, $att['size'] ?? null, $att['type'] ?? null];
+    }
+
+    protected function insertGroupSql(array $att): string
+    {
+        return "INSERT INTO {M} (TargetReferenceID, SenderID, MessageContent, IsSyncedToSynology, ReceiverID, ConnectedID, IsGroup, GroupID, IsRead, DateSent, FilePath, FileName, FileSize, FileType)
+                VALUES ('WEB', ?, ?, 0, ?, '0', 'Yes', ?, 0, ?, ?, ?, ?, ?)";
+    }
+
+    protected function insertGroupParams(string $me, string $groupId, string $stored, array $att): array
+    {
+        return [$me, $stored, $groupId, $groupId, self::now(), $att['path'] ?? null, $att['name'] ?? null, $att['size'] ?? null, $att['type'] ?? null];
+    }
+
+    public function createGroupRecord(string $creator, string $name, array $members, string $policies, ?string $pic = null): int
+    {
+        $mList = array_values(array_unique(array_filter(array_map('trim', $members))));
+        if (! in_array($creator, $mList, true)) {
+            $mList[] = $creator;
+        }
+        $formattedMembers = ';' . implode(';', $mList) . ';';
+        $now = self::now();
+        $this->exec(
+            "INSERT INTO tbl_groupmessage (GroupName, members, Admin, Policies, GroupPic, CurrentEmoji, CurrentTheme, CreatedAt, UpdatedAt)
+             VALUES (?, ?, ?, ?, ?, '👍', 'default', ?, ?)",
+            [$name, $formattedMembers, $creator, $policies, $pic, $now, $now]
+        );
+        $gid = (int) $this->db->insertID();
+
+        // Relational sync into tbl_group_members
+        foreach ($mList as $u) {
+            try {
+                $role = ($u === $creator) ? 'admin' : 'member';
+                $this->exec(
+                    "INSERT INTO tbl_group_members (group_id, user_id, role, joined_at, is_muted) VALUES (?, ?, ?, ?, 0)",
+                    [(string)$gid, (string)$u, $role, $now]
+                );
+            } catch (\Throwable $e) {}
+        }
+
+        return $gid;
     }
 
     /** Absolute path of a stored attachment (for the authenticated download route). */
