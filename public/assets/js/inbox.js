@@ -156,11 +156,15 @@
 
   // ---------- Themes Catalog & Particle Engine ----------
   const THEMES = [
-    { key: 'default', name: 'Default RMS Blue', primary: '#2563EB', bubble_me: '#2563EB', bubble_them: '#e6eaf1', emoji: '👍', desc: 'Standard RMS Blue theme' },
-    { key: 'christmas', name: 'Christmas Holidays', primary: '#DC2626', bubble_me: '#DC2626', bubble_them: '#DCFCE7', emoji: '❄️', desc: 'Falling snow particles, sleigh bells chime & Santa' },
-    { key: 'sadako', name: 'Sadako Horror', primary: '#7F1D1D', bubble_me: '#7F1D1D', bubble_them: '#1E293B', emoji: '👻', desc: 'Cursed well, wall cracks, creeping crawler & screen shake' },
-    { key: 'valentines', name: 'Sweet Valentines', primary: '#EC4899', bubble_me: '#EC4899', bubble_them: '#FCE7F3', emoji: '❤️', desc: 'Romantic pastel theme with rising 3D hearts burst' },
-    { key: 'anime_cyberpunk', name: 'Anime Cyberpunk', primary: '#8B5CF6', bubble_me: '#8B5CF6', bubble_them: '#0F172A', emoji: '⚡', desc: 'Neon electric glow, laser bursts & electric sparks' },
+    { key: 'default', name: 'Default RMS Blue', primary: '#2563EB', bubble_me: '#2563EB', bubble_them: '#FFFFFF', emoji: '👍', desc: 'Standard RMS Blue with vector audit & chat pattern' },
+    { key: 'christmas', name: 'Christmas Holidays', primary: '#DC2626', bubble_me: '#DC2626', bubble_them: '#DCFCE7', emoji: '❄️', desc: 'HD holiday wallpaper, falling snow & sleigh bells' },
+    { key: 'sadako', name: 'Sadako Horror', primary: '#7F1D1D', bubble_me: '#7F1D1D', bubble_them: '#1E293B', emoji: '👻', desc: 'HD cursed well wallpaper, wall cracks & crawling crawler' },
+    { key: 'holloween', name: 'Halloween Terror', primary: '#EA580C', bubble_me: '#EA580C', bubble_them: '#1C1917', emoji: '🎃', desc: 'HD haunted Halloween wallpaper with eerie amber glow' },
+    { key: 'friday_13th', name: 'Friday the 13th', primary: '#991B1B', bubble_me: '#991B1B', bubble_them: '#18181B', emoji: '🔪', desc: 'HD Camp Crystal Lake wallpaper with blood-moon aura' },
+    { key: 'bonifacio', name: 'Bonifacio Day', primary: '#B91C1C', bubble_me: '#B91C1C', bubble_them: '#1E293B', emoji: '🚩', desc: 'HD Katipunan memorial wallpaper with patriotic crimson' },
+    { key: 'freddy_krueger', name: 'Nightmare Elm', primary: '#78350F', bubble_me: '#78350F', bubble_them: '#1C1917', emoji: '🩸', desc: 'HD nightmare wallpaper with claw scratch vibes' },
+    { key: 'valentines', name: 'Sweet Valentines', primary: '#EC4899', bubble_me: '#EC4899', bubble_them: '#FCE7F3', emoji: '❤️', desc: 'Vector hearts pattern & rising 3D romance hearts burst' },
+    { key: 'anime_cyberpunk', name: 'Anime Cyberpunk', primary: '#8B5CF6', bubble_me: '#8B5CF6', bubble_them: '#0F172A', emoji: '⚡', desc: 'Vector neon cyber grid, laser bursts & electric sparks' },
   ];
 
   const initCanvas = () => {
@@ -177,6 +181,10 @@
     currentThemeKey = themeKey;
     root.dataset.theme = themeKey;
     if (el.pane) el.pane.dataset.theme = themeKey;
+    const chatEl = $('msgr-chat');
+    if (chatEl) chatEl.dataset.theme = themeKey;
+    document.body.dataset.theme = themeKey;
+
     const t = THEMES.find((x) => x.key === themeKey) || THEMES[0];
     if (el.infThemeName) el.infThemeName.textContent = t.name;
 
@@ -185,7 +193,7 @@
       if (themeKey === 'christmas') {
         triggerSnowAnimation();
         triggerSleighBells();
-      } else if (themeKey === 'sadako') {
+      } else if (themeKey === 'sadako' || themeKey === 'friday_13th' || themeKey === 'holloween' || themeKey === 'freddy_krueger') {
         triggerSadakoAnimation();
         triggerHorrorSound();
       } else if (themeKey === 'valentines') {
@@ -443,7 +451,7 @@
   const checkTriggerEmoji = (text) => {
     if (!text) return;
     if (text.includes('❄️')) { triggerSnowAnimation(); triggerSleighBells(); }
-    else if (text.includes('👻')) { triggerSadakoAnimation(); triggerHorrorSound(); }
+    else if (text.includes('👻') || text.includes('🎃') || text.includes('🔪') || text.includes('🩸')) { triggerSadakoAnimation(); triggerHorrorSound(); }
     else if (text.includes('❤️')) { triggerHeartsAnimation(); triggerLoveSound(); }
     else if (text.includes('⚡')) { triggerSparklesAnimation(); triggerLaserSound(); }
   };
@@ -1000,14 +1008,30 @@
       top.append(colors);
       card.append(top, mk('span', 'tc-name', t.name), mk('span', 'tc-desc', t.desc));
       card.addEventListener('click', () => {
-        applyTheme(t.key, true);
-        post(`setting/${enc(key)}`, { key: 'CurrentTheme', value: t.key })
+        const selectedKey = t.key;
+        // 1. Instantly apply theme styling, wallpaper & audio (0ms delay)
+        applyTheme(selectedKey, true);
+        // 2. Instantly close modal so chat wallpaper is visible immediately
+        closeDlg();
+        // 3. Instant toast confirmation
+        toast(`Theme applied: ${t.name}!`);
+        // 4. Optimistically update local active conversation & cache
+        if (peer) peer.theme = selectedKey;
+        const cached = convCache.find((c) => c.key === key);
+        if (cached) cached.theme = selectedKey;
+
+        // 5. Asynchronously persist to server without blocking UI
+        post(`setting/${enc(key)}`, { key: 'CurrentTheme', value: selectedKey })
           .then((d) => {
-            if (d && d.settings) applySettings(d.settings);
-            closeDlg();
-            toast(`Theme changed to ${t.name}!`);
+            if (d && d.settings) {
+              settings = d.settings;
+              if (el.infThemeName) el.infThemeName.textContent = t.name;
+            }
           })
-          .catch((err) => flashErr(err.message));
+          .catch((err) => {
+            console.warn('[Theme] Persist error:', err);
+            flashErr('Failed to save theme: ' + err.message);
+          });
       });
       grid.append(card);
     });

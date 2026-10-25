@@ -339,67 +339,190 @@ body.lb-open{overflow:hidden}
 .horror-crawler{position:absolute;bottom:-180px;left:50%;transform:translateX(-50%);width:180px;height:240px;opacity:0;transition:all 2.4s cubic-bezier(0.25, 1, 0.5, 1)}
 .horror-crawler.crawling{bottom:15%;opacity:.92}
 
-/* ================== THEMES REALTIME STYLES ================== */
-/* Default RMS Blue */
+/* ================== THEMES REALTIME STYLES & WALLPAPERS ================== */
+.msgr-chat{
+  position:relative;
+  background-color:#f8fafc;
+  background-size:cover;
+  background-position:center;
+  background-repeat:no-repeat;
+  isolation:isolate;
+  transition:background .25s ease, background-color .25s ease;
+}
+.msgr-pane{position:relative;z-index:1;background:transparent}
+.msgr-msgs{background:transparent!important}
+
+/* Default RMS Blue (SVG Pattern) */
 [data-theme="default"]{
   --msgr-bubble-mine:#2563eb;
-  --msgr-bubble-theirs:#e6eaf1;
+  --msgr-bubble-theirs:#ffffff;
   --msgr-text-mine:#ffffff;
   --msgr-text-theirs:var(--ink);
 }
+[data-theme="default"] .msgr-chat{
+  background-color:#f1f5f9;
+  background-image:linear-gradient(135deg,rgba(241,245,249,.92) 0%,rgba(226,232,240,.92) 100%),url("../themes/svg/default_pattern.svg");
+  background-size:auto,280px 280px;
+  background-repeat:no-repeat,repeat;
+}
+[data-theme="default"] .m.me{background:#2563eb;color:#ffffff;box-shadow:0 1px 4px rgba(37,99,235,.25)}
+[data-theme="default"] .m.them{background:#ffffff;color:var(--ink);box-shadow:0 1px 4px rgba(15,23,42,.08)}
 
-/* Christmas Theme */
+/* Christmas Theme (HD Wallpaper + Snow) */
 [data-theme="christmas"]{
   --msgr-bubble-mine:#dc2626;
-  --msgr-bubble-theirs:#dcfce7;
+  --msgr-bubble-theirs:rgba(220,252,231,.95);
   --msgr-text-mine:#ffffff;
   --msgr-text-theirs:#14532d;
 }
 [data-theme="christmas"] .msgr-chat{
-  background:radial-gradient(ellipse at top,#fef2f2 0%,#f0fdf4 100%);
+  background-color:#0f172a;
+  background-image:linear-gradient(to bottom,rgba(15,23,42,.35),rgba(15,23,42,.75)),url("../themes/Christmas/Background.png");
+  background-size:cover;
+  background-position:center;
+  background-repeat:no-repeat;
 }
-[data-theme="christmas"] .m.me{background:#dc2626;color:#fff}
-[data-theme="christmas"] .m.them{background:#dcfce7;color:#14532d}
+[data-theme="christmas"] .m.me{background:#dc2626;color:#ffffff;box-shadow:0 2px 8px rgba(220,38,38,.35)}
+[data-theme="christmas"] .m.them{background:rgba(220,252,231,.95);color:#14532d;backdrop-filter:blur(6px);box-shadow:0 2px 6px rgba(0,0,0,.15)}
+[data-theme="christmas"] .msgr-bar{background:rgba(15,23,42,.7);backdrop-filter:blur(10px);color:#f8fafc;border-bottom-color:rgba(220,38,38,.3)}
+[data-theme="christmas"] .msgr-bar b{color:#f8fafc}
+[data-theme="christmas"] .msgr-form{background:rgba(15,23,42,.75);backdrop-filter:blur(10px);border-top-color:rgba(220,38,38,.3)}
 
-/* Sadako Horror Theme */
+/* Sadako Horror Theme (HD Cursed Wallpaper) */
 [data-theme="sadako"]{
   --msgr-bubble-mine:#7f1d1d;
-  --msgr-bubble-theirs:#1e293b;
+  --msgr-bubble-theirs:rgba(30,41,59,.92);
   --msgr-text-mine:#fecaca;
   --msgr-text-theirs:#f1f5f9;
 }
 [data-theme="sadako"] .msgr-chat{
-  background:#090d16;
+  background-color:#05070c;
+  background-image:radial-gradient(circle at center,rgba(5,7,12,.3) 0%,rgba(5,7,12,.88) 100%),url("../themes/sadako/Background.png");
+  background-size:cover;
+  background-position:center;
+  background-repeat:no-repeat;
   color:#f1f5f9;
 }
-[data-theme="sadako"] .m.me{background:#7f1d1d;color:#fee2e2;border:1px solid rgba(239,68,68,.3)}
-[data-theme="sadako"] .m.them{background:#1e293b;color:#f1f5f9;border:1px solid rgba(148,163,184,.2)}
-[data-theme="sadako"] .msgr-bar{border-bottom-color:rgba(127,29,29,.4)}
-[data-theme="sadako"] .msgr-form{border-top-color:rgba(127,29,29,.4)}
+[data-theme="sadako"] .m.me{background:#7f1d1d;color:#fee2e2;border:1px solid rgba(239,68,68,.3);box-shadow:0 0 10px rgba(127,29,29,.5)}
+[data-theme="sadako"] .m.them{background:rgba(30,41,59,.92);color:#f1f5f9;border:1px solid rgba(148,163,184,.2);backdrop-filter:blur(6px);box-shadow:0 2px 6px rgba(0,0,0,.3)}
+[data-theme="sadako"] .msgr-bar{background:rgba(5,7,12,.78);backdrop-filter:blur(10px);color:#fee2e2;border-bottom-color:rgba(127,29,29,.4)}
+[data-theme="sadako"] .msgr-bar b{color:#fecaca}
+[data-theme="sadako"] .msgr-form{background:rgba(5,7,12,.82);backdrop-filter:blur(10px);border-top-color:rgba(127,29,29,.4)}
 
-/* Valentines Romance Theme */
+/* Valentines Romance Theme (SVG Hearts Pattern) */
 [data-theme="valentines"]{
   --msgr-bubble-mine:#ec4899;
-  --msgr-bubble-theirs:#fce7f3;
+  --msgr-bubble-theirs:rgba(253,242,248,.95);
   --msgr-text-mine:#ffffff;
   --msgr-text-theirs:#831843;
 }
 [data-theme="valentines"] .msgr-chat{
-  background:linear-gradient(135deg,#fff1f2 0%,#fdf2f8 100%);
+  background-color:#fff1f2;
+  background-image:linear-gradient(135deg,rgba(255,241,242,.92) 0%,rgba(253,242,248,.92) 100%),url("../themes/svg/valentines_pattern.svg");
+  background-size:auto,220px 220px;
+  background-repeat:no-repeat,repeat;
 }
-[data-theme="valentines"] .m.me{background:#ec4899;color:#fff}
-[data-theme="valentines"] .m.them{background:#fce7f3;color:#831843}
+[data-theme="valentines"] .m.me{background:#ec4899;color:#ffffff;box-shadow:0 2px 8px rgba(236,72,153,.35)}
+[data-theme="valentines"] .m.them{background:rgba(253,242,248,.95);color:#831843;border:1px solid rgba(244,114,182,.3);box-shadow:0 1px 4px rgba(131,24,67,.08)}
 
-/* Anime Cyberpunk Theme */
+/* Anime Cyberpunk Theme (SVG Cyber Grid) */
 [data-theme="anime_cyberpunk"]{
   --msgr-bubble-mine:#8b5cf6;
-  --msgr-bubble-theirs:#0f172a;
+  --msgr-bubble-theirs:rgba(15,23,42,.92);
   --msgr-text-mine:#ffffff;
   --msgr-text-theirs:#38bdf8;
 }
 [data-theme="anime_cyberpunk"] .msgr-chat{
-  background:#030712;
+  background-color:#030712;
+  background-image:radial-gradient(circle at top,rgba(139,92,246,.15) 0%,rgba(3,7,18,.95) 100%),url("../themes/svg/cyberpunk_grid.svg");
+  background-size:auto,100px 100px;
+  background-repeat:no-repeat,repeat;
+  color:#f8fafc;
 }
-[data-theme="anime_cyberpunk"] .m.me{background:#8b5cf6;color:#fff;box-shadow:0 0 10px rgba(139,92,246,.5)}
-[data-theme="anime_cyberpunk"] .m.them{background:#0f172a;color:#38bdf8;border:1px solid rgba(6,182,212,.4);box-shadow:0 0 8px rgba(6,182,212,.3)}
+[data-theme="anime_cyberpunk"] .m.me{background:#8b5cf6;color:#ffffff;box-shadow:0 0 12px rgba(139,92,246,.6)}
+[data-theme="anime_cyberpunk"] .m.them{background:rgba(15,23,42,.92);color:#38bdf8;border:1px solid rgba(6,182,212,.4);backdrop-filter:blur(6px);box-shadow:0 0 10px rgba(6,182,212,.3)}
+[data-theme="anime_cyberpunk"] .msgr-bar{background:rgba(3,7,18,.8);backdrop-filter:blur(10px);color:#38bdf8;border-bottom-color:rgba(139,92,246,.35)}
+[data-theme="anime_cyberpunk"] .msgr-bar b{color:#38bdf8}
+[data-theme="anime_cyberpunk"] .msgr-form{background:rgba(3,7,18,.85);backdrop-filter:blur(10px);border-top-color:rgba(139,92,246,.35)}
+
+/* Halloween Theme (HD Wallpaper) */
+[data-theme="holloween"]{
+  --msgr-bubble-mine:#ea580c;
+  --msgr-bubble-theirs:rgba(28,25,23,.92);
+  --msgr-text-mine:#ffffff;
+  --msgr-text-theirs:#fdba74;
+}
+[data-theme="holloween"] .msgr-chat{
+  background-color:#0c0a09;
+  background-image:linear-gradient(to bottom,rgba(12,10,9,.4),rgba(12,10,9,.85)),url("../themes/Holloween/Background.png");
+  background-size:cover;
+  background-position:center;
+  background-repeat:no-repeat;
+  color:#fdba74;
+}
+[data-theme="holloween"] .m.me{background:#ea580c;color:#ffffff;box-shadow:0 2px 8px rgba(234,88,12,.4)}
+[data-theme="holloween"] .m.them{background:rgba(28,25,23,.92);color:#fdba74;border:1px solid rgba(234,88,12,.3);backdrop-filter:blur(6px)}
+[data-theme="holloween"] .msgr-bar{background:rgba(12,10,9,.8);backdrop-filter:blur(10px);color:#fdba74;border-bottom-color:rgba(234,88,12,.35)}
+[data-theme="holloween"] .msgr-bar b{color:#fed7aa}
+[data-theme="holloween"] .msgr-form{background:rgba(12,10,9,.85);backdrop-filter:blur(10px);border-top-color:rgba(234,88,12,.35)}
+
+/* Friday the 13th Theme (HD Wallpaper) */
+[data-theme="friday_13th"]{
+  --msgr-bubble-mine:#991b1b;
+  --msgr-bubble-theirs:rgba(24,24,27,.92);
+  --msgr-text-mine:#fecaca;
+  --msgr-text-theirs:#e4e4e7;
+}
+[data-theme="friday_13th"] .msgr-chat{
+  background-color:#09090b;
+  background-image:linear-gradient(to bottom,rgba(9,9,11,.45),rgba(9,9,11,.85)),url("../themes/Friday%20the%2013th/Background.png");
+  background-size:cover;
+  background-position:center;
+  background-repeat:no-repeat;
+}
+[data-theme="friday_13th"] .m.me{background:#991b1b;color:#fecaca;box-shadow:0 2px 8px rgba(153,27,27,.4)}
+[data-theme="friday_13th"] .m.them{background:rgba(24,24,27,.92);color:#e4e4e7;border:1px solid rgba(153,27,27,.3);backdrop-filter:blur(6px)}
+[data-theme="friday_13th"] .msgr-bar{background:rgba(9,9,11,.8);backdrop-filter:blur(10px);color:#fecaca;border-bottom-color:rgba(153,27,27,.35)}
+[data-theme="friday_13th"] .msgr-bar b{color:#fecaca}
+[data-theme="friday_13th"] .msgr-form{background:rgba(9,9,11,.85);backdrop-filter:blur(10px);border-top-color:rgba(153,27,27,.35)}
+
+/* Bonifacio Day Theme (HD Wallpaper) */
+[data-theme="bonifacio"]{
+  --msgr-bubble-mine:#b91c1c;
+  --msgr-bubble-theirs:rgba(30,41,59,.92);
+  --msgr-text-mine:#ffffff;
+  --msgr-text-theirs:#f8fafc;
+}
+[data-theme="bonifacio"] .msgr-chat{
+  background-color:#0f172a;
+  background-image:linear-gradient(to bottom,rgba(15,23,42,.45),rgba(15,23,42,.85)),url("../themes/bonifacio%20day/Background.png");
+  background-size:cover;
+  background-position:center;
+  background-repeat:no-repeat;
+}
+[data-theme="bonifacio"] .m.me{background:#b91c1c;color:#ffffff;box-shadow:0 2px 8px rgba(185,28,28,.4)}
+[data-theme="bonifacio"] .m.them{background:rgba(30,41,59,.92);color:#f8fafc;border:1px solid rgba(185,28,28,.3);backdrop-filter:blur(6px)}
+[data-theme="bonifacio"] .msgr-bar{background:rgba(15,23,42,.8);backdrop-filter:blur(10px);color:#f8fafc;border-bottom-color:rgba(185,28,28,.35)}
+[data-theme="bonifacio"] .msgr-bar b{color:#f8fafc}
+[data-theme="bonifacio"] .msgr-form{background:rgba(15,23,42,.85);backdrop-filter:blur(10px);border-top-color:rgba(185,28,28,.35)}
+
+/* Freddy Krueger Theme (HD Wallpaper) */
+[data-theme="freddy_krueger"]{
+  --msgr-bubble-mine:#78350f;
+  --msgr-bubble-theirs:rgba(28,25,23,.92);
+  --msgr-text-mine:#fef3c7;
+  --msgr-text-theirs:#e7e5e4;
+}
+[data-theme="freddy_krueger"] .msgr-chat{
+  background-color:#0a0606;
+  background-image:linear-gradient(to bottom,rgba(10,6,6,.4),rgba(10,6,6,.88)),url("../themes/Fredy%20cooger/Background.png");
+  background-size:cover;
+  background-position:center;
+  background-repeat:no-repeat;
+}
+[data-theme="freddy_krueger"] .m.me{background:#78350f;color:#fef3c7;box-shadow:0 2px 8px rgba(120,53,15,.4)}
+[data-theme="freddy_krueger"] .m.them{background:rgba(28,25,23,.92);color:#e7e5e4;border:1px solid rgba(120,53,15,.3);backdrop-filter:blur(6px)}
+[data-theme="freddy_krueger"] .msgr-bar{background:rgba(10,6,6,.8);backdrop-filter:blur(10px);color:#fef3c7;border-bottom-color:rgba(120,53,15,.35)}
+[data-theme="freddy_krueger"] .msgr-bar b{color:#fef3c7}
+[data-theme="freddy_krueger"] .msgr-form{background:rgba(10,6,6,.85);backdrop-filter:blur(10px);border-top-color:rgba(120,53,15,.35)}
 
