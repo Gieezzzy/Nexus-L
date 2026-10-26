@@ -478,6 +478,16 @@ class InboxController extends BaseController
         });
     }
 
+    public function markTriggered(string $key, int $id)
+    {
+        return $this->guard(function () use ($key, $id) {
+            [$s] = $this->scope($key);
+            $s->markTriggered($id);
+
+            return ['ok' => true];
+        });
+    }
+
     public function pinned(string $key)
     {
         return $this->guard(function () use ($key) {

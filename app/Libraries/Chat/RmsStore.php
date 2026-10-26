@@ -39,6 +39,11 @@ class RmsStore extends ChatStore
         return ['{M}' => 'dbo.tbl_Messages', '{S}' => 'dbo.SingleUserMessage', '{G}' => 'dbo.tbl_GroupMessage'];
     }
 
+    protected function extraCols(): string
+    {
+        return ', COALESCE(IsTriggered, 0) AS IsTriggered';
+    }
+
     protected function imageWhere(): string
     {
         return "imagePath IS NOT NULL AND imagePath <> ''";

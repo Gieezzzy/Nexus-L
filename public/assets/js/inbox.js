@@ -33,6 +33,7 @@
   let currentThemeKey = 'default';
   let particleAnimId = null;
   let particles = [];
+  const triggeredMsgIds = new Set();
 
   // ---------- helpers ----------
   const initials = (n) => String(n).trim().split(/\s+/).slice(0, 2).map((p) => p[0] || '').join('').toUpperCase() || '?';
@@ -459,12 +460,19 @@
     } catch (_) {}
   };
 
-  const checkTriggerEmoji = (text) => {
+  const checkTriggerEmoji = (text, msgId = 0) => {
     if (!text) return;
-    if (text.includes('❄️')) { triggerSnowAnimation(); triggerSleighBells(); }
-    else if (text.includes('👻') || text.includes('🎃') || text.includes('🔪') || text.includes('🩸')) { triggerSadakoAnimation(); triggerHorrorSound(); }
-    else if (text.includes('❤️')) { triggerHeartsAnimation(); triggerLoveSound(); }
-    else if (text.includes('⚡')) { triggerSparklesAnimation(); triggerLaserSound(); }
+    if (msgId > 0) {
+      if (triggeredMsgIds.has(msgId)) return;
+      triggeredMsgIds.add(msgId);
+      if (key) {
+        post('triggered/' + enc(key) + '/' + msgId, {}).catch(() => {});
+      }
+    }
+    if (text.includes('❄️') || text.includes('❄') || text.includes('⛄') || text.includes('🎅') || text.includes('🎄')) { triggerSnowAnimation(); triggerSleighBells(); }
+    else if (text.includes('👻') || text.includes('🎃') || text.includes('🔪') || text.includes('🩸') || text.includes('💀')) { triggerSadakoAnimation(); triggerHorrorSound(); }
+    else if (text.includes('❤️') || text.includes('💖') || text.includes('💕') || text.includes('💘')) { triggerHeartsAnimation(); triggerLoveSound(); }
+    else if (text.includes('⚡') || text.includes('⭐') || text.includes('🎉')) { triggerSparklesAnimation(); triggerLaserSound(); }
   };
 
   const updateDisappearingUI = (status) => {
@@ -743,13 +751,16 @@
       const stick = first || nearBottom(); seenEl?.remove(); seenEl = null;
       let added = 0;
       d.messages.forEach((m) => {
+        if (m.is_triggered || first) {
+          triggeredMsgIds.add(m.id);
+        }
         if (msgData.has(m.id)) {
           patchMsg(m);
         } else {
           addMsg(m);
           added++;
-          if (!first) {
-            checkTriggerEmoji(m.text);
+          if (!first && !m.is_triggered && !triggeredMsgIds.has(m.id)) {
+            checkTriggerEmoji(m.text, m.id);
             if (m.from !== me) notifyDesktop(m);
           }
         }
@@ -786,7 +797,15 @@
     checkTriggerEmoji(text);
     const btn = $('msgr-send'); btn.disabled = true; flashErr('');
     return post(`send/${enc(key)}`, { body: text, reply_to: replyTo ? replyTo.id : 0 }).then((j) => {
-      clearReply(); if (j.message) addMsg(j.message); seenEl?.remove(); seenEl = null; el.msgs.scrollTop = el.msgs.scrollHeight; loadList();
+      clearReply();
+      if (j.message) {
+        if (j.message.id) {
+          triggeredMsgIds.add(j.message.id);
+          post('triggered/' + enc(key) + '/' + j.message.id, {}).catch(() => {});
+        }
+        addMsg(j.message);
+      }
+      seenEl?.remove(); seenEl = null; el.msgs.scrollTop = el.msgs.scrollHeight; loadList();
     }).catch((e) => flashErr(e.message)).finally(() => { btn.disabled = false; el.input.focus(); });
   };
   const sendFiles = (caption) => {

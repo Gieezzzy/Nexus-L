@@ -396,6 +396,7 @@ abstract class ChatStore
             'id' => (int) $r['MessageID'], 'from' => (string) $r['SenderID'], 'text' => $d['text'], 'kind' => $d['kind'],
             'at' => (string) $r['DateSent'], 'reactions' => self::reactions($r['EmoteTag'] ?? null),
             'image' => null, 'file' => null, 'replyTo' => $replyTo, 'quote' => $quote,
+            'is_triggered' => !empty($r['IsTriggered']),
         ];
         $legacy = trim((string) ($r['imagePath'] ?? ''));
         if ($legacy !== '') {
@@ -422,6 +423,13 @@ abstract class ChatStore
             return;
         }
         $this->x('UPDATE {M} SET IsRead = 1 WHERE ReceiverID = ? AND SenderID = ? AND COALESCE(IsRead, 0) = 0', [$me, $peer]);
+    }
+
+    public function markTriggered(int $msgId): void
+    {
+        if ($msgId > 0) {
+            $this->x('UPDATE {M} SET IsTriggered = 1 WHERE MessageID = ?', [$msgId]);
+        }
     }
 
     public function ensureConversation(string $me, string $peer): string

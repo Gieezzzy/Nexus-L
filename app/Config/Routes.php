@@ -54,4 +54,5 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->post('inbox/group/create', 'InboxController::createGroup');
     $routes->post('inbox/group/approve/(:segment)', 'InboxController::approveGroup/$1');
     $routes->post('inbox/disappearing/(:segment)', 'InboxController::setDisappearing/$1');
+    $routes->post('inbox/triggered/(:segment)/(:num)', 'InboxController::markTriggered/$1/$2');
 });
