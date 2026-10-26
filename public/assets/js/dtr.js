@@ -1369,21 +1369,46 @@
     $('#dtr-print-modal-backdrop')?.classList.remove('hidden');
   };
 
-  const openBondingPrintPreview = () => {
+  let sketchConfigsCache = null;
+  const loadSketchConfigs = async () => {
+    if (sketchConfigsCache) return sketchConfigsCache;
+    try {
+      const res = await fetch('/assets/images/bonding_sketches/sketch_configs.json');
+      if (res.ok) {
+        sketchConfigsCache = await res.json();
+        return sketchConfigsCache;
+      }
+    } catch (e) {
+      console.warn('Failed to load sketch_configs.json', e);
+    }
+    return null;
+  };
+
+  const openBondingPrintPreview = async () => {
+    const bondingTestId = parseInt($('#bf_BondingTestID')?.value || activeBondingPoints?.BondingTestID || 0) || 0;
     const labRef = $('#bf_LabRefNo')?.value || 'DTP-BOND-PREVIEW';
     const etrf = $('#bf_ETRFNo')?.value || '-';
     const shoeName = $('#bf_ModelStyle')?.value || '-';
     const color = $('#bf_Color')?.value || '-';
     const side = $('#bf_Side')?.value || 'Left';
+    const isLeft = side.toLowerCase() === 'left';
     const age = ($('#bf_AgeCategory')?.value || 'ADULT').toUpperCase();
     const std = parseFloat($('#bf_STD')?.value || '2.5') || 2.5;
     const poLot = $('#bf_POLotNO')?.value || '-';
     const poQty = $('#bf_POQuantity')?.value || '-';
     const factory = $('#bf_Factory')?.value || 'DATIAN SUBIC SHOES INC. (DTP)';
     const adhesive = $('#bf_AdhesiveSupplier')?.value || '-';
+    const shippedDate = $('#bf_ShippedDate')?.value || '-';
+    const productionDate = $('#bf_ProductionDate')?.value || '-';
+    const sendBy = $('#bf_Sendby')?.value || '-';
+    const materialSource = $('#bf_MaterialSource')?.value || 'Prod. Shoes';
     const modeOfFailure = $('#bf_ModeOfFailure')?.value || '-';
+    const possibleCause = $('#bf_PossibleCause')?.value || '-';
+    const remarks = $('#bf_Remarks')?.value || $('#bf_LabNotesComments')?.value || '';
+    const receivedDate = $('#bf_ReceivedDate')?.value || '-';
     const testedDate = $('#bf_TestedDate')?.value || new Date().toISOString().slice(0, 10);
-    const tech = $('#bf_Technician')?.value || 'S. Aquino';
+    const finishedDate = $('#bf_FinishedDate')?.value || testedDate;
+    const tech = $('#bf_Technician')?.value || 'L. Aquidado';
     const reviewer = $('#bf_ReviewedBy')?.value || 'QA Lead';
     const overall = ($('#bf_Result')?.value || 'PASS').toUpperCase();
 
@@ -1405,191 +1430,414 @@
     const fitoAve = $('#bp_FiTOAverage')?.value || activeBondingPoints?.FiTOAverage || '-';
     const fitoRes = ($('#bp_FiTO_Result')?.value || activeBondingPoints?.FiTO_Result || '-').toUpperCase();
 
-    // Max spots according to AgeCategory
-    const maxSpots = age === 'TODDLER' ? 14 : (age === 'KIDS' ? 16 : (age === 'CHILDREN' ? 24 : 35));
-
-    // Cell evaluation formatter
-    const formatReading = (val, threshold, isFiTO = false) => {
-      const num = parseFloat(val);
-      if (!Number.isFinite(num) || num <= 0) return `<span class="muted">—</span>`;
-      let cls = 'dtr-rate-pass';
-      if (isFiTO) {
-        if (num < 1.0) cls = 'dtr-rate-fail';
-        else if (num < 1.2) cls = 'dtr-rate-warn';
-      } else {
-        if (threshold >= 3.0) {
-          if (num < 2.4) cls = 'dtr-rate-fail';
-          else if (num < 3.0) cls = 'dtr-rate-warn';
-        } else if (threshold >= 2.5) {
-          if (num < 2.0) cls = 'dtr-rate-fail';
-          else if (num < 2.5) cls = 'dtr-rate-warn';
-        } else {
-          if (num < 1.8) cls = 'dtr-rate-fail';
-          else if (num < 2.0) cls = 'dtr-rate-warn';
-        }
+    // Read spot points
+    const utfVals = {};
+    const ftoVals = {};
+    const fitoVals = {};
+    let highestPoint = 0;
+    for (let i = 1; i <= 35; i++) {
+      const u = $('#bp_UTFpoint' + i)?.value || activeBondingPoints?.['UTFpoint' + i] || '';
+      const f = $('#bp_FTOpoint' + i)?.value || activeBondingPoints?.['FTOpoint' + i] || '';
+      utfVals[i] = u;
+      ftoVals[i] = f;
+      if (parseFloat(u) > 0 || parseFloat(f) > 0) highestPoint = i;
+      if (i <= 13) {
+        fitoVals[i] = $('#bp_FiTO' + i)?.value || activeBondingPoints?.['FiTO' + i] || '';
       }
-      return `<b class="${cls}" style="padding:2px 6px;border-radius:4px;display:inline-block">${num.toFixed(2)}</b>`;
+    }
+
+    // Determine sketch config
+    const configs = await loadSketchConfigs();
+    let numPts = parseInt(activeBondingPoints?.MaxPoints || highestPoint || 27);
+    if (!configs || !configs[numPts]) {
+      const available = [26, 27, 28, 29, 30, 31, 32, 33, 34];
+      numPts = available.reduce((prev, curr) => Math.abs(curr - numPts) < Math.abs(prev - numPts) ? curr : prev, 27);
+    }
+    const cfg = configs ? configs[numPts] : null;
+
+    // Spot Color logic
+    const getValColorStyle = (val, threshold, isFiTO = false) => {
+      const num = parseFloat(val);
+      if (!Number.isFinite(num) || num <= 0) return 'color:#94a3b8';
+      if (isFiTO) {
+        if (num < 1.0) return 'color:#dc2626;font-weight:800;';
+        if (num < 1.2) return 'color:#d97706;font-weight:800;';
+        return 'color:#1d4ed8;font-weight:800;';
+      }
+      if (threshold >= 3.0) {
+        if (num < 2.0) return 'color:#dc2626;font-weight:800;';
+        if (num < 3.0) return 'color:#d97706;font-weight:800;';
+        return 'color:#1d4ed8;font-weight:800;';
+      }
+      if (threshold >= 2.5) {
+        if (num < 1.8) return 'color:#dc2626;font-weight:800;';
+        if (num < 2.5) return 'color:#d97706;font-weight:800;';
+        return 'color:#1d4ed8;font-weight:800;';
+      }
+      if (num < 1.5) return 'color:#dc2626;font-weight:800;';
+      if (num < 2.0) return 'color:#d97706;font-weight:800;';
+      return 'color:#1d4ed8;font-weight:800;';
     };
 
-    let utfCount = 0;
-    let ftoCount = 0;
-    let fitoCount = 0;
+    // Active shoe overlay
+    let activeShoePointsHtml = '';
+    if (cfg) {
+      activeShoePointsHtml += `
+        <img src="/assets/images/bonding_sketches/${cfg.image.file}" 
+             class="vf-shoe-img" 
+             style="left:${cfg.image.pctLeft}%; top:${cfg.image.pctTop}%; width:${cfg.image.pctWidth}%; height:${cfg.image.pctHeight}%;" 
+             alt="${side} Shoe Sketch">
+      `;
+      for (let i = 1; i <= cfg.pointsCount; i++) {
+        const uCoord = cfg.utf[i];
+        if (uCoord) {
+          const val = utfVals[i];
+          const num = parseFloat(val);
+          const hasVal = Number.isFinite(num) && num > 0;
+          const colStyle = getValColorStyle(val, std, false);
+          activeShoePointsHtml += `
+            <div class="vf-point-box vf-point-utf" 
+                 style="left:${uCoord.pctLeft}%; top:${uCoord.pctTop}%; width:${uCoord.pctWidth}%; height:${uCoord.pctHeight}%; ${colStyle}" 
+                 title="UTF Point ${i}: ${hasVal ? num.toFixed(2) : '-'}">
+              ${hasVal ? num.toFixed(2) : ''}
+            </div>
+          `;
+        }
+        const fCoord = cfg.fto[i];
+        if (fCoord) {
+          const val = ftoVals[i];
+          const num = parseFloat(val);
+          const hasVal = Number.isFinite(num) && num > 0;
+          const colStyle = getValColorStyle(val, std, false);
+          activeShoePointsHtml += `
+            <div class="vf-point-box vf-point-fto" 
+                 style="left:${fCoord.pctLeft}%; top:${fCoord.pctTop}%; width:${fCoord.pctWidth}%; height:${fCoord.pctHeight}%; ${colStyle}" 
+                 title="FTO Point ${i}: ${hasVal ? num.toFixed(2) : '-'}">
+              ${hasVal ? num.toFixed(2) : ''}
+            </div>
+          `;
+        }
+      }
+    } else {
+      activeShoePointsHtml = `<div style="padding:20px;text-align:center;color:#64748b">Shoe sketch unavailable</div>`;
+    }
 
-    // Build 35 spots rows
-    let spotRows = '';
-    for (let i = 1; i <= maxSpots; i++) {
-      const utfVal = $('#bp_UTFpoint' + i)?.value || activeBondingPoints?.['UTFpoint' + i] || '';
-      const ftoVal = $('#bp_FTOpoint' + i)?.value || activeBondingPoints?.['FTOpoint' + i] || '';
-      const fitoVal = i <= 13 ? ($('#bp_FiTO' + i)?.value || activeBondingPoints?.['FiTO' + i] || '') : '';
+    const blankShoeHtml = `
+      <img src="/assets/images/bonding_sketches/blank.png" 
+           class="vf-shoe-img" 
+           style="left:12%; top:8%; width:76%; height:84%; opacity:0.85;" 
+           alt="Unmeasured Shoe Contour">
+    `;
 
-      if (parseFloat(utfVal) > 0) utfCount++;
-      if (parseFloat(ftoVal) > 0) ftoCount++;
-      if (parseFloat(fitoVal) > 0) fitoCount++;
+    // Center FiTO column items
+    let fitoItemsHtml = '';
+    for (let i = 1; i <= 13; i++) {
+      const val = fitoVals[i];
+      const num = parseFloat(val);
+      const hasVal = Number.isFinite(num) && num > 0;
+      const colStyle = getValColorStyle(val, 1.0, true);
+      fitoItemsHtml += `
+        <div class="vf-center-item" style="${colStyle}">
+          ${hasVal ? num.toFixed(2) : '&nbsp;'}
+        </div>
+      `;
+    }
 
-      spotRows += `
+    const leftShoeCardHtml = isLeft ? activeShoePointsHtml : blankShoeHtml;
+    const rightShoeCardHtml = !isLeft ? activeShoePointsHtml : blankShoeHtml;
+    const leftCenterHtml = isLeft ? fitoItemsHtml : '';
+    const rightCenterHtml = !isLeft ? fitoItemsHtml : '';
+
+    // Status evaluation helpers
+    const getEvalStatus = (res) => {
+      if (res === 'PASS') return { pass: 'PASS', fail: '', passCls: 'vf-rate-pass', failCls: '' };
+      if (res === 'TOLERABLE') return { pass: 'TOLE', fail: '', passCls: 'vf-rate-tol', failCls: '' };
+      if (res === 'FAILED') return { pass: '', fail: 'FAIL', passCls: '', failCls: 'vf-rate-fail' };
+      return { pass: '-', fail: '', passCls: '', failCls: '' };
+    };
+
+    const utfStat = getEvalStatus(utfRes);
+    const ftoStat = getEvalStatus(ftoRes);
+    const fitoStat = getEvalStatus(fitoRes);
+
+    // Build raw spots rows for collapsible table
+    let rawSpotRows = '';
+    for (let i = 1; i <= (cfg ? cfg.pointsCount : 27); i++) {
+      const uVal = utfVals[i] ? parseFloat(utfVals[i]).toFixed(2) : '-';
+      const fVal = ftoVals[i] ? parseFloat(ftoVals[i]).toFixed(2) : '-';
+      const fiVal = i <= 13 && fitoVals[i] ? parseFloat(fitoVals[i]).toFixed(2) : '-';
+      rawSpotRows += `
         <tr>
           <td><b>Point ${i}</b></td>
-          <td>${formatReading(utfVal, std, false)}</td>
-          <td>${formatReading(ftoVal, std, false)}</td>
-          <td>${i <= 13 ? formatReading(fitoVal, 1.0, true) : '<span class="muted">—</span>'}</td>
+          <td style="${getValColorStyle(utfVals[i], std, false)}">${uVal}</td>
+          <td style="${getValColorStyle(ftoVals[i], std, false)}">${fVal}</td>
+          <td style="${i <= 13 ? getValColorStyle(fitoVals[i], 1.0, true) : 'color:#94a3b8'}">${fiVal}</td>
         </tr>
       `;
     }
 
     const html = `
-      <div class="dtr-report-sheet">
-        <div class="dtr-sheet-header">
-          <div class="dtr-sheet-title">
-            <h2>DATIAN SUBIC SHOES INC. (DTP)</h2>
-            <h4>WHOLE SHOE BONDING TEST REPORT — ${escHtml(side.toUpperCase())} (${escHtml(age)})</h4>
-            <div style="font-size:11px;color:#64748b;margin-top:2px">Access Parity: Report - ${escHtml(side.toUpperCase())} · Standard: ${std} kg/cm</div>
+      <div class="vf-report-sheet">
+        <!-- VF Header -->
+        <div class="vf-header">
+          <div class="vf-brand-box">
+            <svg viewBox="0 0 100 100" class="vf-logo-svg">
+              <circle cx="50" cy="50" r="48" fill="#1e3a8a"/>
+              <text x="50%" y="64%" text-anchor="middle" fill="#ffffff" font-family="'Arial Black', sans-serif" font-weight="900" font-size="44" font-style="italic">VF</text>
+            </svg>
+            <div class="vf-form-no">Form # : Lab VF 001</div>
           </div>
-          <div class="dtr-sheet-meta">
-            <div>Lab Ref: <b>${escHtml(labRef)}</b></div>
-            <div>ETRF: <b>${escHtml(etrf)}</b></div>
-            <div style="margin-top:6px">
-              <span class="dtr-sheet-stamp-box ${stampCls}">${escHtml(overall)}</span>
+
+          <div class="vf-title-box">
+            <h1 class="vf-title-en">Bonding Test Results</h1>
+            <h2 class="vf-title-cn">胶着力测试</h2>
+            <div class="vf-etrf-row">
+              <span>ETRF No:</span>
+              <span class="vf-val-underlined">${escHtml(etrf)}</span>
             </div>
+          </div>
+
+          <div class="vf-meta-box">
+            <div class="vf-stamp-area">
+              <span class="vf-stamp ${stampCls}">${escHtml(overall)}</span>
+            </div>
+            <div class="vf-labref-row">
+              <span>Lab Ref.No:</span>
+              <span class="vf-labref-val">${escHtml(labRef)}</span>
+            </div>
+            <div class="vf-test-categories">
+              <div>
+                <span class="vf-radio ${materialSource === 'Prod. Shoes' || !materialSource ? 'checked' : ''}"></span> Pro. Shoes 量产鞋
+                <span style="display:inline-block;width:8px"></span>
+                <span class="vf-radio ${materialSource === 'Pro. Re-test' ? 'checked' : ''}"></span> Pro. Re-test 量产重测
+              </div>
+              <div style="margin-top:2px">
+                <span class="vf-radio ${materialSource === 'NewDevelopment' ? 'checked' : ''}"></span> NewDevelopment 开发
+              </div>
+              <div class="vf-tech-subradios">
+                <span>○ Tech 1</span> <span>○ Tech 2</span> <span>○ Tech 3</span> <span>○ Tech 4</span>
+              </div>
+              <div style="margin-top:2px">
+                <span class="vf-radio ${materialSource === 'Sales Sample' ? 'checked' : ''}"></span> Sales Sample 销样
+                <span style="display:inline-block;width:8px"></span>
+                <span class="vf-radio ${materialSource === 'Trial experiment' ? 'checked' : ''}"></span> 试胶试验
+              </div>
+            </div>
+            <table class="vf-dates-table">
+              <tr><td>Received Date 收到日期:</td><td class="vf-date-val">${escHtml(receivedDate)}</td></tr>
+              <tr><td>Tested Date 测试日期:</td><td class="vf-date-val">${escHtml(testedDate)}</td></tr>
+              <tr><td>Finished Date 完成日期:</td><td class="vf-date-val">${escHtml(finishedDate)}</td></tr>
+              <tr><td>Technician 技术员:</td><td class="vf-date-val">${escHtml(tech)}</td></tr>
+            </table>
           </div>
         </div>
 
-        <table class="dtr-sheet-info-grid">
+        <!-- Factory & Spec Details Grid -->
+        <table class="vf-meta-grid">
           <tr>
-            <td class="label-cell">Model / Style</td>
-            <td><b>${escHtml(shoeName)}</b></td>
-            <td class="label-cell">Color</td>
-            <td>${escHtml(color)}</td>
-            <td class="label-cell">Shoe Side</td>
-            <td><b>${escHtml(side)}</b></td>
+            <td class="vf-lbl">Factory (工厂):</td>
+            <td class="vf-val" colspan="3">${escHtml(factory)}</td>
           </tr>
           <tr>
-            <td class="label-cell">Age Category</td>
-            <td><b>${escHtml(age)} (${maxSpots} Spots)</b></td>
-            <td class="label-cell">Standard (STD)</td>
-            <td><b>${escHtml(std)} kg/cm</b></td>
-            <td class="label-cell">PO / Lot No.</td>
-            <td>${escHtml(poLot)}</td>
+            <td class="vf-lbl">Adhesive supplier 胶水供应商:</td>
+            <td class="vf-val">${escHtml(adhesive)}</td>
+            <td class="vf-lbl">Shipped Date (出货日期):</td>
+            <td class="vf-val">${escHtml(shippedDate)}</td>
           </tr>
           <tr>
-            <td class="label-cell">Factory</td>
-            <td>${escHtml(factory)}</td>
-            <td class="label-cell">Adhesive Supplier</td>
-            <td>${escHtml(adhesive)}</td>
-            <td class="label-cell">PO Quantity</td>
-            <td>${escHtml(poQty)}</td>
+            <td class="vf-lbl">Model/Style/PGSC (英文鞋型):</td>
+            <td class="vf-val">${escHtml(shoeName)}</td>
+            <td class="vf-lbl">Color (颜色):</td>
+            <td class="vf-val">${escHtml(color)}</td>
           </tr>
           <tr>
-            <td class="label-cell">Mode of Failure</td>
-            <td>${escHtml(modeOfFailure)}</td>
-            <td class="label-cell">Technician</td>
-            <td>${escHtml(tech)}</td>
-            <td class="label-cell">Test Date</td>
-            <td>${escHtml(testedDate)}</td>
+            <td class="vf-lbl">Production Date (生产日期):</td>
+            <td class="vf-val">${escHtml(productionDate !== '-' ? productionDate : testedDate)}</td>
+            <td class="vf-lbl">PO/Lot No (订单号码):</td>
+            <td class="vf-val">${escHtml(poLot)}</td>
+          </tr>
+          <tr>
+            <td class="vf-lbl">PO Quantity (订单数量):</td>
+            <td class="vf-val">${escHtml(poQty)}</td>
+            <td class="vf-lbl">Send by (送达):</td>
+            <td class="vf-val">${escHtml(sendBy)}</td>
           </tr>
         </table>
 
-        <!-- Statistics Summary Banner -->
-        <table class="dtr-sheet-results-table" style="margin-bottom:14px">
+        <!-- 3-Part Evaluation Table with Mode of Failure & Possible Causes -->
+        <table class="vf-eval-table">
           <thead>
             <tr>
-              <th class="text-left" style="width:26%">Test Location</th>
-              <th style="width:12%">Min (kg/cm)</th>
-              <th style="width:12%">Max (kg/cm)</th>
-              <th style="width:14%">Average (kg/cm)</th>
-              <th style="width:12%">Valid Points</th>
-              <th style="width:12%">Threshold</th>
-              <th style="width:12%">Section Result</th>
+              <th rowspan="2" style="width:20%">Shoe Part</th>
+              <th rowspan="2" style="width:11%">VF Test<br>Method</th>
+              <th rowspan="2" style="width:8%">STD<br>kgf/cm</th>
+              <th colspan="2" style="width:16%">Test Result<br>kgf/cm</th>
+              <th colspan="2" style="width:12%">Status</th>
+              <th rowspan="2" style="width:17%">Mode of Failure(s)<br>失败的方式</th>
+              <th rowspan="2" style="width:16%">Possible Cause(s)<br>可能的原因</th>
+            </tr>
+            <tr>
+              <th style="width:8%">Min</th>
+              <th style="width:8%">Max</th>
+              <th style="width:6%">Pass</th>
+              <th style="width:6%">Fail</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td class="text-left"><b>Upper To Foxing (UTF)</b></td>
-              <td>${utfMin !== '-' ? Number(utfMin).toFixed(2) : '-'}</td>
-              <td>${utfMax !== '-' ? Number(utfMax).toFixed(2) : '-'}</td>
-              <td><b>${utfAve !== '-' ? Number(utfAve).toFixed(2) : '-'}</b></td>
-              <td><b>${utfCount}</b> / ${maxSpots}</td>
-              <td>&ge; ${std} kg/cm</td>
-              <td><b class="${utfRes === 'PASS' ? 'dtr-rate-pass' : (utfRes === 'TOLERABLE' ? 'dtr-rate-warn' : 'dtr-rate-fail')}" style="padding:2px 8px;border-radius:4px">${utfRes}</b></td>
+              <td class="text-left font-bold">Upper/Foxing Tape<br>(鞋面/围条)</td>
+              <td>VF-F01<br><span style="font-size:9.5px">(2019/05)</span></td>
+              <td class="font-bold text-blue">${std}</td>
+              <td class="font-bold text-blue">${utfMin !== '-' ? Number(utfMin).toFixed(2) : '-'}</td>
+              <td class="font-bold text-blue">${utfMax !== '-' ? Number(utfMax).toFixed(2) : '-'}</td>
+              <td><span class="${utfStat.passCls}">${utfStat.pass}</span></td>
+              <td><span class="${utfStat.failCls}">${utfStat.fail}</span></td>
+              <td rowspan="3" class="text-left vf-mode-cell">
+                <b>AF</b>= Failure at the adhesive/substrate interface or the adhesive/primer interface<br>
+                <b>CF</b>= Cohesive Failure of the adhesive (failure within the adhesive or between the two layers of adhesive)<br>
+                <b>PF</b>= Failure at the primer/substrate interface<br>
+                <b>SF</b>= Failure of the substrate, including the location of the failure within the substrate
+              </td>
+              <td rowspan="3" class="text-left vf-cause-cell">
+                (a) Poor Priming 药水不良<br>
+                (b) Poor cementing 胶水不良<br>
+                (c) Over-dried cement<br>
+                (d) Wet primer 湿的药水<br>
+                (e) Wet cement 湿的胶水<br>
+                (f) Poor pressing 压机不良<br>
+                (g) Poor Roughing 打粗不良<br>
+                (h) Upper material - weak 鞋面材料不良<br>
+                (i) EVA-Weak EVA不良<br>
+                (j) Dusty component 粉沫<br>
+                (k) Splitting of foxing tape 围条分层
+              </td>
             </tr>
             <tr>
-              <td class="text-left"><b>Foxing To Outsole (FTO)</b></td>
-              <td>${ftoMin !== '-' ? Number(ftoMin).toFixed(2) : '-'}</td>
-              <td>${ftoMax !== '-' ? Number(ftoMax).toFixed(2) : '-'}</td>
-              <td><b>${ftoAve !== '-' ? Number(ftoAve).toFixed(2) : '-'}</b></td>
-              <td><b>${ftoCount}</b> / ${maxSpots}</td>
-              <td>&ge; ${std} kg/cm</td>
-              <td><b class="${ftoRes === 'PASS' ? 'dtr-rate-pass' : (ftoRes === 'TOLERABLE' ? 'dtr-rate-warn' : 'dtr-rate-fail')}" style="padding:2px 8px;border-radius:4px">${ftoRes}</b></td>
+              <td class="text-left font-bold">Foxing Tape / OS<br>(围条/橡胶大底)</td>
+              <td>VF-F01<br><span style="font-size:9.5px">(2019/05)</span></td>
+              <td class="font-bold text-blue">${std}</td>
+              <td class="font-bold text-blue">${ftoMin !== '-' ? Number(ftoMin).toFixed(2) : '-'}</td>
+              <td class="font-bold text-blue">${ftoMax !== '-' ? Number(ftoMax).toFixed(2) : '-'}</td>
+              <td><span class="${ftoStat.passCls}">${ftoStat.pass}</span></td>
+              <td><span class="${ftoStat.failCls}">${ftoStat.fail}</span></td>
             </tr>
             <tr>
-              <td class="text-left"><b>Filler / Insole to Outsole (FiTO)</b></td>
-              <td>${fitoMin !== '-' ? Number(fitoMin).toFixed(2) : '-'}</td>
-              <td>${fitoMax !== '-' ? Number(fitoMax).toFixed(2) : '-'}</td>
-              <td><b>${fitoAve !== '-' ? Number(fitoAve).toFixed(2) : '-'}</b></td>
-              <td><b>${fitoCount}</b> / 13</td>
-              <td>&ge; 1.0 kg/cm</td>
-              <td><b class="${fitoRes === 'PASS' ? 'dtr-rate-pass' : (fitoRes === 'TOLERABLE' ? 'dtr-rate-warn' : 'dtr-rate-fail')}" style="padding:2px 8px;border-radius:4px">${fitoRes}</b></td>
+              <td class="text-left font-bold">Center : IS/OS<br>(中插 / 大底)</td>
+              <td>VF-F01<br><span style="font-size:9.5px">(2019/05)</span></td>
+              <td class="font-bold text-blue">1</td>
+              <td class="font-bold text-blue">${fitoMin !== '-' ? Number(fitoMin).toFixed(2) : '-'}</td>
+              <td class="font-bold text-blue">${fitoMax !== '-' ? Number(fitoMax).toFixed(2) : '-'}</td>
+              <td><span class="${fitoStat.passCls}">${fitoStat.pass}</span></td>
+              <td><span class="${fitoStat.failCls}">${fitoStat.fail}</span></td>
             </tr>
           </tbody>
         </table>
 
-        <!-- 35 Spots Table -->
-        <table class="dtr-sheet-results-table">
-          <thead>
-            <tr>
-              <th style="width:20%">Bonding Spot</th>
-              <th style="width:28%">Upper To Foxing (UTF)</th>
-              <th style="width:28%">Foxing To Outsole (FTO)</th>
-              <th style="width:24%">Filler to Outsole (FiTO)</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${spotRows}
-          </tbody>
-        </table>
-
-        <div class="dtr-sheet-sign-row">
-          <div class="dtr-sheet-sign-box">
-            <div>Prepared by (Testing Technician):</div>
-            <div class="dtr-sheet-sign-line">
-              <span>${escHtml(tech)}</span>
-              <span class="muted">${escHtml(testedDate)}</span>
+        <!-- Shoe Sketch Section -->
+        <div class="vf-sketch-header-row">
+          <div class="vf-sketch-header-col">
+            <div>1. Outside Value: Fabric / PU / EVA kgf/cm</div>
+            <div>2. Inside Value:</div>
+          </div>
+          <div class="vf-sketch-header-center">
+            <div>Center: Fabric / PU / EVA kgf/cm</div>
+            <div class="vf-sketch-sublabel-row">
+              <span style="${isLeft ? 'color:#1d4ed8;font-weight:800' : ''}">Left</span>
+              <span style="${!isLeft ? 'color:#1d4ed8;font-weight:800' : ''}">Right</span>
             </div>
           </div>
-          <div class="dtr-sheet-sign-box">
-            <div>Reviewed &amp; Approved by (QA Lab Head):</div>
-            <div class="dtr-sheet-sign-line">
+          <div class="vf-sketch-header-col" style="text-align:right">
+            <div>1. Outside Value: Fabric / PU / EVA kgf/cm</div>
+            <div>2. Inside Value:</div>
+          </div>
+        </div>
+
+        <div class="vf-sketch-body-row">
+          <!-- Left Shoe Card -->
+          <div class="vf-shoe-card">
+            ${leftShoeCardHtml}
+          </div>
+
+          <!-- Center Boxes -->
+          <div class="vf-center-card">
+            <div class="vf-center-cols">
+              <div class="vf-center-box" style="${isLeft ? 'border-color:#1d4ed8;background:#f8fafc' : 'border-color:#cbd5e1'}">
+                ${leftCenterHtml}
+              </div>
+              <div class="vf-center-box" style="${!isLeft ? 'border-color:#1d4ed8;background:#f8fafc' : 'border-color:#cbd5e1'}">
+                ${rightCenterHtml}
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Shoe Card -->
+          <div class="vf-shoe-card">
+            ${rightShoeCardHtml}
+          </div>
+        </div>
+
+        <!-- Optional Collapsible Data Table -->
+        <details class="no-print" style="margin-top:8px;font-size:11px;border:1px solid #cbd5e1;border-radius:4px;padding:6px 10px;background:#f8fafc">
+          <summary style="cursor:pointer;font-weight:700;color:#334155">
+            📊 View Tabular Spot Values (${cfg ? cfg.pointsCount : 27} Points)
+          </summary>
+          <table class="dtr-sheet-results-table" style="margin-top:8px;margin-bottom:0">
+            <thead>
+              <tr>
+                <th style="width:20%">Bonding Spot</th>
+                <th style="width:28%">Upper To Foxing (UTF)</th>
+                <th style="width:28%">Foxing To Outsole (FTO)</th>
+                <th style="width:24%">Filler to Outsole (FiTO)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rawSpotRows}
+            </tbody>
+          </table>
+        </details>
+
+        <!-- Signatures & Notes Footer -->
+        <div class="vf-footer-grid">
+          <div>
+            Comments 备注:
+            <div style="font-weight:normal;color:#334155;margin-top:4px;font-size:10.5px">
+              ${escHtml(remarks || 'Tested in accordance with VF Laboratory Standards.')}
+            </div>
+          </div>
+          <div>
+            Reviewed by 审查:
+            <div class="vf-sign-line">
               <span>${escHtml(reviewer)}</span>
-              <span class="muted">${escHtml(testedDate)}</span>
+            </div>
+          </div>
+          <div>
+            Approved by 核准:
+            <div class="vf-sign-line">
+              <span>QA Laboratory Head</span>
             </div>
           </div>
         </div>
       </div>
     `;
 
-    $('#dtr-print-modal-title').textContent = `Whole Shoe Bonding Report Sheet — ${labRef} (${side})`;
+    $('#dtr-print-modal-title').textContent = `Whole Shoe Bonding Test Report — ${labRef} (${side})`;
     $('#dtr-print-sheet-container').innerHTML = html;
+
+    // Show/Update Access PDF download button
+    const pdfBtn = $('#btn-dtr-download-access-pdf');
+    if (pdfBtn) {
+      if (bondingTestId > 0) {
+        pdfBtn.href = `/dtr/bonding-access-pdf?id=${bondingTestId}&side=${encodeURIComponent(side)}`;
+        pdfBtn.classList.remove('hidden');
+      } else {
+        pdfBtn.classList.add('hidden');
+      }
+    }
+
     $('#dtr-print-modal-backdrop')?.classList.remove('hidden');
   };
+
+
 
   $('#btn-dtr-print-preview')?.addEventListener('click', openMaterialPrintPreview);
   $('#btn-bond-print-preview')?.addEventListener('click', openBondingPrintPreview);

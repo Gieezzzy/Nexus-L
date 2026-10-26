@@ -4,6 +4,42 @@
 
 ---
 
+## Phase 191 - Whole Shoe Bonding Test Report Shoe Sketch Diagram & Vector Parity (2026-10-27)
+
+### 1. Vector/Raster Shoe Contour Sketch Diagram with Spot Readings & Leader Lines
+- **Extracted High-Resolution Sketch Assets from MS Access (`MSysResources`):**
+  - Extracted all official shoe sole contours directly from `BondingReportV2.accdb` shared image resources: `26_points.png`, `27_points.png`, `28_points.png`, `29_points.png`, `30_point.png`, `31_point.png`, `32_point.png`, `33_points.png`, `34_points.png`, `L_shoe.png`, `R_shoe.png`, and `blank.png`.
+  - Parsed exact twip coordinates $(x, y, w, h)$ from MS Access subreports (`SaveAsText`) across 26 to 34 points into normalized percentage offsets in `public/assets/images/bonding_sketches/sketch_configs.json`.
+- **Dynamic Active Shoe & Leader Lines Overlay:**
+  - In `public/assets/js/dtr.js` (`openBondingPrintPreview`), dynamically identifies shoe side (`Left` vs `Right`) and spot capacity (14, 16, 24, 27, 34 spots).
+  - Positions outside values (`UTFpoint1..N`) exactly at the outer ends of the blue leader lines radiating from the shoe perimeter.
+  - Positions inside values (`FTOpoint1..N`) adjacent to the inner ticks along the interior sole contour.
+  - Applies official VF laboratory rating color codes:
+    - **Blue (`#1d4ed8`):** Values meeting standard threshold ($\ge \text{STD}$)
+    - **Amber / Orange (`#d97706`):** Values in tolerable range ($2.0 \dots 2.99$ kgf/cm)
+    - **Red (`#dc2626`):** Values below tolerance ($< 2.0$ kgf/cm)
+  - Displays the unmeasured opposite shoe using `blank.png` for 100% parity with Access `Report - LEFT` / `Report - RIGHT`.
+- **Center IS/OS FiTO Box:**
+  - Displays two vertical column boxes labeled `Left` and `Right`.
+  - Inside the active column, renders FiTO 1..13 values centered vertically with $\ge 1.0$ kgf/cm standard coloring.
+
+### 2. Official VF Laboratory Report Header & 3-Part Evaluation Table
+- **Header Architecture:**
+  - Stylized inline vector VF emblem with circular blue container and white italicized "VF" logo.
+  - `Form # : Lab VF 001`, `Bonding Test Results / 胶着力测试`, underlined `ETRF No:`.
+  - Large status stamp box (`PASS`, `TOLERABLE`, `FAILED`), `Lab Ref.No:`, test category indicator dots, and dates table.
+- **Evaluation Table:**
+  - 3-part breakdown: `Upper/Foxing Tape (鞋面/围条)`, `Foxing Tape / OS (围条/橡胶大底)`, and `Center : IS/OS (中插 / 大底)`.
+  - Official failure codes `AF, CF, PF, SF` and root causes `(a)` through `(k)` formatted into the report grid.
+
+### 3. Server-Side Access COM PDF Direct Export Endpoint
+- **Library & Endpoint:**
+  - Created `app/Libraries/export_bonding_pdf.ps1`: Invokes `Access.Application` COM object in background mode, applies SQL filter `BondingTestID = <ID>`, and outputs native pixel-perfect PDF via `DoCmd.OutputTo`.
+  - Registered route `GET /dtr/bonding-access-pdf` in `app/Config/Routes.php` mapped to `DtrController::bondingAccessPdf`.
+  - Added **"📥 Download Official Access PDF"** button inside the print preview modal for 1-click downloads.
+
+---
+
 ## Phase 190 - InterLink 2.0 Integration & Digital Test Report (QC Lab) Suite Migration (2026-10-27)
 
 ### 1. Intertek InterLink 2.0 Full Integration & Live Parity

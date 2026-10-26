@@ -1079,6 +1079,9 @@
         </div>
         <div class="dtr-modal-footer">
             <button type="button" id="btn-dtr-cancel-print" class="dtr-btn dtr-btn-outline">Close</button>
+            <a id="btn-dtr-download-access-pdf" href="#" target="_blank" class="dtr-btn dtr-btn-outline hidden" style="border-color:#16a34a;color:#16a34a;text-decoration:none">
+                📥 Download Official Access PDF
+            </a>
             <button type="button" id="btn-dtr-do-print" class="dtr-btn dtr-btn-primary">
                 🖨️ Print Report / Save as PDF
             </button>

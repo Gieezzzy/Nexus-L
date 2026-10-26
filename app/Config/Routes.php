@@ -78,4 +78,5 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->get('dtr/lookup', 'DtrController::lookup');
     $routes->post('dtr/load-machine', 'DtrController::loadMachine');
     $routes->post('dtr/save', 'DtrController::save');
+    $routes->get('dtr/bonding-access-pdf', 'DtrController::bondingAccessPdf');
 });

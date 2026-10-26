@@ -805,4 +805,48 @@ class DtrController extends BaseController
         }
         return $out;
     }
+
+    /**
+     * GET /dtr/bonding-access-pdf?id=1099&side=Left
+     * Invokes Microsoft Access COM to generate the official Report - LEFT / Report - RIGHT PDF directly
+     * and streams it to the user.
+     */
+    public function bondingAccessPdf()
+    {
+        $id = (int) ($this->request->getGet('id') ?? 0);
+        $side = ucfirst(strtolower(trim((string) ($this->request->getGet('side') ?? 'Left'))));
+        if (! in_array($side, ['Left', 'Right'], true)) {
+            $side = 'Left';
+        }
+
+        if ($id <= 0) {
+            return $this->response->setStatusCode(400)->setBody('Invalid or missing BondingTestID');
+        }
+
+        $cacheDir = WRITEPATH . 'cache/bonding_pdfs/';
+        if (! is_dir($cacheDir)) {
+            @mkdir($cacheDir, 0777, true);
+        }
+        $pdfPath = $cacheDir . "bonding_report_{$id}_{$side}.pdf";
+
+        // Generate PDF using Access COM script if not cached or empty
+        if (! file_exists($pdfPath) || filesize($pdfPath) === 0) {
+            $psScript    = APPPATH . 'Libraries/export_bonding_pdf.ps1';
+            $psScriptEsc = escapeshellarg($psScript);
+            $sideEsc     = escapeshellarg($side);
+            $pdfPathEsc  = escapeshellarg($pdfPath);
+
+            $cmd = "powershell -ExecutionPolicy Bypass -File {$psScriptEsc} -BondingTestID {$id} -Side {$sideEsc} -OutPdf {$pdfPathEsc}";
+            @shell_exec($cmd);
+        }
+
+        if (file_exists($pdfPath) && filesize($pdfPath) > 0) {
+            return $this->response
+                ->setHeader('Content-Type', 'application/pdf')
+                ->setHeader('Content-Disposition', 'inline; filename="Bonding_Report_' . $id . '_' . $side . '.pdf"')
+                ->setBody(file_get_contents($pdfPath));
+        }
+
+        return $this->response->setStatusCode(500)->setBody('Failed to export Access PDF for BondingTestID: ' . $id);
+    }
 }
