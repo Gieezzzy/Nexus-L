@@ -24,7 +24,15 @@ try {
   const messaging = firebase.messaging();
 
   messaging.onBackgroundMessage((payload) => {
-    const title = payload.notification?.title || payload.data?.sender || 'RMS / NEXUS-L Alert';
+    // Defense-in-depth: Nexus web portal strictly ignores RMS manufacturing alerts
+    const sys = String(payload.data?.system || '').toUpperCase();
+    const cat = String(payload.data?.category || '').toLowerCase();
+    if (sys === 'RMS' || cat.includes('stock') || cat.includes('color') || cat.includes('inbound') || cat.includes('crossmix') || cat.includes('pallet')) {
+      console.log('[FCM-SW] Filtered out RMS manufacturing notification on NEXUS:', cat);
+      return;
+    }
+
+    const title = payload.notification?.title || payload.data?.sender || 'NEXUS Alert';
     const body  = payload.notification?.body  || payload.data?.message || 'You received a new message';
     const icon  = '/NEXUS-L/public/assets/favicon.ico';
     const tag   = payload.data?.conversation_id || 'nexus-inbox-msg';
@@ -45,7 +53,13 @@ self.addEventListener('push', (event) => {
   if (!event.data) return;
   try {
     const data = event.data.json();
-    const title = data.title || data.notification?.title || 'RMS / NEXUS-L';
+    const sys = String(data.system || data.data?.system || '').toUpperCase();
+    const cat = String(data.category || data.data?.category || '').toLowerCase();
+    if (sys === 'RMS' || cat.includes('stock') || cat.includes('color') || cat.includes('inbound') || cat.includes('crossmix') || cat.includes('pallet')) {
+      console.log('[FCM-SW] Filtered out RMS manufacturing push on NEXUS:', cat);
+      return;
+    }
+    const title = data.title || data.notification?.title || 'NEXUS';
     const body  = data.body  || data.notification?.body  || 'New message received';
     event.waitUntil(
       self.registration.showNotification(title, {
@@ -57,7 +71,7 @@ self.addEventListener('push', (event) => {
     );
   } catch (_) {
     event.waitUntil(
-      self.registration.showNotification('RMS / NEXUS-L', {
+      self.registration.showNotification('NEXUS', {
         body: event.data.text(),
         icon: '/NEXUS-L/public/assets/favicon.ico'
       })

@@ -104,8 +104,9 @@ class FcmService
         $out = [];
         foreach (explode(';', (string) ($rows[0]['fcm_token'] ?? '')) as $t) {
             $t = trim($t);
-            if ($t !== '' && ! str_starts_with($t, 'DEVICE_') && ! in_array($t, $out, true)) {
-                $out[] = $t;
+            $actual = str_starts_with($t, 'NEXUS_WEB:') ? substr($t, 10) : $t;
+            if ($actual !== '' && ! str_starts_with($actual, 'DEVICE_') && ! in_array($actual, $out, true)) {
+                $out[] = $actual;
             }
         }
 

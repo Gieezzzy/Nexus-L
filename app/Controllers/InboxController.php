@@ -553,16 +553,20 @@ class InboxController extends BaseController
                 );
             }
 
-            // Mirror to dbo.users in RMS if admin has a linked SynologyID
+            // Mirror to dbo.users in RMS as NEXUS_WEB:<token> if admin has a linked SynologyID
             if ($this->admin && $this->synologyId() !== '') {
                 try {
                     $rows = \App\Libraries\RmsDb::rows("SELECT fcm_token FROM dbo.users WHERE synologyID = ?", [$this->synologyId()]);
                     if ($rows) {
                         $existing = array_filter(array_map('trim', explode(';', (string) ($rows[0]['fcm_token'] ?? ''))));
-                        if (! in_array($token, $existing, true)) {
-                            $existing[] = $token;
-                            \App\Libraries\RmsDb::exec("UPDATE dbo.users SET fcm_token = ? WHERE synologyID = ?", [implode(';', $existing), $this->synologyId()]);
+                        $nexusToken = 'NEXUS_WEB:' . $token;
+                        $cleaned = [];
+                        foreach ($existing as $ex) {
+                            if ($ex === $token || $ex === $nexusToken) continue;
+                            $cleaned[] = $ex;
                         }
+                        $cleaned[] = $nexusToken;
+                        \App\Libraries\RmsDb::exec("UPDATE dbo.users SET fcm_token = ? WHERE synologyID = ?", [implode(';', $cleaned), $this->synologyId()]);
                     }
                 } catch (\Throwable $e) {
                     log_message('error', '[Inbox] Token RMS sync failed: ' . $e->getMessage());
