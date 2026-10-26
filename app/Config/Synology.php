@@ -14,5 +14,5 @@ class Synology extends BaseConfig
     public string $botToken  = '';
     public bool $verifySSL   = false;
     public int $timeout      = 10;
-    public string $botPrefix = '[NEXUS-L]';
+    public string $botPrefix = '';
 }

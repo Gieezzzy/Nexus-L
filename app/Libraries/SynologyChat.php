@@ -36,7 +36,7 @@ class SynologyChat
      *
      * @param int|list<int> $userIds
      */
-    public function send(int|array $userIds, string $text): bool
+    public function send(int|array $userIds, string $text, bool $withPrefix = false): bool
     {
         $this->lastError = null;
         $userIds         = array_values(array_filter(array_map('intval', (array) $userIds)));
@@ -54,8 +54,12 @@ class SynologyChat
             return false;
         }
 
+        $formattedText = ($withPrefix && !empty($this->config->botPrefix))
+            ? trim($this->config->botPrefix) . ' ' . $text
+            : $text;
+
         $payload = json_encode([
-            'text'     => $this->config->botPrefix . ' ' . $text,
+            'text'     => $formattedText,
             'user_ids' => $userIds,
         ], JSON_UNESCAPED_UNICODE);
 

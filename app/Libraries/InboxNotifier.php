@@ -69,7 +69,8 @@ class InboxNotifier
         // 2) Synology Chat DM when the recipient has a numeric Synology id
         $syn = $store->source() === 'r' ? $toId : (string) $toSynologyId;
         if (ctype_digit($syn) && $syn !== '0') {
-            $res['synology'] = service('synologyChat')->send((int) $syn, "New message from {$fromName}:\n{$preview}");
+            $synologyMsg = "You have Recieved a new Message in Nexus-L login here to access the message 192.168.32.43/Nexus-L";
+            $res['synology'] = service('synologyChat')->send((int) $syn, $synologyMsg, false);
         }
 
         // 3) Audit notification in tbl_notification_logs
