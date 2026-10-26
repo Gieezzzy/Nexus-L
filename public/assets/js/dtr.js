@@ -1375,29 +1375,83 @@
     const shoeName = $('#bf_ModelStyle')?.value || '-';
     const color = $('#bf_Color')?.value || '-';
     const side = $('#bf_Side')?.value || 'Left';
-    const age = $('#bf_AgeCategory')?.value || 'ADULT';
-    const std = $('#bf_STD')?.value || '2.5';
+    const age = ($('#bf_AgeCategory')?.value || 'ADULT').toUpperCase();
+    const std = parseFloat($('#bf_STD')?.value || '2.5') || 2.5;
     const poLot = $('#bf_POLotNO')?.value || '-';
+    const poQty = $('#bf_POQuantity')?.value || '-';
+    const factory = $('#bf_Factory')?.value || 'DATIAN SUBIC SHOES INC. (DTP)';
+    const adhesive = $('#bf_AdhesiveSupplier')?.value || '-';
+    const modeOfFailure = $('#bf_ModeOfFailure')?.value || '-';
     const testedDate = $('#bf_TestedDate')?.value || new Date().toISOString().slice(0, 10);
-    const tech = $('#bf_Technician')?.value || 'Bonding Tech';
+    const tech = $('#bf_Technician')?.value || 'S. Aquino';
     const reviewer = $('#bf_ReviewedBy')?.value || 'QA Lead';
     const overall = ($('#bf_Result')?.value || 'PASS').toUpperCase();
 
     const stampCls = overall === 'PASS' ? '' : (overall === 'TOLERABLE' ? 'stamp-tol' : 'stamp-fail');
 
-    // Build spots table (1 to 35)
-    let spotRows = '';
+    // Section Statistics (UTF, FTO, FiTO)
+    const utfMin = $('#bp_UTFMin')?.value || activeBondingPoints?.UTFMin || '-';
+    const utfMax = $('#bp_UTFMax')?.value || activeBondingPoints?.UTFMax || '-';
+    const utfAve = $('#bp_UTFAverage')?.value || activeBondingPoints?.UTFAverage || '-';
+    const utfRes = ($('#bp_UTF_Result')?.value || activeBondingPoints?.UTF_Result || '-').toUpperCase();
+
+    const ftoMin = $('#bp_FTOMin')?.value || activeBondingPoints?.FTOMin || '-';
+    const ftoMax = $('#bp_FTOMax')?.value || activeBondingPoints?.FTOMax || '-';
+    const ftoAve = $('#bp_FTOAverage')?.value || activeBondingPoints?.FTOAverage || '-';
+    const ftoRes = ($('#bp_FTO_Result')?.value || activeBondingPoints?.FTO_Result || '-').toUpperCase();
+
+    const fitoMin = $('#bp_FiTOMin')?.value || activeBondingPoints?.FiTOMin || '-';
+    const fitoMax = $('#bp_FiTOMax')?.value || activeBondingPoints?.FiTOMax || '-';
+    const fitoAve = $('#bp_FiTOAverage')?.value || activeBondingPoints?.FiTOAverage || '-';
+    const fitoRes = ($('#bp_FiTO_Result')?.value || activeBondingPoints?.FiTO_Result || '-').toUpperCase();
+
+    // Max spots according to AgeCategory
     const maxSpots = age === 'TODDLER' ? 14 : (age === 'KIDS' ? 16 : (age === 'CHILDREN' ? 24 : 35));
+
+    // Cell evaluation formatter
+    const formatReading = (val, threshold, isFiTO = false) => {
+      const num = parseFloat(val);
+      if (!Number.isFinite(num) || num <= 0) return `<span class="muted">—</span>`;
+      let cls = 'dtr-rate-pass';
+      if (isFiTO) {
+        if (num < 1.0) cls = 'dtr-rate-fail';
+        else if (num < 1.2) cls = 'dtr-rate-warn';
+      } else {
+        if (threshold >= 3.0) {
+          if (num < 2.4) cls = 'dtr-rate-fail';
+          else if (num < 3.0) cls = 'dtr-rate-warn';
+        } else if (threshold >= 2.5) {
+          if (num < 2.0) cls = 'dtr-rate-fail';
+          else if (num < 2.5) cls = 'dtr-rate-warn';
+        } else {
+          if (num < 1.8) cls = 'dtr-rate-fail';
+          else if (num < 2.0) cls = 'dtr-rate-warn';
+        }
+      }
+      return `<b class="${cls}" style="padding:2px 6px;border-radius:4px;display:inline-block">${num.toFixed(2)}</b>`;
+    };
+
+    let utfCount = 0;
+    let ftoCount = 0;
+    let fitoCount = 0;
+
+    // Build 35 spots rows
+    let spotRows = '';
     for (let i = 1; i <= maxSpots; i++) {
-      const utf = $('#bpt_utf_' + i)?.value || '-';
-      const fto = $('#bpt_fto_' + i)?.value || '-';
-      const fito = i <= 13 ? ($('#bpt_fito_' + i)?.value || '-') : '—';
+      const utfVal = $('#bp_UTFpoint' + i)?.value || activeBondingPoints?.['UTFpoint' + i] || '';
+      const ftoVal = $('#bp_FTOpoint' + i)?.value || activeBondingPoints?.['FTOpoint' + i] || '';
+      const fitoVal = i <= 13 ? ($('#bp_FiTO' + i)?.value || activeBondingPoints?.['FiTO' + i] || '') : '';
+
+      if (parseFloat(utfVal) > 0) utfCount++;
+      if (parseFloat(ftoVal) > 0) ftoCount++;
+      if (parseFloat(fitoVal) > 0) fitoCount++;
+
       spotRows += `
         <tr>
           <td><b>Point ${i}</b></td>
-          <td><b>${utf}</b></td>
-          <td><b>${fto}</b></td>
-          <td>${fito}</td>
+          <td>${formatReading(utfVal, std, false)}</td>
+          <td>${formatReading(ftoVal, std, false)}</td>
+          <td>${i <= 13 ? formatReading(fitoVal, 1.0, true) : '<span class="muted">—</span>'}</td>
         </tr>
       `;
     }
@@ -1425,7 +1479,7 @@
             <td><b>${escHtml(shoeName)}</b></td>
             <td class="label-cell">Color</td>
             <td>${escHtml(color)}</td>
-            <td class="label-cell">Side</td>
+            <td class="label-cell">Shoe Side</td>
             <td><b>${escHtml(side)}</b></td>
           </tr>
           <tr>
@@ -1438,54 +1492,62 @@
           </tr>
           <tr>
             <td class="label-cell">Factory</td>
-            <td>DATIAN SUBIC SHOES INC.</td>
+            <td>${escHtml(factory)}</td>
             <td class="label-cell">Adhesive Supplier</td>
-            <td>${escHtml($('#bf_AdhesiveSupplier')?.value || 'NANPAO')}</td>
+            <td>${escHtml(adhesive)}</td>
+            <td class="label-cell">PO Quantity</td>
+            <td>${escHtml(poQty)}</td>
+          </tr>
+          <tr>
+            <td class="label-cell">Mode of Failure</td>
+            <td>${escHtml(modeOfFailure)}</td>
+            <td class="label-cell">Technician</td>
+            <td>${escHtml(tech)}</td>
             <td class="label-cell">Test Date</td>
             <td>${escHtml(testedDate)}</td>
           </tr>
         </table>
 
-        <!-- Statistics Banner -->
-        <table class="dtr-sheet-results-table" style="margin-bottom:12px">
+        <!-- Statistics Summary Banner -->
+        <table class="dtr-sheet-results-table" style="margin-bottom:14px">
           <thead>
             <tr>
-              <th class="text-left">Test Location</th>
-              <th>Min (kg/cm)</th>
-              <th>Max (kg/cm)</th>
-              <th>Average (kg/cm)</th>
-              <th>Valid Points</th>
-              <th>Threshold</th>
-              <th>Section Result</th>
+              <th class="text-left" style="width:26%">Test Location</th>
+              <th style="width:12%">Min (kg/cm)</th>
+              <th style="width:12%">Max (kg/cm)</th>
+              <th style="width:14%">Average (kg/cm)</th>
+              <th style="width:12%">Valid Points</th>
+              <th style="width:12%">Threshold</th>
+              <th style="width:12%">Section Result</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td class="text-left"><b>Upper To Foxing (UTF)</b></td>
-              <td>${$('#bpt_utf_min')?.textContent || '-'}</td>
-              <td>${$('#bpt_utf_max')?.textContent || '-'}</td>
-              <td><b>${$('#bpt_utf_ave')?.textContent || '-'}</b></td>
-              <td>${$('#bpt_utf_cnt')?.textContent || '0'}</td>
+              <td>${utfMin !== '-' ? Number(utfMin).toFixed(2) : '-'}</td>
+              <td>${utfMax !== '-' ? Number(utfMax).toFixed(2) : '-'}</td>
+              <td><b>${utfAve !== '-' ? Number(utfAve).toFixed(2) : '-'}</b></td>
+              <td><b>${utfCount}</b> / ${maxSpots}</td>
               <td>&ge; ${std} kg/cm</td>
-              <td><b>${$('#bf_utf_res')?.value || '-'}</b></td>
+              <td><b class="${utfRes === 'PASS' ? 'dtr-rate-pass' : (utfRes === 'TOLERABLE' ? 'dtr-rate-warn' : 'dtr-rate-fail')}" style="padding:2px 8px;border-radius:4px">${utfRes}</b></td>
             </tr>
             <tr>
               <td class="text-left"><b>Foxing To Outsole (FTO)</b></td>
-              <td>${$('#bpt_fto_min')?.textContent || '-'}</td>
-              <td>${$('#bpt_fto_max')?.textContent || '-'}</td>
-              <td><b>${$('#bpt_fto_ave')?.textContent || '-'}</b></td>
-              <td>${$('#bpt_fto_cnt')?.textContent || '0'}</td>
+              <td>${ftoMin !== '-' ? Number(ftoMin).toFixed(2) : '-'}</td>
+              <td>${ftoMax !== '-' ? Number(ftoMax).toFixed(2) : '-'}</td>
+              <td><b>${ftoAve !== '-' ? Number(ftoAve).toFixed(2) : '-'}</b></td>
+              <td><b>${ftoCount}</b> / ${maxSpots}</td>
               <td>&ge; ${std} kg/cm</td>
-              <td><b>${$('#bf_fto_res')?.value || '-'}</b></td>
+              <td><b class="${ftoRes === 'PASS' ? 'dtr-rate-pass' : (ftoRes === 'TOLERABLE' ? 'dtr-rate-warn' : 'dtr-rate-fail')}" style="padding:2px 8px;border-radius:4px">${ftoRes}</b></td>
             </tr>
             <tr>
-              <td class="text-left"><b>Foxing Insole To Outsole (FiTO)</b></td>
-              <td>${$('#bpt_fito_min')?.textContent || '-'}</td>
-              <td>${$('#bpt_fito_max')?.textContent || '-'}</td>
-              <td><b>${$('#bpt_fito_ave')?.textContent || '-'}</b></td>
-              <td>${$('#bpt_fito_cnt')?.textContent || '0'}</td>
+              <td class="text-left"><b>Filler / Insole to Outsole (FiTO)</b></td>
+              <td>${fitoMin !== '-' ? Number(fitoMin).toFixed(2) : '-'}</td>
+              <td>${fitoMax !== '-' ? Number(fitoMax).toFixed(2) : '-'}</td>
+              <td><b>${fitoAve !== '-' ? Number(fitoAve).toFixed(2) : '-'}</b></td>
+              <td><b>${fitoCount}</b> / 13</td>
               <td>&ge; 1.0 kg/cm</td>
-              <td><b>${$('#bf_fito_res')?.value || '-'}</b></td>
+              <td><b class="${fitoRes === 'PASS' ? 'dtr-rate-pass' : (fitoRes === 'TOLERABLE' ? 'dtr-rate-warn' : 'dtr-rate-fail')}" style="padding:2px 8px;border-radius:4px">${fitoRes}</b></td>
             </tr>
           </tbody>
         </table>
@@ -1494,10 +1556,10 @@
         <table class="dtr-sheet-results-table">
           <thead>
             <tr>
-              <th style="width:25%">Bonding Position</th>
-              <th style="width:25%">Upper To Foxing (UTF)</th>
-              <th style="width:25%">Foxing To Outsole (FTO)</th>
-              <th style="width:25%">Filler (FiTO)</th>
+              <th style="width:20%">Bonding Spot</th>
+              <th style="width:28%">Upper To Foxing (UTF)</th>
+              <th style="width:28%">Foxing To Outsole (FTO)</th>
+              <th style="width:24%">Filler to Outsole (FiTO)</th>
             </tr>
           </thead>
           <tbody>
