@@ -186,7 +186,7 @@
     return c.getContext('2d');
   };
 
-  const applyTheme = (themeKey, animate = true) => {
+  const applyTheme = (themeKey, animate = false) => {
     if (!themeKey) themeKey = 'default';
     currentThemeKey = themeKey;
     root.dataset.theme = themeKey;
@@ -735,7 +735,7 @@
       if (d.group) {
         peer = Object.assign(peer, d.group);
         if (d.group.theme && d.group.theme !== currentThemeKey) {
-          applyTheme(d.group.theme, true);
+          applyTheme(d.group.theme, false);
         }
         updateDisappearingUI(d.group.disappearing ? 'on' : 'off');
         updateApprovalBanner(d.group);
@@ -1020,8 +1020,8 @@
       card.append(top, mk('span', 'tc-name', t.name), mk('span', 'tc-desc', t.desc));
       card.addEventListener('click', () => {
         const selectedKey = t.key;
-        // 1. Instantly apply theme styling, wallpaper & audio (0ms delay)
-        applyTheme(selectedKey, true);
+        // 1. Instantly apply theme styling & wallpaper silently (0ms delay)
+        applyTheme(selectedKey, false);
         // 2. Instantly close modal so chat wallpaper is visible immediately
         closeDlg();
         // 3. Instant toast confirmation
