@@ -1,4 +1,12 @@
 #-------------------------
+# Build / Generated Artifacts
+#-------------------------
+graphify-out/cache/
+_docs/obsidian/*.md
+_docs/obsidian/.obsidian/
+_docs/obsidian/.graphify_obsidian_manifest.json
+
+#-------------------------
 # Operating Specific Junk Files
 #-------------------------
 

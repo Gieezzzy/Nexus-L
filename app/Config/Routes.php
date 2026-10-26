@@ -55,4 +55,27 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->post('inbox/group/approve/(:segment)', 'InboxController::approveGroup/$1');
     $routes->post('inbox/disappearing/(:segment)', 'InboxController::setDisappearing/$1');
     $routes->post('inbox/triggered/(:segment)/(:num)', 'InboxController::markTriggered/$1/$2');
+
+    // Intertek InterLink 2.0 Report Automation & Sync
+    $routes->get('interlink', 'InterlinkController::index', ['as' => 'interlink']);
+    $routes->get('interlink/reports', 'InterlinkController::reports');
+    $routes->get('interlink/report/(:segment)', 'InterlinkController::report/$1');
+    $routes->post('interlink/report/save', 'InterlinkController::saveReport');
+    $routes->post('interlink/sync', 'InterlinkController::sync');
+    $routes->post('interlink/submit', 'InterlinkController::submitToInterlink');
+    $routes->post('interlink/fetch-live-page', 'InterlinkController::fetchLivePage');
+    $routes->post('interlink/fetch-live-form', 'InterlinkController::fetchLiveForm');
+    $routes->get('interlink/labrefs', 'InterlinkController::labrefs');
+    $routes->get('interlink/labref-detail', 'InterlinkController::labrefDetail');
+    $routes->get('interlink/proxy', 'InterlinkController::proxy');
+    $routes->post('interlink/proxy', 'InterlinkController::proxy');
+
+    // QC Lab Digital Test Reports (#Digital Test Report & Bonding LIS System)
+    $routes->get('dtr', 'DtrController::index', ['as' => 'dtr']);
+    $routes->get('dtr/records', 'DtrController::records');
+    $routes->get('dtr/record', 'DtrController::record');
+    $routes->get('dtr/standards', 'DtrController::standards');
+    $routes->get('dtr/lookup', 'DtrController::lookup');
+    $routes->post('dtr/load-machine', 'DtrController::loadMachine');
+    $routes->post('dtr/save', 'DtrController::save');
 });

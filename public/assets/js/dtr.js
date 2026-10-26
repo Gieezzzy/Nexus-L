@@ -1,0 +1,1553 @@
+/**
+ * NEXUS-L QC Lab Digital Test Reports (#Digital Test Report & Bonding LIS System)
+ * Preserves 100% of Access VBA & VB.NET computations automatically:
+ * - UpdateMinMax (Thickness 1..6 -> TMin, TMax, TAve = Round(Sum/6, 2))
+ * - ApplyStandardValuesSmart (Queries tbl_dtr_standards by MaterialType & TAve)
+ * - UpdateDirectionalAverage (Tensile, Elongation, TrouserTear, StitchTear, MullenBurst, DieC)
+ * - Evaluate6PointRating (Wool, Acrylic, Polyester, Nylon, Cotton, Acetate vs CTP/CTW)
+ * - EvaluateRatings (Priority: FAIL > TOLERABLE > PASS > UNRATED)
+ * - Bonding Spot & Tolerance Rules (TODDLER 14, KIDS 16, CHILDREN 24, ADULT 35 spots)
+ * - All 6 Calculators (Weight, Specific Gravity, Compression Set, DIN Abrasion, Ross Flex, Shrinkage)
+ * - Auto-Lookups (MaterialCode -> tbl_dtr_material_list, POLotNo -> tbl_dtr_shoe_list, MTL -> tbl_dtr_dsr)
+ * - Machine Output Auto-Loader (\\192.168.32.45\OUTDATA\ read-only copy & parse)
+ */
+(() => {
+  'use strict';
+
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+  const baseMeta = $('meta[name="base-url"]');
+  const BASE_URL = baseMeta ? baseMeta.content.replace(/\/+$/, '') + '/' : location.origin + '/';
+
+  let activeSlug = 'fabric';
+  let activeRecord = {};
+  let activeBondingPoints = {};
+
+  const showToast = (msg, isErr = false) => {
+    const t = $('#dtr-toast');
+    if (!t) return;
+    t.textContent = msg;
+    t.style.background = isErr ? '#dc2626' : '#0f172a';
+    t.classList.remove('hidden');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => t.classList.add('hidden'), 4200);
+  };
+
+  const escHtml = (str) =>
+    String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+  const apiFetch = async (path, opts = {}) => {
+    const res = await fetch(BASE_URL + path.replace(/^\/+/, ''), opts);
+    return res.json();
+  };
+
+  const roundTo = (num, dec = 2) => {
+    const n = Number(num);
+    if (!Number.isFinite(n)) return 0;
+    const f = Math.pow(10, dec);
+    return Math.round((n + Number.EPSILON) * f) / f;
+  };
+
+  const styleRatingInput = (el) => {
+    if (!el) return;
+    const v = String(el.value || '').trim().toUpperCase();
+    el.classList.remove('dtr-rate-pass', 'dtr-rate-warn', 'dtr-rate-fail');
+    if (v === 'PASS') el.classList.add('dtr-rate-pass');
+    else if (v === 'TOLERABLE') el.classList.add('dtr-rate-warn');
+    else if (v === 'FAIL' || v === 'ERROR') el.classList.add('dtr-rate-fail');
+  };
+
+  // =========================================================================
+  // 1. TAB SWITCHING
+  // =========================================================================
+  const switchTab = (tabName) => {
+    $$('[data-dtr-tab]').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.dtrTab === tabName);
+    });
+    ['tracker', 'material', 'bonding', 'calculators'].forEach((t) => {
+      $(`#dtr-panel-${t}`)?.classList.toggle('hidden', t !== tabName);
+    });
+  };
+
+  $$('[data-dtr-tab]').forEach((btn) => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.dtrTab));
+  });
+
+  $$('[data-goto-calc]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      switchTab('calculators');
+      const target = $(`#calc-card-${btn.dataset.gotoCalc}`);
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  });
+
+  // =========================================================================
+  // 2. LAB TRACKER SEARCH & CATEGORY PILLS
+  // =========================================================================
+  const loadTrackerRows = async (slug = 'all', q = '') => {
+    try {
+      const res = await apiFetch(`dtr/records?slug=${encodeURIComponent(slug)}&q=${encodeURIComponent(q)}`);
+      const tbody = $('#dtr-tracker-tbody');
+      if (!tbody || !res.rows) return;
+      if (!res.rows.length) {
+        tbody.innerHTML = `<tr><td colspan="16" class="muted" style="text-align:center;padding:18px">No matching LabRefNo records found.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = res.rows.map((r) => {
+        const resUpper = String(r.overall_result || 'PASS').toUpperCase();
+        const badgeCls = resUpper === 'FAIL' ? 'b-err' : (resUpper === 'TOLERABLE' ? 'b-warn' : 'b-ok');
+        return `
+          <tr>
+            <td style="white-space:nowrap">
+              <button type="button" class="dtr-btn-xs dtr-btn-primary" data-open-record="${escHtml(r.form_slug)}" data-source-id="${escHtml(r.source_id)}" data-labref="${escHtml(r.lab_ref_no)}">
+                Open Form
+              </button>
+            </td>
+            <td class="mono"><b>${escHtml(r.lab_ref_no)}</b></td>
+            <td class="mono">${escHtml(r.tr_no || '-')}</td>
+            <td><span class="dtr-tag">${escHtml(r.form_category)}</span></td>
+            <td>${escHtml(r.material_type || '-')}</td>
+            <td class="mono">${escHtml(r.material_code || '-')}</td>
+            <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.material_description || '')}">${escHtml(r.material_description || '-')}</td>
+            <td>${escHtml(r.supplier || '-')}</td>
+            <td class="mono">${escHtml(r.model_style || '-')}</td>
+            <td>${escHtml(r.color || '-')}</td>
+            <td class="mono">${escHtml(r.po_lot_no || '-')}</td>
+            <td class="mono">${escHtml(r.mtl_no || '-')}</td>
+            <td>${escHtml(r.tested_date || r.received_date || '-')}</td>
+            <td>${escHtml(r.technician || '-')}</td>
+            <td>${escHtml(r.status || 'Complete')}</td>
+            <td><span class="badge ${badgeCls}">${escHtml(resUpper)}</span></td>
+          </tr>
+        `;
+      }).join('');
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  $('#dtr-tracker-pills')?.addEventListener('click', (e) => {
+    const pill = e.target.closest('[data-slug]');
+    if (!pill) return;
+    $$('#dtr-tracker-pills .dtr-pill').forEach((p) => p.classList.remove('active'));
+    pill.classList.add('active');
+    const q = $('#dtr-tracker-search')?.value.trim() || '';
+    loadTrackerRows(pill.dataset.slug, q);
+  });
+
+  $('#dtr-tracker-btn-search')?.addEventListener('click', () => {
+    const activePill = $('#dtr-tracker-pills .dtr-pill.active');
+    const slug = activePill ? activePill.dataset.slug : 'all';
+    const q = $('#dtr-tracker-search')?.value.trim() || '';
+    loadTrackerRows(slug, q);
+  });
+
+  $('#dtr-tracker-search')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      $('#dtr-tracker-btn-search')?.click();
+    }
+  });
+
+  // Open a clicked record in Material Form or Bonding Form
+  $('#dtr-tracker-tbody')?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-open-record]');
+    if (!btn) return;
+    const slug = btn.dataset.openRecord;
+    const sourceId = btn.dataset.sourceId;
+    if (slug === 'bonding') {
+      switchTab('bonding');
+      await loadBondingRecordList(sourceId);
+      await loadSingleBondingRecord(sourceId);
+    } else {
+      switchTab('material');
+      const formSel = $('#dtr-mat-form-slug');
+      if (formSel) formSel.value = slug;
+      activeSlug = slug;
+      await loadMaterialRecordList(slug, sourceId);
+      await loadSingleMaterialRecord(slug, sourceId);
+    }
+  });
+
+  // =========================================================================
+  // 3. EXACT ACCESS VBA COMPUTATIONS FOR MATERIAL FORMS
+  // =========================================================================
+
+  // 3a. UpdateMinMax: Thickness 1..6 -> TMin, TMax, TAve = Round(Sum/6, 2)
+  const computeThicknessMinMax = (triggerSmartStd = true) => {
+    const vals = [];
+    for (let i = 1; i <= 6; i++) {
+      const v = parseFloat($(`#mf_Thickness${i}`)?.value ?? '');
+      if (Number.isFinite(v) && v > 0) vals.push(v);
+    }
+    if (!vals.length) return;
+    const minVal = Math.min(...vals);
+    const maxVal = Math.max(...vals);
+    const aveVal = roundTo(vals.reduce((a, b) => a + b, 0) / vals.length, 2);
+
+    if ($('#mf_TMin')) $('#mf_TMin').value = minVal;
+    if ($('#mf_TMax')) $('#mf_TMax').value = maxVal;
+    if ($('#mf_TAve')) $('#mf_TAve').value = aveVal;
+
+    // Check Thickness Rating if T_S is numeric
+    const tStd = parseFloat($('#mf_T_S')?.value ?? '');
+    if (Number.isFinite(tStd) && tStd > 0 && $('#mf_TRating')) {
+      $('#mf_TRating').value = aveVal >= tStd ? 'PASS' : 'FAIL';
+      styleRatingInput($('#mf_TRating'));
+    }
+
+    if (triggerSmartStd) {
+      applyStandardValuesSmart();
+    }
+  };
+
+  // 3b. Weight Average & Specific Gravity Rating (Tol = 0.02) & DIN & RossFlex & Shrinkage
+  const computeWeightAndPhysicals = () => {
+    const wVals = [1, 2, 3]
+      .map((i) => parseFloat($(`#mf_Weight${i}`)?.value ?? ''))
+      .filter((v) => Number.isFinite(v) && v > 0);
+    if (wVals.length > 0 && $('#mf_WAve')) {
+      const wAve = roundTo(wVals.reduce((a, b) => a + b, 0) / wVals.length, 2);
+      $('#mf_WAve').value = wAve;
+      const wStd = parseFloat($('#mf_Weight_S')?.value ?? '');
+      if (Number.isFinite(wStd) && wStd > 0 && $('#mf_WRating')) {
+        $('#mf_WRating').value = wAve >= wStd ? 'PASS' : 'FAIL';
+        styleRatingInput($('#mf_WRating'));
+      }
+    }
+
+    // Specific Gravity (SG1..SG3 -> SG_Ave = Round(total/3, 2), Abs(ave - std) <= 0.02)
+    const sgVals = [1, 2, 3]
+      .map((i) => parseFloat($(`#mf_SG${i}`)?.value ?? ''))
+      .filter((v) => Number.isFinite(v) && v > 0);
+    if (sgVals.length > 0 && $('#mf_SG_Ave')) {
+      const sgAve = roundTo(sgVals.reduce((a, b) => a + b, 0) / sgVals.length, 2);
+      $('#mf_SG_Ave').value = sgAve;
+      const sgStd = parseFloat($('#mf_SG_Std')?.value ?? '');
+      if (Number.isFinite(sgStd) && sgStd > 0 && $('#mf_SG_Rate')) {
+        $('#mf_SG_Rate').value = Math.abs(sgAve - sgStd) <= 0.02 ? 'PASS' : 'FAIL';
+        styleRatingInput($('#mf_SG_Rate'));
+      }
+    }
+
+    // DIN Abrasion (Rubber: DIN_1..3 > 150 -> FAIL else PASS)
+    const dinVals = [1, 2, 3]
+      .map((i) => parseFloat($(`#mf_DIN_${i}`)?.value ?? ''))
+      .filter((v) => Number.isFinite(v) && v > 0);
+    if (dinVals.length > 0 && $('#mf_DIN_Rate')) {
+      $('#mf_DIN_Rate').value = dinVals.some((v) => v > 150) ? 'FAIL' : 'PASS';
+      styleRatingInput($('#mf_DIN_Rate'));
+    }
+
+    // Ross Flex (Rubber: RossFlex_1..2 > 50 -> FAIL else PASS)
+    const rfVals = [1, 2]
+      .map((i) => parseFloat($(`#mf_RossFlex_${i}`)?.value ?? ''))
+      .filter((v) => Number.isFinite(v) && v > 0);
+    if (rfVals.length > 0 && $('#mf_RossFlex_Rate')) {
+      $('#mf_RossFlex_Rate').value = rfVals.some((v) => v > 50) ? 'FAIL' : 'PASS';
+      styleRatingInput($('#mf_RossFlex_Rate'));
+    }
+
+    // Shrinkage (Abs(ShrinkageL) <= Shrinkage_S)
+    const shL = parseFloat($('#mf_ShrinkageL')?.value ?? '');
+    const shStd = parseFloat($('#mf_Shrinkage_S')?.value ?? '');
+    if (Number.isFinite(shL) && Number.isFinite(shStd) && shStd > 0 && $('#mf_ShrinkageLRating')) {
+      $('#mf_ShrinkageLRating').value = Math.abs(shL) <= Math.abs(shStd) ? 'PASS' : 'FAIL';
+      styleRatingInput($('#mf_ShrinkageLRating'));
+    }
+  };
+
+  // 3c. UpdateDirectionalAverage: Tensile, Elongation, TrouserTear, StitchTear, MullenBurst, DieC
+  const DIR_GROUPS = {
+    TensileL:     { inputs: ['mf_TensileL1', 'mf_TensileL2', 'mf_TensileL3'], ave: 'mf_TensileLAve', std: 'mf_Tensile_L', rate: 'mf_TensileLRating', dec: 2 },
+    TensileW:     { inputs: ['mf_TensileW1', 'mf_TensileW2', 'mf_TensileW3'], ave: 'mf_TensileWAve', std: 'mf_Tensile_W', rate: 'mf_TensileWRating', dec: 2 },
+    ElongationL:  { inputs: ['mf_ElongationL1', 'mf_ElongationL2', 'mf_ElongationL3'], ave: 'mf_ElongationLAve', std: 'mf_Elongation_L', rate: 'mf_ElongationLRating', dec: 2 },
+    ElongationW:  { inputs: ['mf_ElongationW1', 'mf_ElongationW2', 'mf_ElongationW3'], ave: 'mf_ElongationWAve', std: 'mf_Elongation_W', rate: 'mf_ElongationWRating', dec: 2 },
+    TrouserTearL: { inputs: ['mf_TrouserTearL1', 'mf_TrouserTearL2', 'mf_TrouserTearL3'], ave: 'mf_TrouserTearLAve', std: 'mf_TrouserTear_L', rate: 'mf_TrouserTearLRating', dec: 2 },
+    TrouserTearW: { inputs: ['mf_TrouserTearW1', 'mf_TrouserTearW2', 'mf_TrouserTearW3'], ave: 'mf_TrouserTearWAve', std: 'mf_TrouserTear_W', rate: 'mf_TrouserTearWRating', dec: 2 },
+    StitchTearL:  { inputs: ['mf_StitchTearL1', 'mf_StitchTearL2', 'mf_StitchTearL3'], ave: 'mf_StitchTearLAve', std: 'mf_StitchTear_L', rate: 'mf_StitchTearLRating', dec: 2 },
+    StitchTearW:  { inputs: ['mf_StitchTearW1', 'mf_StitchTearW2', 'mf_StitchTearW3'], ave: 'mf_StitchTearWAve', std: 'mf_StitchTear_W', rate: 'mf_StitchTearWRating', dec: 2 },
+    MullenBurst:  { inputs: ['mf_MullenBurst1', 'mf_MullenBurst2', 'mf_MullenBurst3'], ave: 'mf_Text3977', std: 'mf_MullenBurst', rate: 'mf_MullenBurstRating', dec: 4 },
+    DieC:         { inputs: ['mf_DieC_1', 'mf_DieC_2', 'mf_DieC_3'], ave: 'mf_DieC_Ave', std: 'mf_DieC_Std', rate: 'mf_DieC_Rate', dec: 2 },
+  };
+
+  const computeDirectionalGroup = (groupKey) => {
+    const g = DIR_GROUPS[groupKey];
+    if (!g) return;
+    const vals = g.inputs
+      .map((id) => parseFloat($(`#${id}`)?.value ?? ''))
+      .filter((v) => Number.isFinite(v));
+    const aveEl = $(`#${g.ave}`);
+    const stdEl = $(`#${g.std}`);
+    const rateEl = $(`#${g.rate}`);
+    if (!vals.length) return;
+    const avg = roundTo(vals.reduce((a, b) => a + b, 0) / vals.length, g.dec);
+    if (aveEl) aveEl.value = avg;
+    const stdVal = parseFloat(stdEl?.value ?? '');
+    if (Number.isFinite(stdVal) && stdVal > 0 && rateEl) {
+      rateEl.value = avg >= stdVal ? 'PASS' : 'FAIL';
+      styleRatingInput(rateEl);
+    }
+  };
+
+  const computeAllDirectionalGroups = () => {
+    Object.keys(DIR_GROUPS).forEach(computeDirectionalGroup);
+  };
+
+  // 3d. Evaluate6PointRating: Wool, Acrylic, Polyester, Nylon, Cotton, Acetate vs Standard
+  const SIX_POINT_GROUPS = {
+    CTP:  { fibers: ['mf_CtPWool', 'mf_CtPAcrylic', 'mf_CtPPolyester', 'mf_CtPNylon', 'mf_CtPCotton', 'mf_CtPAcetate'], std: 'mf_CTP', rate: 'mf_CTPRating' },
+    CTPB: { fibers: ['mf_CtPBWool', 'mf_CtPBAcrylic', 'mf_CtPBPolyester', 'mf_CtPBNylon', 'mf_CtPBCotton', 'mf_CtPBAcetate'], std: 'mf_CtPB_S', rate: 'mf_CTPB_Rating' },
+    CTW:  { fibers: ['mf_CtWWool', 'mf_CtWAcrylic', 'mf_CtWPolyester', 'mf_CtWNylon', 'mf_CtWCotton', 'mf_CtWAcetate'], std: 'mf_CTW', rate: 'mf_CTWRating' },
+    CTWB: { fibers: ['mf_CtWBackSideWool', 'mf_CtWBackSideAcrylic', 'mf_CtWBackSidePolyester', 'mf_CtWBackSideNylon', 'mf_CtWBackSideCotton', 'mf_CtWBackSideAcetate'], std: 'mf_CtWB_S', rate: 'mf_CtWB_Rating' },
+  };
+
+  const compute6PointColorfastness = (key) => {
+    const g = SIX_POINT_GROUPS[key];
+    if (!g) return;
+    const stdVal = parseFloat($(`#${g.std}`)?.value ?? '');
+    const rateEl = $(`#${g.rate}`);
+    if (!Number.isFinite(stdVal) || stdVal <= 0 || !rateEl) return;
+    const fiberVals = g.fibers.map((id) => parseFloat($(`#${id}`)?.value ?? ''));
+    if (fiberVals.some((v) => !Number.isFinite(v))) return;
+    rateEl.value = fiberVals.some((v) => v < stdVal) ? 'FAIL' : 'PASS';
+    styleRatingInput(rateEl);
+  };
+
+  const computeCrockingAndWeathering = () => {
+    // Crocking Dry
+    const cDry = parseFloat($('#mf_CtCDry')?.value ?? '');
+    const cDryS = parseFloat($('#mf_CtCDry_S')?.value ?? '');
+    if (Number.isFinite(cDry) && Number.isFinite(cDryS) && cDryS > 0 && $('#mf_CTCDRYRating')) {
+      $('#mf_CTCDRYRating').value = cDry >= cDryS ? 'PASS' : 'FAIL';
+      styleRatingInput($('#mf_CTCDRYRating'));
+    }
+    // Crocking Wet
+    const cWet = parseFloat($('#mf_CtCWet')?.value ?? '');
+    const cWetS = parseFloat($('#mf_CtCWet_S')?.value ?? '');
+    if (Number.isFinite(cWet) && Number.isFinite(cWetS) && cWetS > 0 && $('#mf_CTCWETRating')) {
+      $('#mf_CTCWETRating').value = cWet >= cWetS ? 'PASS' : 'FAIL';
+      styleRatingInput($('#mf_CTCWETRating'));
+    }
+    // UV
+    const uv = parseFloat($('#mf_UV')?.value ?? '');
+    const uvS = parseFloat($('#mf_UV_S')?.value ?? '');
+    if (Number.isFinite(uv) && Number.isFinite(uvS) && uvS > 0 && $('#mf_UVRating')) {
+      $('#mf_UVRating').value = uv >= uvS ? 'PASS' : 'FAIL';
+      styleRatingInput($('#mf_UVRating'));
+    }
+    // Heat Aging 1..2
+    const ha1 = parseFloat($('#mf_HeatAging1')?.value ?? '');
+    const ha2 = parseFloat($('#mf_HeatAging2')?.value ?? '');
+    const haS = parseFloat($('#mf_HeatAging_S')?.value ?? '');
+    if (Number.isFinite(ha1) && Number.isFinite(ha2) && Number.isFinite(haS) && haS > 0 && $('#mf_HeatAgingRating')) {
+      $('#mf_HeatAgingRating').value = (ha1 < haS || ha2 < haS) ? 'FAIL' : 'PASS';
+      styleRatingInput($('#mf_HeatAgingRating'));
+    }
+    // Hydrolysis 1..2
+    const hy1 = parseFloat($('#mf_Hydrolysis1')?.value ?? '');
+    const hy2 = parseFloat($('#mf_Hydrolysis2')?.value ?? '');
+    const hyS = parseFloat($('#mf_Hydrolysis_S')?.value ?? '');
+    if (Number.isFinite(hy1) && Number.isFinite(hy2) && Number.isFinite(hyS) && hyS > 0 && $('#mf_HydrolysisRating')) {
+      $('#mf_HydrolysisRating').value = (hy1 < hyS || hy2 < hyS) ? 'FAIL' : 'PASS';
+      styleRatingInput($('#mf_HydrolysisRating'));
+    }
+    // PVC 1..2
+    const pvc1 = parseFloat($('#mf_PVC_1')?.value ?? '');
+    const pvc2 = parseFloat($('#mf_PVC_2')?.value ?? '');
+    const pvcS = parseFloat($('#mf_PVC_S')?.value ?? '');
+    if (Number.isFinite(pvc1) && Number.isFinite(pvc2) && Number.isFinite(pvcS) && pvcS > 0 && $('#mf_PVC_Rating')) {
+      $('#mf_PVC_Rating').value = (pvc1 < pvcS || pvc2 < pvcS) ? 'FAIL' : 'PASS';
+      styleRatingInput($('#mf_PVC_Rating'));
+    }
+  };
+
+  // 3e. EvaluateRatings: Priority FAIL > TOLERABLE > PASS > UNRATED
+  const evaluateMaterialOverallRatings = () => {
+    let foundPass = false;
+    let foundFail = false;
+    let foundTol = false;
+
+    $$('#dtr-material-form .dtr-rate-inp').forEach((inp) => {
+      styleRatingInput(inp);
+      const val = String(inp.value || '').trim().toUpperCase();
+      if (val === 'FAIL') foundFail = true;
+      else if (val === 'TOLERABLE') foundTol = true;
+      else if (val === 'PASS') foundPass = true;
+    });
+
+    let result = 'PASS';
+    if (foundFail) result = 'FAIL';
+    else if (foundTol) result = 'TOLERABLE';
+    else if (foundPass) result = 'PASS';
+    else if ($('#mf_Remarks')?.value) result = String($('#mf_Remarks').value).toUpperCase();
+
+    if ($('#mf_Remarks')) $('#mf_Remarks').value = result;
+
+    const stamp = $('#dtr-stamp-badge');
+    if (stamp) {
+      stamp.textContent = result;
+      stamp.className = 'dtr-stamp ' + (result === 'FAIL' ? 'dtr-stamp-fail' : (result === 'TOLERABLE' ? 'dtr-stamp-warn' : 'dtr-stamp-pass'));
+    }
+  };
+
+  // 3f. ApplyStandardValuesSmart: Query tbl_dtr_standards by MaterialType & TAve
+  const applyStandardValuesSmart = async () => {
+    const matType = $('#mf_MaterialType')?.value.trim() || '';
+    const tAve = parseFloat($('#mf_TAve')?.value ?? '0') || 0;
+    if (!matType) return;
+
+    try {
+      const res = await apiFetch(`dtr/standards?material_type=${encodeURIComponent(matType)}&t_ave=${encodeURIComponent(tAve)}`);
+      if (res && res.mapped) {
+        Object.keys(res.mapped).forEach((ctrlName) => {
+          const val = res.mapped[ctrlName];
+          const el = $(`#mf_${ctrlName}`) || $(`[name="${ctrlName}"]`, $('#dtr-material-form'));
+          if (el) el.value = val;
+        });
+      }
+      computeWeightAndPhysicals();
+      computeAllDirectionalGroups();
+      Object.keys(SIX_POINT_GROUPS).forEach(compute6PointColorfastness);
+      computeCrockingAndWeathering();
+      evaluateMaterialOverallRatings();
+    } catch (err) {
+      console.warn('[DTR] applyStandardValuesSmart error:', err);
+    }
+  };
+
+  const runFullMaterialRecalc = async () => {
+    computeThicknessMinMax(false);
+    await applyStandardValuesSmart();
+    showToast('✓ Executed ApplyStandardValuesSmart + Thickness + Directional Averages + 6-Point Colorfastness + EvaluateRatings.');
+  };
+
+  // =========================================================================
+  // 4. LOAD & SAVE MATERIAL RECORDS
+  // =========================================================================
+  const loadMaterialRecordList = async (slug, selectedId = null) => {
+    try {
+      const res = await apiFetch(`dtr/records?slug=${encodeURIComponent(slug)}`);
+      const sel = $('#dtr-mat-record-select');
+      if (!sel || !res.rows) return;
+      sel.innerHTML = res.rows.map((r) => `
+        <option value="${escHtml(r.source_id)}" ${String(r.source_id) === String(selectedId) ? 'selected' : ''}>
+          ${escHtml(r.lab_ref_no)} · ${escHtml(r.material_type || r.form_category)} · ${escHtml(r.model_style || r.material_code || '')} [${escHtml(r.overall_result || 'Pass')}]
+        </option>
+      `).join('');
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const renderRawColumnsEditor = (record) => {
+    const container = $('#dtr-raw-cols-container');
+    const cntEl = $('#dtr-raw-col-count');
+    if (!container) return;
+    const keys = Object.keys(record || {});
+    if (cntEl) cntEl.textContent = keys.length;
+    container.innerHTML = keys.map((col) => `
+      <div class="dtr-field">
+        <label title="${escHtml(col)}"><code>${escHtml(col)}</code></label>
+        <input type="text" data-raw-col="${escHtml(col)}" value="${escHtml(record[col] ?? '')}" ${col === 'ID' ? 'readonly class="dtr-ro"' : ''}>
+      </div>
+    `).join('');
+  };
+
+  const populateMaterialForm = (record, cfg = {}) => {
+    activeRecord = record || {};
+    if ($('#dtr-active-form-label') && cfg.label) {
+      $('#dtr-active-form-label').textContent = `${cfg.label} · dbnexus.${cfg.table}`;
+    }
+    if ($('#dtr-active-labref-title')) {
+      $('#dtr-active-labref-title').textContent = `${record.LabRefNo || 'New Report'} — ${record['Material Description'] || record.MaterialDescription || record.MaterialType || ''}`;
+    }
+
+    // Clear all inputs first
+    $$('#dtr-material-form input, #dtr-material-form select').forEach((inp) => {
+      if (inp.name) inp.value = '';
+    });
+
+    // Populate matching inputs by name or id
+    Object.keys(record).forEach((col) => {
+      const val = record[col] ?? '';
+      const byId = $(`#mf_${col.replace(/[^a-zA-Z0-9_]/g, '')}`);
+      if (byId) byId.value = val;
+      const byName = $(`[name="${CSS.escape(col)}"]`, $('#dtr-material-form'));
+      if (byName) byName.value = val;
+    });
+
+    // Handle alternate column names across the 10 Access tables
+    if ($('#mf_MaterialDescription') && !$('#mf_MaterialDescription').value) {
+      $('#mf_MaterialDescription').value = record['Material Description'] || record.MaterialDescription || '';
+    }
+    if ($('#mf_SupplierFactory') && !$('#mf_SupplierFactory').value) {
+      $('#mf_SupplierFactory').value = record['Supplier/Factory'] || record.Supplier || record.SupplierFactory || '';
+    }
+    if ($('#mf_POLotNo') && !$('#mf_POLotNo').value) {
+      $('#mf_POLotNo').value = record['PO/Lot No'] || record.POLotNo || '';
+    }
+    if ($('#mf_ModelNoStyle') && !$('#mf_ModelNoStyle').value) {
+      $('#mf_ModelNoStyle').value = record['Model No/Style'] || record.ModelNoStyle || '';
+    }
+    if ($('#mf_POQuantity') && !$('#mf_POQuantity').value) {
+      $('#mf_POQuantity').value = record['PO Quantity'] || record.POQuantity || '';
+    }
+    if ($('#mf_TestedBy') && !$('#mf_TestedBy').value) {
+      $('#mf_TestedBy').value = record['Tested by'] || record.TestedBy || record.Technician || '';
+    }
+
+    renderRawColumnsEditor(record);
+    computeThicknessMinMax(false);
+    computeWeightAndPhysicals();
+    computeAllDirectionalGroups();
+    Object.keys(SIX_POINT_GROUPS).forEach(compute6PointColorfastness);
+    computeCrockingAndWeathering();
+    evaluateMaterialOverallRatings();
+  };
+
+  const loadSingleMaterialRecord = async (slug, sourceId = 0) => {
+    try {
+      const res = await apiFetch(`dtr/record?slug=${encodeURIComponent(slug)}&source_id=${encodeURIComponent(sourceId)}`);
+      if (res && res.ok) {
+        populateMaterialForm(res.record || {}, res.config || {});
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Auto-detect MaterialType when LabRefNo changes (Exact LabRefNo_AfterUpdate rule from VBA)
+  $('#mf_LabRefNo')?.addEventListener('change', () => {
+    const ref = ($('#mf_LabRefNo')?.value || '').toUpperCase().trim();
+    const mtEl = $('#mf_MaterialType');
+    if (!ref || !mtEl) return;
+    if (ref.includes('FBU') || ref.includes('FBL')) {
+      if (!mtEl.value) mtEl.value = 'Canvas';
+    } else if (ref.includes('LEU') || ref.includes('LEL')) {
+      if (!mtEl.value) mtEl.value = 'Suede';
+    } else if (ref.includes('RB')) {
+      mtEl.value = 'Rubber';
+    } else if (ref.includes('IB')) {
+      mtEl.value = 'Inner Box';
+    } else if (ref.includes('OB')) {
+      mtEl.value = 'Outer Box';
+    } else if (ref.includes('FML')) {
+      mtEl.value = 'Sockliner - Latex';
+    } else if (ref.includes('FM')) {
+      mtEl.value = 'PU Foam';
+    } else if (ref.includes('SKL')) {
+      mtEl.value = 'Sockliner - EVA';
+    } else if (ref.includes('LC')) {
+      mtEl.value = 'Shoe lace';
+    } else if (ref.includes('TH')) {
+      mtEl.value = 'Thread';
+    } else if (ref.includes('EY')) {
+      mtEl.value = 'Eyelet';
+    } else if (ref.includes('GR')) {
+      mtEl.value = 'Grommet';
+    } else if (ref.includes('ZP')) {
+      mtEl.value = 'Zipper';
+    }
+    applyStandardValuesSmart();
+  });
+
+  // Auto-lookup MaterialCode, PO/Lot No, and MTL from dbnexus (MaterialList, ShoeList, tblDSR)
+  const triggerMasterLookups = async () => {
+    const matCode = $('#mf_MaterialCode')?.value.trim() || '';
+    const poLot = $('#mf_POLotNo')?.value.trim() || '';
+    const mtl = $('#mf_MTL')?.value.trim() || '';
+
+    if (!matCode && !poLot && !mtl) {
+      showToast('Enter a Material Code, PO/Lot No, or MTL # first.', true);
+      return;
+    }
+
+    try {
+      const res = await apiFetch(
+        `dtr/lookup?material_code=${encodeURIComponent(matCode)}&po_lot_no=${encodeURIComponent(poLot)}&mtl_no=${encodeURIComponent(mtl)}`
+      );
+      let msgParts = [];
+      if (res.material) {
+        if ($('#mf_SupplierFactory')) $('#mf_SupplierFactory').value = res.material.Supplier || '';
+        if ($('#mf_MaterialDescription')) $('#mf_MaterialDescription').value = res.material.MaterialName || '';
+        msgParts.push(`MaterialList (${res.material.MaterialCode})`);
+      }
+      if (res.shoe) {
+        if ($('#mf_ModelNoStyle')) $('#mf_ModelNoStyle').value = res.shoe.StyleNo || '';
+        if ($('#mf_Color')) $('#mf_Color').value = res.shoe.Colorway || '';
+        if ($('#mf_MTL') && res.shoe.MTL) $('#mf_MTL').value = res.shoe.MTL;
+        msgParts.push(`ShoeList (${res.shoe.StyleNo})`);
+      }
+      if (res.dsr && res.dsr.length > 0) {
+        const d = res.dsr[0];
+        if ($('#mf_StyleNumber_DSR')) $('#mf_StyleNumber_DSR').value = d.StyleNumber || '';
+        if ($('#mf_StyleDescription_DSR')) $('#mf_StyleDescription_DSR').value = d.StyleDescription || '';
+        if ($('#mf_Colorway_DSR')) $('#mf_Colorway_DSR').value = d.Colorway || '';
+        if ($('#mf_ComponentorLocation_DSR')) $('#mf_ComponentorLocation_DSR').value = d.ComponentorLocation || '';
+        if ($('#mf_VFMaterialCode_DSR')) $('#mf_VFMaterialCode_DSR').value = d.VFMaterialCode || '';
+        if ($('#mf_InternalName_DSR')) $('#mf_InternalName_DSR').value = d['Internal NameVans1'] || d.Material || '';
+        if ($('#mf_ColorName_DSR')) $('#mf_ColorName_DSR').value = d.ColorName || d.Color || '';
+        msgParts.push(`tblDSR (${res.dsr.length} component rows)`);
+      }
+      if (msgParts.length) {
+        showToast(`✓ Auto-Lookup populated from: ${msgParts.join(' · ')}`);
+      } else {
+        showToast('No exact match found in MaterialList / ShoeList / tblDSR.', true);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  $('#btn-dtr-lookup-all')?.addEventListener('click', triggerMasterLookups);
+  $('#mf_MaterialCode')?.addEventListener('change', triggerMasterLookups);
+  $('#mf_POLotNo')?.addEventListener('change', triggerMasterLookups);
+  $('#mf_MTL')?.addEventListener('change', triggerMasterLookups);
+  $('#mf_MaterialType')?.addEventListener('change', applyStandardValuesSmart);
+
+  // Bind live automatic calculations on input changes
+  $$('.dtr-calc-thick').forEach((inp) => {
+    inp.addEventListener('input', () => computeThicknessMinMax(true));
+  });
+  $$('.dtr-calc-weight, .dtr-calc-sg, .dtr-calc-din, .dtr-calc-ross, .dtr-calc-shrink').forEach((inp) => {
+    inp.addEventListener('input', () => {
+      computeWeightAndPhysicals();
+      evaluateMaterialOverallRatings();
+    });
+  });
+  $$('.dtr-dir-inp, .dtr-std-inp').forEach((inp) => {
+    inp.addEventListener('input', () => {
+      if (inp.dataset.dirGroup) computeDirectionalGroup(inp.dataset.dirGroup);
+      else computeAllDirectionalGroups();
+      evaluateMaterialOverallRatings();
+    });
+  });
+  $$('.dtr-6pt-inp').forEach((inp) => {
+    inp.addEventListener('input', () => {
+      if (inp.dataset['6pt']) compute6PointColorfastness(inp.dataset['6pt']);
+      evaluateMaterialOverallRatings();
+    });
+  });
+  $$('.dtr-crock-inp').forEach((inp) => {
+    inp.addEventListener('input', () => {
+      computeCrockingAndWeathering();
+      evaluateMaterialOverallRatings();
+    });
+  });
+  $$('.dtr-rate-inp').forEach((inp) => {
+    inp.addEventListener('change', evaluateMaterialOverallRatings);
+    inp.addEventListener('input', evaluateMaterialOverallRatings);
+  });
+
+  // Switch Material Form Slug
+  $('#dtr-mat-form-slug')?.addEventListener('change', async (e) => {
+    activeSlug = e.target.value;
+    await loadMaterialRecordList(activeSlug);
+    await loadSingleMaterialRecord(activeSlug, 0);
+  });
+
+  // Switch Record inside Material Form
+  $('#dtr-mat-record-select')?.addEventListener('change', async (e) => {
+    const id = e.target.value;
+    if (id) await loadSingleMaterialRecord(activeSlug, id);
+  });
+
+  // + New Record
+  $('#btn-dtr-new')?.addEventListener('click', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    populateMaterialForm({
+      ID: '',
+      LabRefNo: `DTP${today.replace(/-/g, '')}${activeSlug.toUpperCase().slice(0, 3)}-1`,
+      TR: `TR${today.replace(/-/g, '')}001`,
+      ReceivedDate: today,
+      TestedDate: today,
+      FinishedDate: today,
+      Status: 'Complete',
+      Remarks: 'PASS',
+    });
+    showToast('Initialized new blank test report record.');
+  });
+
+  // Stamp Reviewed
+  $('#btn-dtr-review')?.addEventListener('click', () => {
+    const reviewer = prompt('Enter Reviewer Name:', 'Faye Ann Elaysa');
+    if (!reviewer) return;
+    const rawAuth = $('[data-raw-col="AuthorizedBy"]');
+    if (rawAuth) rawAuth.value = reviewer;
+    const rawStat = $('[data-raw-col="AuthorizationStatus"]');
+    if (rawStat) rawStat.value = 'Reviewed';
+    showToast(`✓ Record stamped Reviewed by ${reviewer}`);
+  });
+
+  // Refresh & Apply Smart Standards
+  $('#btn-dtr-refresh-calc')?.addEventListener('click', runFullMaterialRecalc);
+
+  // Load Machine Results from \\192.168.32.45\OUTDATA\MATERIALS\
+  $('#btn-dtr-load-machine')?.addEventListener('click', async () => {
+    const labRefNo = $('#mf_LabRefNo')?.value.trim() || '';
+    if (!labRefNo) {
+      showToast('Enter a LabRefNo first before loading machine results.', true);
+      return;
+    }
+    try {
+      const res = await apiFetch('dtr/load-machine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: activeSlug, lab_ref_no: labRefNo }),
+      });
+      if (res && res.loadedFields) {
+        Object.keys(res.loadedFields).forEach((k) => {
+          const v = res.loadedFields[k];
+          const el = $(`#mf_${k}`) || $(`[name="${CSS.escape(k)}"]`, $('#dtr-material-form'));
+          if (el) el.value = v;
+          const rawEl = $(`[data-raw-col="${CSS.escape(k)}"]`);
+          if (rawEl) rawEl.value = v;
+        });
+        computeWeightAndPhysicals();
+        computeAllDirectionalGroups();
+        evaluateMaterialOverallRatings();
+        if ($('#dtr-machine-status')) {
+          $('#dtr-machine-status').textContent = res.message || 'Machine data loaded.';
+        }
+        showToast(`⚡ ${res.message}`);
+      }
+    } catch (err) {
+      showToast('Machine loader error: ' + (err.message || ''), true);
+    }
+  });
+
+  // Save Material Report to dbnexus
+  $('#btn-dtr-save')?.addEventListener('click', async () => {
+    const fields = Object.assign({}, activeRecord);
+    // Collect raw col inputs first
+    $$('#dtr-raw-cols-container [data-raw-col]').forEach((inp) => {
+      fields[inp.dataset.rawCol] = inp.value;
+    });
+    // Collect main form inputs (override raw cols)
+    $$('#dtr-material-form [name]').forEach((inp) => {
+      if (inp.name) fields[inp.name] = inp.value;
+    });
+
+    try {
+      const res = await apiFetch('dtr/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: activeSlug, fields }),
+      });
+      if (res && res.ok) {
+        if ($('#mf_ID')) $('#mf_ID').value = res.recordId;
+        showToast(`✓ ${res.message} (Ready in InterLink Sync ComboBox!)`);
+        await loadMaterialRecordList(activeSlug, res.recordId);
+      } else {
+        showToast(res.error || 'Save failed.', true);
+      }
+    } catch (err) {
+      showToast('Failed to save record.', true);
+    }
+  });
+
+  $('#btn-toggle-raw-cols')?.addEventListener('click', () => {
+    $('#dtr-raw-cols-container')?.classList.toggle('hidden');
+  });
+
+  // =========================================================================
+  // 5. WHOLE SHOE BONDING TEST FORM (U60) & SPOT/TOLERANCE COMPUTATIONS
+  // =========================================================================
+  const AGE_SPOT_LIMITS = {
+    TODDLER: 14,
+    KIDS: 16,
+    CHILDREN: 24,
+    ADULT: 35,
+  };
+
+  const evaluateSpotVerdict = (val, std) => {
+    if (!Number.isFinite(val) || val <= 0) return null;
+    if (std >= 2.5) {
+      if (val >= 2.5) return 'PASS';
+      if (val >= 2.0) return 'TOLERABLE';
+      return 'FAIL';
+    } else {
+      // Std = 2.0
+      if (val >= 2.0) return 'PASS';
+      if (val >= 1.8) return 'TOLERABLE';
+      return 'FAIL';
+    }
+  };
+
+  const computeBondingPoints = () => {
+    const ageCat = ($('#bf_AgeCategory')?.value || 'ADULT').toUpperCase();
+    const maxSpots = AGE_SPOT_LIMITS[ageCat] || 35;
+    const stdVal = parseFloat($('#bf_STD')?.value ?? '2.5') || 2.5;
+    const fitoStd = 1.9;
+
+    // Show/hide rows up to maxSpots
+    $$('#dtr-bonding-points-tbody [data-spot-row]').forEach((tr) => {
+      const pt = Number(tr.dataset.spotRow);
+      tr.style.opacity = pt <= maxSpots ? '1' : '0.45';
+    });
+
+    const calcSeries = (prefix, limit, specStd) => {
+      const vals = [];
+      let hasFail = false;
+      let hasTol = false;
+      for (let i = 1; i <= limit; i++) {
+        const inp = $(`#bp_${prefix}${i}`);
+        if (!inp) continue;
+        const v = parseFloat(inp.value ?? '');
+        inp.classList.remove('dtr-rate-pass', 'dtr-rate-warn', 'dtr-rate-fail');
+        if (Number.isFinite(v) && v > 0) {
+          vals.push(v);
+          const verdict = (prefix === 'FiTO')
+            ? (v >= fitoStd ? 'PASS' : 'FAIL')
+            : evaluateSpotVerdict(v, specStd);
+          if (verdict === 'FAIL') {
+            hasFail = true;
+            inp.classList.add('dtr-rate-fail');
+          } else if (verdict === 'TOLERABLE') {
+            hasTol = true;
+            inp.classList.add('dtr-rate-warn');
+          } else {
+            inp.classList.add('dtr-rate-pass');
+          }
+        }
+      }
+      if (!vals.length) return { min: '', max: '', ave: '', res: '' };
+      return {
+        min: roundTo(Math.min(...vals), 2),
+        max: roundTo(Math.max(...vals), 2),
+        ave: roundTo(vals.reduce((a, b) => a + b, 0) / vals.length, 2),
+        res: hasFail ? 'FAIL' : (hasTol ? 'TOLERABLE' : 'PASS'),
+      };
+    };
+
+    const utf = calcSeries('UTFpoint', maxSpots, stdVal);
+    const fto = calcSeries('FTOpoint', maxSpots, stdVal);
+    const fito = calcSeries('FiTO', 13, fitoStd);
+
+    if ($('#bp_UTFMin')) $('#bp_UTFMin').value = utf.min;
+    if ($('#bp_UTFMax')) $('#bp_UTFMax').value = utf.max;
+    if ($('#bp_UTFAverage')) $('#bp_UTFAverage').value = utf.ave;
+    if ($('#bp_UTF_Result')) { $('#bp_UTF_Result').value = utf.res; styleRatingInput($('#bp_UTF_Result')); }
+
+    if ($('#bp_FTOMin')) $('#bp_FTOMin').value = fto.min;
+    if ($('#bp_FTOMax')) $('#bp_FTOMax').value = fto.max;
+    if ($('#bp_FTOAverage')) $('#bp_FTOAverage').value = fto.ave;
+    if ($('#bp_FTO_Result')) { $('#bp_FTO_Result').value = fto.res; styleRatingInput($('#bp_FTO_Result')); }
+
+    if ($('#bp_FiTOMin')) $('#bp_FiTOMin').value = fito.min;
+    if ($('#bp_FiTOMax')) $('#bp_FiTOMax').value = fito.max;
+    if ($('#bp_FiTOAverage')) $('#bp_FiTOAverage').value = fito.ave;
+    if ($('#bp_FiTO_Result')) { $('#bp_FiTO_Result').value = fito.res; styleRatingInput($('#bp_FiTO_Result')); }
+
+    const allRes = [utf.res, fto.res, fito.res].filter(Boolean);
+    let overall = 'PASS';
+    if (allRes.includes('FAIL')) overall = 'FAIL';
+    else if (allRes.includes('TOLERABLE')) overall = 'TOLERABLE';
+
+    if ($('#bf_Result')) {
+      $('#bf_Result').value = overall;
+      styleRatingInput($('#bf_Result'));
+    }
+    const badge = $('#bf-overall-badge');
+    if (badge) {
+      badge.textContent = overall;
+      badge.className = 'badge ' + (overall === 'FAIL' ? 'b-err' : (overall === 'TOLERABLE' ? 'b-warn' : 'b-ok'));
+    }
+  };
+
+  const loadBondingRecordList = async (selectedId = null) => {
+    try {
+      const res = await apiFetch('dtr/records?slug=bonding');
+      const sel = $('#dtr-bonding-record-select');
+      if (!sel || !res.rows) return;
+      sel.innerHTML = res.rows.map((r) => `
+        <option value="${escHtml(r.source_id)}" ${String(r.source_id) === String(selectedId) ? 'selected' : ''}>
+          ${escHtml(r.lab_ref_no)} · ${escHtml(r.model_style || '')} · ${escHtml(r.color || '')} [${escHtml(r.overall_result || 'Pass')}]
+        </option>
+      `).join('');
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const loadSingleBondingRecord = async (sourceId = 0) => {
+    try {
+      const res = await apiFetch(`dtr/record?slug=bonding&source_id=${encodeURIComponent(sourceId)}`);
+      if (!res || !res.ok) return;
+      const rec = res.record || {};
+      const bp = res.bondingPoints || {};
+      activeBondingPoints = bp;
+
+      Object.keys(rec).forEach((k) => {
+        const el = $(`#bf_${k}`);
+        if (el) el.value = rec[k] ?? '';
+      });
+
+      for (let i = 1; i <= 35; i++) {
+        if ($(`#bp_UTFpoint${i}`)) $(`#bp_UTFpoint${i}`).value = bp[`UTFpoint${i}`] ?? '';
+        if ($(`#bp_FTOpoint${i}`)) $(`#bp_FTOpoint${i}`).value = bp[`FTOpoint${i}`] ?? '';
+        if (i <= 13 && $(`#bp_FiTO${i}`)) $(`#bp_FiTO${i}`).value = bp[`FiTO${i}`] ?? '';
+      }
+
+      computeBondingPoints();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  $('#dtr-bonding-record-select')?.addEventListener('change', (e) => {
+    if (e.target.value) loadSingleBondingRecord(e.target.value);
+  });
+  $('#bf_AgeCategory')?.addEventListener('change', computeBondingPoints);
+  $('#bf_STD')?.addEventListener('change', computeBondingPoints);
+  $$('#dtr-bonding-points-tbody .dtr-bp-inp').forEach((inp) => {
+    inp.addEventListener('input', computeBondingPoints);
+  });
+  $('#btn-bond-recalc')?.addEventListener('click', () => {
+    computeBondingPoints();
+    showToast('✓ Recalculated UTF, FTO, and FiTO Min/Max/Ave & Spot Tolerances.');
+  });
+
+  $('#btn-bond-new')?.addEventListener('click', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    $$('#dtr-bonding-form input').forEach((i) => { i.value = ''; });
+    if ($('#bf_LabRefNo')) $('#bf_LabRefNo').value = `DTP${today.replace(/-/g, '')}SHB01-R`;
+    if ($('#bf_AgeCategory')) $('#bf_AgeCategory').value = 'ADULT';
+    if ($('#bf_STD')) $('#bf_STD').value = '2.5';
+    if ($('#bf_ReceivedDate')) $('#bf_ReceivedDate').value = today;
+    if ($('#bf_TestedDate')) $('#bf_TestedDate').value = today;
+    if ($('#bf_FinishedDate')) $('#bf_FinishedDate').value = today;
+    computeBondingPoints();
+    showToast('Initialized new Whole Shoe Bonding Test Report.');
+  });
+
+  $('#btn-bond-load-u60')?.addEventListener('click', async () => {
+    const labRefNo = $('#bf_LabRefNo')?.value.trim() || 'DTP20261024SHB11-R';
+    try {
+      const res = await apiFetch('dtr/load-machine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: 'bonding', lab_ref_no: labRefNo }),
+      });
+      if (res && res.loadedFields) {
+        Object.keys(res.loadedFields).forEach((k) => {
+          const el = $(`#bp_${k}`);
+          if (el) el.value = res.loadedFields[k];
+        });
+        computeBondingPoints();
+        showToast(`⚡ ${res.message}`);
+      }
+    } catch (err) {
+      showToast('Failed to load U60 machine file.', true);
+    }
+  });
+
+  $('#btn-bond-save')?.addEventListener('click', async () => {
+    const fields = {};
+    $$('#dtr-bonding-form [name]').forEach((inp) => {
+      if (inp.name) fields[inp.name] = inp.value;
+    });
+    const bondingPoints = {
+      UTFMin: $('#bp_UTFMin')?.value || null,
+      UTFMax: $('#bp_UTFMax')?.value || null,
+      UTFAverage: $('#bp_UTFAverage')?.value || null,
+      UTF_Result: $('#bp_UTF_Result')?.value || null,
+      FTOMin: $('#bp_FTOMin')?.value || null,
+      FTOMax: $('#bp_FTOMax')?.value || null,
+      FTOAverage: $('#bp_FTOAverage')?.value || null,
+      FTO_Result: $('#bp_FTO_Result')?.value || null,
+      FiTOMin: $('#bp_FiTOMin')?.value || null,
+      FiTOMax: $('#bp_FiTOMax')?.value || null,
+      FiTOAverage: $('#bp_FiTOAverage')?.value || null,
+      FiTO_Result: $('#bp_FiTO_Result')?.value || null,
+      Result: $('#bf_Result')?.value || 'PASS',
+    };
+    $$('#dtr-bonding-points-tbody [data-bp-col]').forEach((inp) => {
+      bondingPoints[inp.dataset.bpCol] = inp.value;
+    });
+
+    try {
+      const res = await apiFetch('dtr/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: 'bonding', fields, bondingPoints }),
+      });
+      if (res && res.ok) {
+        if ($('#bf_BondingTestID')) $('#bf_BondingTestID').value = res.recordId;
+        showToast(`✓ ${res.message}`);
+        await loadBondingRecordList(res.recordId);
+      }
+    } catch (err) {
+      showToast('Error saving Bonding Report.', true);
+    }
+  });
+
+  // =========================================================================
+  // 6. BUILT-IN LAB CALCULATORS (EXACT VBA FORMULAS)
+  // =========================================================================
+  const updateCalculators = () => {
+    // 1. Weight Calculator: Round((Raw / 100) * 10000, 2)
+    const rw1 = parseFloat($('#calc_raw_w1')?.value ?? '0') || 0;
+    const rw2 = parseFloat($('#calc_raw_w2')?.value ?? '0') || 0;
+    const rw3 = parseFloat($('#calc_raw_w3')?.value ?? '0') || 0;
+    const w1 = roundTo((rw1 / 100) * 10000, 2);
+    const w2 = roundTo((rw2 / 100) * 10000, 2);
+    const w3 = roundTo((rw3 / 100) * 10000, 2);
+    const wave = roundTo((w1 + w2 + w3) / 3, 2);
+    if ($('#calc_res_w1')) $('#calc_res_w1').value = w1;
+    if ($('#calc_res_w2')) $('#calc_res_w2').value = w2;
+    if ($('#calc_res_w3')) $('#calc_res_w3').value = w3;
+    if ($('#calc_res_wave')) $('#calc_res_wave').textContent = wave;
+
+    // 2. Specific Gravity Calculator: Round(RawW / ((10 * 10) * (Thickness / 10)), 3)
+    const sgW1 = parseFloat($('#calc_sg_w1')?.value ?? '0') || 0;
+    const sgW2 = parseFloat($('#calc_sg_w2')?.value ?? '0') || 0;
+    const sgW3 = parseFloat($('#calc_sg_w3')?.value ?? '0') || 0;
+    const sgT1 = parseFloat($('#calc_sg_t1')?.value ?? '1') || 1;
+    const sgT2 = parseFloat($('#calc_sg_t2')?.value ?? '1') || 1;
+    const sgT3 = parseFloat($('#calc_sg_t3')?.value ?? '1') || 1;
+    const sg1 = roundTo(sgW1 / (100 * (sgT1 / 10)), 3);
+    const sg2 = roundTo(sgW2 / (100 * (sgT2 / 10)), 3);
+    const sg3 = roundTo(sgW3 / (100 * (sgT3 / 10)), 3);
+    const sgAve = roundTo((sg1 + sg2 + sg3) / 3, 3);
+    if ($('#calc_res_sg_ave')) $('#calc_res_sg_ave').textContent = `${sg1}, ${sg2}, ${sg3} (Ave: ${sgAve})`;
+
+    // 3. Compression Set Calculator: Round(((Before - After) / (Before - Spacer)) * 100, 1)
+    const cpB1 = parseFloat($('#calc_cp_b1')?.value ?? '10') || 10;
+    const cpA1 = parseFloat($('#calc_cp_a1')?.value ?? '9') || 9;
+    const cpB2 = parseFloat($('#calc_cp_b2')?.value ?? '10') || 10;
+    const cpA2 = parseFloat($('#calc_cp_a2')?.value ?? '9') || 9;
+    const cpA3 = parseFloat($('#calc_cp_a3')?.value ?? '9') || 9;
+    const cpSp = parseFloat($('#calc_cp_sp')?.value ?? '0') || 0;
+    const denom1 = (cpB1 - cpSp) !== 0 ? (cpB1 - cpSp) : 1;
+    const denom2 = (cpB2 - cpSp) !== 0 ? (cpB2 - cpSp) : 1;
+    const cp1 = roundTo(((cpB1 - cpA1) / denom1) * 100, 1);
+    const cp2 = roundTo(((cpB2 - cpA2) / denom2) * 100, 1);
+    const cp3 = roundTo(((cpB1 - cpA3) / denom1) * 100, 1);
+    const cpAve = roundTo((cp1 + cp2 + cp3) / 3, 1);
+    if ($('#calc_res_cp_ave')) $('#calc_res_cp_ave').textContent = `${cpAve}% (${cp1}%, ${cp2}%, ${cp3}%)`;
+
+    // 4. DIN Abrasion Calculator: Round((((Wb - Wa) / SG) * (200 / SA)) * 1000, 2)
+    const dinWb = parseFloat($('#calc_din_wb')?.value ?? '0') || 0;
+    const dinWa = parseFloat($('#calc_din_wa')?.value ?? '0') || 0;
+    const dinSg = parseFloat($('#calc_din_sg')?.value ?? '1') || 1;
+    const dinSa = parseFloat($('#calc_din_sa')?.value ?? '200') || 200;
+    const dinVal = roundTo((((dinWb - dinWa) / dinSg) * (200 / dinSa)) * 1000, 2);
+    if ($('#calc_res_din')) $('#calc_res_din').textContent = dinVal;
+
+    // 5. Ross Flex Calculator: Round(((Lf - Li) / Li) * 100, 2)
+    const rfLi1 = parseFloat($('#calc_rf_li1')?.value ?? '2.5') || 2.5;
+    const rfLf1 = parseFloat($('#calc_rf_lf1')?.value ?? '2.5') || 2.5;
+    const rfLi2 = parseFloat($('#calc_rf_li2')?.value ?? '2.5') || 2.5;
+    const rfLf2 = parseFloat($('#calc_rf_lf2')?.value ?? '2.5') || 2.5;
+    const rf1 = roundTo(((rfLf1 - rfLi1) / rfLi1) * 100, 2);
+    const rf2 = roundTo(((rfLf2 - rfLi2) / rfLi2) * 100, 2);
+    if ($('#calc_res_rf')) $('#calc_res_rf').textContent = `${rf1}% / ${rf2}%`;
+
+    // 6. Shrinkage Calculator: Round(((Before - After) / Before) * 100, 2)
+    const shLb = parseFloat($('#calc_sh_lb')?.value ?? '100') || 100;
+    const shLa = parseFloat($('#calc_sh_la')?.value ?? '100') || 100;
+    const shWb = parseFloat($('#calc_sh_wb')?.value ?? '100') || 100;
+    const shWa = parseFloat($('#calc_sh_wa')?.value ?? '100') || 100;
+    const shL = roundTo(((shLb - shLa) / shLb) * 100, 2);
+    const shW = roundTo(((shWb - shWa) / shWb) * 100, 2);
+    if ($('#calc_res_sh')) $('#calc_res_sh').textContent = `L: ${shL}% / W: ${shW}%`;
+  };
+
+  $$('#dtr-panel-calculators input').forEach((inp) => {
+    inp.addEventListener('input', updateCalculators);
+  });
+
+  $('#btn-apply-calc-weight')?.addEventListener('click', () => {
+    if ($('#mf_Weight1')) $('#mf_Weight1').value = $('#calc_res_w1')?.value || '';
+    if ($('#mf_Weight2')) $('#mf_Weight2').value = $('#calc_res_w2')?.value || '';
+    if ($('#mf_Weight3')) $('#mf_Weight3').value = $('#calc_res_w3')?.value || '';
+    computeWeightAndPhysicals();
+    evaluateMaterialOverallRatings();
+    switchTab('material');
+    showToast('✓ Applied calculated Weight 1..3 and WAve to Material Form.');
+  });
+
+  $('#btn-apply-calc-sg')?.addEventListener('click', () => {
+    const sgW1 = parseFloat($('#calc_sg_w1')?.value ?? '0') || 0;
+    const sgW2 = parseFloat($('#calc_sg_w2')?.value ?? '0') || 0;
+    const sgW3 = parseFloat($('#calc_sg_w3')?.value ?? '0') || 0;
+    const sgT1 = parseFloat($('#calc_sg_t1')?.value ?? '1') || 1;
+    const sgT2 = parseFloat($('#calc_sg_t2')?.value ?? '1') || 1;
+    const sgT3 = parseFloat($('#calc_sg_t3')?.value ?? '1') || 1;
+    if ($('#mf_SG1')) $('#mf_SG1').value = roundTo(sgW1 / (100 * (sgT1 / 10)), 3);
+    if ($('#mf_SG2')) $('#mf_SG2').value = roundTo(sgW2 / (100 * (sgT2 / 10)), 3);
+    if ($('#mf_SG3')) $('#mf_SG3').value = roundTo(sgW3 / (100 * (sgT3 / 10)), 3);
+    computeWeightAndPhysicals();
+    evaluateMaterialOverallRatings();
+    switchTab('material');
+    showToast('✓ Applied Specific Gravity SG1..3 and SG_Ave to Material Form.');
+  });
+
+  $('#btn-apply-calc-din')?.addEventListener('click', () => {
+    const val = $('#calc_res_din')?.textContent || '';
+    if ($('#mf_DIN_1')) $('#mf_DIN_1').value = val;
+    computeWeightAndPhysicals();
+    evaluateMaterialOverallRatings();
+    switchTab('material');
+    showToast('✓ Applied DIN Abrasion value to Material Form.');
+  });
+
+  $('#btn-apply-calc-ross')?.addEventListener('click', () => {
+    const rfLi1 = parseFloat($('#calc_rf_li1')?.value ?? '2.5') || 2.5;
+    const rfLf1 = parseFloat($('#calc_rf_lf1')?.value ?? '2.5') || 2.5;
+    const rfLi2 = parseFloat($('#calc_rf_li2')?.value ?? '2.5') || 2.5;
+    const rfLf2 = parseFloat($('#calc_rf_lf2')?.value ?? '2.5') || 2.5;
+    if ($('#mf_RossFlex_1')) $('#mf_RossFlex_1').value = roundTo(((rfLf1 - rfLi1) / rfLi1) * 100, 2);
+    if ($('#mf_RossFlex_2')) $('#mf_RossFlex_2').value = roundTo(((rfLf2 - rfLi2) / rfLi2) * 100, 2);
+    computeWeightAndPhysicals();
+    evaluateMaterialOverallRatings();
+    switchTab('material');
+    showToast('✓ Applied Ross Flex 1 & 2 to Material Form.');
+  });
+
+  $('#btn-apply-calc-shrink')?.addEventListener('click', () => {
+    const shLb = parseFloat($('#calc_sh_lb')?.value ?? '100') || 100;
+    const shLa = parseFloat($('#calc_sh_la')?.value ?? '100') || 100;
+    const shWb = parseFloat($('#calc_sh_wb')?.value ?? '100') || 100;
+    const shWa = parseFloat($('#calc_sh_wa')?.value ?? '100') || 100;
+    if ($('#mf_ShrinkageL')) $('#mf_ShrinkageL').value = roundTo(((shLb - shLa) / shLb) * 100, 2);
+    if ($('#mf_ShrinkageW')) $('#mf_ShrinkageW').value = roundTo(((shWb - shWa) / shWb) * 100, 2);
+    computeWeightAndPhysicals();
+    evaluateMaterialOverallRatings();
+    switchTab('material');
+    showToast('✓ Applied Shrinkage L & W to Material Form.');
+  });
+
+  // Live Standards & Lookup Explorer
+  const runStandardsExplorer = async () => {
+    const mt = $('#exp_mat_type')?.value || 'Canvas';
+    const tAve = $('#exp_t_ave')?.value || '1.25';
+    try {
+      const res = await apiFetch(`dtr/standards?material_type=${encodeURIComponent(mt)}&t_ave=${encodeURIComponent(tAve)}`);
+      const tbody = $('#exp-standards-tbody');
+      if (!tbody || !res.standards) return;
+      tbody.innerHTML = res.standards.map((s) => `
+        <tr>
+          <td><b>${escHtml(s.MaterialType)}</b></td>
+          <td class="mono"><code>${escHtml(s.TestMethod)}</code></td>
+          <td class="mono"><b>${escHtml(s.StandardValue ?? '-')}</b></td>
+          <td class="mono">${escHtml(s.Tolerance ?? '-')}</td>
+          <td class="mono">${escHtml(s.TMinC ?? '-')}</td>
+          <td class="mono">${escHtml(s.TMaxC ?? '-')}</td>
+        </tr>
+      `).join('');
+    } catch (err) {
+      console.error(err);
+    }
+  };
+  $('#btn-exp-run')?.addEventListener('click', runStandardsExplorer);
+  $('#exp_mat_type')?.addEventListener('change', runStandardsExplorer);
+
+  // =========================================================================
+  // 7. PRINT PREVIEW & PDF EXPORT MODAL (ACCESS REPORT PARITY)
+  // =========================================================================
+  const openMaterialPrintPreview = () => {
+    const labRef = $('#mf_LabRefNo')?.value || 'DTP-LAB-PREVIEW';
+    const tr = $('#mf_TR')?.value || '-';
+    const matType = $('#mf_MaterialType')?.value || 'Material';
+    const matCode = $('#mf_MaterialCode')?.value || '-';
+    const matDesc = $('#mf_MaterialDescription')?.value || '-';
+    const supplier = $('#mf_SupplierFactory')?.value || 'DATIAN SUBIC SHOES INC.';
+    const modelStyle = $('#mf_ModelNoStyle')?.value || '-';
+    const color = $('#mf_Color')?.value || '-';
+    const poLot = $('#mf_POLotNo')?.value || '-';
+    const mtl = $('#mf_MTL')?.value || '-';
+    const testedDate = $('#mf_TestedDate')?.value || new Date().toISOString().slice(0, 10);
+    const tech = $('#mf_Technician')?.value || 'Lab Technician';
+    const reviewer = $('#mf_AuthorizedBy')?.value || 'QA Manager';
+    const revDate = $('#mf_AuthorizedDate')?.value || '';
+    const overall = ($('#mf_Remarks')?.value || 'PASS').toUpperCase();
+
+    const stampCls = overall === 'PASS' ? '' : (overall === 'TOLERABLE' ? 'stamp-tol' : 'stamp-fail');
+
+    // Build Test Items Rows
+    const items = [];
+    const addDirRow = (name, unit, lAve, lStd, lRate, wAve, wStd, wRate) => {
+      if (lAve || wAve) {
+        items.push(`
+          <tr>
+            <td class="text-left"><b>${name} — Length (L)</b></td>
+            <td>${unit}</td>
+            <td><b>${lAve || '-'}</b></td>
+            <td>${lStd || '-'}</td>
+            <td><b class="${lRate === 'PASS' ? 'dtr-rate-pass' : (lRate === 'TOLERABLE' ? 'dtr-rate-warn' : 'dtr-rate-fail')}">${lRate || '-'}</b></td>
+          </tr>
+          <tr>
+            <td class="text-left"><b>${name} — Width (W)</b></td>
+            <td>${unit}</td>
+            <td><b>${wAve || '-'}</b></td>
+            <td>${wStd || '-'}</td>
+            <td><b class="${wRate === 'PASS' ? 'dtr-rate-pass' : (wRate === 'TOLERABLE' ? 'dtr-rate-warn' : 'dtr-rate-fail')}">${wRate || '-'}</b></td>
+          </tr>
+        `);
+      }
+    };
+
+    addDirRow('Tensile Strength', 'kg', $('#mf_TensileLAve')?.value, $('#mf_Tensile_L')?.value, $('#mf_TensileLRating')?.value, $('#mf_TensileWAve')?.value, $('#mf_Tensile_W')?.value, $('#mf_TensileWRating')?.value);
+    addDirRow('Elongation', '%', $('#mf_ElongationLAve')?.value, $('#mf_Elongation_L')?.value, $('#mf_ElongationLRating')?.value, $('#mf_ElongationWAve')?.value, $('#mf_Elongation_W')?.value, $('#mf_ElongationWRating')?.value);
+    addDirRow('Trouser / Wing Tear', 'kg', $('#mf_TrouserTearLAve')?.value, $('#mf_TrouserTear_L')?.value, $('#mf_TrouserTearLRating')?.value, $('#mf_TrouserTearWAve')?.value, $('#mf_TrouserTear_W')?.value, $('#mf_TrouserTearWRating')?.value);
+    addDirRow('Stitch Tear', 'kg', $('#mf_StitchTearLAve')?.value, $('#mf_StitchTear_L')?.value, $('#mf_StitchTearLRating')?.value, $('#mf_StitchTearWAve')?.value, $('#mf_StitchTear_W')?.value, $('#mf_StitchTearWRating')?.value);
+
+    if ($('#mf_Text3977')?.value) {
+      items.push(`
+        <tr>
+          <td class="text-left"><b>Mullen Bursting Strength</b></td>
+          <td>kg/cm²</td>
+          <td><b>${$('#mf_Text3977')?.value}</b></td>
+          <td>${$('#mf_MullenBurst')?.value || '-'}</td>
+          <td><b>${$('#mf_MullenBurstRating')?.value || '-'}</b></td>
+        </tr>
+      `);
+    }
+    if ($('#mf_DieC_Ave')?.value) {
+      items.push(`
+        <tr>
+          <td class="text-left"><b>Die C Tear / Edge Crush</b></td>
+          <td>kg</td>
+          <td><b>${$('#mf_DieC_Ave')?.value}</b></td>
+          <td>${$('#mf_DieC_Std')?.value || '-'}</td>
+          <td><b>${$('#mf_DieC_Rate')?.value || '-'}</b></td>
+        </tr>
+      `);
+    }
+    if ($('#mf_WAve')?.value) {
+      items.push(`
+        <tr>
+          <td class="text-left"><b>Fabric Weight (Grammage)</b></td>
+          <td>g/m²</td>
+          <td><b>${$('#mf_WAve')?.value}</b></td>
+          <td>${$('#mf_W_Std')?.value || '-'}</td>
+          <td><b>${$('#mf_WRating')?.value || '-'}</b></td>
+        </tr>
+      `);
+    }
+
+    // Colorfastness
+    if ($('#mf_CTPRating')?.value) {
+      items.push(`
+        <tr>
+          <td class="text-left"><b>Colorfastness to Perspiration (Face)</b></td>
+          <td>Grade</td>
+          <td>W:${$('#mf_CtPWool')?.value||'-'} A:${$('#mf_CtPAcrylic')?.value||'-'} P:${$('#mf_CtPPolyester')?.value||'-'} N:${$('#mf_CtPNylon')?.value||'-'} C:${$('#mf_CtPCotton')?.value||'-'} Ac:${$('#mf_CtPAcetate')?.value||'-'}</td>
+          <td>${$('#mf_CTP')?.value || '4.0'}</td>
+          <td><b>${$('#mf_CTPRating')?.value}</b></td>
+        </tr>
+      `);
+    }
+    if ($('#mf_CTWRating')?.value) {
+      items.push(`
+        <tr>
+          <td class="text-left"><b>Colorfastness to Water (Face)</b></td>
+          <td>Grade</td>
+          <td>W:${$('#mf_CtWWool')?.value||'-'} A:${$('#mf_CtWAcrylic')?.value||'-'} P:${$('#mf_CtWPolyester')?.value||'-'} N:${$('#mf_CtWNylon')?.value||'-'} C:${$('#mf_CtWCotton')?.value||'-'} Ac:${$('#mf_CtWAcetate')?.value||'-'}</td>
+          <td>${$('#mf_CTW')?.value || '4.0'}</td>
+          <td><b>${$('#mf_CTWRating')?.value}</b></td>
+        </tr>
+      `);
+    }
+    if ($('#mf_CTCDRYRating')?.value) {
+      items.push(`
+        <tr>
+          <td class="text-left"><b>Colorfastness to Crocking (Dry)</b></td>
+          <td>Grade</td>
+          <td><b>${$('#mf_CtCDry')?.value || '-'}</b></td>
+          <td>${$('#mf_CtCDry_S')?.value || '4.0'}</td>
+          <td><b>${$('#mf_CTCDRYRating')?.value}</b></td>
+        </tr>
+      `);
+    }
+    if ($('#mf_CTCWETRating')?.value) {
+      items.push(`
+        <tr>
+          <td class="text-left"><b>Colorfastness to Crocking (Wet)</b></td>
+          <td>Grade</td>
+          <td><b>${$('#mf_CtCWet')?.value || '-'}</b></td>
+          <td>${$('#mf_CtCWet_S')?.value || '3.0'}</td>
+          <td><b>${$('#mf_CTCWETRating')?.value}</b></td>
+        </tr>
+      `);
+    }
+
+    const html = `
+      <div class="dtr-report-sheet">
+        <div class="dtr-sheet-header">
+          <div class="dtr-sheet-title">
+            <h2>DATIAN SUBIC SHOES INC. (DTP)</h2>
+            <h4>PHYSICAL TEST REPORT — ${escHtml(matType.toUpperCase())}</h4>
+            <div style="font-size:11px;color:#64748b;margin-top:2px">Lot 1P7-A, Phase 2, Subic Bay Gateway Park, Subic Bay Freeport Zone</div>
+          </div>
+          <div class="dtr-sheet-meta">
+            <div>Lab Ref: <b>${escHtml(labRef)}</b></div>
+            <div>TR #: <b>${escHtml(tr)}</b></div>
+            <div style="margin-top:6px">
+              <span class="dtr-sheet-stamp-box ${stampCls}">${escHtml(overall)}</span>
+            </div>
+          </div>
+        </div>
+
+        <table class="dtr-sheet-info-grid">
+          <tr>
+            <td class="label-cell">Material Code</td>
+            <td><b>${escHtml(matCode)}</b></td>
+            <td class="label-cell">Material Type</td>
+            <td>${escHtml(matType)}</td>
+            <td class="label-cell">Tested Date</td>
+            <td>${escHtml(testedDate)}</td>
+          </tr>
+          <tr>
+            <td class="label-cell">Description</td>
+            <td colspan="3">${escHtml(matDesc)}</td>
+            <td class="label-cell">PO / Lot No.</td>
+            <td>${escHtml(poLot)}</td>
+          </tr>
+          <tr>
+            <td class="label-cell">Supplier / Factory</td>
+            <td>${escHtml(supplier)}</td>
+            <td class="label-cell">Model / Style</td>
+            <td>${escHtml(modelStyle)}</td>
+            <td class="label-cell">Color / MTL</td>
+            <td>${escHtml(color)} / ${escHtml(mtl)}</td>
+          </tr>
+          <tr>
+            <td class="label-cell">Thickness (TAve)</td>
+            <td><b>${$('#mf_TAve')?.value || '-'} mm</b></td>
+            <td class="label-cell">Weight (WAve)</td>
+            <td><b>${$('#mf_WAve')?.value || '-'} g/m²</b></td>
+            <td class="label-cell">Technician</td>
+            <td>${escHtml(tech)}</td>
+          </tr>
+        </table>
+
+        <table class="dtr-sheet-results-table">
+          <thead>
+            <tr>
+              <th class="text-left" style="width:38%">Test Method / Item</th>
+              <th style="width:12%">Unit</th>
+              <th style="width:25%">Specimen Readings / Average</th>
+              <th style="width:13%">Specification</th>
+              <th style="width:12%">Evaluation</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items.length ? items.join('') : '<tr><td colspan="5" class="muted">No test items recorded for this report.</td></tr>'}
+          </tbody>
+        </table>
+
+        <div class="dtr-sheet-sign-row">
+          <div class="dtr-sheet-sign-box">
+            <div>Prepared by (Testing Technician):</div>
+            <div class="dtr-sheet-sign-line">
+              <span>${escHtml(tech)}</span>
+              <span class="muted">${escHtml(testedDate)}</span>
+            </div>
+          </div>
+          <div class="dtr-sheet-sign-box">
+            <div>Reviewed &amp; Approved by (QA Lab Head):</div>
+            <div class="dtr-sheet-sign-line">
+              <span>${escHtml(reviewer)}</span>
+              <span class="muted">${escHtml(revDate || testedDate)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    $('#dtr-print-modal-title').textContent = `Official Test Report Sheet — ${labRef}`;
+    $('#dtr-print-sheet-container').innerHTML = html;
+    $('#dtr-print-modal-backdrop')?.classList.remove('hidden');
+  };
+
+  const openBondingPrintPreview = () => {
+    const labRef = $('#bf_LabRefNo')?.value || 'DTP-BOND-PREVIEW';
+    const etrf = $('#bf_ETRFNo')?.value || '-';
+    const shoeName = $('#bf_ModelStyle')?.value || '-';
+    const color = $('#bf_Color')?.value || '-';
+    const side = $('#bf_Side')?.value || 'Left';
+    const age = $('#bf_AgeCategory')?.value || 'ADULT';
+    const std = $('#bf_STD')?.value || '2.5';
+    const poLot = $('#bf_POLotNO')?.value || '-';
+    const testedDate = $('#bf_TestedDate')?.value || new Date().toISOString().slice(0, 10);
+    const tech = $('#bf_Technician')?.value || 'Bonding Tech';
+    const reviewer = $('#bf_ReviewedBy')?.value || 'QA Lead';
+    const overall = ($('#bf_Result')?.value || 'PASS').toUpperCase();
+
+    const stampCls = overall === 'PASS' ? '' : (overall === 'TOLERABLE' ? 'stamp-tol' : 'stamp-fail');
+
+    // Build spots table (1 to 35)
+    let spotRows = '';
+    const maxSpots = age === 'TODDLER' ? 14 : (age === 'KIDS' ? 16 : (age === 'CHILDREN' ? 24 : 35));
+    for (let i = 1; i <= maxSpots; i++) {
+      const utf = $('#bpt_utf_' + i)?.value || '-';
+      const fto = $('#bpt_fto_' + i)?.value || '-';
+      const fito = i <= 13 ? ($('#bpt_fito_' + i)?.value || '-') : '—';
+      spotRows += `
+        <tr>
+          <td><b>Point ${i}</b></td>
+          <td><b>${utf}</b></td>
+          <td><b>${fto}</b></td>
+          <td>${fito}</td>
+        </tr>
+      `;
+    }
+
+    const html = `
+      <div class="dtr-report-sheet">
+        <div class="dtr-sheet-header">
+          <div class="dtr-sheet-title">
+            <h2>DATIAN SUBIC SHOES INC. (DTP)</h2>
+            <h4>WHOLE SHOE BONDING TEST REPORT — ${escHtml(side.toUpperCase())} (${escHtml(age)})</h4>
+            <div style="font-size:11px;color:#64748b;margin-top:2px">Access Parity: Report - ${escHtml(side.toUpperCase())} · Standard: ${std} kg/cm</div>
+          </div>
+          <div class="dtr-sheet-meta">
+            <div>Lab Ref: <b>${escHtml(labRef)}</b></div>
+            <div>ETRF: <b>${escHtml(etrf)}</b></div>
+            <div style="margin-top:6px">
+              <span class="dtr-sheet-stamp-box ${stampCls}">${escHtml(overall)}</span>
+            </div>
+          </div>
+        </div>
+
+        <table class="dtr-sheet-info-grid">
+          <tr>
+            <td class="label-cell">Model / Style</td>
+            <td><b>${escHtml(shoeName)}</b></td>
+            <td class="label-cell">Color</td>
+            <td>${escHtml(color)}</td>
+            <td class="label-cell">Side</td>
+            <td><b>${escHtml(side)}</b></td>
+          </tr>
+          <tr>
+            <td class="label-cell">Age Category</td>
+            <td><b>${escHtml(age)} (${maxSpots} Spots)</b></td>
+            <td class="label-cell">Standard (STD)</td>
+            <td><b>${escHtml(std)} kg/cm</b></td>
+            <td class="label-cell">PO / Lot No.</td>
+            <td>${escHtml(poLot)}</td>
+          </tr>
+          <tr>
+            <td class="label-cell">Factory</td>
+            <td>DATIAN SUBIC SHOES INC.</td>
+            <td class="label-cell">Adhesive Supplier</td>
+            <td>${escHtml($('#bf_AdhesiveSupplier')?.value || 'NANPAO')}</td>
+            <td class="label-cell">Test Date</td>
+            <td>${escHtml(testedDate)}</td>
+          </tr>
+        </table>
+
+        <!-- Statistics Banner -->
+        <table class="dtr-sheet-results-table" style="margin-bottom:12px">
+          <thead>
+            <tr>
+              <th class="text-left">Test Location</th>
+              <th>Min (kg/cm)</th>
+              <th>Max (kg/cm)</th>
+              <th>Average (kg/cm)</th>
+              <th>Valid Points</th>
+              <th>Threshold</th>
+              <th>Section Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="text-left"><b>Upper To Foxing (UTF)</b></td>
+              <td>${$('#bpt_utf_min')?.textContent || '-'}</td>
+              <td>${$('#bpt_utf_max')?.textContent || '-'}</td>
+              <td><b>${$('#bpt_utf_ave')?.textContent || '-'}</b></td>
+              <td>${$('#bpt_utf_cnt')?.textContent || '0'}</td>
+              <td>&ge; ${std} kg/cm</td>
+              <td><b>${$('#bf_utf_res')?.value || '-'}</b></td>
+            </tr>
+            <tr>
+              <td class="text-left"><b>Foxing To Outsole (FTO)</b></td>
+              <td>${$('#bpt_fto_min')?.textContent || '-'}</td>
+              <td>${$('#bpt_fto_max')?.textContent || '-'}</td>
+              <td><b>${$('#bpt_fto_ave')?.textContent || '-'}</b></td>
+              <td>${$('#bpt_fto_cnt')?.textContent || '0'}</td>
+              <td>&ge; ${std} kg/cm</td>
+              <td><b>${$('#bf_fto_res')?.value || '-'}</b></td>
+            </tr>
+            <tr>
+              <td class="text-left"><b>Foxing Insole To Outsole (FiTO)</b></td>
+              <td>${$('#bpt_fito_min')?.textContent || '-'}</td>
+              <td>${$('#bpt_fito_max')?.textContent || '-'}</td>
+              <td><b>${$('#bpt_fito_ave')?.textContent || '-'}</b></td>
+              <td>${$('#bpt_fito_cnt')?.textContent || '0'}</td>
+              <td>&ge; 1.0 kg/cm</td>
+              <td><b>${$('#bf_fito_res')?.value || '-'}</b></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- 35 Spots Table -->
+        <table class="dtr-sheet-results-table">
+          <thead>
+            <tr>
+              <th style="width:25%">Bonding Position</th>
+              <th style="width:25%">Upper To Foxing (UTF)</th>
+              <th style="width:25%">Foxing To Outsole (FTO)</th>
+              <th style="width:25%">Filler (FiTO)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${spotRows}
+          </tbody>
+        </table>
+
+        <div class="dtr-sheet-sign-row">
+          <div class="dtr-sheet-sign-box">
+            <div>Prepared by (Testing Technician):</div>
+            <div class="dtr-sheet-sign-line">
+              <span>${escHtml(tech)}</span>
+              <span class="muted">${escHtml(testedDate)}</span>
+            </div>
+          </div>
+          <div class="dtr-sheet-sign-box">
+            <div>Reviewed &amp; Approved by (QA Lab Head):</div>
+            <div class="dtr-sheet-sign-line">
+              <span>${escHtml(reviewer)}</span>
+              <span class="muted">${escHtml(testedDate)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    $('#dtr-print-modal-title').textContent = `Whole Shoe Bonding Report Sheet — ${labRef} (${side})`;
+    $('#dtr-print-sheet-container').innerHTML = html;
+    $('#dtr-print-modal-backdrop')?.classList.remove('hidden');
+  };
+
+  $('#btn-dtr-print-preview')?.addEventListener('click', openMaterialPrintPreview);
+  $('#btn-bond-print-preview')?.addEventListener('click', openBondingPrintPreview);
+  $('#btn-dtr-close-print-modal')?.addEventListener('click', () => {
+    $('#dtr-print-modal-backdrop')?.classList.add('hidden');
+  });
+  $('#btn-dtr-cancel-print')?.addEventListener('click', () => {
+    $('#dtr-print-modal-backdrop')?.classList.add('hidden');
+  });
+  $('#btn-dtr-do-print')?.addEventListener('click', () => {
+    window.print();
+  });
+
+  // =========================================================================
+  // 8. INITIALIZE ON PAGE LOAD
+  // =========================================================================
+  updateCalculators();
+  loadMaterialRecordList('fabric');
+  loadSingleMaterialRecord('fabric', 0);
+  loadBondingRecordList();
+  loadSingleBondingRecord(0);
+  runStandardsExplorer();
+})();
