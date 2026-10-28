@@ -15,6 +15,11 @@
 .sc th{position:sticky;top:0;background:#f1f5f9;color:#475569}
 .sc-btn{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:6px;padding:6px 11px;font:inherit;font-size:13px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
 .sc-btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.sc-status{margin:10px 0 0;padding:9px 12px;border-radius:8px;border:1px solid var(--line);background:#f8fafc;font-size:13px;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.sc-dot{width:9px;height:9px;border-radius:50%;background:#94a3b8;flex:none}
+.sc-dot-ok{background:#16a34a}
+.sc-dot-off{background:#dc2626}
+#sc-status-text{flex:1;min-width:220px}
 </style>
 
 <div class="card glass sc" id="sc-root">
@@ -26,6 +31,14 @@
         <a class="sc-btn primary" id="sc-open" href="<?= esc($openUrl ?? 'https://interlink2.intertek.com/', 'attr') ?>" target="_blank" rel="noopener">Open InterLink (sign in with your account)</a>
     </div>
     <p class="sc-note">NEXUS-L does not log in to InterLink and keeps nobody's InterLink login. It prepares the values of a Lab Reference; you fill the InterLink form in your own browser and press Save / Submit yourself.</p>
+    <!-- the one thing NEXUS-L can honestly show: whether the sender extension is present in THIS browser. Whether you are
+         currently signed in to InterLink itself can never be shown here - NEXUS-L stores nobody's InterLink session - so
+         1-Click Send always opens InterLink fresh and lets InterLink itself ask you to sign in if you are not already. -->
+    <div class="sc-status" id="sc-status">
+        <span class="sc-dot" id="sc-status-dot"></span>
+        <span id="sc-status-text">Checking the NEXUS-L InterLink Sender extension…</span>
+        <button type="button" class="sc-btn" id="sc-status-install" hidden>Install the sender</button>
+    </div>
 
     <div class="sc-box">
         <h5>1. Pick the application and the Lab Reference</h5>

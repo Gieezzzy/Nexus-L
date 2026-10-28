@@ -68,6 +68,30 @@
     document.body.appendChild(back);
     back.addEventListener('click', (e) => { if (e.target === back || e.target.dataset.a === 'close') back.remove(); });
   };
+
+  // The one thing this page can honestly show: whether the sender extension is present in THIS browser right now.
+  // Whether you are signed in to InterLink itself is never shown here - NEXUS-L keeps nobody's InterLink session, so
+  // 1-Click Send always opens InterLink fresh and lets InterLink ask you to sign in there if you are not already.
+  const renderSenderStatus = () => {
+    const dot = $('#sc-status-dot');
+    const text = $('#sc-status-text');
+    const install = $('#sc-status-install');
+    if (!dot) return;
+    if (hasSender()) {
+      dot.className = 'sc-dot sc-dot-ok';
+      text.textContent = 'Sender extension: detected in this browser. When you press "Send to InterLink", InterLink opens and asks you to sign in there if you are not already - NEXUS-L cannot check that in advance.';
+      install.hidden = true;
+    } else {
+      dot.className = 'sc-dot sc-dot-off';
+      text.textContent = 'Sender extension: not detected in this browser. If you just installed or updated it, reload this page.';
+      install.hidden = false;
+    }
+  };
+  $('#sc-status-install')?.addEventListener('click', installHelp);
+  renderSenderStatus();
+  window.addEventListener('focus', renderSenderStatus);   // catches "I just installed it and switched back to this tab"
+  setInterval(renderSenderStatus, 4000);
+
   window.addEventListener('message', (e) => {
     if (e.source !== window || !e.data || e.data.type !== 'NXL_SEND_STATUS') return;
     nxToast(e.data.message, e.data.ok ? 'success' : (e.data.done ? 'error' : 'info'), e.data.done ? 12000 : 5000);
