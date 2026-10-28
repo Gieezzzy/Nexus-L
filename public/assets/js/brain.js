@@ -54,19 +54,29 @@
     curThread = id;
     const j = await api('brain/thread/' + id);
     const t = j.thread;
+    const s = j.session;
     $('#br-thread-box').innerHTML = `
-      <h4>${esc(t.username)} <small class="muted">${esc(t.status)}</small></h4>
-      <div class="br-msgs">${j.messages.map((m) => `<div class="br-m ${esc(m.sender)}"><small>${esc(m.sender_name || m.sender)} · ${esc(m.created_at)}</small><p>${esc(m.message).replace(/\n/g, '<br>')}</p></div>`).join('')}</div>
+      <h4>${esc(s ? s.code : t.username)} <small class="muted">${s ? 'live chat' : esc(t.status)}</small></h4>
+      <div class="br-msgs">${j.messages.map((m) => m.sender === 'system' ? `<div class="br-m system"><p><b>${esc(m.message)}</b></p></div>` : `<div class="br-m ${esc(m.sender)}"><small>${esc(m.sender_name || m.sender)} · ${esc(m.created_at)}</small><p>${esc(m.message).replace(/\n/g, '<br>')}</p></div>`).join('')}</div>
       <details><summary>What the user did just before (${j.events.length})</summary><ul class="br-ev">${j.events.map((e) => `<li><small>${esc(e.created_at)}</small> ${esc(e.event_type)} · ${esc(e.target || e.page)} ${e.status ? '(' + e.status + ')' : ''} ${esc(e.detail || '')}</li>`).join('')}</ul></details>
-      <textarea id="br-reply" rows="3" placeholder="Write your reply to ${esc(t.username)}…"></textarea>
-      <div class="br-row"><button type="button" class="dsg-btn dsg-primary" id="br-send">Send reply</button><button type="button" class="dsg-btn" id="br-resolve">Resolve and teach the assistant…</button></div>`;
+      ${s ? `<textarea id="br-reply" rows="3" placeholder="Write your reply to ${esc(t.username)}…"></textarea>
+      <div class="br-row"><button type="button" class="dsg-btn dsg-primary" id="br-send">Send reply</button><button type="button" class="dsg-btn" id="br-live">Open live chat</button><button type="button" class="dsg-btn" id="br-end">Close chat</button><button type="button" class="dsg-btn" id="br-resolve">Resolve and teach the assistant…</button></div>`
+        : `<p class="muted sm">No live chat is open with this user, so replies are not possible. The user can press "Talk to an administrator" again.</p>
+      <div class="br-row"><button type="button" class="dsg-btn" id="br-resolve">Resolve and teach the assistant…</button></div>`}`;
+    $('#br-thread-box').dataset.session = s ? String(s.id) : '';
     loaders.chats();
   };
   $('#br-threads').addEventListener('click', (e) => { const li = e.target.closest('[data-t]'); if (li) openThread(Number(li.dataset.t)); });
   $('#br-thread-box').addEventListener('click', async (e) => {
     if (e.target.id === 'br-send') {
       const m = $('#br-reply').value.trim(); if (!m) return;
-      await post('brain/reply', { thread_id: curThread, message: m }); openThread(curThread);
+      try { await post('brain/reply', { session_id: Number($('#br-thread-box').dataset.session), message: m }); } catch (x) { alert(x.message); }
+      openThread(curThread);
+    }
+    if (e.target.id === 'br-live' && window.nxAdminChat) window.nxAdminChat(Number($('#br-thread-box').dataset.session));
+    if (e.target.id === 'br-end' && confirm('Close this chat? Neither you nor the user can write into it after this.')) {
+      await post('brain/session/close', { session_id: Number($('#br-thread-box').dataset.session) }).catch(() => {});
+      openThread(curThread);
     }
     if (e.target.id === 'br-resolve') {
       const d = await api('brain/learn-draft?thread_id=' + curThread);

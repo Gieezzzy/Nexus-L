@@ -106,6 +106,7 @@
   panel.innerHTML = `
     <header><div><b>NEXUS-L Assistant</b><small>Ask how to do something, or describe a problem</small></div>
       <div class="nxbot-hbtns"><button type="button" data-a="history" title="My recent activity">History</button><button type="button" data-a="close" aria-label="Close assistant">&times;</button></div></header>
+    <div class="nxbot-live" id="nxbot-live" hidden></div>
     <div class="nxbot-msgs" id="nxbot-msgs" aria-live="polite"></div>
     <div class="nxbot-chips" id="nxbot-chips"></div>
     <form id="nxbot-form" autocomplete="off"><input id="nxbot-input" type="text" maxlength="1000" placeholder="Type your question…" aria-label="Your question"><button type="submit">Send</button></form>
@@ -149,6 +150,7 @@
   };
 
   const renderRow = (m) => {
+    if (m.sender === 'system') return add('sys', `<span>${esc(m.message)}</span>`, m.id);
     if (m.sender === 'user') return add('user', `<p>${esc(m.message).replace(/\n/g, '<br>')}</p>`, m.id);
     if (m.sender === 'admin') return add('admin', `<small>${esc(m.sender_name || 'Administrator')}</small><p>${esc(m.message).replace(/\n/g, '<br>')}</p>`, m.id);
     return add('bot', `<p>${esc(m.message).replace(/\n/g, '<br>')}</p>`, m.id);
@@ -160,15 +162,38 @@
       const j = await api('bot/thread?thread_id=' + threadId + '&after=' + lastId);
       if (!j.thread) return;
       if (threadId !== j.thread.id) { threadId = j.thread.id; }
-      status = j.thread.status;
-      j.messages.forEach((m) => { if (!msgs.querySelector(`[data-id="${m.id}"]`)) renderRow(m); lastId = Math.max(lastId, Number(m.id)); });
-      panel.classList.toggle('escalated', status === 'escalated');
-      panel.querySelector('footer [data-a=admin]').textContent = status === 'escalated' ? 'With an administrator' : 'Talk to an administrator';
+      const fresh = j.messages.filter((m) => !msgs.querySelector(`[data-id="${m.id}"]`));
+      fresh.forEach((m) => { renderRow(m); lastId = Math.max(lastId, Number(m.id)); });
+      if (panel.hidden && fresh.some((m) => m.sender !== 'user')) dot.hidden = false;
+      setLive(j.thread.status, j.session);
       if (status === 'resolved') { threadId = 0; lastId = 0; }
     } catch (e) { /* offline */ }
   };
 
-  const startPolling = () => { clearInterval(pollTimer); pollTimer = setInterval(() => { if (!panel.hidden && !document.hidden) loadThread(); }, 6000); };
+  // live session with an administrator: green header, banner with who is answering and the 2-minute idle rule
+  const live = panel.querySelector('#nxbot-live');
+  const setLive = (st, s) => {
+    const on = st === 'escalated' && s && s.status === 'open';
+    status = on ? 'escalated' : (st === 'escalated' ? 'bot' : st);
+    panel.classList.toggle('escalated', on);
+    panel.querySelector('footer [data-a=admin]').textContent = on ? 'With an administrator' : 'Talk to an administrator';
+    live.hidden = !on;
+    if (on) {
+      const who = s.admin_name ? `<b>${esc(s.admin_name)}</b> is answering you` : 'Waiting for an administrator…';
+      live.innerHTML = `${who}<small>Closes after 2 minutes without messages${s.seconds_left < 60 ? ` (in ${s.seconds_left}s)` : ''}</small>`;
+    }
+    startPolling();
+  };
+
+  // every 3 s during a live session (even with the panel closed, so replies light the dot), otherwise 6 s while open
+  let pollEvery = 0;
+  const startPolling = () => {
+    const every = status === 'escalated' ? 3000 : 6000;
+    if (every === pollEvery && pollTimer) return;
+    pollEvery = every;
+    clearInterval(pollTimer);
+    pollTimer = setInterval(() => { if (!document.hidden && (status === 'escalated' || !panel.hidden)) loadThread(); }, every);
+  };
 
   const open = async () => {
     panel.hidden = false; bubble.hidden = true; dot.hidden = true; fab.setAttribute('aria-expanded', 'true');
@@ -202,7 +227,7 @@
       threadId = j.thread_id;
       if (j.user_chat_id) { mine.dataset.id = j.user_chat_id; lastId = Math.max(lastId, Number(j.user_chat_id)); }
       wait.remove();
-      if (j.escalated) { status = 'escalated'; panel.classList.add('escalated'); add('bot', '<p>Your message was sent to the administrator.</p>'); }
+      if (j.escalated) setLive('escalated', j.session);
       else if (j.reply) { renderReply(j.reply, j.reply.chat_id); lastId = Math.max(lastId, Number(j.reply.chat_id || 0)); }
       record('bot', { target: 'asked the assistant' });
     } catch (e) {
@@ -223,9 +248,16 @@
     if (b.dataset.q) return ask(b.dataset.q);
     if (b.dataset.a === 'close') return close();
     if (b.dataset.a === 'admin') {
-      if (status === 'escalated') { add('bot', '<p>This chat is already with an administrator. Write your message below; they will reply here.</p>'); return; }
-      if (!threadId) { add('bot', '<p>Write your question first, then press the button again, so the administrator knows what you need.</p>'); return; }
-      try { await post('bot/escalate', { thread_id: threadId }); status = 'escalated'; panel.classList.add('escalated'); loadThread(); } catch (x) { add('bot', '<p>Could not reach an administrator right now.</p>'); }
+      if (status === 'escalated') { input.focus(); return; }
+      b.disabled = true;
+      try {
+        const j = await post('bot/escalate', { thread_id: threadId, page: pagePath() });
+        threadId = j.thread_id;
+        record('bot', { target: 'talk to an administrator' });
+        await loadThread();
+        input.focus();
+      } catch (x) { add('bot', '<p>Could not reach an administrator right now. Please try again in a moment.</p>'); }
+      b.disabled = false;
       return;
     }
     if (b.dataset.a === 'history') {
@@ -266,11 +298,143 @@
     try {
       const j = await api('bot/badge');
       dot.hidden = !(j.user_unread > 0) || !panel.hidden;
+      // a live chat with an administrator continues on every page
+      if (j.user_live && status !== 'escalated') { opened = true; await loadThread(); }
       if (j.user_unread > 0 && panel.hidden) fab.title = 'You have a reply from an administrator';
       const nb = document.getElementById('nav-brain');
       if (nb) { nb.textContent = j.admin_unread || ''; nb.classList.toggle('hidden', !j.admin_unread); }
     } catch (e) { /* ignore */ }
   };
-  setTimeout(badge, 2500);
+  setTimeout(badge, 800);
   setInterval(badge, 45000);
+
+  // ------------------------------------------------------------------------- administrators: live chats
+  // Only admins see the Brain menu item. An attention card lists the users waiting in a live session; "Open chat"
+  // opens the chat named <username>-S<id>. The admin can close it; it also closes after 2 minutes without messages.
+  if (!document.getElementById('nav-brain')) return;
+
+  const card = document.createElement('aside');
+  card.id = 'nxadm-card'; card.hidden = true; card.setAttribute('role', 'status');
+  const win = document.createElement('section');
+  win.id = 'nxadm-chat'; win.hidden = true; win.setAttribute('role', 'dialog'); win.setAttribute('aria-label', 'Chat with a user');
+  win.innerHTML = `
+    <header><div><b id="nxadm-name"></b><small id="nxadm-sub"></small></div>
+      <div class="nxbot-hbtns"><button type="button" data-w="end" title="Close this chat for both sides">Close chat</button><button type="button" data-w="hide" aria-label="Hide">&times;</button></div></header>
+    <div class="nxbot-live" id="nxadm-state"></div>
+    <div class="nxbot-msgs" id="nxadm-msgs" aria-live="polite"></div>
+    <form id="nxadm-form" autocomplete="off"><input id="nxadm-input" type="text" maxlength="1000" placeholder="Reply to the user…" aria-label="Your reply"><button type="submit">Send</button></form>`;
+  document.body.append(card, win);
+
+  const wMsgs = win.querySelector('#nxadm-msgs');
+  const wInput = win.querySelector('#nxadm-input');
+  let cur = null;          // open chat: { id, last, timer, status }
+  let dismissed = '';      // what the admin dismissed; the card comes back when something changes
+  const seenSessions = new Set();
+  const nb = document.getElementById('nav-brain');
+  const mmss = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+  const liveTick = async () => {
+    if (document.hidden) return;
+    let j;
+    try { j = await api('brain/live'); } catch (e) { return; }
+    const need = j.sessions.filter((s) => !s.admin_user || s.admin_unread > 0);
+    if (nb) { nb.textContent = need.length || ''; nb.classList.toggle('hidden', !need.length); }
+    j.sessions.forEach((s) => {
+      if (!seenSessions.has(s.id)) {
+        seenSessions.add(s.id);
+        if (!s.admin_user && 'Notification' in window && Notification.permission === 'granted') {
+          try { new Notification('NEXUS-L: an administrator is needed', { body: `${s.user_name || s.username} (${s.code})`, tag: 'nxsess-' + s.id }); } catch (e) { /* ignore */ }
+        }
+      }
+    });
+    const key = need.map((s) => s.id + ':' + s.admin_unread).join(',');
+    const show = need.filter((s) => !(cur && cur.id === s.id && !win.hidden));
+    card.hidden = !show.length || key === dismissed;
+    if (card.hidden) return;
+    card.dataset.key = key;
+    card.innerHTML = `<header><b>Needs admin attention</b><button type="button" data-c="dismiss" aria-label="Hide">&times;</button></header>` +
+      show.map((s) => `<div class="nxadm-item"><div><b>${esc(s.user_name || s.username)}</b> <small>${esc(s.code)}</small>
+        <p>${esc(s.topic || 'Talk to an administrator')}</p>
+        <small>${s.admin_user ? `${s.admin_unread} new message${s.admin_unread === 1 ? '' : 's'} · ${esc(s.admin_name || s.admin_user)}` : 'Waiting for an administrator'} · closes in ${mmss(s.seconds_left)}</small></div>
+        <button type="button" data-open="${s.id}">Open chat</button></div>`).join('');
+  };
+  card.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.c === 'dismiss') { dismissed = card.dataset.key || ''; card.hidden = true; return; }
+    if (b.dataset.open) openChat(Number(b.dataset.open));
+  });
+
+  const wRow = (m) => {
+    if (wMsgs.querySelector(`[data-id="${m.id}"]`)) return;
+    const d = document.createElement('div');
+    d.dataset.id = m.id;
+    if (m.sender === 'system') { d.className = 'nxbot-m sys'; d.innerHTML = `<span>${esc(m.message)}</span>`; }
+    else {
+      // in this window the admin's own lines are on the right, the user's on the left
+      d.className = 'nxbot-m ' + (m.sender === 'admin' ? 'user' : (m.sender === 'user' ? 'admin' : 'bot')) + (m.earlier ? ' earlier' : '');
+      d.innerHTML = `<small>${esc(m.sender_name || m.sender)} · ${esc(String(m.created_at || '').slice(11, 16))}</small><p>${esc(m.message).replace(/\n/g, '<br>')}</p>`;
+    }
+    wMsgs.appendChild(d);
+    wMsgs.scrollTop = wMsgs.scrollHeight;
+  };
+  const wState = (s) => {
+    cur.status = s.status;
+    win.querySelector('#nxadm-name').textContent = s.code;
+    win.querySelector('#nxadm-sub').textContent = `${s.user_name || s.username}${s.page ? ' · on ' + s.page : ''}`;
+    const open = s.status === 'open';
+    win.classList.toggle('closed', !open);
+    win.querySelector('[data-w=end]').hidden = !open;
+    wInput.disabled = !open; win.querySelector('#nxadm-form button').disabled = !open;
+    wInput.placeholder = open ? 'Reply to the user…' : 'This chat is closed.';
+    win.querySelector('#nxadm-state').innerHTML = open
+      ? `Live chat · closes after 2 minutes without messages <small>(in ${mmss(s.seconds_left)})</small>`
+      : `Closed ${s.closed_by === 'timeout' ? 'after 2 minutes without messages' : 'by ' + esc(s.closed_by || 'an administrator')}. Nobody can write into it any more.`;
+  };
+  const pullChat = async () => {
+    if (!cur) return;
+    try {
+      const j = await api(`brain/session/${cur.id}?after=${cur.last}`);
+      j.messages.forEach((m) => { wRow(m); if (!m.earlier) cur.last = Math.max(cur.last, Number(m.id)); });
+      wState(j.session);
+      if (j.session.status !== 'open') { clearInterval(cur.timer); cur.timer = null; }
+    } catch (e) { if (e.status === 404) { clearInterval(cur.timer); } }
+  };
+  const openChat = async (id) => {
+    if (cur && cur.timer) clearInterval(cur.timer);
+    cur = { id, last: 0, timer: null, status: '' };
+    wMsgs.innerHTML = '';
+    win.hidden = false; card.hidden = true;
+    await pullChat();
+    if (cur.status === 'open') cur.timer = setInterval(() => { if (!document.hidden) pullChat(); }, 2500);
+    wInput.focus();
+  };
+  window.nxAdminChat = openChat;
+
+  win.querySelector('#nxadm-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = wInput.value.trim();
+    if (!text || !cur) return;
+    wInput.value = '';
+    try { await post('brain/reply', { session_id: cur.id, message: text }); await pullChat(); }
+    catch (x) { wInput.value = text; win.querySelector('#nxadm-state').textContent = x.message; pullChat(); }
+  });
+  win.addEventListener('click', async (e) => {
+    const b = e.target.closest('button');
+    if (!b || !cur) return;
+    if (b.dataset.w === 'hide') { win.hidden = true; liveTick(); return; }
+    if (b.dataset.w === 'end') {
+      if (!confirm(`Close the chat ${win.querySelector('#nxadm-name').textContent}? Neither you nor the user can write into it after this.`)) return;
+      try { await post('brain/session/close', { session_id: cur.id }); } catch (x) { /* shown by the poll */ }
+      await pullChat();
+      liveTick();
+    }
+  });
+
+  // link from the Synology Chat message: <any page>?nxsession=<id>
+  const deep = Number(new URLSearchParams(location.search).get('nxsession') || 0);
+  if (deep) openChat(deep);
+  setTimeout(liveTick, 1200);
+  setInterval(liveTick, 4000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) liveTick(); });
 })();
