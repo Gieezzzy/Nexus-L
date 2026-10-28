@@ -114,6 +114,45 @@ class InterlinkController extends BaseController
     }
 
     /**
+     * POST /interlink/pull-grid-html {html}: the real SearchFormWithHeader grid's own HTML, read through the user's
+     * already-signed-in browser by the NEXUS-L InterLink Sender extension (background.js `pullGrid()`). NEXUS-L's
+     * server never holds an InterLink login itself (getActiveChromeCookieHeader() always returns '' - see its
+     * docblock), which is why pullInterlinkGridPage()'s own curl path can never succeed: this is the only way "Live
+     * Refresh" / "Auto-Sync" can show genuinely current data. Reuses the exact parser/upsert pipeline that path was
+     * always written for; only where the HTML comes from is different.
+     */
+    public function pullGridHtml()
+    {
+        $payload = $this->request->getJSON(true) ?? $this->request->getPost();
+        $html    = (string) ($payload['html'] ?? '');
+        if ($html === '' || strlen($html) > 5_000_000 || strpos($html, 'PH1_SF1_GVBUILDER_BuilderGridView') === false) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'error' => 'That does not look like the InterLink search grid.', 'csrf' => csrf_hash()]);
+        }
+        $parsed   = $this->parseInterlinkGridHtml($html);
+        $upserted = $this->upsertGridRowsIntoDbNexus($parsed['rows']);
+
+        $model      = model(InterlinkReportModel::class);
+        $allReports = $model->select('id, synced_to_interlink')->findAll();
+        $syncedCnt  = count(array_filter($allReports, static fn ($r) => (int) ($r['synced_to_interlink'] ?? 0) === 1));
+
+        return $this->response->setJSON([
+            'ok'           => true,
+            'live'         => true,
+            'message'      => "Live synced Page {$parsed['currentPage']} of {$parsed['totalPages']} ({$parsed['totalItems']} items) from InterLink 2.0, via your browser.",
+            'currentPage'  => $parsed['currentPage'],
+            'totalPages'   => $parsed['totalPages'],
+            'totalItems'   => $parsed['totalItems'],
+            'pageSize'     => $parsed['pageSize'],
+            'rows'         => $upserted['rows'],
+            'changedApps'  => $upserted['changedApps'],
+            'syncedCount'  => $syncedCnt,
+            'pendingCount' => count($allReports) - $syncedCnt,
+            'syncedAt'     => date('H:i:s'),
+            'csrf'         => csrf_hash(),
+        ]);
+    }
+
+    /**
      * POST /interlink/fetch-live-form
      * Follows the row's live DataLinkSearch.aspx URL on InterLink 2.0 for any row across all 517 pages,
      * scrapes the live UploadForm.aspx ([10072] Product or [10076] Material) or NormalForm.aspx ([10000]),
@@ -658,8 +697,10 @@ JS;
     }
 
     /**
-     * Pulls any page (1..517) and pageSize (10|15|20|50|100) live from InterLink 2.0's
-     * SearchFormWithHeader.aspx BuilderGridView, upserts into dbnexus, and returns the rows.
+     * The curl path this was written for only runs `if ($cookie !== '')`, and getActiveChromeCookieHeader() always
+     * returns '' by design (see its docblock) - so this has never actually been able to reach InterLink live; every
+     * call falls through to the "cached NEXUS-L records" branch below. Kept as the fallback for when the sender
+     * extension is not installed; pullGridHtml() (fed by the extension) is what makes this genuinely live.
      */
     public function pullInterlinkGridPage(int $page, int $pageSize, bool $forceRefresh = false): array
     {

@@ -65,6 +65,7 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->post('interlink/sync', 'InterlinkController::sync');
     $routes->post('interlink/submit', 'InterlinkController::submitToInterlink');
     $routes->post('interlink/fetch-live-page', 'InterlinkController::fetchLivePage');
+    $routes->post('interlink/pull-grid-html', 'InterlinkController::pullGridHtml');
     $routes->post('interlink/fetch-live-form', 'InterlinkController::fetchLiveForm');
     $routes->get('interlink/labrefs', 'InterlinkController::labrefs');
     $routes->get('interlink/search', 'InterlinkController::search');

@@ -31,7 +31,46 @@ chrome.runtime.onMessage.addListener((m, sender) => {
     });
   }
   if (m.type === 'ready' && sender.tab) step(sender.tab.id);
+  if (m.type === 'pull-grid' && sender.tab) pullGrid(sender.tab.id, !!m.silent);
 });
+
+/** Reads the live search grid through the user's own signed-in browser and relays its HTML back to the NEXUS-L tab.
+ *  NEXUS-L's server never holds an InterLink login itself; this is the only way its grid view can show current data.
+ *  Uses an already-open InterLink tab if there is one (never navigates it away from whatever the user is doing); a
+ *  silent (auto-sync) call never opens a new tab - only the explicit "Live Refresh" button does that, in the
+ *  background, closing it again once read. */
+async function pullGrid(nexusTabId, silent) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const reply = (msg) => chrome.tabs.sendMessage(nexusTabId, msg).catch(() => {});
+  try {
+    let [tab] = await chrome.tabs.query({ url: 'https://interlink2.intertek.com/*' });
+    let openedHere = false;
+    if (!tab) {
+      if (silent) { reply({ type: 'grid-status', ok: false, message: 'No InterLink tab is open.' }); return; }
+      tab = await chrome.tabs.create({ url: PORTAL_HOME, active: false });
+      openedHere = true;
+      let ready = false;
+      for (let i = 0; i < 40 && !ready; i++) {        // up to ~20 s for the grid to load
+        await sleep(500);
+        ready = await inPage(tab.id, () => !!document.getElementById('PH1_SF1_GVBUILDER_BuilderGridView')).catch(() => false);
+      }
+      if (!ready) { if (openedHere) chrome.tabs.remove(tab.id).catch(() => {}); reply({ type: 'grid-status', ok: false, message: 'InterLink did not load the search grid in time.' }); return; }
+    }
+    const r = await inPage(tab.id, readGridHtml, []);
+    if (openedHere) chrome.tabs.remove(tab.id).catch(() => {});
+    if (!r || !r.ok) { reply({ type: 'grid-status', ok: false, message: (r && r.message) || 'Could not read the InterLink grid.' }); return; }
+    reply({ type: 'grid-html', html: r.html });
+  } catch (e) {
+    reply({ type: 'grid-status', ok: false, message: e.message });
+  }
+}
+
+function readGridHtml() {
+  const el = document.getElementById('PH1_SF1_GVBUILDER_BuilderGridView');
+  if (!el) return { ok: false, message: 'the search grid was not found on this InterLink page.' };
+  if (/login|signin|sign-in/i.test(location.pathname)) return { ok: false, message: 'sign in to InterLink first.' };
+  return { ok: true, html: el.outerHTML };
+}
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   const job = await getJob(tabId);
   if (job) { status(job, false, true, `The InterLink tab for ${job.application_no} was closed before it was sent.`); endJob(job); }

@@ -384,6 +384,22 @@
    * Fetches any page (1..517) and pageSize live from InterLink 2.0's SearchFormWithHeader.aspx
    * BuilderGridView, upserts into dbnexus, and updates the grid in real time.
    */
+  // Reads the real search grid through the user's own signed-in browser (the sender extension), when it is installed.
+  // NEXUS-L's server deliberately never holds an InterLink login itself, so this is the only way this view can ever
+  // show genuinely current data rather than a frozen cache - see pullInterlinkGridPage()'s docblock server-side.
+  const hasGridSender = () => document.documentElement.dataset.nxlSender === '1';
+  const nxPullGrid = (silent) => new Promise((resolve, reject) => {
+    const onMsg = (e) => {
+      if (e.source !== window || !e.data) return;
+      if (e.data.type === 'NXL_GRID_HTML') { cleanup(); resolve(e.data.html); }
+      if (e.data.type === 'NXL_GRID_STATUS' && e.data.ok === false) { cleanup(); reject(new Error(e.data.message || 'Could not read InterLink.')); }
+    };
+    const timer = setTimeout(() => { cleanup(); reject(new Error('Timed out reading InterLink.')); }, 30000);
+    const cleanup = () => { clearTimeout(timer); window.removeEventListener('message', onMsg); };
+    window.addEventListener('message', onMsg);
+    window.postMessage({ type: 'NXL_PULL_GRID', silent: !!silent }, location.origin);
+  });
+
   const fetchLiveInterlinkPage = async (page = state.currentPage, pageSize = state.pageSize, forceRefresh = false, silent = false) => {
     if (state.isFetchingPage) return;
     state.isFetchingPage = true;
@@ -396,15 +412,21 @@
     try {
       if (!silent) beginLoading(`Loading page ${page} of ${state.totalPages} from InterLink…`);
 
-      const res = await apiFetch('interlink/fetch-live-page', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          page: Number(page) || 1,
-          pageSize: Number(pageSize) || 15,
-          forceRefresh: Boolean(forceRefresh),
-        }),
-      });
+      const res = hasGridSender()
+        ? await apiFetch('interlink/pull-grid-html', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ html: await nxPullGrid(silent) }),
+        })
+        : await apiFetch('interlink/fetch-live-page', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            page: Number(page) || 1,
+            pageSize: Number(pageSize) || 15,
+            forceRefresh: Boolean(forceRefresh),
+          }),
+        });
 
       if (res && Array.isArray(res.rows)) {
         state.currentPage = Number(res.currentPage) || page;
