@@ -794,12 +794,20 @@
   border: 0 !important;
   flex: 1;
 }
-.uf-btn-gen {
+.uf-action-btn.uf-btn-gen {
   border-color: #047857;
   color: #047857;
   white-space: nowrap;
 }
-.uf-btn-gen:hover:not(:disabled) {
+.uf-email-wrap .uf-action-btn {
+  min-width: 0;
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+.uf-email-wrap input {
+  min-width: 120px;
+}
+.uf-action-btn.uf-btn-gen:hover:not(:disabled) {
   background: #ecfdf5;
 }
 .uf-att-meta {
