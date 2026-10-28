@@ -21,6 +21,8 @@ class BrainMaintain extends BaseCommand
     {
         $db  = \Config\Database::connect();
         $out = Brain::flush();
+        // live chats with an administrator that went quiet for 2 minutes are closed even when nobody has a page open
+        $out['sessions_closed'] = \App\Libraries\BotSessions::expire();
         if (CLI::getOption('markdown')) {
             $out['markdown'] = Brain::exportMarkdown();
         }

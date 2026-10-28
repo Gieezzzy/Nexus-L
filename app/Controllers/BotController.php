@@ -2,6 +2,7 @@
 
 namespace App\Controllers;
 
+use App\Libraries\BotSessions;
 use App\Libraries\Brain;
 
 /**
@@ -133,15 +134,18 @@ class BotController extends BaseController
         $text   = Brain::redact($text);
         $page   = (string) ($p['page'] ?? '');
         $uid    = (int) $u['id'];
+        BotSessions::expire();
         $thread = $this->threadFor($uid, (string) ($u['username'] ?? ''), $page, isset($p['thread_id']) ? (int) $p['thread_id'] : null, $text);
-        $userChatId = $this->say((int) $thread['id'], 'user', (string) ($u['name'] ?? $u['username'] ?? 'User'), $text);
+        $sess   = BotSessions::active((int) $thread['id']);
 
-        // already with an administrator: the message goes to them, the bot stays quiet
-        if ($thread['status'] === 'escalated') {
-            $this->db()->table('tbl_bot_threads')->where('id', $thread['id'])->set('admin_unread', 'admin_unread + 1', false)->update();
+        // in a live session with an administrator: the message goes to them, the bot stays quiet
+        if ($sess) {
+            $userChatId = BotSessions::line((int) $thread['id'], (int) $sess['id'], 'user', (string) ($u['name'] ?? $u['username'] ?? 'User'), $text);
+            BotSessions::fromUser($sess, $text);
 
-            return $this->json(['ok' => true, 'thread_id' => (int) $thread['id'], 'user_chat_id' => $userChatId, 'escalated' => true, 'reply' => null]);
+            return $this->json(['ok' => true, 'thread_id' => (int) $thread['id'], 'user_chat_id' => $userChatId, 'escalated' => true, 'session' => BotSessions::public(BotSessions::find((int) $sess['id'])), 'reply' => null]);
         }
+        $userChatId = $this->say((int) $thread['id'], 'user', (string) ($u['name'] ?? $u['username'] ?? 'User'), $text);
 
         $reply = $this->labRefIntent($text) ?? $this->compose($text, ['page' => $page, 'role' => (string) ($u['role'] ?? ''), 'errors' => $this->recentErrors($uid)], $page);
         $cid   = $this->say((int) $thread['id'], 'bot', 'NEXUS-L Assistant', $reply['text'], $reply['knowledge_id'], $reply['confidence']);
@@ -350,20 +354,17 @@ class BotController extends BaseController
         return $this->json(['ok' => true]);
     }
 
-    /** POST bot/escalate {thread_id} */
+    /** POST bot/escalate {thread_id?, page?} : opens a live session with an administrator (starts a chat if needed) */
     public function escalate()
     {
-        $p  = $this->input();
-        $u  = $this->auth->user();
-        $db = $this->db();
-        $t  = $db->table('tbl_bot_threads')->where(['id' => (int) ($p['thread_id'] ?? 0), 'user_id' => (int) $u['id']])->get()->getRowArray();
-        if (! $t) {
-            return $this->json(['ok' => false, 'error' => 'Start a chat first.'], 404);
-        }
-        $db->table('tbl_bot_threads')->where('id', $t['id'])->update(['status' => 'escalated', 'admin_unread' => (int) $t['admin_unread'] + 1, 'updated_at' => date('Y-m-d H:i:s')]);
-        $this->say((int) $t['id'], 'bot', 'NEXUS-L Assistant', 'I sent this conversation to an administrator. You can keep writing here; they will reply in this chat.');
+        $p    = $this->input();
+        $u    = $this->auth->user();
+        $page = (string) ($p['page'] ?? '');
+        BotSessions::expire();
+        $t    = $this->threadFor((int) $u['id'], (string) ($u['username'] ?? ''), $page, (int) ($p['thread_id'] ?? 0) ?: null, 'Talk to an administrator');
+        $s    = BotSessions::open($t, $u, $page);
 
-        return $this->json(['ok' => true]);
+        return $this->json(['ok' => true, 'thread_id' => (int) $t['id'], 'session' => BotSessions::public($s)]);
     }
 
     /** GET bot/thread?thread_id=&after= : messages of the user's own thread (also the poll for new ones) */
@@ -372,6 +373,7 @@ class BotController extends BaseController
         $u  = $this->auth->user();
         $db = $this->db();
         $id = (int) $this->request->getGet('thread_id');
+        BotSessions::expire();
         if ($id === 0) {
             $t = $db->table('tbl_bot_threads')->where('user_id', (int) $u['id'])->whereIn('status', ['bot', 'escalated'])->orderBy('id', 'DESC')->get(1)->getRowArray();
         } else {
@@ -386,7 +388,9 @@ class BotController extends BaseController
             $db->table('tbl_bot_threads')->where('id', $t['id'])->update(['user_unread' => 0]);
         }
 
-        return $this->json(['ok' => true, 'thread' => ['id' => (int) $t['id'], 'status' => $t['status'], 'admin_user' => $t['admin_user']], 'messages' => $msgs]);
+        $sess = $db->table('tbl_bot_sessions')->where('thread_id', $t['id'])->orderBy('id', 'DESC')->get(1)->getRowArray();
+
+        return $this->json(['ok' => true, 'thread' => ['id' => (int) $t['id'], 'status' => $t['status'], 'admin_user' => $t['admin_user']], 'session' => BotSessions::public($sess ?: null), 'messages' => $msgs]);
     }
 
     /** GET bot/badge : unread counts for the widget (user) and the sidebar (admin) */
@@ -395,8 +399,10 @@ class BotController extends BaseController
         $u  = $this->auth->user();
         $db = $this->db();
         $out = ['ok' => true, 'user_unread' => (int) ($db->table('tbl_bot_threads')->selectSum('user_unread', 's')->where('user_id', (int) $u['id'])->get()->getRow()->s ?? 0)];
+        $out['user_live'] = $db->table('tbl_bot_sessions')->where(['user_id' => (int) $u['id'], 'status' => 'open'])->where('last_activity_at >=', date('Y-m-d H:i:s', time() - BotSessions::IDLE))->countAllResults() > 0;
         if ($this->isAdmin()) {
-            $out['admin_unread'] = (int) $db->table('tbl_bot_threads')->where('status', 'escalated')->where('admin_unread >', 0)->countAllResults();
+            BotSessions::expire();
+            $out['admin_unread'] = (int) $db->table('tbl_bot_sessions')->where('status', 'open')->groupStart()->where('admin_unread >', 0)->orWhere('admin_user IS NULL', null, false)->groupEnd()->countAllResults();
         }
 
         return $this->json($out);
@@ -462,26 +468,69 @@ class BotController extends BaseController
         }
         $db->table('tbl_bot_threads')->where('id', $id)->update(['admin_unread' => 0]);
 
-        return $this->json(['ok' => true, 'thread' => $t, 'messages' => $db->table('tbl_bot_chats')->where('thread_id', $id)->orderBy('id')->limit(300)->get()->getResultArray(),
+        return $this->json(['ok' => true, 'thread' => $t, 'session' => BotSessions::public(BotSessions::active($id)), 'messages' => $db->table('tbl_bot_chats')->where('thread_id', $id)->orderBy('id')->limit(300)->get()->getResultArray(),
             'events' => $db->table('tbl_bot_events')->select('event_type, page, target, detail, status, created_at')->where('user_id', (int) $t['user_id'])->orderBy('id', 'DESC')->limit(25)->get()->getResultArray()]);
     }
 
-    /** POST brain/reply {thread_id, message} */
+    /** POST brain/reply {session_id | thread_id, message} : only into an open session */
     public function reply()
     {
         $p   = $this->input();
         $msg = Brain::redact(trim((string) ($p['message'] ?? '')));
-        $id  = (int) ($p['thread_id'] ?? 0);
-        $db  = $this->db();
-        $t   = $db->table('tbl_bot_threads')->where('id', $id)->get()->getRowArray();
-        if (! $t || $msg === '') {
+        if ($msg === '') {
             return $this->json(['ok' => false, 'error' => 'Write a message.'], 422);
         }
-        $u = $this->auth->user();
-        $this->say($id, 'admin', (string) ($u['name'] ?? $u['username'] ?? 'Administrator'), $msg);
-        $db->table('tbl_bot_threads')->where('id', $id)->update(['status' => 'escalated', 'admin_user' => (string) ($u['username'] ?? ''), 'user_unread' => (int) $t['user_unread'] + 1, 'admin_unread' => 0]);
+        BotSessions::expire();
+        $s = ! empty($p['session_id']) ? BotSessions::find((int) $p['session_id']) : BotSessions::active((int) ($p['thread_id'] ?? 0));
+        if (! $s || $s['status'] !== 'open') {
+            return $this->json(['ok' => false, 'error' => 'This chat is closed. Nobody can write into it any more.'], 409);
+        }
+        $id = BotSessions::fromAdmin($s, $this->auth->user(), $msg);
 
-        return $this->json(['ok' => true]);
+        return $this->json(['ok' => true, 'chat_id' => $id, 'session' => BotSessions::public(BotSessions::find((int) $s['id']))]);
+    }
+
+    /** GET brain/live : open sessions for the attention card on the admins' pages */
+    public function live()
+    {
+        return $this->json(['ok' => true, 'idle' => BotSessions::IDLE, 'sessions' => array_map([BotSessions::class, 'public'], BotSessions::openList())]);
+    }
+
+    /** GET brain/session/(:num)?after= : one session's chat (also the poll for new lines) */
+    public function session(int $id)
+    {
+        BotSessions::expire();
+        $s = BotSessions::find($id);
+        if (! $s) {
+            return $this->json(['ok' => false, 'error' => 'Chat not found.'], 404);
+        }
+        $db    = $this->db();
+        $after = (int) $this->request->getGet('after');
+        $msgs  = $db->table('tbl_bot_chats')->select('id, sender, sender_name, message, created_at')->where('session_id', $id)->where('id >', $after)->orderBy('id')->limit(300)->get()->getResultArray();
+        if ($after === 0) {
+            // what the user asked the bot just before the session, for context
+            $before = $db->table('tbl_bot_chats')->select('id, sender, sender_name, message, created_at')->where('thread_id', $s['thread_id'])->where('session_id IS NULL', null, false)
+                ->where('created_at <=', $s['started_at'])->orderBy('id', 'DESC')->limit(6)->get()->getResultArray();
+            $msgs = array_merge(array_map(static fn ($m) => $m + ['earlier' => 1], array_reverse($before)), $msgs);
+        }
+        if ((int) $s['admin_unread'] > 0 && $s['status'] === 'open') {
+            $db->table('tbl_bot_sessions')->where('id', $id)->update(['admin_unread' => 0]);
+            $db->table('tbl_bot_threads')->where('id', $s['thread_id'])->update(['admin_unread' => 0]);
+        }
+
+        return $this->json(['ok' => true, 'session' => BotSessions::public(BotSessions::find($id)), 'messages' => $msgs]);
+    }
+
+    /** POST brain/session/close {session_id} : the administrator ends the chat; nobody can write into it after this */
+    public function sessionClose()
+    {
+        $s = BotSessions::find((int) ($this->input()['session_id'] ?? 0));
+        if (! $s) {
+            return $this->json(['ok' => false, 'error' => 'Chat not found.'], 404);
+        }
+        BotSessions::close($s, (string) ($this->auth->user()['username'] ?? 'admin'));
+
+        return $this->json(['ok' => true, 'session' => BotSessions::public(BotSessions::find((int) $s['id']))]);
     }
 
     /** POST brain/resolve {thread_id, learn?:{title,keywords,body,steps[]}} : closes the chat and (optionally) teaches the bot */
@@ -490,6 +539,9 @@ class BotController extends BaseController
         $p  = $this->input();
         $id = (int) ($p['thread_id'] ?? 0);
         $db = $this->db();
+        if ($s = BotSessions::active($id)) {
+            BotSessions::close($s, (string) ($this->auth->user()['username'] ?? 'admin'));
+        }
         $db->table('tbl_bot_threads')->where('id', $id)->update(['status' => 'resolved', 'admin_unread' => 0, 'updated_at' => date('Y-m-d H:i:s')]);
         $this->say($id, 'bot', 'NEXUS-L Assistant', 'This conversation was marked as resolved. Start a new question any time.');
         $kid = null;
