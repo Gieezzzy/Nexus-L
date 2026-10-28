@@ -384,21 +384,37 @@
    * Fetches any page (1..517) and pageSize live from InterLink 2.0's SearchFormWithHeader.aspx
    * BuilderGridView, upserts into dbnexus, and updates the grid in real time.
    */
-  // Reads the real search grid through the user's own signed-in browser (the sender extension), when it is installed.
-  // NEXUS-L's server deliberately never holds an InterLink login itself, so this is the only way this view can ever
-  // show genuinely current data rather than a frozen cache - see pullInterlinkGridPage()'s docblock server-side.
+  // Reading InterLink itself: NEXUS-L's server holds no InterLink login (see pullInterlinkGridPage() server-side), so the
+  // only way to show InterLink's own pages is through the sender extension, in the user's own signed-in browser. It reads
+  // InterLink's grid pages (15 rows each) in a background tab it opens and closes by itself - nobody has to keep InterLink
+  // open. Without the extension this view can only show NEXUS-L's saved copy, which holds far fewer rows than InterLink.
   const hasGridSender = () => document.documentElement.dataset.nxlSender === '1';
-  const nxPullGrid = (silent) => new Promise((resolve, reject) => {
+  let pullSeq = 0;
+  const nxPullGrid = ({ firstPage, count, silent }) => new Promise((resolve, reject) => {
+    const reqId = `g${Date.now()}_${++pullSeq}`;
+    const cleanup = () => { clearTimeout(timer); window.removeEventListener('message', onMsg); };
     const onMsg = (e) => {
-      if (e.source !== window || !e.data) return;
-      if (e.data.type === 'NXL_GRID_HTML') { cleanup(); resolve(e.data.html); }
+      if (e.source !== window || !e.data || e.data.reqId !== reqId) return;
+      if (e.data.type === 'NXL_GRID_HTML') { cleanup(); resolve(e.data.pages || []); }
       if (e.data.type === 'NXL_GRID_STATUS' && e.data.ok === false) { cleanup(); reject(new Error(e.data.message || 'Could not read InterLink.')); }
     };
-    const timer = setTimeout(() => { cleanup(); reject(new Error('Timed out reading InterLink.')); }, 30000);
-    const cleanup = () => { clearTimeout(timer); window.removeEventListener('message', onMsg); };
+    const timer = setTimeout(() => { cleanup(); reject(new Error('InterLink took too long to answer.')); }, 150000);
     window.addEventListener('message', onMsg);
-    window.postMessage({ type: 'NXL_PULL_GRID', silent: !!silent }, location.origin);
+    window.postMessage({ type: 'NXL_PULL_GRID', reqId, firstPage, count, silent: !!silent }, location.origin);
   });
+  // The NEXUS-L view page `page` of `pageSize` rows, read from InterLink: the InterLink pages that cover it are read, saved
+  // into NEXUS-L's copy, and the rows shown are InterLink's own, in InterLink's order.
+  const liveViewPage = async (page, pageSize, silent) => {
+    const start = (page - 1) * pageSize;
+    const firstPage = Math.floor(start / 15) + 1;
+    const lastPage = Math.floor((start + pageSize - 1) / 15) + 1;
+    const pages = await nxPullGrid({ firstPage, count: lastPage - firstPage + 1, silent });
+    return apiFetch('interlink/pull-grid-html', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pages, firstPage, page, pageSize }),
+    });
+  };
 
   const fetchLiveInterlinkPage = async (page = state.currentPage, pageSize = state.pageSize, forceRefresh = false, silent = false) => {
     if (state.isFetchingPage) return;
@@ -409,16 +425,27 @@
     if (liveDot) liveDot.className = 'itk-live-dot is-syncing';
     if (liveText) liveText.textContent = `Syncing Page ${page}...`;
 
-    try {
-      if (!silent) beginLoading(`Loading page ${page} of ${state.totalPages} from InterLink…`);
+    // Page clicks and the Live Refresh button read InterLink. Timer-driven and first-load calls (silent) only do so while
+    // the reader tab is still open from a recent read (it closes by itself about a minute after the last one): they never
+    // open a tab on their own, so nothing pops up while you work.
+    const useSender = hasGridSender() && (!silent || Date.now() < (state.liveWarmUntil || 0));
 
-      const res = hasGridSender()
-        ? await apiFetch('interlink/pull-grid-html', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ html: await nxPullGrid(silent) }),
-        })
-        : await apiFetch('interlink/fetch-live-page', {
+    try {
+      if (!silent) {
+        beginLoading(useSender ? `Reading page ${page} from InterLink through your browser… (the first read can take about 20 seconds)` : `Loading page ${page} of ${state.totalPages} from NEXUS-L…`, useSender ? 150000 : 30000);
+      }
+
+      let res = null;
+      if (useSender) {
+        try {
+          res = await liveViewPage(page, pageSize, silent);
+          if (!silent) state.liveWarmUntil = Date.now() + 55000;   // only your own clicks keep the reader tab in use
+        } catch (err) {
+          if (!silent) showToast(`${err.message} Showing NEXUS-L's saved copy instead.`, true);
+        }
+      }
+      if (!res) {
+        res = await apiFetch('interlink/fetch-live-page', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -427,6 +454,7 @@
             forceRefresh: Boolean(forceRefresh),
           }),
         });
+      }
 
       if (res && Array.isArray(res.rows)) {
         state.currentPage = Number(res.currentPage) || page;
@@ -482,7 +510,7 @@
   // Loading that stays on screen until the live data has arrived (the InterLink request can take several seconds)
   let loadTimer = null;
   let loadFailsafe = null;
-  const beginLoading = (subtitle) => {
+  const beginLoading = (subtitle, maxMs = 30000) => {
     const overlay = $('#il-loading-overlay');
     const sub = $('#il-loading-sub');
     if (sub && subtitle) sub.textContent = subtitle;
@@ -490,7 +518,7 @@
     clearTimeout(loadTimer);
     loadTimer = setTimeout(() => { if (sub) sub.textContent = 'Still loading from InterLink… this can take a few seconds.'; }, 2500);
     clearTimeout(loadFailsafe);
-    loadFailsafe = setTimeout(endLoading, 30000); // never leave the screen covered
+    loadFailsafe = setTimeout(endLoading, maxMs); // never leave the screen covered
   };
   const endLoading = () => {
     clearTimeout(loadTimer);

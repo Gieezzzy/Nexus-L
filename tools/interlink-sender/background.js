@@ -31,47 +31,133 @@ chrome.runtime.onMessage.addListener((m, sender) => {
     });
   }
   if (m.type === 'ready' && sender.tab) step(sender.tab.id);
-  if (m.type === 'pull-grid' && sender.tab) pullGrid(sender.tab.id, !!m.silent);
+  if (m.type === 'pull-grid' && sender.tab) queuePull(sender.tab.id, m);
 });
 
-/** Reads the live search grid through the user's own signed-in browser and relays its HTML back to the NEXUS-L tab.
- *  NEXUS-L's server never holds an InterLink login itself; this is the only way its grid view can show current data.
- *  Uses an already-open InterLink tab if there is one (never navigates it away from whatever the user is doing); a
- *  silent (auto-sync) call never opens a new tab - only the explicit "Live Refresh" button does that, in the
- *  background, closing it again once read. */
-async function pullGrid(nexusTabId, silent) {
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const reply = (msg) => chrome.tabs.sendMessage(nexusTabId, msg).catch(() => {});
+// ---- Live grid reading (NEXUS-L's InterLink Applications view) ---------------------------------------------------------
+// NEXUS-L's server never holds an InterLink login, so this is the only way its grid can show current data. A request is
+// { reqId, firstPage, count, silent }: read `count` consecutive InterLink grid pages starting at `firstPage`.
+//  - The stable site root lands on the portal Home page, which has no grid. The grid is reached through Home's own
+//    "Search Requests / Reports" link, which carries a fresh, valid token every session (nothing stored or guessed).
+//  - Pages are changed with InterLink's own pager function, exactly as its page links do (verified live: page 227).
+//  - A dedicated background tab does the reading, so the user's own InterLink tabs are never navigated or disturbed.
+//    It is reused for follow-up page clicks and closed about a minute after the last one.
+//  - A silent (auto-refresh) request never opens a tab; it only uses the helper tab if one is already open.
+const GRID_ID = 'PH1_SF1_GVBUILDER_BuilderGridView';
+let pullChain = Promise.resolve();                      // one read at a time: they all share the helper tab
+const queuePull = (nexusTabId, req) => { pullChain = pullChain.then(() => pullGrid(nexusTabId, req)).catch(() => {}); };
+
+async function pullGrid(nexusTabId, req) {
+  const reply = (msg) => chrome.tabs.sendMessage(nexusTabId, Object.assign({ reqId: req.reqId }, msg)).catch(() => {});
   try {
-    let [tab] = await chrome.tabs.query({ url: 'https://interlink2.intertek.com/*' });
-    let openedHere = false;
-    if (!tab) {
-      if (silent) { reply({ type: 'grid-status', ok: false, message: 'No InterLink tab is open.' }); return; }
-      tab = await chrome.tabs.create({ url: PORTAL_HOME, active: false });
-      openedHere = true;
-      let ready = false;
-      for (let i = 0; i < 40 && !ready; i++) {        // up to ~20 s for the grid to load
-        await sleep(500);
-        ready = await inPage(tab.id, () => !!document.getElementById('PH1_SF1_GVBUILDER_BuilderGridView')).catch(() => false);
-      }
-      if (!ready) { if (openedHere) chrome.tabs.remove(tab.id).catch(() => {}); reply({ type: 'grid-status', ok: false, message: 'InterLink did not load the search grid in time.' }); return; }
+    const helper = await helperTab(!!req.silent);
+    if (helper.error) { reply({ type: 'grid-status', ok: false, message: helper.error }); return; }
+    const pages = [];
+    const first = Math.max(1, Number(req.firstPage) || 1);
+    const count = Math.max(1, Math.min(Number(req.count) || 1, 8));
+    for (let p = first; p < first + count; p++) {
+      const r = await inPage(helper.id, gotoPageAndRead, [p]);
+      if (!r || !r.ok) { reply({ type: 'grid-status', ok: false, message: (r && r.message) || 'Could not read the InterLink grid.' }); return; }
+      pages.push(r.html);
+      if (r.page !== p) break;                          // asked past the last page: InterLink's last page was read instead
     }
-    const r = await inPage(tab.id, readGridHtml, []);
-    if (openedHere) chrome.tabs.remove(tab.id).catch(() => {});
-    if (!r || !r.ok) { reply({ type: 'grid-status', ok: false, message: (r && r.message) || 'Could not read the InterLink grid.' }); return; }
-    reply({ type: 'grid-html', html: r.html });
+    reply({ type: 'grid-html', pages });
   } catch (e) {
     reply({ type: 'grid-status', ok: false, message: e.message });
+  } finally {
+    if (!req.silent) chrome.alarms.create('close-grid-tab', { delayInMinutes: 1 });   // timer-driven reads do not extend its life
   }
 }
 
-function readGridHtml() {
-  const el = document.getElementById('PH1_SF1_GVBUILDER_BuilderGridView');
-  if (!el) return { ok: false, message: 'the search grid was not found on this InterLink page.' };
-  if (/login|signin|sign-in/i.test(location.pathname)) return { ok: false, message: 'sign in to InterLink first.' };
-  return { ok: true, html: el.outerHTML };
+/** The background tab that reads the grid: reused if it is still open, otherwise opened (unless silent) and taken to the
+ *  grid. Returns { id } or { error }. */
+async function helperTab(silent) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const { gridTab } = await chrome.storage.session.get('gridTab');
+  let tab = gridTab ? await chrome.tabs.get(gridTab).catch(() => null) : null;
+  if (!tab) {
+    if (silent) return { error: 'The InterLink reader tab is not open.' };
+    tab = await chrome.tabs.create({ url: PORTAL_HOME, active: false });
+    await chrome.storage.session.set({ gridTab: tab.id });
+  }
+  if (!silent) chrome.alarms.clear('close-grid-tab');
+  let failures = 0;
+  let navigatedAt = 0;
+  for (let i = 0; i < 90; i++) {                        // about 45 s to reach the grid
+    const st = await inPage(tab.id, gridProbe, []).catch(() => null);
+    if (!st) {                                          // not scriptable: InterLink's sign-in (Microsoft) page, or still loading
+      failures += 1;
+      if (failures >= 16 && !silent) {
+        await chrome.tabs.update(tab.id, { active: true }).catch(() => {});
+        return { error: 'Sign in to InterLink in the tab that just opened, then try again.' };
+      }
+    } else {
+      failures = 0;
+      if (st.grid) return { id: tab.id };
+      if (st.home && Date.now() - navigatedAt > 10000) {
+        await inPage(tab.id, goToGridFromHome, []).catch(() => {});
+        navigatedAt = Date.now();
+      }
+    }
+    await sleep(500);
+  }
+  return { error: 'InterLink did not open the search grid in time.' };
 }
+
+function gridProbe() {
+  return {
+    grid: !!document.getElementById('PH1_SF1_GVBUILDER_BuilderGridView') && typeof ASPx !== 'undefined' && typeof ASPx.GVPagerOnClick === 'function',
+    home: /\/Portal2\/Home\.aspx/i.test(location.pathname),
+  };
+}
+
+/** On the portal Home page: follows its own "Search Requests / Reports" -> Inhouse & 3rd party Lab Upload link. */
+function goToGridFromHome() {
+  const a = [...document.querySelectorAll('a')].find((x) => /Inhouse\s*&\s*3rd party Lab Upload/i.test(x.textContent || '') && /SearchFormWithHeader/.test(x.getAttribute('href') || ''));
+  const m = a && (a.getAttribute('href') || '').match(/window\.location\.href\s*=\s*'([^']+)'/);
+  if (!m) return { ok: false };
+  location.href = m[1];
+  return { ok: true };
+}
+
+/** Takes the grid to page `p` (InterLink's own pager call, as its page links make) and returns the grid's HTML. */
+async function gotoPageAndRead(p) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const id = 'PH1_SF1_GVBUILDER_BuilderGridView';
+  const grid = () => document.getElementById(id);
+  const cur = () => {
+    const m = ((document.querySelector('.dxp-lead.dxp-summary') || {}).textContent || '').match(/Page\s+(\d+)\s+of\s+(\d+)\s+\((\d+)\s+items\)/i);
+    return m ? { page: +m[1], total: +m[2] } : null;
+  };
+  const rowSig = () => { const r = document.querySelector('tr.dxgvDataRow'); return r ? r.textContent.slice(0, 300) : ''; };
+  if (!grid()) return { ok: false, message: 'the search grid was not found on this InterLink page.' };
+  let c = cur();
+  if (!c) return { ok: false, message: 'the InterLink grid has no page counter yet.' };
+  const target = Math.min(Math.max(1, p), c.total);
+  if (c.page !== target) {
+    const before = rowSig();
+    ASPx.GVPagerOnClick(id, 'PN' + (target - 1));
+    for (let i = 0; i < 90; i++) {                      // InterLink can take 10+ s for a far page
+      await sleep(500);
+      c = cur();
+      if (c && c.page === target && rowSig() !== before) break;
+    }
+    if (!c || c.page !== target) return { ok: false, message: `InterLink did not show page ${target} in time.` };
+  }
+  await sleep(300);
+  return { ok: true, html: grid().outerHTML, page: target };
+}
+
+chrome.alarms.onAlarm.addListener(async (a) => {
+  if (a.name !== 'close-grid-tab') return;
+  const { gridTab } = await chrome.storage.session.get('gridTab');
+  if (gridTab) chrome.tabs.remove(gridTab).catch(() => {});
+  chrome.storage.session.remove('gridTab');
+});
+
 chrome.tabs.onRemoved.addListener(async (tabId) => {
+  const { gridTab } = await chrome.storage.session.get('gridTab');
+  if (gridTab === tabId) chrome.storage.session.remove('gridTab');
   const job = await getJob(tabId);
   if (job) { status(job, false, true, `The InterLink tab for ${job.application_no} was closed before it was sent.`); endJob(job); }
 });
@@ -94,7 +180,7 @@ async function step(tabId) {
   const job = await getJob(tabId);
   if (!job) return;
   job.loads += 1;
-  const giveUpAt = job.step === 'search' ? 3 : 8;        // the grid only needs one real page load; the form may postback a few times
+  const giveUpAt = job.step === 'search' ? 5 : 8;        // Home, then the grid (a sign-in page in between adds none: it is not scripted)
   if (job.loads > giveUpAt) {
     status(job, false, true, job.step === 'search'
       ? `Could not find ${job.application_no} in the InterLink grid. Please open its Upload Form yourself.`
@@ -108,6 +194,7 @@ async function step(tabId) {
       const r = await inPage(tabId, searchAndOpenUpload, [job.application_no]);
       if (!r) return;
       if (r.state === 'signin') { status(job, false, false, 'Sign in to InterLink in the opened tab; sending continues by itself afterwards.'); job.loads -= 1; await setJob(job); return; }
+      if (r.state === 'navigating') return;                  // on the portal Home page: heading to the grid, "ready" fires again there
       if (r.state === 'error') { status(job, false, true, `${job.application_no}: ${r.message}`); endJob(job); return; }
       // r.state === 'clicked': the popup opens separately and is picked up by chrome.tabs.onCreated above
       job.step = 'awaiting-popup';
@@ -150,6 +237,16 @@ async function searchAndOpenUpload(appNo) {
   if (/login|signin|sign-in/i.test(location.pathname)) return { state: 'signin' };
   for (let i = 0; i < 20 && !window.ASPxClientControl; i++) await sleep(250);
   await sleep(500);
+
+  // The stable site root lands on the portal Home page, which has no grid: follow its own link to the search page
+  // (its token is fresh every session - nothing stored), and run again once that page has loaded.
+  if (!document.getElementById('PH1_SF1_GVBUILDER_BuilderGridView')) {
+    const link = [...document.querySelectorAll('a')].find((x) => /Inhouse\s*&\s*3rd party Lab Upload/i.test(x.textContent || '') && /SearchFormWithHeader/.test(x.getAttribute('href') || ''));
+    const m = link && (link.getAttribute('href') || '').match(/window\.location\.href\s*=\s*'([^']+)'/);
+    if (!m) return { state: 'error', message: 'InterLink\'s search page link was not found on its home page.' };
+    location.href = m[1];
+    return { state: 'navigating' };
+  }
 
   const header = [...document.querySelectorAll('*')]
     .find((el) => el.children.length === 0 && el.textContent.trim() === 'Application No.' && visible(el));

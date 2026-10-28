@@ -253,12 +253,12 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                         <span class="itk-live-dot" id="itk-live-dot"></span>
                         <span id="itk-live-text">Live InterLink Ready</span>
                     </span>
-                    <button type="button" class="itk-live-sync-btn" id="itk-btn-live-refresh" title="Fetch latest rows & statuses from InterLink 2.0 right now">
+                    <button type="button" class="itk-live-sync-btn" id="itk-btn-live-refresh" title="Read this page from InterLink right now, through your browser (needs the NEXUS-L InterLink Sender extension)">
                         ↻ Live Refresh Page
                     </button>
-                    <label class="itk-autosync-label" title="Automatically poll InterLink 2.0 every 15 seconds so updates by other users reflect immediately">
+                    <label class="itk-autosync-label" title="Reloads this view every 15 seconds. It reads InterLink itself only for about a minute after your last click; after that it shows NEXUS-L's saved copy, which other people's refreshes keep up to date.">
                         <input type="checkbox" id="itk-autosync-toggle" checked>
-                        <span>Auto-Sync (15s)</span>
+                        <span>Auto-refresh (15s)</span>
                     </label>
                     <span class="itk-pagesize-wrap">
                         Page size:

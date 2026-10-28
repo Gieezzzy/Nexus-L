@@ -123,17 +123,43 @@ class InterlinkController extends BaseController
      */
     public function pullGridHtml()
     {
-        $payload = $this->request->getJSON(true) ?? $this->request->getPost();
-        $html    = (string) ($payload['html'] ?? '');
-        if ($html === '' || strlen($html) > 5_000_000 || strpos($html, 'PH1_SF1_GVBUILDER_BuilderGridView') === false) {
-            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'error' => 'That does not look like the InterLink search grid.', 'csrf' => csrf_hash()]);
+        // {pages: [html...], firstPage, page, pageSize}: one or more consecutive InterLink grid pages (InterLink pages hold 15
+        // rows) that together cover the NEXUS-L view page `page` of `pageSize` rows. {html} alone (older senders) = one page.
+        $payload  = $this->request->getJSON(true) ?? $this->request->getPost();
+        $pages    = is_array($payload['pages'] ?? null) ? array_values($payload['pages']) : [(string) ($payload['html'] ?? '')];
+        $allRows  = [];
+        $first    = null;
+        foreach ($pages as $html) {
+            $html = (string) $html;
+            if ($html === '' || strlen($html) > 5_000_000 || strpos($html, 'PH1_SF1_GVBUILDER_BuilderGridView') === false || count($pages) > 10) {
+                return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'error' => 'That does not look like the InterLink search grid.', 'csrf' => csrf_hash()]);
+            }
+            $parsed = $this->parseInterlinkGridHtml($html);
+            $first ??= $parsed;
+            foreach ($parsed['rows'] as $r) {
+                $allRows[] = $r;
+            }
         }
-        $parsed   = $this->parseInterlinkGridHtml($html);
-        $upserted = $this->upsertGridRowsIntoDbNexus($parsed['rows']);
+        $upserted = $this->upsertGridRowsIntoDbNexus($allRows);
+
+        // the view shows `pageSize` rows from page `page`; the pages read start at InterLink page `firstPage` (15 rows each)
+        $viewSize = in_array((int) ($payload['pageSize'] ?? 15), [10, 15, 20, 50, 100], true) ? (int) $payload['pageSize'] : 15;
+        $rows     = $upserted['rows'];
+        $page     = $first['currentPage'];
+        if (isset($payload['firstPage'], $payload['page'])) {
+            $page = max(1, (int) $payload['page']);
+            $skip = max(0, ($page - 1) * $viewSize - (max(1, (int) $payload['firstPage']) - 1) * 15);
+            $rows = array_slice($rows, $skip, $viewSize);
+        } else {
+            $viewSize = $first['pageSize'];
+        }
+        $totalPages = max(1, (int) ceil($first['totalItems'] / $viewSize));
 
         $model      = model(InterlinkReportModel::class);
         $allReports = $model->select('id, synced_to_interlink')->findAll();
         $syncedCnt  = count(array_filter($allReports, static fn ($r) => (int) ($r['synced_to_interlink'] ?? 0) === 1));
+        $parsed     = ['currentPage' => $page, 'totalPages' => $totalPages, 'totalItems' => $first['totalItems'], 'pageSize' => $viewSize];
+        $upserted['rows'] = $rows;
 
         return $this->response->setJSON([
             'ok'           => true,
@@ -1113,9 +1139,11 @@ JS;
             } else {
                 $dbData['nexus_sample_id']     = 'NXL-' . date('Y') . '-' . $suffix;
                 $dbData['nexus_work_order_no'] = 'WO-' . date('Ymd') . '-' . $suffix;
-                $dbData['report_no']           = $r['report_no'] ?: ('DTP-LAB-' . date('Y') . '-' . $suffix);
-                $dbData['report_issue_date']   = $r['report_issue_date'] ?: date('d M Y');
-                $dbData['overall_result']      = $r['overall_result'] ?: 'Pass';
+                // what InterLink itself shows, blank included: a report number, date or "Pass" made up here would be shown
+                // as if InterLink had issued it (every row first seen through a live page read used to get one)
+                $dbData['report_no']           = $r['report_no'];
+                $dbData['report_issue_date']   = $r['report_issue_date'];
+                $dbData['overall_result']      = $r['overall_result'];
                 $dbData['synced_to_interlink'] = ($r['report_no'] !== '' || $r['job_status'] === 'In Progress' || $r['job_status'] === 'Completed') ? 1 : 0;
                 $newId  = (int) $model->insert($dbData);
                 $merged = array_merge($dbData, ['id' => $newId]);
