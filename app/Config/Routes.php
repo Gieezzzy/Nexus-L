@@ -28,6 +28,7 @@ $routes->group('', ['filter' => 'guest'], static function (RouteCollection $rout
 // ---------------------------------------------------------------------
 $routes->group('', ['filter' => 'auth'], static function (RouteCollection $routes): void {
     $routes->get('dashboard', 'DashboardController::index', ['as' => 'dashboard']);
+    $routes->get('help', 'HelpController::index', ['as' => 'help']);
     $routes->get('/', static fn () => redirect()->route('dashboard'));
     $routes->post('logout', 'AuthController::logout', ['as' => 'logout']);
 
@@ -66,9 +67,12 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->post('interlink/fetch-live-page', 'InterlinkController::fetchLivePage');
     $routes->post('interlink/fetch-live-form', 'InterlinkController::fetchLiveForm');
     $routes->get('interlink/labrefs', 'InterlinkController::labrefs');
+    $routes->get('interlink/search', 'InterlinkController::search');
     $routes->get('interlink/labref-detail', 'InterlinkController::labrefDetail');
     $routes->get('interlink/proxy', 'InterlinkController::proxy');
     $routes->post('interlink/proxy', 'InterlinkController::proxy');
+    $routes->get('interlink/center/status', 'InterlinkController::centerStatus');
+    $routes->post('interlink/center/fill', 'InterlinkController::centerFill');
 
     // QC Lab Digital Test Reports (#Digital Test Report & Bonding LIS System)
     $routes->get('dtr', 'DtrController::index', ['as' => 'dtr']);
@@ -79,4 +83,49 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->post('dtr/load-machine', 'DtrController::loadMachine');
     $routes->post('dtr/save', 'DtrController::save');
     $routes->get('dtr/bonding-access-pdf', 'DtrController::bondingAccessPdf');
+    $routes->post('dtr/sheet-pdf', 'DtrController::sheetPdf');
+    $routes->get('dtr/layout', 'DesignerController::layout');
+    // Help bot (local, system-only): chat, activity events
+    $routes->post('bot/ask', 'BotController::ask');
+    $routes->post('bot/events', 'BotController::events');
+    $routes->post('bot/feedback', 'BotController::feedback');
+    $routes->post('bot/escalate', 'BotController::escalate');
+    $routes->get('bot/thread', 'BotController::thread');
+    $routes->get('bot/topic', 'BotController::topic');
+    $routes->get('bot/suggest', 'BotController::suggest');
+    $routes->get('bot/history', 'BotController::history');
+    $routes->get('bot/badge', 'BotController::badge');
+});
+
+// Report Designer: admins only.
+$routes->group('', ['filter' => 'auth:admin'], static function (RouteCollection $routes): void {
+    $routes->get('designer', 'DesignerController::index', ['as' => 'designer']);
+    $routes->post('designer/save', 'DesignerController::save');
+    $routes->post('designer/reset', 'DesignerController::reset');
+    $routes->get('designer/maps', 'DesignerController::maps');
+    $routes->post('designer/maps/save', 'DesignerController::saveMaps');
+    $routes->get('designer/grid', 'DesignerController::grid');
+    $routes->post('designer/maps/test', 'DesignerController::testMap');
+    // Brain console (admins): answer escalated chats, teach the bot, review problems
+    $routes->get('brain', 'BotController::console', ['as' => 'brain']);
+    $routes->get('brain/overview', 'BotController::overview');
+    $routes->get('brain/threads', 'BotController::threads');
+    $routes->get('brain/thread/(:num)', 'BotController::threadMessages/$1');
+    $routes->post('brain/reply', 'BotController::reply');
+    $routes->post('brain/resolve', 'BotController::resolve');
+    $routes->get('brain/learn-draft', 'BotController::learnDraft');
+    $routes->get('brain/knowledge', 'BotController::knowledge');
+    $routes->post('brain/knowledge/save', 'BotController::knowledgeSave');
+    $routes->post('brain/knowledge/status', 'BotController::knowledgeStatus');
+    $routes->post('brain/import', 'BotController::import');
+    $routes->get('brain/unanswered', 'BotController::unanswered');
+    $routes->post('brain/unanswered/answer', 'BotController::unansweredAnswer');
+    $routes->get('brain/issues', 'BotController::issues');
+    $routes->post('brain/issues/resolve', 'BotController::issuesResolve');
+    $routes->get('brain/health', 'BotController::health');
+    $routes->post('brain/flush', 'BotController::flushNow');
+    $routes->post('brain/restore', 'BotController::restoreNow');
+    $routes->get('designer/settings', 'DesignerController::settings');
+    $routes->post('designer/settings/save', 'DesignerController::saveSettings');
+    $routes->post('designer/settings/test', 'DesignerController::testSettings');
 });

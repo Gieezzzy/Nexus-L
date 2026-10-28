@@ -4,6 +4,25 @@
 
 ---
 
+## Phase 192 - InterLink Upload Form: Generate Report PDF from the Lab Reference (2026-10-28)
+
+### 1. "Generate Report" button beside Browse (Tab 2 · Report Attachment, `JOB_DUMMY_004`)
+- **View** (`app/Views/interlink/index.php`): the Report Attachment (PDF) row now has **Generate Report**, a real **Browse...** file picker (`#uf-file-pdf`, PDF only) and a meta line with **View** / **Download** for the attached PDF.
+- **How the PDF is made** (`public/assets/js/interlink.js`): no new renderer. It reuses the Digital Test Report pipeline that mirrors the Access forms in `D:\#Digital Test Report` (Lab Test Report / `BondingReportV2.accdb`):
+  1. The Lab Reference is resolved from the Pre-Sync dialog (`#dlg-lr-labref`), the saved report (`lab_ref_no`), the Lab Ref whose TR No. is the Application No., or the `<LabRef>_TestReport.pdf` attachment name (asked for when none is linked).
+  2. `GET interlink/labref-detail?lab_ref_no=` returns `form_slug` + `source_id` from `tbl_dtr_unified_labrefs`.
+  3. `window.nxReportPdf({slug, id})` opens `dtr?open=<slug>:<source_id>&preview=1&export=1` in a hidden frame; `dtr.js` builds the VF print sheet and `POST dtr/sheet-pdf` renders it with headless Chrome/Edge (bonding: Access machine-result page merged as page 2).
+  4. The PDF is kept as `window.nxAttachedPdf` and named `<LabRef>_TestReport.pdf` (e.g. `DTP20260929VH-12_TestReport.pdf`).
+- **1-Click Send** (`public/assets/js/interlink_center.js`): `nxFillHelper` sends the generated or browsed PDF for the same application as-is, and only builds one when none is attached. The hidden-frame helper now lives once in `interlink.js` (`window.nxReportPdf`).
+
+### 2. Fix: wrong DTR record opened for the report PDF
+- `InterlinkController::centerFill` returned the unified row `id` as `lab.id`, but the DTR deep link opens records by their form `source_id` (e.g. `DTP20260612SHB14-L`: id 4563 vs source_id 14). It now returns `source_id` (falls back to `id`).
+
+### 3. Build
+- Minified assets regenerated (`tools/build/build.js` → `public/assets/min/`).
+
+---
+
 ## Phase 191 - Whole Shoe Bonding Test Report Shoe Sketch Diagram & Vector Parity (2026-10-27)
 
 ### 1. Vector/Raster Shoe Contour Sketch Diagram with Spot Readings & Leader Lines

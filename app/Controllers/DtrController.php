@@ -249,11 +249,19 @@ class DtrController extends BaseController
                 ->getRowArray();
         }
 
+        $customValues = [];
+        if ($record && $db->tableExists('tbl_dtr_custom_values')) {
+            foreach ($db->table('tbl_dtr_custom_values')->where(['slug' => $slug, 'record_id' => (int) $record[$pk]])->get()->getResultArray() as $cv) {
+                $customValues[$cv['field_key']] = $cv['field_value'];
+            }
+        }
+
         return $this->response->setJSON([
             'ok'            => true,
             'slug'          => $slug,
             'config'        => $cfg,
             'record'        => $record ?: [],
+            'customValues'  => $customValues,
             'bondingPoints' => $bondingPoints ?: [],
             'csrf'          => csrf_hash(),
         ]);
@@ -406,7 +414,26 @@ class DtrController extends BaseController
         $loadedFields = [];
         $loadedFiles  = [];
 
-        if ($slug === 'bonding') {
+        // Admin-defined reading rules (Report Designer > Excel readers) take priority over the built-in ones below.
+        $db   = \Config\Database::connect();
+        $maps = $db->tableExists('tbl_machine_maps')
+            ? $db->table('tbl_machine_maps')->where(['slug' => $slug, 'enabled' => 1])->orderBy('sort_order')->orderBy('id')->get()->getResultArray()
+            : [];
+
+        if ($maps) {
+            $reader = new \App\Libraries\MachineFileReader();
+            foreach ($maps as $m) {
+                $file = $reader->findFile((string) $m['folder'], $labRefNo);
+                if (! $file) {
+                    continue;
+                }
+                $got = $reader->apply($reader->grid($file, (string) $m['sheet']), (array) json_decode((string) $m['rules_json'], true), $labRefNo);
+                if ($got) {
+                    $loadedFields = array_merge($loadedFields, $got);
+                    $loadedFiles[] = basename($file) . ' (' . $m['label'] . ')';
+                }
+            }
+        } elseif ($slug === 'bonding') {
             $file = $this->findAndCacheOutdataFile('BONDING', $labRefNo, $baseRef);
             if ($file) {
                 $grid = $this->parseSpreadsheetToGrid($file);
@@ -510,6 +537,10 @@ class DtrController extends BaseController
             }
         }
 
+        if ($slug === 'bonding' && $loadedFields) {
+            $loadedFields = $this->deriveBondingFields($loadedFields, $labRefNo);
+        }
+
         return $this->response->setJSON([
             'ok'           => true,
             'labRefNo'     => $labRefNo,
@@ -518,9 +549,105 @@ class DtrController extends BaseController
             'loadedFields' => $loadedFields,
             'message'      => ! empty($loadedFields)
                 ? 'Loaded ' . count($loadedFields) . ' machine readings from ' . implode(', ', array_unique($loadedFiles))
-                : 'No matching machine output file found for ' . $labRefNo . ' (or ' . $baseRef . '); checked local cache and \\\\192.168.32.45\\OUTDATA.',
+                : 'No matching machine output file found for ' . $labRefNo . ' (or ' . $baseRef . '); the machine file may not be saved yet.',
             'csrf'         => csrf_hash(),
         ]);
+    }
+
+    /**
+     * Same rules the Access import (btnImportExcel) applies after reading the file: technician by equipment code,
+     * side from the Lab Ref suffix, age category / STD from the style, dates, and the per-group + overall result.
+     * The equipment -> technician list is the admin setting `bonding_technicians` (JSON {"DTP-QC-001":"S. Aquino"}).
+     */
+    private function deriveBondingFields(array $f, string $labRefNo): array
+    {
+        $techs = [
+            'DTP-QC-001' => 'S. Aquino', 'DTP-QC-002' => 'L. Tuddao', 'DTP-QC-048' => 'L. Aquidado',
+            'DTP-QC-064' => 'J. Barrera', 'DTP-QC-066' => 'D. Parrilla', 'DTP-QC-067' => 'T. Villalobos',
+        ];
+        $db = \Config\Database::connect();
+        if ($db->tableExists('tbl_app_settings')) {
+            $row = $db->table('tbl_app_settings')->where('skey', 'bonding_technicians')->get()->getRowArray();
+            $j   = json_decode((string) ($row['svalue'] ?? ''), true);
+            if (is_array($j) && $j) {
+                $techs = $j;
+            }
+        }
+
+        $set = static function (array &$a, string $k, $v): void {
+            if (! isset($a[$k]) || $a[$k] === '') {
+                $a[$k] = $v;
+            }
+        };
+
+        // Excel stores dates as serial numbers
+        foreach (['TestedDate', 'ReceivedDate', 'FinishedDate'] as $dk) {
+            if (isset($f[$dk]) && is_numeric($f[$dk]) && (float) $f[$dk] > 20000) {
+                $f[$dk] = gmdate('Y-m-d', (int) round(((float) $f[$dk] - 25569) * 86400));
+            }
+        }
+        if (! empty($f['TestedDate'])) {
+            $set($f, 'ReceivedDate', $f['TestedDate']);
+            $set($f, 'FinishedDate', $f['TestedDate']);
+        }
+        if (! empty($f['ModelStyle'])) {
+            $set($f, 'Color', $f['ModelStyle']);
+        }
+        if (! empty($f['EquipmentCode'])) {
+            $set($f, 'Technician', $techs[$f['EquipmentCode']] ?? '');
+        }
+        $last = strtoupper(substr(trim($labRefNo), -1));
+        $set($f, 'Side', $last === 'L' ? 'Left' : ($last === 'R' ? 'Right' : 'Unknown'));
+
+        $style = strtoupper((string) ($f['ModelStyle'] ?? ''));
+        $child = false;
+        foreach (['UY', 'TD', 'JN', 'INFANT'] as $t) {
+            if ($style !== '' && str_contains($style, $t)) {
+                $child = true;
+            }
+        }
+        foreach (['UA', 'WM', 'MN'] as $t) {
+            if ($style !== '' && str_contains($style, $t)) {
+                $child = false;
+            }
+        }
+        $std = $child ? 2.5 : 3.0;
+        $set($f, 'AgeCategory', $child ? 'Children' : 'Adult');
+        $set($f, 'STD', $std);
+
+        $rank  = ['PASS' => 0, 'TOLERABLE' => 1, 'FAILED' => 2];
+        $worst = static function (string $a, string $b) use ($rank): string {
+            return $rank[$b] > $rank[$a] ? $b : $a;
+        };
+        $grade = static function (float $v, float $pass, float $tol): string {
+            return $v >= $pass ? 'PASS' : ($v >= $tol ? 'TOLERABLE' : 'FAILED');
+        };
+        $overall = 'PASS';
+        $maxPts  = 0;
+        foreach (['UTF' => ['UTFpoint', 45, $std, $std === 3.0 ? 2.4 : 2.0], 'FTO' => ['FTOpoint', 45, $std, $std === 3.0 ? 2.4 : 2.0], 'FiTO' => ['FiTO', 13, 1.0, 0.8]] as $grp => [$pre, $max, $pass, $tol]) {
+            $res = 'PASS';
+            $any = false;
+            for ($i = 1; $i <= $max; $i++) {
+                if (isset($f[$pre . $i]) && is_numeric($f[$pre . $i])) {
+                    $any = true;
+                    $res = $worst($res, $grade((float) $f[$pre . $i], $pass, $tol));
+                    if ($grp === 'UTF') {
+                        $maxPts = max($maxPts, $i);
+                    }
+                }
+            }
+            if ($any) {
+                $f[$grp . '_Result'] = $res;
+                $overall = $worst($overall, $res);
+            }
+        }
+        $f['FiTOSTD'] = 1;
+        $f['Result']  = $overall;
+        if ($maxPts > 0) {
+            $f['MaxPoints'] = $maxPts;
+        }
+
+        return $f;
     }
 
     /**
@@ -552,12 +679,40 @@ class DtrController extends BaseController
             }
         }
 
+        // Column names such as "Supplier's Country" or "Material Description" contain apostrophes / spaces that the query
+        // builder would split into alias parts, so the statement is built with explicitly quoted identifiers.
+        $q = static fn (string $name): string => '`' . str_replace('`', '``', $name) . '`';
+
         $recordId = isset($fields[$pk]) && (int) $fields[$pk] > 0 ? (int) $fields[$pk] : 0;
         if ($recordId > 0) {
-            $db->table($table)->where($pk, $recordId)->update($saveData);
+            if ($saveData) {
+                $sets = implode(', ', array_map(static fn ($c) => $q((string) $c) . ' = ?', array_keys($saveData)));
+                $db->query('UPDATE ' . $q($table) . ' SET ' . $sets . ' WHERE ' . $q($pk) . ' = ?', array_merge(array_values($saveData), [$recordId]));
+            }
         } else {
-            $db->table($table)->insert($saveData);
+            if ($saveData) {
+                $cols = implode(', ', array_map(static fn ($c) => $q((string) $c), array_keys($saveData)));
+                $marks = implode(', ', array_fill(0, count($saveData), '?'));
+                $db->query('INSERT INTO ' . $q($table) . ' (' . $cols . ') VALUES (' . $marks . ')', array_values($saveData));
+            } else {
+                $db->query('INSERT INTO ' . $q($table) . ' () VALUES ()');
+            }
             $recordId = (int) $db->insertID();
+        }
+
+        // Admin-added custom fields (Report Designer): stored per record, never as table columns
+        if ($slug === 'bonding' && $db->tableExists('tbl_dtr_custom_values')) {
+            foreach ($fields as $fk => $fv) {
+                if (preg_match('/^cf_[A-Za-z0-9_]{1,57}$/', (string) $fk)) {
+                    $where = ['slug' => $slug, 'record_id' => $recordId, 'field_key' => (string) $fk];
+                    $data  = ['field_value' => (string) $fv, 'updated_at' => date('Y-m-d H:i:s')];
+                    if ($db->table('tbl_dtr_custom_values')->where($where)->countAllResults() > 0) {
+                        $db->table('tbl_dtr_custom_values')->where($where)->update($data);
+                    } else {
+                        $db->table('tbl_dtr_custom_values')->insert($where + $data);
+                    }
+                }
+            }
         }
 
         // If bonding, also save bonding points into tbl_dtr_bonding_points
@@ -632,7 +787,7 @@ class DtrController extends BaseController
             'ok'       => true,
             'recordId' => $recordId,
             'labRefNo' => $labRefNo,
-            'message'  => "Saved {$cfg['label']} record #{$recordId} ({$labRefNo}) to dbnexus.",
+            'message'  => "Saved {$cfg['label']} record #{$recordId} ({$labRefNo}) to NEXUS-L.",
             'csrf'     => csrf_hash(),
         ]);
     }
@@ -662,7 +817,7 @@ class DtrController extends BaseController
         }
 
         // 2. Check \\192.168.32.45\OUTDATA\{subFolder} (Read-only copy to cache!)
-        $netDir = '\\\\192.168.32.45\\OUTDATA\\' . $subFolder;
+        $netDir = \App\Libraries\MachineFileReader::root() . $subFolder;
         foreach ($candidates as $cand) {
             foreach ($exts as $ext) {
                 $netPath   = $netDir . '\\' . $cand . $ext;
@@ -847,6 +1002,99 @@ class DtrController extends BaseController
                 ->setBody(file_get_contents($pdfPath));
         }
 
-        return $this->response->setStatusCode(500)->setBody('Failed to export Access PDF for BondingTestID: ' . $id);
+        return $this->response->setStatusCode(500)->setBody('The Access PDF could not be created for report #' . (int) $id . ' (Microsoft Access must be installed on the server and this report must exist in the Access file). Please close this tab and use "Print Report / Save as PDF" instead.');
+    }
+
+    /** Path of the Access-made machine result PDF for a BondingTestID (created on first use), or null. */
+    private function ensureAccessPdf(int $id, string $side): ?string
+    {
+        $cacheDir = WRITEPATH . 'cache/bonding_pdfs/';
+        if (! is_dir($cacheDir)) {
+            @mkdir($cacheDir, 0777, true);
+        }
+        $pdfPath = $cacheDir . "bonding_report_{$id}_{$side}.pdf";
+        if (! is_file($pdfPath) || filesize($pdfPath) === 0) {
+            @shell_exec('powershell -ExecutionPolicy Bypass -File ' . escapeshellarg(APPPATH . 'Libraries/export_bonding_pdf.ps1') . " -BondingTestID {$id} -Side " . escapeshellarg($side) . ' -OutPdf ' . escapeshellarg($pdfPath));
+        }
+
+        return is_file($pdfPath) && filesize($pdfPath) > 0 ? $pdfPath : null;
+    }
+
+    /**
+     * POST /dtr/sheet-pdf {html, name}: renders the printable report sheet (the same one shown in the preview,
+     * with the VF and SATRA logos) to a PDF with the installed Chrome / Edge in headless mode.
+     */
+    public function sheetPdf()
+    {
+        $p    = $this->request->getJSON(true) ?? $this->request->getPost();
+        $html = (string) ($p['html'] ?? '');
+        if ($html === '' || strlen($html) > 2000000) {
+            return $this->response->setStatusCode(422)->setBody('No report to convert.');
+        }
+
+        // keep presentation only: no scripts, frames, forms, external stylesheets or event handlers
+        $html = preg_replace('#<(script|iframe|object|embed|link|base|meta|form|style)\b[^>]*>.*?</\1>#is', '', $html);
+        $html = preg_replace('#<(script|iframe|object|embed|link|base|meta|form)\b[^>]*/?>#is', '', $html);
+        $html = preg_replace('/\son[a-z]+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $html);
+        $html = preg_replace('/(href|src)\s*=\s*(["\'])\s*(javascript|data:text|file):[^"\']*\2/i', '$1=$2$2', $html);
+
+        $browser = null;
+        foreach (['C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe', 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe', 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'] as $c) {
+            if (is_file($c)) {
+                $browser = $c;
+                break;
+            }
+        }
+        if ($browser === null) {
+            return $this->response->setStatusCode(500)->setBody('Chrome or Edge is required on the server to create PDFs.');
+        }
+
+        $dir = WRITEPATH . 'cache/sheet_pdfs/';
+        if (! is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        $scale = max(0.4, min(1.0, (float) ($p['scale'] ?? 1)));
+        $id   = bin2hex(random_bytes(8));
+        $htmlFile = $dir . $id . '.html';
+        $pdfFile  = $dir . $id . '.pdf';
+        $doc = '<!doctype html><html><head><meta charset="utf-8"><base href="' . base_url() . '/">'
+            . '<link rel="stylesheet" href="' . base_url('assets/css/dtr.css') . '">'
+            . '<style>@page{size:A4 portrait;margin:6mm}body{background:#fff;margin:0}@media print{body *{visibility:visible!important}}html{zoom:' . $scale . '}.vf-report-sheet,.dtr-report-sheet{border:none!important;box-shadow:none!important;max-width:100%!important;width:100%!important;padding:0!important}</style>'
+            . '</head><body>' . $html . '</body></html>';
+        file_put_contents($htmlFile, $doc);
+
+        $cmd = '"' . $browser . '" --headless=new --disable-gpu --disable-extensions --no-first-run --disable-features=Translate'
+            . ' --virtual-time-budget=4000 --no-pdf-header-footer'
+            . ' --user-data-dir="' . $dir . 'profile" --print-to-pdf="' . $pdfFile . '" "file:///' . str_replace('\\', '/', $htmlFile) . '" 2>&1';
+        @shell_exec($cmd);
+        @unlink($htmlFile);
+
+        if (! is_file($pdfFile) || filesize($pdfFile) < 500) {
+            @unlink($pdfFile);
+
+            return $this->response->setStatusCode(500)->setBody('The PDF could not be created on the server.');
+        }
+        // page 2 of the attachment: the machine test result (Access report), joined to the sheet when it can be made
+        $accessId = (int) ($p['access_id'] ?? 0);
+        if ($accessId > 0) {
+            $side   = ucfirst(strtolower((string) ($p['side'] ?? 'Left'))) === 'Right' ? 'Right' : 'Left';
+            $access = $this->ensureAccessPdf($accessId, $side);
+            $node   = is_file('C:\\Program Files\\nodejs\\node.exe') ? 'C:\\Program Files\\nodejs\\node.exe' : 'node';
+            $merged = $dir . $id . '_m.pdf';
+            if ($access !== null) {
+                @shell_exec('"' . $node . '" "' . ROOTPATH . 'tools\\build\\merge-pdf.js" "' . $merged . '" "' . $pdfFile . '" "' . $access . '" 2>&1');
+                if (is_file($merged) && filesize($merged) > 500) {
+                    @unlink($pdfFile);
+                    $pdfFile = $merged;
+                }
+            }
+        }
+        $pdf = (string) file_get_contents($pdfFile);
+        @unlink($pdfFile);
+        $name = preg_replace('/[^A-Za-z0-9._ -]+/', '_', (string) ($p['name'] ?? 'Report')) ?: 'Report';
+
+        return $this->response->setHeader('Content-Type', 'application/pdf')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . $name . '.pdf"')
+            ->setBody($pdf);
     }
 }

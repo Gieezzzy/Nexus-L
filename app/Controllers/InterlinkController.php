@@ -46,7 +46,7 @@ class InterlinkController extends BaseController
         return $this->render('interlink/index', [
             'title'          => 'InterLink Sync',
             'withCss'        => 'interlink.css',
-            'withJs'         => ['interlink.js'],
+            'withJs'         => ['interlink.js', 'interlink_center.js'],
             'reports'        => $reports,
             'logs'           => $logs,
             'partners'       => $partners,
@@ -648,7 +648,7 @@ JS;
      * Pulls any page (1..517) and pageSize (10|15|20|50|100) live from InterLink 2.0's
      * SearchFormWithHeader.aspx BuilderGridView, upserts into dbnexus, and returns the rows.
      */
-    private function pullInterlinkGridPage(int $page, int $pageSize, bool $forceRefresh = false): array
+    public function pullInterlinkGridPage(int $page, int $pageSize, bool $forceRefresh = false): array
     {
         $cookie    = $this->getActiveChromeCookieHeader();
         $stateFile = WRITEPATH . 'cache/interlink_grid_state.json';
@@ -763,7 +763,7 @@ JS;
         return [
             'ok'          => true,
             'live'        => false,
-            'message'     => 'Showing cached dbnexus records (InterLink session offline or unreachable).',
+            'message'     => 'Showing cached NEXUS-L records (InterLink session offline or unreachable).',
             'currentPage' => $page,
             'totalPages'  => max(517, (int) ceil($totalLocal / $pageSize)),
             'totalItems'  => max(7749, $totalLocal),
@@ -1216,10 +1216,8 @@ JS;
      */
     private function getActiveChromeCookieHeader(): string
     {
-        $path = WRITEPATH . 'cache/interlink_cookie.txt';
-        if (is_file($path)) {
-            return trim((string) file_get_contents($path));
-        }
+        // NEXUS-L stores nobody's InterLink login. Reading InterLink from the server is therefore off; the grid shows the
+        // applications already stored in NEXUS-L and the PIC works in InterLink with their own account.
         return '';
     }
 
@@ -1227,7 +1225,7 @@ JS;
      * Executes a live HTTP GET + ASP.NET ViewState extraction against UploadForm.aspx
      * and maps the NEXUS-L fields to the exact DevExpress control IDs discovered from the live HTML.
      */
-    private function executeLiveInterlinkPostback(string $appNo, array $fields, string $uFormUrl): array
+    public function executeLiveInterlinkPostback(string $appNo, array $fields, string $uFormUrl): array
     {
         $cookieHeader = $this->getActiveChromeCookieHeader();
         $devExpressControlMap = [
@@ -1271,6 +1269,7 @@ JS;
             'session_authenticated' => ($cookieHeader !== ''),
             'target_url'            => $uFormUrl,
             'mapped_controls'       => count($devExpressControlMap),
+            'controls'              => $devExpressControlMap,
             'message'               => '1-Click Live InterLink payload mapped to 32 DevExpress controls (Tab 1 + Tab 2 Upload Result) and queued with active Chrome session.',
         ];
     }
@@ -1278,7 +1277,7 @@ JS;
     /**
      * Triggers the Node.js Playwright automation worker script if invoked with run_bot = true.
      */
-    private function triggerPlaywrightBot(string $appNo, array $fields, string $targetUrl): array
+    public function triggerPlaywrightBot(string $appNo, array $fields, string $targetUrl): array
     {
         $scriptPath = ROOTPATH . 'scripts' . DIRECTORY_SEPARATOR . 'interlink-bot.js';
         $payloadDir = WRITEPATH . 'cache';
@@ -1371,7 +1370,7 @@ JS;
         if (! $row) {
             return $this->response->setStatusCode(404)->setJSON([
                 'ok'    => false,
-                'error' => 'Lab Reference record not found in dbnexus.',
+                'error' => 'Lab Reference record not found in NEXUS-L.',
                 'csrf'  => csrf_hash(),
             ]);
         }
@@ -1406,6 +1405,360 @@ JS;
             'dsr'      => $dsrInfo,
             'material' => $matInfo,
             'csrf'     => csrf_hash(),
+        ]);
+    }
+
+    // =========================================================================
+    // Sync center: background worker, session state, queue and live feed
+    // =========================================================================
+
+    private function il(): \CodeIgniter\Database\BaseConnection
+    {
+        return \Config\Database::connect();
+    }
+
+    private function sessionRow(): array
+    {
+        return $this->il()->table('tbl_interlink_session')->where('id', 1)->get()->getRowArray() ?: ['status' => 'none'];
+    }
+
+    private function setSession(array $data): void
+    {
+        $this->il()->table('tbl_interlink_session')->where('id', 1)->update($data);
+    }
+
+    private function liveEvent(string $type, ?string $appNo, string $summary): void
+    {
+        $this->il()->table('tbl_interlink_live_events')->insert([
+            'event_type' => $type, 'application_no' => $appNo, 'summary' => mb_substr($summary, 0, 250), 'created_at' => date('Y-m-d H:i:s'),
+        ]);
+        // keep the feed small
+        $this->il()->query('DELETE FROM tbl_interlink_live_events WHERE id < (SELECT m FROM (SELECT CAST(MAX(id) AS SIGNED) - 500 AS m FROM tbl_interlink_live_events) x)');
+    }
+
+    /** connected | expired | unreachable | none - one light GET of the InterLink search page with the stored session. */
+    public function probeSession(): string
+    {
+        $cookie = $this->getActiveChromeCookieHeader();
+        if ($cookie === '') {
+            return 'none';
+        }
+        $ch = curl_init(self::DEFAULT_SEARCH_URL);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS      => 5,
+            CURLOPT_TIMEOUT        => 20,
+            CURLOPT_CONNECTTIMEOUT => 8,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_HTTPHEADER     => ['Cookie: ' . $cookie, 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36'],
+        ]);
+        $html = (string) curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($code === 0 || $code >= 500) {
+            return 'unreachable';
+        }
+        if ($code === 200 && strpos($html, 'PH1_SF1_GVBUILDER_BuilderGridView') !== false && stripos($html, 'ReloginAccessError') === false) {
+            return 'connected';
+        }
+
+        return 'expired';
+    }
+
+    private function applyProbe(string $state): string
+    {
+        $row  = $this->sessionRow();
+        $now  = date('Y-m-d H:i:s');
+        $data = ['status' => $state, 'last_checked_at' => $now];
+        if ($state === 'connected') {
+            $data['last_ok_at']  = $now;
+            $data['last_error']  = null;
+            $data['notified_at'] = null;
+        } elseif ($state === 'expired') {
+            $data['last_error'] = 'InterLink asked to sign in again.';
+        } elseif ($state === 'unreachable') {
+            $data['last_error'] = 'InterLink could not be reached.';
+        }
+        $this->setSession($data);
+
+        if ($state === 'expired' && ($row['status'] ?? '') !== 'expired') {
+            $this->liveEvent('session', null, 'InterLink session ended - sign in again to resume syncing.');
+        }
+        if ($state === 'expired' && empty($row['notified_at'])) {
+            try {
+                $uid = (int) ($row['owner_user_id'] ?? 0);
+                if ($uid > 0) {
+                    (new \App\Libraries\SynologyChat())->send($uid, 'NEXUS-L: your InterLink session has ended. Please sign in to InterLink again so queued syncs can continue.');
+                }
+            } catch (\Throwable $e) {
+                // chat is optional
+            }
+            $this->setSession(['notified_at' => $now]);
+        }
+
+        return $state;
+    }
+
+    private function trackColumns(array $rows): void
+    {
+        if (! $rows) {
+            return;
+        }
+        $db    = $this->il();
+        $known = array_column($db->table('tbl_interlink_grid_columns')->select('col_key')->get()->getResultArray(), 'col_key');
+        $now   = date('Y-m-d H:i:s');
+        $new   = [];
+        foreach (array_keys((array) $rows[0]) as $k) {
+            if (! is_string($k) || $k === '') {
+                continue;
+            }
+            if (in_array($k, $known, true)) {
+                $db->table('tbl_interlink_grid_columns')->where('col_key', $k)->update(['last_seen' => $now]);
+            } else {
+                $db->table('tbl_interlink_grid_columns')->insert(['col_key' => mb_substr($k, 0, 80), 'first_seen' => $now, 'last_seen' => $now]);
+                $new[] = $k;
+            }
+        }
+        // the very first pull only fills the list; later additions are real news
+        if ($new && $known) {
+            $this->liveEvent('new_column', null, 'New InterLink column(s): ' . implode(', ', array_slice($new, 0, 8)));
+        }
+    }
+
+    /** Same field mapping the Pre-Sync dialog applies, built on the server so a Lab Ref can be queued without the dialog. */
+    private function fieldsFromLabRef(array $lr, string $appNo): array
+    {
+        $res     = strtolower((string) ($lr['overall_result'] ?? 'pass'));
+        $overall = $res === 'fail' ? 'Fail' : ($res === 'tolerable' ? 'Data' : 'Pass');
+        $desc    = (string) ($lr['material_description'] ?? '') ?: (string) ($lr['material_type'] ?? '');
+        $f       = [
+            'application_no'    => $appNo,
+            'report_no'         => (string) (($lr['tr_no'] ?? '') ?: ($lr['lab_ref_no'] ?? '')),
+            'overall_result'    => $overall,
+            'report_issue_date' => (string) (($lr['finished_date'] ?? '') ?: date('d M Y')),
+            'attachment_name'   => ($lr['lab_ref_no'] ?? '') . '_TestReport.pdf',
+            'lab_remarks'       => 'LabRefNo: ' . ($lr['lab_ref_no'] ?? '') . ' | Category: ' . ($lr['form_category'] ?? '') . ' | Result: ' . ($lr['overall_result'] ?? 'Pass') . (! empty($lr['mtl_no']) ? ' | MTL: ' . $lr['mtl_no'] : ''),
+        ];
+        if (! empty($lr['supplier'])) {
+            $f['supplier_name'] = (string) $lr['supplier'];
+        }
+        if (! empty($lr['model_style'])) {
+            $f['style_no'] = $f['product_id'] = (string) $lr['model_style'];
+        }
+        if ($desc !== '') {
+            $f['product_name'] = $f['material_name'] = $desc;
+        }
+        if (! empty($lr['material_code'])) {
+            $f['material_code'] = (string) $lr['material_code'];
+        }
+        if (! empty($lr['color'])) {
+            $f['colorway_name'] = (string) $lr['color'];
+        }
+
+        return $f;
+    }
+
+    /**
+     * One worker cycle (called by `php spark interlink:work` every minute, or by the "Run now" button):
+     * check the session, pull what changed in InterLink, then process queued Lab References.
+     *
+     * @return array<string,mixed>
+     */
+    public function runWorkerCycle(int $maxJobs = 5): array
+    {
+        return ['session' => 'per-user', 'note' => 'InterLink is used with each person\'s own sign-in; nothing to do on the server', 'changed' => 0, 'jobs' => 0];
+
+        $out   = ['session' => 'none', 'changed' => 0, 'jobs' => 0];
+        $state = $this->applyProbe($this->probeSession());
+        $out['session'] = $state;
+        if ($state !== 'connected') {
+            return $out;
+        }
+
+        // 1. what changed in InterLink (other users' edits show up here)
+        try {
+            $res = $this->pullInterlinkGridPage(1, 50, true);
+            if (! empty($res['live'])) {
+                $this->trackColumns((array) ($res['rows'] ?? []));
+                foreach ((array) ($res['changedApps'] ?? []) as $app) {
+                    $this->liveEvent('changed', (string) $app, 'Changed or added in InterLink.');
+                    $out['changed']++;
+                }
+            }
+        } catch (\Throwable $e) {
+            $out['pull_error'] = $e->getMessage();
+        }
+
+        // 1b. load every InterLink page into our table, a few pages per cycle, so ALL rows are searchable
+        try {
+            $out['backfill'] = $this->backfillStep();
+        } catch (\Throwable $e) {
+            $out['backfill_error'] = $e->getMessage();
+        }
+
+        // 2. queued Lab References
+        $db    = $this->il();
+        $model = model(InterlinkReportModel::class);
+        $jobs  = $db->table('tbl_interlink_queue')->where('status', 'pending')->orderBy('id')->limit($maxJobs)->get()->getResultArray();
+        foreach ($jobs as $j) {
+            $db->table('tbl_interlink_queue')->where('id', $j['id'])->update(['status' => 'running', 'started_at' => date('Y-m-d H:i:s'), 'attempts' => (int) $j['attempts'] + 1]);
+            try {
+                $fields   = (array) json_decode((string) $j['fields_json'], true);
+                $existing = $model->findByAppNo((string) $j['application_no']);
+                $url      = (string) ($existing['u_form_url'] ?? '') ?: self::DEFAULT_UPLOAD_URL;
+                $bot      = $this->triggerPlaywrightBot((string) $j['application_no'], $fields, $url);
+                $live     = $this->executeLiveInterlinkPostback((string) $j['application_no'], $fields, $url);
+                $model->logSync([
+                    'report_id' => (int) ($existing['id'] ?? 0), 'application_no' => $j['application_no'], 'report_no' => $fields['report_no'] ?? '',
+                    'target_portal_url' => $url, 'fields' => $fields, 'sync_mode' => 'background_queue', 'bot_job_file' => $bot['job_file'] ?? null,
+                    'status' => 'prepared', 'ip_address' => 'worker', 'user_id' => null, 'user_name' => (string) $j['requested_by'],
+                ]);
+                $db->table('tbl_interlink_queue')->where('id', $j['id'])->update([
+                    'status' => 'prepared', 'finished_at' => date('Y-m-d H:i:s'),
+                    'message' => mb_substr((string) ($live['message'] ?? 'Prepared'), 0, 250),
+                ]);
+                $out['jobs']++;
+            } catch (\Throwable $e) {
+                $db->table('tbl_interlink_queue')->where('id', $j['id'])->update([
+                    'status' => ((int) $j['attempts'] + 1) >= 3 ? 'failed' : 'pending', 'message' => mb_substr($e->getMessage(), 0, 250),
+                ]);
+            }
+        }
+
+        return $out;
+    }
+
+    /** GET interlink/center/status */
+    public function centerStatus()
+    {
+        return $this->response->setJSON(['ok' => true, 'mode' => 'per-user', 'message' => 'Everyone signs in to InterLink with their own account. NEXUS-L stores no InterLink login.', 'csrf' => csrf_hash()]);
+    }
+
+    /**
+     * POST interlink/center/fill {application_no, fields:{...}} : PREPARES the values for the InterLink form and returns them.
+     * Nothing is sent to InterLink and no window is opened on the server: the person who is responsible for the report
+     * fills the form in their OWN browser (bookmarklet) and presses Save / Submit themselves.
+     */
+    public function centerFill()
+    {
+        $p      = $this->request->getJSON(true) ?? $this->request->getPost();
+        $appNo  = trim((string) ($p['application_no'] ?? ''));
+        $fields = is_array($p['fields'] ?? null) ? $p['fields'] : [];
+        $ref    = trim((string) ($p['lab_ref_no'] ?? ''));
+        $lr = $ref !== '' ? $this->il()->table('tbl_dtr_unified_labrefs')->where('lab_ref_no', $ref)->orderBy('id', 'DESC')->get()->getRowArray()
+            : $this->il()->table('tbl_dtr_unified_labrefs')->where('tr_no', $appNo)->orderBy('id', 'DESC')->get()->getRowArray();
+        if (! $fields && $lr) {
+            $fields = $this->fieldsFromLabRef($lr, $appNo);
+        }
+        if (! preg_match('/^[A-Za-z0-9_-]{3,40}$/', $appNo) || ! $fields) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'error' => 'Choose an Application No. and the fields to fill.', 'csrf' => csrf_hash()]);
+        }
+        $existing = model(InterlinkReportModel::class)->findByAppNo($appNo);
+        $url      = (string) ($existing['u_form_url'] ?? '') ?: self::DEFAULT_UPLOAD_URL;
+        if (! preg_match('#^https?://#i', $url)) {
+            $url = 'https://interlink2.intertek.com' . (str_starts_with($url, '/') ? '' : '/') . $url;
+        }
+
+        // only the boxes that belong to the chosen fields: each key is probed with a marker to find its InterLink box, so the
+        // defaults the map adds for other boxes never overwrite what InterLink already holds
+        $controls = [];
+        foreach ($fields as $k => $v) {
+            if ((string) $v === '' || ! is_string($k)) {
+                continue;
+            }
+            $probe = (array) ($this->executeLiveInterlinkPostback($appNo, [$k => '__NX_PROBE__'], $url)['controls'] ?? []);
+            foreach ($probe as $ctl => $val) {
+                if ($val === '__NX_PROBE__') {
+                    $controls[$ctl] = (string) $v;
+                }
+            }
+        }
+        if (! $controls) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'error' => 'None of the chosen fields map to an InterLink form box.', 'csrf' => csrf_hash()]);
+        }
+
+        return $this->response->setJSON(['ok' => true, 'application_no' => $appNo, 'target_url' => $url, 'fields' => count($controls), 'controls' => $controls,
+            // id is the record id of the DTR form (source_id): the DTR page opens records by it, not by the unified row id
+            'lab' => $lr ? ['slug' => (string) $lr['form_slug'], 'id' => (int) ($lr['source_id'] ?: $lr['id']), 'lab_ref_no' => (string) $lr['lab_ref_no']] : null, 'csrf' => csrf_hash()]);
+    }
+
+    /** Pulls the next InterLink pages (100 rows each) into tbl_interlink_reports; loops forever so the copy stays complete. */
+    private function backfillStep(int $pagesPerCycle = 12): array
+    {
+        $db   = $this->il();
+        $row  = $db->table('tbl_app_settings')->where('skey', 'il_backfill')->get()->getRowArray();
+        $st   = json_decode((string) ($row['svalue'] ?? ''), true) ?: ['next' => 1, 'total_pages' => 0, 'size' => 100, 'cycles' => 0];
+        $size = 100;
+        $done = 0;
+        for ($i = 0; $i < $pagesPerCycle; $i++) {
+            $page = max(1, (int) $st['next']);
+            $res  = $this->pullInterlinkGridPage($page, $size, false);
+            if (empty($res['live'])) {
+                break;   // InterLink not reachable / session ended: try again next minute
+            }
+            $total = max(1, (int) ($res['totalPages'] ?? 1));
+            $st['total_pages'] = $total;
+            $st['next']        = $page >= $total ? 1 : $page + 1;
+            if ($page >= $total) {
+                $st['cycles'] = (int) ($st['cycles'] ?? 0) + 1;
+                $st['finished_at'] = date('Y-m-d H:i:s');
+            }
+            $done++;
+        }
+        $st['updated_at'] = date('Y-m-d H:i:s');
+        $data = ['svalue' => json_encode($st), 'updated_by' => 'worker', 'updated_at' => $st['updated_at']];
+        if ($row) {
+            $db->table('tbl_app_settings')->where('skey', 'il_backfill')->update($data);
+        } else {
+            $db->table('tbl_app_settings')->insert($data + ['skey' => 'il_backfill']);
+        }
+
+        return ['pages' => $done, 'next' => $st['next'], 'of' => $st['total_pages']];
+    }
+
+    /**
+     * GET interlink/search?filters={col:text,...} : searches EVERY application stored locally (not only the page on screen).
+     * Returns up to 300 rows plus how much of InterLink is already loaded, so the screen can say so.
+     */
+    public function search()
+    {
+        $db      = $this->il();
+        $filters = json_decode((string) $this->request->getGet('filters'), true);
+        $filters = is_array($filters) ? $filters : [];
+        $cols    = $db->getFieldNames('tbl_interlink_reports');
+        $b       = $db->table('tbl_interlink_reports');
+        $used    = 0;
+        $all = trim((string) ($filters['__all'] ?? ''));
+        unset($filters['__all']);
+        if ($all !== '' && mb_strlen($all) <= 80) {
+            $b->groupStart();
+            foreach ($cols as $c) {
+                if (! in_array($c, ['id', 'created_at', 'updated_at'], true)) {
+                    $b->orLike($c, $all, 'both');
+                }
+            }
+            $b->groupEnd();
+            $used++;
+        }
+        foreach (array_slice($filters, 0, 12, true) as $col => $val) {
+            $val = trim((string) $val);
+            if ($val === '' || ! in_array((string) $col, $cols, true)) {
+                continue;
+            }
+            $b->like((string) $col, $val, 'both');
+            $used++;
+        }
+        $rows = $used ? $b->orderBy('application_no', 'DESC')->limit(300)->get()->getResultArray() : [];
+        $row  = $db->table('tbl_app_settings')->where('skey', 'il_backfill')->get()->getRowArray();
+        $st   = json_decode((string) ($row['svalue'] ?? ''), true) ?: [];
+        $have = (int) $db->table('tbl_interlink_reports')->countAllResults();
+
+        return $this->response->setJSON([
+            'ok' => true, 'rows' => $rows, 'matches' => count($rows), 'capped' => count($rows) >= 300,
+            'loaded' => $have, 'total_pages' => (int) ($st['total_pages'] ?? 0), 'next_page' => (int) ($st['next'] ?? 1),
+            'complete' => ! empty($st['finished_at']), 'csrf' => csrf_hash(),
         ]);
     }
 }

@@ -1,0 +1,738 @@
+<?php
+
+namespace App\Controllers;
+
+use App\Libraries\Brain;
+
+/**
+ * BotController - the NEXUS-L help bot (local, system-only).
+ *  - signed-in users: ask, feedback, escalate to an administrator, read / send chat messages, activity events
+ *  - administrators (/brain): threads to answer, knowledge to curate, questions the bot could not answer, repeated
+ *    problems, health checks, export / restore of the Brain folders
+ */
+class BotController extends BaseController
+{
+    private function db(): \CodeIgniter\Database\BaseConnection
+    {
+        return \Config\Database::connect();
+    }
+
+    private function isAdmin(): bool
+    {
+        return strcasecmp((string) ($this->auth->user()['role'] ?? ''), 'admin') === 0;
+    }
+
+    private function json(array $d, int $code = 200)
+    {
+        $d['csrf'] = csrf_hash();
+
+        return $this->response->setStatusCode($code)->setJSON($d);
+    }
+
+    private function input(): array
+    {
+        return $this->request->getJSON(true) ?? $this->request->getPost() ?? [];
+    }
+
+    // ============================================================================ activity events
+
+    /** POST bot/events {events:[{type,page,target,detail,status}]} */
+    public function events()
+    {
+        $u    = $this->auth->user();
+        $p    = $this->input();
+        $db   = $this->db();
+        $now  = date('Y-m-d H:i:s');
+        $ok   = ['view', 'click', 'save', 'error', 'http_error', 'stuck', 'bot'];
+        $n    = 0;
+        foreach (array_slice((array) ($p['events'] ?? []), 0, 40) as $e) {
+            $type = (string) ($e['type'] ?? '');
+            if (! in_array($type, $ok, true)) {
+                continue;
+            }
+            $page   = mb_substr(preg_replace('#[?\#].*$#', '', (string) ($e['page'] ?? '')), 0, 160);
+            $target = Brain::redact((string) ($e['target'] ?? ''));
+            $detail = Brain::redact((string) ($e['detail'] ?? ''));
+            $sig    = in_array($type, ['error', 'http_error', 'stuck'], true) ? Brain::signature($type, $page, $detail !== '' ? $detail : $target) : null;
+            $db->table('tbl_bot_events')->insert([
+                'user_id' => (int) ($u['id'] ?? 0), 'username' => (string) ($u['username'] ?? ''), 'role' => (string) ($u['role'] ?? ''),
+                'event_type' => $type, 'page' => $page, 'target' => mb_substr($target, 0, 160), 'detail' => mb_substr($detail, 0, 500),
+                'status' => isset($e['status']) ? (int) $e['status'] : null, 'signature' => $sig, 'created_at' => $now,
+            ]);
+            $n++;
+            if ($sig !== null) {
+                $exists = $db->table('tbl_bot_issues')->where('signature', $sig)->get()->getRowArray();
+                if ($exists) {
+                    $db->table('tbl_bot_issues')->where('id', $exists['id'])->set('times', 'times + 1', false)->update(['last_seen' => $now]);
+                } else {
+                    $db->table('tbl_bot_issues')->insert(['signature' => $sig, 'summary' => mb_substr(($type === 'http_error' ? 'HTTP ' . (int) ($e['status'] ?? 0) . ' ' : '') . ($detail !== '' ? $detail : $target), 0, 300), 'page' => $page, 'times' => 1, 'users' => 1, 'status' => 'open', 'first_seen' => $now, 'last_seen' => $now]);
+                }
+            }
+        }
+
+        return $this->json(['ok' => true, 'stored' => $n]);
+    }
+
+    /** GET bot/history: the signed-in user's own recent activity and chats. */
+    public function history()
+    {
+        $u  = $this->auth->user();
+        $db = $this->db();
+
+        return $this->json([
+            'ok'      => true,
+            'events'  => $db->table('tbl_bot_events')->select('event_type, page, target, detail, created_at')->where('user_id', (int) $u['id'])->orderBy('id', 'DESC')->limit(40)->get()->getResultArray(),
+            'threads' => $db->table('tbl_bot_threads')->select('id, topic, status, updated_at')->where('user_id', (int) $u['id'])->orderBy('id', 'DESC')->limit(15)->get()->getResultArray(),
+        ]);
+    }
+
+    // ================================================================================== user chat
+
+    private function threadFor(int $userId, string $username, string $page, ?int $threadId, string $firstMessage): array
+    {
+        $db = $this->db();
+        if ($threadId) {
+            $t = $db->table('tbl_bot_threads')->where(['id' => $threadId, 'user_id' => $userId])->get()->getRowArray();
+            if ($t && $t['status'] !== 'resolved') {
+                return $t;
+            }
+        }
+        $now = date('Y-m-d H:i:s');
+        $db->table('tbl_bot_threads')->insert(['user_id' => $userId, 'username' => $username, 'status' => 'bot', 'topic' => mb_substr($firstMessage, 0, 190), 'page' => mb_substr($page, 0, 160), 'created_at' => $now, 'updated_at' => $now]);
+
+        return $db->table('tbl_bot_threads')->where('id', (int) $db->insertID())->get()->getRowArray();
+    }
+
+    private function say(int $threadId, string $sender, string $name, string $message, ?int $kbId = null, ?int $conf = null): int
+    {
+        $db = $this->db();
+        $db->table('tbl_bot_chats')->insert(['thread_id' => $threadId, 'sender' => $sender, 'sender_name' => $name, 'message' => $message, 'knowledge_id' => $kbId, 'confidence' => $conf, 'created_at' => date('Y-m-d H:i:s')]);
+        $id = (int) $db->insertID();   // read it before the next query resets it
+        $db->table('tbl_bot_threads')->where('id', $threadId)->update(['updated_at' => date('Y-m-d H:i:s')]);
+
+        return $id;
+    }
+
+    private function recentErrors(int $userId): array
+    {
+        $rows = $this->db()->table('tbl_bot_events')->select('event_type, status, detail, target')->where('user_id', $userId)
+            ->whereIn('event_type', ['error', 'http_error'])->where('created_at >=', date('Y-m-d H:i:s', time() - 900))->orderBy('id', 'DESC')->limit(6)->get()->getResultArray();
+
+        return array_map(static fn ($r) => trim(($r['status'] ? 'HTTP ' . $r['status'] . ' ' : '') . ($r['detail'] ?: $r['target'])), $rows);
+    }
+
+    /** POST bot/ask {message, thread_id?, page?} */
+    public function ask()
+    {
+        $u    = $this->auth->user();
+        $p    = $this->input();
+        $text = trim((string) ($p['message'] ?? ''));
+        if ($text === '' || mb_strlen($text) > 1000) {
+            return $this->json(['ok' => false, 'error' => 'Type your question first.'], 422);
+        }
+        $text   = Brain::redact($text);
+        $page   = (string) ($p['page'] ?? '');
+        $uid    = (int) $u['id'];
+        $thread = $this->threadFor($uid, (string) ($u['username'] ?? ''), $page, isset($p['thread_id']) ? (int) $p['thread_id'] : null, $text);
+        $userChatId = $this->say((int) $thread['id'], 'user', (string) ($u['name'] ?? $u['username'] ?? 'User'), $text);
+
+        // already with an administrator: the message goes to them, the bot stays quiet
+        if ($thread['status'] === 'escalated') {
+            $this->db()->table('tbl_bot_threads')->where('id', $thread['id'])->set('admin_unread', 'admin_unread + 1', false)->update();
+
+            return $this->json(['ok' => true, 'thread_id' => (int) $thread['id'], 'user_chat_id' => $userChatId, 'escalated' => true, 'reply' => null]);
+        }
+
+        $reply = $this->labRefIntent($text) ?? $this->compose($text, ['page' => $page, 'role' => (string) ($u['role'] ?? ''), 'errors' => $this->recentErrors($uid)], $page);
+        $cid   = $this->say((int) $thread['id'], 'bot', 'NEXUS-L Assistant', $reply['text'], $reply['knowledge_id'], $reply['confidence']);
+        $reply['chat_id'] = $cid;
+        unset($reply['knowledge_id']);
+
+        return $this->json(['ok' => true, 'thread_id' => (int) $thread['id'], 'user_chat_id' => $userChatId, 'escalated' => false, 'reply' => $reply]);
+    }
+
+    /**
+     * "open / show / preview / print / pdf / check the machine file for DTP20261012FAA8-L": finds the report and returns
+     * buttons that open it (nothing is saved or sent by the assistant; the user presses the buttons).
+     */
+    private function labRefIntent(string $text): ?array
+    {
+        if (! preg_match('/\b(DTP\d{8}[A-Z0-9]{2,}(?:-[LR])?)\b/i', $text, $m)) {
+            return null;
+        }
+        if (! preg_match('/\b(open|show|find|view|edit|preview|print|pdf|download|machine|file|reading|load|check|where)\b/i', $text)) {
+            return null;
+        }
+        $ref  = strtoupper($m[1]);
+        $db   = $this->db();
+        $rows = $db->table('tbl_dtr_unified_labrefs')->select('lab_ref_no, form_slug, form_category, source_id, overall_result, model_style, material_description')
+            ->like('lab_ref_no', $ref, 'after')->orderBy('id', 'DESC')->limit(3)->get()->getResultArray();
+        $wantMachine = (bool) preg_match('/\b(machine|file|reading|load|excel)\b/i', $text);
+        $wantPdf     = (bool) preg_match('/\b(preview|print|pdf|download)\b/i', $text);
+
+        if (! $rows) {
+            $text = 'I could not find ' . $ref . ' in NEXUS-L. Check the number (date part and letters, and the -L / -R ending). If the report was never saved, create it from QC Lab Reports > Material Tests or Shoe Bonding and load the machine file.';
+            $out  = ['text' => $text, 'steps' => [], 'actions' => [['type' => 'open', 'label' => 'Open Lab Tracker', 'url' => site_url('dtr?tab=tracker')]]];
+        } else {
+            $r    = $rows[0];
+            $slug = (string) $r['form_slug'];
+            $tab  = $slug === 'bonding' ? 'bonding' : 'material';
+            $base = 'dtr?tab=' . $tab . '&open=' . rawurlencode($slug . ':' . $r['source_id']);
+            $text = $r['lab_ref_no'] . ' found: ' . $r['form_category'] . ($r['overall_result'] ? ', result ' . $r['overall_result'] : '') . ($r['model_style'] ? ', ' . $r['model_style'] : '') . '.';
+            $acts = [['type' => 'open', 'label' => 'Open ' . $r['lab_ref_no'], 'url' => site_url($base)]];
+            if ($wantPdf) {
+                $acts[] = ['type' => 'open', 'label' => 'Open the print / PDF preview', 'url' => site_url($base . '&preview=1')];
+                $text .= ' The preview opens with the Download PDF and Print buttons.';
+            }
+            if ($wantMachine) {
+                $text .= ' ' . $this->machineCheck($slug, $r['lab_ref_no']);
+            }
+            foreach (array_slice($rows, 1) as $o) {
+                $acts[] = ['type' => 'open', 'label' => 'Open ' . $o['lab_ref_no'], 'url' => site_url('dtr?tab=' . ($o['form_slug'] === 'bonding' ? 'bonding' : 'material') . '&open=' . rawurlencode($o['form_slug'] . ':' . $o['source_id']))];
+            }
+            $out = ['text' => $text, 'steps' => [], 'actions' => $acts];
+        }
+
+        return $out + ['title' => 'Lab Reference ' . $ref, 'confidence' => 100, 'related' => [], 'diagnosis' => null, 'knowledge_id' => null, 'suggest_admin' => false];
+    }
+
+    /** Read-only look at the machine file of a report: found or not, and how many readings it holds. */
+    private function machineCheck(string $slug, string $labRef): string
+    {
+        try {
+            $maps = $this->db()->table('tbl_machine_maps')->where(['slug' => $slug, 'enabled' => 1])->orderBy('sort_order')->get()->getResultArray();
+            if (! $maps) {
+                return 'No machine-file reading rule is set up for this report type yet; an administrator can add one in the Report Designer.';
+            }
+            $reader = new \App\Libraries\MachineFileReader();
+            $found  = [];
+            $count  = 0;
+            foreach ($maps as $m) {
+                $file = $reader->findFile((string) $m['folder'], $labRef);
+                if ($file) {
+                    $got     = $reader->apply($reader->grid($file, (string) $m['sheet']), (array) json_decode((string) $m['rules_json'], true), $labRef);
+                    $found[] = basename($file);
+                    $count  += count($got);
+                }
+            }
+
+            return $found ? 'Machine file found (' . implode(', ', array_unique($found)) . ') with ' . $count . ' readings. Open the report and press "Load Machine Results" to bring them in.' : 'No machine file for this Lab Ref No. was found yet. The test may not be finished or saved: try again in a minute, then check the number.';
+        } catch (\Throwable $e) {
+            return 'I could not check the machine file right now.';
+        }
+    }
+
+    /** Builds the answer for one question. @return array<string,mixed> */
+    private function compose(string $text, array $ctx, string $page): array
+    {
+        $low = mb_strtolower($text);
+        if (preg_match('/^(hi|hello|hey|good (morning|afternoon|evening)|yo)\b/', $low) && mb_strlen($low) < 30) {
+            return ['text' => 'Hello! I am the NEXUS-L assistant. Ask me how to do something in this system, or describe a problem and I will help you fix it.', 'steps' => [], 'actions' => [], 'confidence' => 100, 'related' => [], 'diagnosis' => null, 'knowledge_id' => null, 'suggest_admin' => false];
+        }
+        if (preg_match('/^(thanks|thank you|ty|ok thanks|great|got it)\b/', $low) && mb_strlen($low) < 40) {
+            return ['text' => 'You are welcome! Ask me anything else about NEXUS-L.', 'steps' => [], 'actions' => [], 'confidence' => 100, 'related' => [], 'diagnosis' => null, 'knowledge_id' => null, 'suggest_admin' => false];
+        }
+
+        if (preg_match('/\b(poem|joke|weather|recipe|song|lyrics|story|horoscope|football|basketball|bitcoin|stock market|movie|capital of|who won|translate this|news today|riddle)\b/i', $low) && ! preg_match('/\b(nexus|report|lab|interlink|bonding|machine|pdf|sync|designer|inbox|dtr|sample|test)\b/i', $low)) {
+            return ['text' => 'I can only help with NEXUS-L: how to use its pages, fix problems, and find your reports. What would you like to do in the system?', 'steps' => [], 'actions' => [], 'confidence' => 0, 'related' => [], 'diagnosis' => null, 'knowledge_id' => null, 'suggest_admin' => false];
+        }
+
+        // a bare "I need help" has no searchable words: answer it directly
+        if (preg_match('/^(i\s+)?(really\s+)?(need\s+)?(some\s+)?(help|assistance|support)(\s+me|\s+please)?[.!?]*$/i', trim($low)) || preg_match('/^(can|could)\s+(you|someone)\s+(please\s+)?help(\s+me)?[.!?]*$/i', trim($low))) {
+            $row = $this->db()->table('tbl_bot_knowledge')->where(['title' => 'I need help', 'status' => 'approved'])->get()->getRowArray();
+            if ($row) {
+                return ['text' => (string) $row['body'], 'title' => (string) $row['title'], 'steps' => [], 'actions' => [], 'confidence' => 100, 'related' => [], 'diagnosis' => null, 'knowledge_id' => (int) $row['id'], 'suggest_admin' => false];
+            }
+        }
+
+        $hits = Brain::search($text, $ctx, 5);
+        $conf = Brain::confidence($hits, $text);
+        $db   = $this->db();
+
+        if (! $hits || $conf < 30) {
+            $norm = implode(' ', array_slice(Brain::tokens($text), 0, 12));
+            if ($norm !== '') {
+                $now = date('Y-m-d H:i:s');
+                $row = $db->table('tbl_bot_unanswered')->where('norm', mb_substr($norm, 0, 200))->get()->getRowArray();
+                if ($row) {
+                    $db->table('tbl_bot_unanswered')->where('id', $row['id'])->set('times', 'times + 1', false)->update(['last_seen' => $now, 'status' => $row['status'] === 'answered' ? 'open' : $row['status']]);
+                } else {
+                    $db->table('tbl_bot_unanswered')->insert(['norm' => mb_substr($norm, 0, 200), 'sample' => mb_substr($text, 0, 400), 'page' => mb_substr($page, 0, 160), 'times' => 1, 'status' => 'open', 'first_seen' => $now, 'last_seen' => $now]);
+                }
+            }
+
+            return [
+                'text'  => 'I do not have a verified answer for that yet. I have noted the question so it can be added. You can rephrase it, or send it to an administrator who will help you directly.',
+                'steps' => [], 'actions' => [], 'confidence' => $conf, 'diagnosis' => null, 'knowledge_id' => null, 'suggest_admin' => true,
+                'related' => array_map(static fn ($h) => ['id' => (int) $h['row']['id'], 'title' => $h['row']['title']], array_slice($hits, 0, 3)),
+            ];
+        }
+
+        $best = $hits[0]['row'];
+        $db->table('tbl_bot_knowledge')->where('id', $best['id'])->set('hits', 'hits + 1', false)->update();
+        $diag = null;
+        if (! empty($best['diagnose'])) {
+            $diag = Brain::diagnose((string) $best['diagnose']);
+        }
+        $actions = [];
+        foreach ((array) json_decode((string) ($best['actions_json'] ?? ''), true) as $a) {
+            if (! is_array($a) || empty($a['label'])) {
+                continue;
+            }
+            if (($a['type'] ?? '') === 'open' && ! empty($a['url'])) {
+                $a['url'] = preg_match('#^https?://#i', (string) $a['url']) ? null : site_url(ltrim((string) $a['url'], '/'));
+                if ($a['url'] === null) {
+                    continue;
+                }
+            }
+            if (($a['role'] ?? '') === 'admin' && ! $this->isAdmin()) {
+                continue;
+            }
+            $actions[] = $a;
+        }
+
+        return [
+            'text'  => ($conf < 45 ? "I am not fully sure this is what you mean, but this may help:
+
+" : '') . (string) $best['body'],
+            'title' => (string) $best['title'],
+            'steps' => array_values(array_filter((array) json_decode((string) ($best['steps_json'] ?? ''), true), 'is_string')),
+            'actions' => $actions, 'confidence' => $conf, 'diagnosis' => $diag, 'knowledge_id' => (int) $best['id'], 'suggest_admin' => $conf < 45,
+            'related' => array_map(static fn ($h) => ['id' => (int) $h['row']['id'], 'title' => $h['row']['title']], array_slice($hits, 1, 3)),
+        ];
+    }
+
+    /** GET bot/topic?id= : show one related topic */
+    public function topic()
+    {
+        $id  = (int) $this->request->getGet('id');
+        $row = $this->db()->table('tbl_bot_knowledge')->where(['id' => $id, 'status' => 'approved'])->get()->getRowArray();
+        if (! $row || ($row['role_min'] === 'admin' && ! $this->isAdmin())) {
+            return $this->json(['ok' => false, 'error' => 'Not found.'], 404);
+        }
+        $this->db()->table('tbl_bot_knowledge')->where('id', $id)->set('hits', 'hits + 1', false)->update();
+
+        return $this->json(['ok' => true, 'reply' => ['text' => $row['body'], 'title' => $row['title'], 'steps' => array_values(array_filter((array) json_decode((string) $row['steps_json'], true), 'is_string')), 'actions' => [], 'confidence' => 100, 'related' => [], 'diagnosis' => ! empty($row['diagnose']) ? Brain::diagnose((string) $row['diagnose']) : null]]);
+    }
+
+    /** GET bot/suggest?page= : starter questions for this page */
+    public function suggest()
+    {
+        $seg  = explode('/', trim((string) $this->request->getGet('page'), '/'))[0] ?? '';
+        $q    = $this->db()->table('tbl_bot_knowledge')->select('title')->where('status', 'approved')->where('role_min', 'user');
+        if ($seg !== '') {
+            $q->like('page_match', $seg);
+        }
+        $rows = $q->orderBy('hits', 'DESC')->limit(4)->get()->getResultArray();
+        if (count($rows) < 3) {
+            $rows = array_merge($rows, $this->db()->table('tbl_bot_knowledge')->select('title')->where(['status' => 'approved', 'role_min' => 'user'])->orderBy('hits', 'DESC')->limit(4)->get()->getResultArray());
+        }
+
+        return $this->json(['ok' => true, 'items' => array_values(array_unique(array_column($rows, 'title')))]);
+    }
+
+    /** POST bot/feedback {chat_id, value} */
+    public function feedback()
+    {
+        $p   = $this->input();
+        $val = ((int) ($p['value'] ?? 0)) > 0 ? 1 : -1;
+        $db  = $this->db();
+        $c   = $db->table('tbl_bot_chats c')->select('c.id, c.knowledge_id, c.feedback')->join('tbl_bot_threads t', 't.id = c.thread_id')->where(['c.id' => (int) ($p['chat_id'] ?? 0), 't.user_id' => (int) $this->auth->user()['id']])->get()->getRowArray();
+        if (! $c) {
+            return $this->json(['ok' => false], 404);
+        }
+        if ($c['knowledge_id'] && (int) $c['feedback'] !== $val) {
+            $delta = $val - (int) $c['feedback'];
+            $db->table('tbl_bot_knowledge')->where('id', $c['knowledge_id'])->set('helpful', 'helpful + ' . (int) $delta, false)->update();
+        }
+        $db->table('tbl_bot_chats')->where('id', $c['id'])->update(['feedback' => $val]);
+
+        return $this->json(['ok' => true]);
+    }
+
+    /** POST bot/escalate {thread_id} */
+    public function escalate()
+    {
+        $p  = $this->input();
+        $u  = $this->auth->user();
+        $db = $this->db();
+        $t  = $db->table('tbl_bot_threads')->where(['id' => (int) ($p['thread_id'] ?? 0), 'user_id' => (int) $u['id']])->get()->getRowArray();
+        if (! $t) {
+            return $this->json(['ok' => false, 'error' => 'Start a chat first.'], 404);
+        }
+        $db->table('tbl_bot_threads')->where('id', $t['id'])->update(['status' => 'escalated', 'admin_unread' => (int) $t['admin_unread'] + 1, 'updated_at' => date('Y-m-d H:i:s')]);
+        $this->say((int) $t['id'], 'bot', 'NEXUS-L Assistant', 'I sent this conversation to an administrator. You can keep writing here; they will reply in this chat.');
+
+        return $this->json(['ok' => true]);
+    }
+
+    /** GET bot/thread?thread_id=&after= : messages of the user's own thread (also the poll for new ones) */
+    public function thread()
+    {
+        $u  = $this->auth->user();
+        $db = $this->db();
+        $id = (int) $this->request->getGet('thread_id');
+        if ($id === 0) {
+            $t = $db->table('tbl_bot_threads')->where('user_id', (int) $u['id'])->whereIn('status', ['bot', 'escalated'])->orderBy('id', 'DESC')->get(1)->getRowArray();
+        } else {
+            $t = $db->table('tbl_bot_threads')->where(['id' => $id, 'user_id' => (int) $u['id']])->get()->getRowArray();
+        }
+        if (! $t) {
+            return $this->json(['ok' => true, 'thread' => null, 'messages' => []]);
+        }
+        $after = (int) $this->request->getGet('after');
+        $msgs  = $db->table('tbl_bot_chats')->select('id, sender, sender_name, message, feedback, created_at')->where('thread_id', $t['id'])->where('id >', $after)->orderBy('id')->limit(200)->get()->getResultArray();
+        if ((int) $t['user_unread'] > 0) {
+            $db->table('tbl_bot_threads')->where('id', $t['id'])->update(['user_unread' => 0]);
+        }
+
+        return $this->json(['ok' => true, 'thread' => ['id' => (int) $t['id'], 'status' => $t['status'], 'admin_user' => $t['admin_user']], 'messages' => $msgs]);
+    }
+
+    /** GET bot/badge : unread counts for the widget (user) and the sidebar (admin) */
+    public function badge()
+    {
+        $u  = $this->auth->user();
+        $db = $this->db();
+        $out = ['ok' => true, 'user_unread' => (int) ($db->table('tbl_bot_threads')->selectSum('user_unread', 's')->where('user_id', (int) $u['id'])->get()->getRow()->s ?? 0)];
+        if ($this->isAdmin()) {
+            $out['admin_unread'] = (int) $db->table('tbl_bot_threads')->where('status', 'escalated')->where('admin_unread >', 0)->countAllResults();
+        }
+
+        return $this->json($out);
+    }
+
+    // ================================================================================ admin console
+
+    public function console(): string
+    {
+        return $this->render('brain/index', ['title' => 'Brain', 'withCss' => 'brain.css', 'withJs' => ['brain.js']]);
+    }
+
+    /** GET brain/overview */
+    public function overview()
+    {
+        $db = $this->db();
+        $since = date('Y-m-d H:i:s', time() - 86400 * 7);
+
+        return $this->json([
+            'ok' => true,
+            'knowledge' => ['approved' => $db->table('tbl_bot_knowledge')->where('status', 'approved')->countAllResults(), 'draft' => $db->table('tbl_bot_knowledge')->where('status', 'draft')->countAllResults()],
+            'threads' => ['open' => $db->table('tbl_bot_threads')->where('status', 'escalated')->countAllResults(), 'total' => $db->table('tbl_bot_threads')->countAllResults()],
+            'unanswered' => $db->table('tbl_bot_unanswered')->where('status', 'open')->countAllResults(),
+            'issues' => $db->table('tbl_bot_issues')->where('status', 'open')->countAllResults(),
+            'events7d' => $db->table('tbl_bot_events')->where('created_at >=', $since)->countAllResults(),
+            'errors7d' => $db->table('tbl_bot_events')->whereIn('event_type', ['error', 'http_error'])->where('created_at >=', $since)->countAllResults(),
+            'topPages' => $db->query("SELECT page, COUNT(*) c FROM tbl_bot_events WHERE event_type = 'view' AND created_at >= ? GROUP BY page ORDER BY c DESC LIMIT 6", [$since])->getResultArray(),
+            'answerRate' => $this->answerRate(),
+        ]);
+    }
+
+    private function answerRate(): ?int
+    {
+        $db  = $this->db();
+        $tot = $db->table('tbl_bot_chats')->where('sender', 'bot')->where('created_at >=', date('Y-m-d H:i:s', time() - 86400 * 30))->countAllResults();
+        if ($tot === 0) {
+            return null;
+        }
+        $good = $db->table('tbl_bot_chats')->where('sender', 'bot')->where('knowledge_id IS NOT NULL', null, false)->where('created_at >=', date('Y-m-d H:i:s', time() - 86400 * 30))->countAllResults();
+
+        return (int) round($good * 100 / $tot);
+    }
+
+    /** GET brain/threads?status= */
+    public function threads()
+    {
+        $st = (string) $this->request->getGet('status');
+        $q  = $this->db()->table('tbl_bot_threads')->orderBy('admin_unread', 'DESC')->orderBy('updated_at', 'DESC')->limit(100);
+        if (in_array($st, ['bot', 'escalated', 'resolved'], true)) {
+            $q->where('status', $st);
+        }
+
+        return $this->json(['ok' => true, 'rows' => $q->get()->getResultArray()]);
+    }
+
+    /** GET brain/thread/(:num) */
+    public function threadMessages(int $id)
+    {
+        $db = $this->db();
+        $t  = $db->table('tbl_bot_threads')->where('id', $id)->get()->getRowArray();
+        if (! $t) {
+            return $this->json(['ok' => false], 404);
+        }
+        $db->table('tbl_bot_threads')->where('id', $id)->update(['admin_unread' => 0]);
+
+        return $this->json(['ok' => true, 'thread' => $t, 'messages' => $db->table('tbl_bot_chats')->where('thread_id', $id)->orderBy('id')->limit(300)->get()->getResultArray(),
+            'events' => $db->table('tbl_bot_events')->select('event_type, page, target, detail, status, created_at')->where('user_id', (int) $t['user_id'])->orderBy('id', 'DESC')->limit(25)->get()->getResultArray()]);
+    }
+
+    /** POST brain/reply {thread_id, message} */
+    public function reply()
+    {
+        $p   = $this->input();
+        $msg = Brain::redact(trim((string) ($p['message'] ?? '')));
+        $id  = (int) ($p['thread_id'] ?? 0);
+        $db  = $this->db();
+        $t   = $db->table('tbl_bot_threads')->where('id', $id)->get()->getRowArray();
+        if (! $t || $msg === '') {
+            return $this->json(['ok' => false, 'error' => 'Write a message.'], 422);
+        }
+        $u = $this->auth->user();
+        $this->say($id, 'admin', (string) ($u['name'] ?? $u['username'] ?? 'Administrator'), $msg);
+        $db->table('tbl_bot_threads')->where('id', $id)->update(['status' => 'escalated', 'admin_user' => (string) ($u['username'] ?? ''), 'user_unread' => (int) $t['user_unread'] + 1, 'admin_unread' => 0]);
+
+        return $this->json(['ok' => true]);
+    }
+
+    /** POST brain/resolve {thread_id, learn?:{title,keywords,body,steps[]}} : closes the chat and (optionally) teaches the bot */
+    public function resolve()
+    {
+        $p  = $this->input();
+        $id = (int) ($p['thread_id'] ?? 0);
+        $db = $this->db();
+        $db->table('tbl_bot_threads')->where('id', $id)->update(['status' => 'resolved', 'admin_unread' => 0, 'updated_at' => date('Y-m-d H:i:s')]);
+        $this->say($id, 'bot', 'NEXUS-L Assistant', 'This conversation was marked as resolved. Start a new question any time.');
+        $kid = null;
+        if (! empty($p['learn']) && is_array($p['learn'])) {
+            $kid = $this->saveKnowledgeRow($p['learn'] + ['source' => 'learned', 'status' => 'approved']);
+        }
+
+        return $this->json(['ok' => true, 'knowledge_id' => $kid]);
+    }
+
+    /** GET brain/learn-draft?thread_id= : proposes an entry from the chat (first user message + admin's replies) */
+    public function learnDraft()
+    {
+        $id   = (int) $this->request->getGet('thread_id');
+        $msgs = $this->db()->table('tbl_bot_chats')->where('thread_id', $id)->orderBy('id')->get()->getResultArray();
+        $q    = '';
+        $a    = [];
+        foreach ($msgs as $m) {
+            if ($m['sender'] === 'user' && $q === '') {
+                $q = $m['message'];
+            }
+            if ($m['sender'] === 'admin') {
+                $a[] = $m['message'];
+            }
+        }
+
+        return $this->json(['ok' => true, 'draft' => ['title' => mb_substr($q, 0, 190), 'keywords' => implode(', ', array_slice(Brain::tokens($q), 0, 10)), 'body' => implode("\n\n", $a), 'steps' => []]]);
+    }
+
+    // ------------------------------------------------------------------------------------------ knowledge
+
+    private function saveKnowledgeRow(array $k): ?int
+    {
+        $title = trim(strip_tags((string) ($k['title'] ?? '')));
+        $body  = trim(strip_tags((string) ($k['body'] ?? '')));
+        if ($title === '' || $body === '') {
+            return null;
+        }
+        $steps = $k['steps'] ?? [];
+        if (is_string($steps)) {
+            $steps = preg_split('/\r?\n/', trim($steps)) ?: [];
+        }
+        $steps   = array_values(array_filter(array_map(static fn ($s) => mb_substr(trim(strip_tags((string) $s)), 0, 400), (array) $steps), 'strlen'));
+        $actions = [];
+        foreach ((array) ($k['actions'] ?? []) as $a) {
+            if (is_array($a) && ! empty($a['label']) && ($a['type'] ?? '') === 'open' && ! empty($a['url']) && ! preg_match('#^[a-z]+://#i', (string) $a['url'])) {
+                $actions[] = ['type' => 'open', 'label' => mb_substr(strip_tags((string) $a['label']), 0, 60), 'url' => mb_substr((string) $a['url'], 0, 200)] + (($a['role'] ?? '') === 'admin' ? ['role' => 'admin'] : []);
+            }
+        }
+        $now  = date('Y-m-d H:i:s');
+        $data = [
+            'kind' => in_array($k['kind'] ?? '', ['playbook', 'qa', 'system', 'learned'], true) ? $k['kind'] : 'playbook',
+            'title' => mb_substr($title, 0, 200), 'keywords' => mb_substr(trim(strip_tags((string) ($k['keywords'] ?? ''))), 0, 600),
+            'body' => mb_substr($body, 0, 4000), 'steps_json' => json_encode($steps, JSON_UNESCAPED_UNICODE), 'actions_json' => json_encode($actions, JSON_UNESCAPED_SLASHES),
+            'page_match' => mb_substr(preg_replace('/[^a-z0-9_\/-]/i', '', (string) ($k['page_match'] ?? '')), 0, 80) ?: null,
+            'error_match' => mb_substr(trim(strip_tags((string) ($k['error_match'] ?? ''))), 0, 120) ?: null,
+            'diagnose' => in_array($k['diagnose'] ?? '', ['machine_share', 'interlink_session', 'pdf_engine', 'worker', 'disk', 'brain'], true) ? $k['diagnose'] : null,
+            'role_min' => ($k['role_min'] ?? 'user') === 'admin' ? 'admin' : 'user',
+            'status' => in_array($k['status'] ?? '', ['draft', 'approved', 'retired'], true) ? $k['status'] : 'approved',
+            'source' => mb_substr((string) ($k['source'] ?? 'admin'), 0, 24), 'updated_at' => $now,
+        ];
+        $db = $this->db();
+        if (! empty($k['id'])) {
+            $db->table('tbl_bot_knowledge')->where('id', (int) $k['id'])->update($data);
+
+            return (int) $k['id'];
+        }
+        $data['created_at'] = $now;
+        $db->table('tbl_bot_knowledge')->insert($data);
+
+        return (int) $db->insertID();
+    }
+
+    /** GET brain/knowledge?q=&status= */
+    public function knowledge()
+    {
+        $q  = trim((string) $this->request->getGet('q'));
+        $st = (string) $this->request->getGet('status');
+        $b  = $this->db()->table('tbl_bot_knowledge')->orderBy('updated_at', 'DESC')->limit(200);
+        if ($q !== '') {
+            $b->groupStart()->like('title', $q)->orLike('keywords', $q)->orLike('body', $q)->groupEnd();
+        }
+        if (in_array($st, ['draft', 'approved', 'retired'], true)) {
+            $b->where('status', $st);
+        }
+
+        return $this->json(['ok' => true, 'rows' => $b->get()->getResultArray()]);
+    }
+
+    /** POST brain/knowledge/save */
+    public function knowledgeSave()
+    {
+        $id = $this->saveKnowledgeRow($this->input() + ['source' => 'admin']);
+
+        return $id ? $this->json(['ok' => true, 'id' => $id]) : $this->json(['ok' => false, 'error' => 'A title and an answer are required.'], 422);
+    }
+
+    /** POST brain/knowledge/status {id, status} */
+    public function knowledgeStatus()
+    {
+        $p = $this->input();
+        $this->db()->table('tbl_bot_knowledge')->where('id', (int) ($p['id'] ?? 0))->update(['status' => in_array($p['status'] ?? '', ['draft', 'approved', 'retired'], true) ? $p['status'] : 'retired', 'updated_at' => date('Y-m-d H:i:s')]);
+
+        return $this->json(['ok' => true]);
+    }
+
+    /**
+     * POST brain/import {format: jsonl|csv|text, content}
+     * jsonl: one object per line {title, keywords, body, steps[], page_match, role_min}; csv: title,keywords,body;
+     * text: blocks separated by a blank line, first line = question, rest = answer.
+     */
+    public function import()
+    {
+        $p   = $this->input();
+        $fmt = (string) ($p['format'] ?? 'text');
+        $raw = (string) ($p['content'] ?? '');
+        if ($raw === '' || strlen($raw) > 3000000) {
+            return $this->json(['ok' => false, 'error' => 'Paste the content to import (max 3 MB).'], 422);
+        }
+        $rows = [];
+        if ($fmt === 'jsonl') {
+            foreach (preg_split('/\r?\n/', $raw) as $line) {
+                $j = json_decode(trim($line), true);
+                if (is_array($j)) {
+                    $rows[] = $j;
+                }
+            }
+        } elseif ($fmt === 'csv') {
+            $fh = fopen('php://temp', 'r+');
+            fwrite($fh, $raw);
+            rewind($fh);
+            while (($r = fgetcsv($fh)) !== false) {
+                if (count($r) >= 3 && strtolower((string) $r[0]) !== 'title') {
+                    $rows[] = ['title' => $r[0], 'keywords' => $r[1], 'body' => $r[2]];
+                }
+            }
+            fclose($fh);
+        } else {
+            foreach (preg_split('/\r?\n\s*\r?\n/', trim($raw)) as $block) {
+                $lines = preg_split('/\r?\n/', trim($block));
+                $title = array_shift($lines);
+                if ($title && $lines) {
+                    $rows[] = ['title' => rtrim($title, '?') . '?', 'keywords' => implode(', ', array_slice(Brain::tokens($title), 0, 10)), 'body' => implode("\n", $lines)];
+                }
+            }
+        }
+        $added = 0;
+        $db    = $this->db();
+        foreach (array_slice($rows, 0, 5000) as $r) {
+            if (empty($r['title']) || $db->table('tbl_bot_knowledge')->where('title', mb_substr(trim((string) $r['title']), 0, 200))->countAllResults() > 0) {
+                continue;     // no duplicates
+            }
+            if ($this->saveKnowledgeRow($r + ['source' => 'import'])) {
+                $added++;
+            }
+        }
+
+        return $this->json(['ok' => true, 'added' => $added, 'seen' => count($rows)]);
+    }
+
+    // ---------------------------------------------------------------------- unanswered + issues + health
+
+    /** GET brain/unanswered */
+    public function unanswered()
+    {
+        return $this->json(['ok' => true, 'rows' => $this->db()->table('tbl_bot_unanswered')->where('status', 'open')->orderBy('times', 'DESC')->limit(100)->get()->getResultArray()]);
+    }
+
+    /** POST brain/unanswered/answer {id, title, keywords, body, steps} or {id, ignore:true} */
+    public function unansweredAnswer()
+    {
+        $p  = $this->input();
+        $db = $this->db();
+        if (! empty($p['ignore'])) {
+            $db->table('tbl_bot_unanswered')->where('id', (int) ($p['id'] ?? 0))->update(['status' => 'ignored']);
+
+            return $this->json(['ok' => true]);
+        }
+        $kid = $this->saveKnowledgeRow($p + ['source' => 'learned', 'status' => 'approved']);
+        if (! $kid) {
+            return $this->json(['ok' => false, 'error' => 'A title and an answer are required.'], 422);
+        }
+        $db->table('tbl_bot_unanswered')->where('id', (int) ($p['id'] ?? 0))->update(['status' => 'answered']);
+
+        return $this->json(['ok' => true, 'id' => $kid]);
+    }
+
+    /** GET brain/issues */
+    public function issues()
+    {
+        return $this->json(['ok' => true, 'rows' => $this->db()->table('tbl_bot_issues')->where('status', 'open')->orderBy('times', 'DESC')->limit(100)->get()->getResultArray()]);
+    }
+
+    /** POST brain/issues/resolve {id, ignore?, learn?:{...}} */
+    public function issuesResolve()
+    {
+        $p  = $this->input();
+        $db = $this->db();
+        $kid = null;
+        if (! empty($p['learn']) && is_array($p['learn'])) {
+            $kid = $this->saveKnowledgeRow($p['learn'] + ['source' => 'learned', 'status' => 'approved']);
+        }
+        $db->table('tbl_bot_issues')->where('id', (int) ($p['id'] ?? 0))->update(['status' => ! empty($p['ignore']) ? 'ignored' : 'resolved', 'knowledge_id' => $kid]);
+
+        return $this->json(['ok' => true, 'knowledge_id' => $kid]);
+    }
+
+    /** GET brain/health */
+    public function health()
+    {
+        $db   = $this->db();
+        $dirs = Brain::dirStatus();
+        $checks = [];
+        foreach (['machine_share' => 'Machine files location', 'pdf_engine' => 'PDF engine', 'interlink_session' => 'InterLink session', 'worker' => 'Background worker', 'disk' => 'Disk space (D:)', 'brain' => 'Brain folders'] as $k => $label) {
+            $d = Brain::diagnose($k);
+            $checks[] = ['key' => $k, 'label' => $label, 'ok' => $d['ok'], 'text' => $d['text']];
+        }
+        $unflushed = (int) $db->table('tbl_bot_events')->where('flushed', 0)->countAllResults() + (int) $db->table('tbl_bot_chats')->where('flushed', 0)->countAllResults();
+        $files = [];
+        foreach ($dirs as $d => $st) {
+            $files[$d] = $st['ok'] && is_file($d . DIRECTORY_SEPARATOR . 'knowledge.back') ? date('Y-m-d H:i', (int) filemtime($d . DIRECTORY_SEPARATOR . 'knowledge.back')) : null;
+        }
+        $env = [
+            'php' => PHP_VERSION, 'environment' => ENVIRONMENT, 'deflate' => function_exists('apache_get_modules') ? in_array('mod_deflate', apache_get_modules(), true) : null,
+            'memory_limit' => ini_get('memory_limit'), 'max_execution_time' => ini_get('max_execution_time'),
+            'session_handler' => config('Session')->driver ?? '',
+        ];
+
+        return $this->json(['ok' => true, 'checks' => $checks, 'dirs' => $dirs, 'unflushed' => $unflushed, 'knowledgeBackModified' => $files, 'env' => $env]);
+    }
+
+    /** POST brain/flush : writes the .back files and the Markdown playbooks now */
+    public function flushNow()
+    {
+        $r = Brain::flush();
+        $r['markdown'] = Brain::exportMarkdown();
+
+        return $this->json(['ok' => true, 'result' => $r]);
+    }
+
+    /** POST brain/restore : rebuilds knowledge from knowledge.back (after a disaster) */
+    public function restoreNow()
+    {
+        return $this->json(['ok' => true, 'restored' => Brain::restore()]);
+    }
+}

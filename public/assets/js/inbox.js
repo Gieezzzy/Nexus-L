@@ -1015,9 +1015,9 @@
   $('inf-emoji-btn').addEventListener('click', () => openDlg('Choose a default emoji', buildPicker((e) => {
     post(`setting/${enc(key)}`, { key: 'CurrentEmoji', value: e }).then((d) => { applySettings(d.settings); closeDlg(); }).catch((x) => infErr(x.message)); })));
   inf.rr.addEventListener('change', () => post(`setting/${enc(key)}`, { key: 'IsReadReceipt', value: inf.rr.checked ? 'Yes' : 'No' }).then((d) => applySettings(d.settings)).catch((x) => { infErr(x.message); inf.rr.checked = !inf.rr.checked; }));
-  inf.sec.addEventListener('change', () => {
+  inf.sec.addEventListener('change', async () => {
     const on = inf.sec.checked;
-    if (!on && !confirm('Turn off Secure Messaging?\n\nFuture messages in this chat will be sent as unencrypted plain text.')) { inf.sec.checked = true; return; }
+    if (!on && !(await nxConfirm('Turn off Secure Messaging?\n\nFuture messages in this chat will be sent as unencrypted plain text.', { okText: 'Turn off' }))) { inf.sec.checked = true; return; }
     post(`setting/${enc(key)}`, { key: 'SecuredChat', value: on ? 'Yes' : 'No' }).then((d) => applySettings(d.settings)).catch((x) => { infErr(x.message); inf.sec.checked = !on; });
   });
 
@@ -1088,8 +1088,8 @@
     }).catch((e) => flashErr(e.message));
   });
 
-  el.abReject?.addEventListener('click', () => {
-    if (!confirm('Are you sure you want to reject this group?')) return;
+  el.abReject?.addEventListener('click', async () => {
+    if (!(await nxConfirm('Are you sure you want to reject this group?', { okText: 'Reject' }))) return;
     post(`group/approve/${enc(key)}`, { action: 'reject' }).then(() => {
       toast('Group rejected.');
       show(el.approvalBanner, false);

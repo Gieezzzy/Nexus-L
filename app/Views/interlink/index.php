@@ -55,6 +55,8 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
     </div>
 </div>
 
+<?= view('interlink/center', ['reports' => $reports ?? [], 'searchUrl' => $searchUrl ?? '']) ?>
+
 <!-- Main Embedded InterLink 2.0 Browser Shell -->
 <div class="card glass il-browser-shell mt">
     <!-- Browser Chrome / Navigation Bar -->
@@ -100,7 +102,7 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                     <small id="sync-btn-appno"></small>
                 </button>
                 <button type="button" id="btn-oneclick-send-top" class="il-send-cta" title="Review & 1-Click Send Report to InterLink">
-                    ⚡ 1-Click Send Report
+                    <svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> 1-Click Send Report
                 </button>
             </div>
         </div>
@@ -137,8 +139,8 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
             </div>
             <div class="itk-header-right">
                 <span>? Help</span>
-                <span>✉ Contact Us</span>
-                <span>👤 <?= esc($portalUser) ?></span>
+                <span><svg class="ic" aria-hidden="true"><use href="#i-mail"/></svg> Contact Us</span>
+                <span><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg> <?= esc($portalUser) ?></span>
                 <span class="itk-grid-ico">⋮⋮⋮</span>
             </div>
         </div>
@@ -163,17 +165,23 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
 
         <!-- Search Page Title & Toolbar -->
         <div class="itk-content">
-            <h2 class="itk-page-title">VF - Test Request/Report Search (Inhouse &amp; 3rd party Lab Upload)</h2>
+            <div class="itk-ownhead">
+                <h2 class="itk-page-title">InterLink Applications</h2>
+                <label class="itk-gsearch"><span class="sr-only">Search all applications</span>
+                    <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
+                    <input type="search" id="itk-general-search" placeholder="Search every application, in any column…" autocomplete="off">
+                </label>
+            </div>
 
             <div class="itk-toolbar">
                 <div class="itk-toolbar-left">
-                    <button type="button" class="itk-circle-btn" id="itk-btn-toggle-criteria" title="Toggle Content Search Criteria Panel (PH1_SF1_EGVNF)">🔍</button>
+                    <button type="button" class="itk-circle-btn" id="itk-btn-toggle-criteria" title="Toggle Content Search Criteria Panel (PH1_SF1_EGVNF)"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></button>
                     <span class="itk-pill-btn">Testing Lab: <b>DATIAN</b></span>
                 </div>
                 <div class="itk-toolbar-right">
                     <button type="button" class="itk-circle-btn" id="itk-btn-refresh" title="Refresh Grid">↻</button>
-                    <button type="button" class="itk-circle-btn" title="Analytics">📊</button>
-                    <button type="button" class="itk-circle-btn" title="Column Settings">⚙</button>
+                    <button type="button" class="itk-circle-btn" title="Analytics"><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg></button>
+                    <button type="button" class="itk-circle-btn" title="Column Settings"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg></button>
                     <button type="button" class="itk-circle-btn" title="Clear All Filters" id="itk-btn-clear-filter">⏳</button>
                 </div>
             </div>
@@ -393,7 +401,7 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                     Review &amp; Sync NEXUS-L Data
                 </button>
                 <button type="button" id="btn-banner-oneclick" class="il-send-cta">
-                    ⚡ 1-Click Sync &amp; Send Report
+                    <svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> 1-Click Sync &amp; Send Report
                 </button>
             </div>
         </div>
@@ -747,8 +755,15 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                     <div class="uf-field" data-field-wrap="attachment_name">
                         <label><span class="uf-req">*</span> Report Attachment (PDF) <small class="muted">(JOB_DUMMY_004)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
                         <div class="uf-email-wrap">
-                            <input type="text" id="uf_attachment_name" data-uf-field="attachment_name" value="" placeholder="Click Sync or Browse to attach PDF Report">
+                            <input type="text" id="uf_attachment_name" data-uf-field="attachment_name" value="" placeholder="Generate from the Lab Reference or Browse for a PDF">
+                            <button type="button" class="uf-action-btn uf-btn-gen" id="uf-btn-generate-pdf" style="margin:2px" title="Create the test report PDF from the synced Lab Reference (Digital Test Report)">Generate Report</button>
                             <button type="button" class="uf-action-btn" id="uf-btn-browse-pdf" style="margin:2px">Browse...</button>
+                            <input type="file" id="uf-file-pdf" accept="application/pdf,.pdf" hidden>
+                        </div>
+                        <div class="uf-att-meta hidden" id="uf-att-meta">
+                            <span id="uf-att-info"></span>
+                            <button type="button" class="uf-att-link" id="uf-btn-view-pdf">View</button>
+                            <button type="button" class="uf-att-link" id="uf-btn-save-pdf">Download</button>
                         </div>
                     </div>
                     <div class="uf-field" data-field-wrap="supplementary_attachment">
@@ -831,7 +846,7 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
             <div class="uf-bottom-bar">
                 <div class="uf-bottom-left">
                     <button type="button" id="uf-btn-save" class="uf-action-btn">Save</button>
-                    <button type="button" id="uf-btn-submit-live" class="il-send-cta">⚡ Submit &amp; Send Report to InterLink</button>
+                    <button type="button" id="uf-btn-submit-live" class="il-send-cta"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> Submit &amp; Send Report to InterLink</button>
                     <button type="button" id="uf-btn-new" class="uf-action-btn">New</button>
                 </div>
                 <div class="uf-bottom-right">
@@ -885,9 +900,9 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
     <div class="il-modal" style="max-width:1080px">
         <div class="il-modal-head">
             <div>
-                <span class="il-modal-eyebrow">NEXUS-L (#Digital Test Report · dbnexus) → InterLink 2.0 Pre-Sync Dialog</span>
+                <span class="il-modal-eyebrow">NEXUS-L → InterLink 2.0 Pre-Sync Dialog</span>
                 <h3 id="sync-dialog-title">Select Lab Reference &amp; Confirm Data to Sync</h3>
-                <p class="muted sm" style="margin:2px 0 0">Select a <b>LabReference (LabRefNo)</b> from our migrated <b>#Digital Test Report</b> database (<b><?= number_format((int) ($totalLabRefs ?? 4568)) ?></b> lab reports in <code>dbnexus</code>) to automatically populate all InterLink form fields, test items, and readings.</p>
+                <p class="muted sm" style="margin:2px 0 0">Select a <b>Lab Reference</b> from NEXUS-L (<b><?= number_format((int) ($totalLabRefs ?? 4568)) ?></b> lab reports) to automatically populate all InterLink form fields, test items, and readings.</p>
             </div>
             <button type="button" id="btn-close-sync-dialog" class="il-modal-close" aria-label="Close">&times;</button>
         </div>
@@ -921,7 +936,7 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                     <input type="text" id="dlg-labref-search" placeholder="Type LabRefNo, TR, Style, Material..." style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12.5px">
                 </div>
                 <div class="uf-field" style="margin:0">
-                    <label for="dlg-labref-combo" style="font-weight:700;color:#047857;font-size:11px;text-transform:uppercase;letter-spacing:.04em">* Select LabReference (LabRefNo) from dbnexus</label>
+                    <label for="dlg-labref-combo" style="font-weight:700;color:#047857;font-size:11px;text-transform:uppercase;letter-spacing:.04em">* Select Lab Reference from NEXUS-L</label>
                     <select id="dlg-labref-combo" class="il-select" style="width:100%;padding:7px 10px;border:1.5px solid #10b981;background:#ecfdf5;font-weight:700;color:#065f46;font-size:13px"></select>
                 </div>
             </div>
@@ -1000,7 +1015,7 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
             <!-- Extracted Test Items from Selected LabRefNo -->
             <div id="dlg-labref-tests-wrap" style="margin-bottom:14px">
                 <div style="font-weight:700;font-size:12px;color:#0f172a;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
-                    <span>🧪 Test Item Results &amp; Readings from Selected LabRefNo (Auto-fills Tab 2 Upload Result)</span>
+                    <span><svg class="ic" aria-hidden="true"><use href="#i-flask"/></svg> Test Item Results &amp; Readings from Selected LabRefNo (Auto-fills Tab 2 Upload Result)</span>
                     <a href="<?= site_url('dtr') ?>" target="_blank" style="font-size:11.5px;color:#2563eb;text-decoration:none;font-weight:600">Open in QC Lab Digital Test Reports ↗</a>
                 </div>
                 <table class="il-sync-table" style="margin-bottom:10px">
@@ -1015,12 +1030,12 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                         </tr>
                     </thead>
                     <tbody id="dlg-labref-tests-tbody">
-                        <tr><td colspan="6" class="muted" style="text-align:center;padding:10px">Select a LabReference (LabRefNo) above to load test item results.</td></tr>
+                        <tr><td colspan="6" class="muted" style="text-align:center;padding:10px">Select a Lab Reference above to load test item results.</td></tr>
                     </tbody>
                 </table>
             </div>
 
-            <div style="font-weight:700;font-size:12px;color:#0f172a;margin-bottom:6px">📋 Complete InterLink Form Controls Mapping (Tab 1 Application/Sample + Tab 2 Upload Result)</div>
+            <div style="font-weight:700;font-size:12px;color:#0f172a;margin-bottom:6px"><svg class="ic" aria-hidden="true"><use href="#i-clipboard"/></svg> Complete InterLink Form Controls Mapping (Tab 1 Application/Sample + Tab 2 Upload Result)</div>
             <table class="il-sync-table">
                 <thead>
                     <tr>
@@ -1039,7 +1054,7 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
         <div class="il-modal-foot">
             <label class="il-checkbox-label">
                 <input type="checkbox" id="sync-run-playwright" checked>
-                <span>Update <b>dbnexus</b> &amp; Queue Live InterLink Session Sync</span>
+                <span>Update <b>NEXUS-L</b> &amp; Queue Live InterLink Session Sync</span>
             </label>
             <div class="il-modal-actions">
                 <button type="button" id="btn-cancel-sync" class="il-btn il-btn-outline">Cancel</button>
@@ -1048,7 +1063,7 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                     Confirm &amp; Fill Form
                 </button>
                 <button type="button" id="btn-confirm-and-send-live" class="il-send-cta">
-                    ⚡ Confirm, Fill &amp; 1-Click Send Report
+                    <svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> Confirm, Fill &amp; 1-Click Send Report
                 </button>
             </div>
         </div>
@@ -1062,7 +1077,7 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
     <div class="il-modal" style="max-width:940px">
         <div class="il-modal-head">
             <div>
-                <span class="il-modal-eyebrow">NEXUS-L Internal Lab Database (dbnexus)</span>
+                <span class="il-modal-eyebrow">NEXUS-L Internal Lab Records</span>
                 <h3>Manage Company Report Data</h3>
                 <p class="muted sm" style="margin:2px 0 0">Add or edit company side test report values ready to sync with InterLink 2.0.</p>
             </div>

@@ -1,3 +1,4 @@
+<?php $dtrIsAdmin = strcasecmp((string) (service('auth')->user()['role'] ?? ''), 'admin') === 0; ?>
 <?php
 /**
  * NEXUS-L QC Lab Digital Test Reports (#Digital Test Report & Bonding LIS System)
@@ -9,11 +10,11 @@
 <div class="dtr-top-kpis">
     <div class="card glass dtr-kpi">
         <div>
-            <small>Total Lab Test Reports (dbnexus)</small>
+            <small>Total Lab Test Reports</small>
             <b id="dtr-kpi-total"><?= number_format((int) $totalReports) ?></b>
             <span class="dtr-kpi-sub">10 Material Forms + Shoe Bonding</span>
         </div>
-        <span class="dtr-kpi-ico dtr-ico-blue">🧪</span>
+        <span class="dtr-kpi-ico dtr-ico-blue"><svg class="ic" aria-hidden="true"><use href="#i-flask"/></svg></span>
     </div>
     <div class="card glass dtr-kpi">
         <div>
@@ -29,7 +30,7 @@
             <b class="dtr-txt-warn"><?= number_format((int) $totalTol) ?></b>
             <span class="dtr-kpi-sub">Within Tolerance Band</span>
         </div>
-        <span class="dtr-kpi-ico dtr-ico-warn">⚡</span>
+        <span class="dtr-kpi-ico dtr-ico-warn"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg></span>
     </div>
     <div class="card glass dtr-kpi">
         <div>
@@ -45,7 +46,7 @@
             <b>271,627</b>
             <span class="dtr-kpi-sub">DSR (154k) · Shoe (74k) · Mat (41k) · Std (1k)</span>
         </div>
-        <span class="dtr-kpi-ico dtr-ico-purple">🗄️</span>
+        <span class="dtr-kpi-ico dtr-ico-purple"><svg class="ic" aria-hidden="true"><use href="#i-database"/></svg></span>
     </div>
 </div>
 
@@ -53,21 +54,21 @@
 <div class="card glass dtr-nav-bar">
     <div class="dtr-tabs" role="tablist">
         <button type="button" class="dtr-tab-btn <?= $activeTab === 'tracker' ? 'active' : '' ?>" data-dtr-tab="tracker">
-            📊 Lab Tracker &amp; IQC Log (<span id="dtr-tab-cnt"><?= number_format((int) $totalReports) ?></span>)
+            <svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg> Lab Tracker (<span id="dtr-tab-cnt"><?= number_format((int) $totalReports) ?></span>)
         </button>
         <button type="button" class="dtr-tab-btn <?= $activeTab === 'material' ? 'active' : '' ?>" data-dtr-tab="material">
-            🧵 Material Test Forms (All 10 Forms)
+            <svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg> Material Tests
         </button>
         <button type="button" class="dtr-tab-btn <?= $activeTab === 'bonding' ? 'active' : '' ?>" data-dtr-tab="bonding">
-            👟 Whole Shoe Bonding Form (U60)
+            <svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg> Shoe Bonding (U60)
         </button>
         <button type="button" class="dtr-tab-btn <?= $activeTab === 'calculators' ? 'active' : '' ?>" data-dtr-tab="calculators">
-            🧮 Calculators &amp; Standards / DSR Lookup
+            <svg class="ic" aria-hidden="true"><use href="#i-calc"/></svg> Calculators &amp; Standards
         </button>
     </div>
     <div class="dtr-nav-right">
         <a href="<?= site_url('interlink') ?>" class="dtr-btn dtr-btn-outline">
-            🔗 Go to InterLink 2.0 Sync
+            <svg class="ic" aria-hidden="true"><use href="#i-link"/></svg> InterLink Sync
         </a>
     </div>
 </div>
@@ -80,7 +81,7 @@
     <div class="card glass dtr-section-card">
         <div class="dtr-card-head">
             <div>
-                <h3>Digital Test Report Master Tracker (All 11 Lab Report Tables in <code>dbnexus</code>)</h3>
+                <h3>Digital Test Report Master Tracker (All 11 Lab Report Types)</h3>
                 <p class="muted sm">Click any category pill to filter or click <b>Open in Form</b> to view/edit full test readings and automatic calculations.</p>
             </div>
             <div class="dtr-search-box">
@@ -161,8 +162,8 @@
         <div class="card glass dtr-section-card">
             <div class="dtr-card-head">
                 <div>
-                    <h3>📦 IQC Container Receiving Log (<code>tbl_dtr_containers</code>)</h3>
-                    <p class="muted sm">Migrated from Access Container Entry Form (129 containers).</p>
+                    <h3><svg class="ic" aria-hidden="true"><use href="#i-box"/></svg> IQC Container Receiving Log </h3>
+                    <p class="muted sm">Container receiving log (129 containers).</p>
                 </div>
             </div>
             <div class="dtr-table-wrap" style="max-height:290px">
@@ -196,8 +197,8 @@
         <div class="card glass dtr-section-card">
             <div class="dtr-card-head">
                 <div>
-                    <h3>📋 IQC Materials Master Queue (<code>tbl_dtr_materials_master</code>)</h3>
-                    <p class="muted sm">Migrated from Access Material Entry Queue (778 material batches).</p>
+                    <h3><svg class="ic" aria-hidden="true"><use href="#i-clipboard"/></svg> IQC Materials Master Queue </h3>
+                    <p class="muted sm">Material receiving queue (778 material batches).</p>
                 </div>
             </div>
             <div class="dtr-table-wrap" style="max-height:290px">
@@ -241,7 +242,7 @@
         <div class="dtr-form-toolbar">
             <div class="dtr-form-pickers">
                 <div class="dtr-field">
-                    <label>1. Select Material Test Form (10 Access Forms)</label>
+                    <label>1. Select Material Test Form (10 report types)</label>
                     <select id="dtr-mat-form-slug" class="dtr-select-lg">
                         <?php foreach ($formConfig as $slug => $cfg): ?>
                             <?php if ($slug === 'bonding') continue; ?>
@@ -250,24 +251,24 @@
                     </select>
                 </div>
                 <div class="dtr-field">
-                    <label>2. Load Existing LabRefNo Record from <code>dbnexus</code></label>
+                    <label>2. Load Existing LabRefNo Record from NEXUS-L</label>
                     <select id="dtr-mat-record-select" class="dtr-select-lg"></select>
                 </div>
             </div>
 
             <div class="dtr-form-actions">
                 <button type="button" id="btn-dtr-new" class="dtr-btn dtr-btn-outline">+ New Record</button>
-                <button type="button" id="btn-dtr-load-machine" class="dtr-btn dtr-btn-amber" title="Reads/copies .xlsx/.csv for this LabRefNo from \\192.168.32.45\OUTDATA\MATERIALS\ without modifying source">
-                    ⚡ Load Machine Results (192.168.32.45)
+                <button type="button" id="btn-dtr-load-machine" class="dtr-btn dtr-btn-amber" title="Reads the machine result file (.xlsx / .csv) for this Lab Ref No. The source file is never modified.">
+                    <svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> Load Machine Results
                 </button>
                 <button type="button" id="btn-dtr-refresh-calc" class="dtr-btn dtr-btn-outline" title="Runs ApplyStandardValuesSmart + Thickness + Directional Averages + 6-Point Colorfastness + EvaluateRatings">
-                    🔄 Refresh &amp; Apply Smart Standards
+                    <svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg> Refresh &amp; Apply Smart Standards
                 </button>
-                <button type="button" id="btn-dtr-print-preview" class="dtr-btn dtr-btn-purple" title="Access parity: View / Print / PDF Official Test Report Sheet">
-                    🖨️ Print / Preview Report
+                <button type="button" id="btn-dtr-print-preview" class="dtr-btn dtr-btn-purple" title="View, print or save the official test report sheet">
+                    <svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg> Print / Preview Report
                 </button>
                 <button type="button" id="btn-dtr-save" class="dtr-btn dtr-btn-primary">
-                    💾 Save Report to dbnexus
+                    <svg class="ic" aria-hidden="true"><use href="#i-save"/></svg> Save Report to NEXUS-L
                 </button>
             </div>
         </div>
@@ -277,7 +278,7 @@
             <div>
                 <span class="dtr-eyebrow" id="dtr-active-form-label">Fabric Test Report (FBU / FBL)</span>
                 <h3 id="dtr-active-labref-title">Loading record...</h3>
-                <span class="muted sm" id="dtr-machine-status">Ready · Automatic VBA computations active</span>
+                <span class="muted sm" id="dtr-machine-status">Ready · Automatic calculations active</span>
             </div>
             <div class="dtr-stamp-box">
                 <div class="dtr-stamp dtr-stamp-pass" id="dtr-stamp-badge">PASS</div>
@@ -290,23 +291,23 @@
             <!-- SECTION A: HEADER, SAMPLE METADATA & AUTO-LOOKUPS -->
             <div class="dtr-subcard">
                 <div class="dtr-subcard-head">
-                    <h4>A. Sample Identification &amp; Automatic Master Lookups (<code>MaterialList</code> · <code>ShoeList</code> · <code>tblDSR</code>)</h4>
+                    <h4>A. Sample Identification &amp; Automatic Master Lookups</h4>
                     <div class="dtr-subcard-btns">
-                        <button type="button" id="btn-dtr-lookup-all" class="dtr-btn-xs dtr-btn-primary">🔍 Auto-Lookup Material / PO / DSR</button>
-                        <button type="button" id="btn-dtr-review" class="dtr-btn-xs dtr-btn-outline">✅ Stamp Reviewed</button>
+                        <button type="button" id="btn-dtr-lookup-all" class="dtr-btn-xs dtr-btn-primary"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg> Auto-Lookup Material / PO / DSR</button>
+                        <button type="button" id="btn-dtr-review" class="dtr-btn-xs dtr-btn-outline"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg> Stamp Reviewed</button>
                     </div>
                 </div>
                 <div class="dtr-grid-6">
                     <div class="dtr-field">
-                        <label>* Lab Reference No. (<code>LabRefNo</code>)</label>
+                        <label>* Lab Reference No.</label>
                         <input type="text" name="LabRefNo" id="mf_LabRefNo" class="mono bold" placeholder="e.g. DTP20261009FBU-1">
                     </div>
                     <div class="dtr-field">
-                        <label>Test Report No. (<code>TR</code>)</label>
+                        <label>Test Report No.</label>
                         <input type="text" name="TR" id="mf_TR" class="mono bold" placeholder="e.g. TR20261009001">
                     </div>
                     <div class="dtr-field">
-                        <label>* Material Type (Smart Standards)</label>
+                        <label>* Material Type</label>
                         <input type="text" name="MaterialType" id="mf_MaterialType" list="dtr-std-mattypes" placeholder="e.g. Canvas, Suede, Rubber">
                         <datalist id="dtr-std-mattypes">
                             <?php foreach ($standardMatTypes as $smt): ?>
@@ -315,47 +316,47 @@
                         </datalist>
                     </div>
                     <div class="dtr-field">
-                        <label>Material Code (Auto-Lookup)</label>
-                        <input type="text" name="MaterialCode" id="mf_MaterialCode" class="mono" placeholder="Type code + Tab">
+                        <label>Material Code</label>
+                        <input type="text" name="MaterialCode" id="mf_MaterialCode" class="mono" placeholder="Type the code, then Tab">
                     </div>
                     <div class="dtr-field" style="grid-column:span 2">
-                        <label>Material Description (<code>Material Description</code>)</label>
-                        <input type="text" name="Material Description" id="mf_MaterialDescription" placeholder="Auto-filled from MaterialList">
+                        <label>Material Description</label>
+                        <input type="text" name="Material Description" id="mf_MaterialDescription" placeholder="Auto-filled from the material master">
                     </div>
 
                     <div class="dtr-field">
                         <label>Supplier / Factory</label>
-                        <input type="text" name="Supplier/Factory" id="mf_SupplierFactory" placeholder="Auto-filled from MaterialList">
+                        <input type="text" name="Supplier/Factory" id="mf_SupplierFactory" placeholder="Auto-filled from the material master">
                     </div>
                     <div class="dtr-field">
-                        <label>PO / Lot No. (ProdCode Lookup)</label>
-                        <input type="text" name="PO/Lot No" id="mf_POLotNo" class="mono" placeholder="Type ProdCode + Tab">
+                        <label>PO / Lot No.</label>
+                        <input type="text" name="PO/Lot No" id="mf_POLotNo" class="mono" placeholder="Type the production code, then Tab">
                     </div>
                     <div class="dtr-field">
                         <label>Model No. / Style</label>
-                        <input type="text" name="Model No/Style" id="mf_ModelNoStyle" placeholder="Auto-filled from ShoeList">
+                        <input type="text" name="Model No/Style" id="mf_ModelNoStyle" placeholder="Auto-filled from the style master">
                     </div>
                     <div class="dtr-field">
                         <label>Color / Colorway</label>
-                        <input type="text" name="Color" id="mf_Color" placeholder="Auto-filled from ShoeList">
+                        <input type="text" name="Color" id="mf_Color" placeholder="Auto-filled from the style master">
                     </div>
                     <div class="dtr-field">
                         <label>PO Quantity</label>
                         <input type="text" name="PO Quantity" id="mf_POQuantity" placeholder="Quantity">
                     </div>
                     <div class="dtr-field">
-                        <label>MTL # (DSR Lookup)</label>
+                        <label>MTL #</label>
                         <input type="text" name="MTL" id="mf_MTL" class="mono" placeholder="e.g. MTL-12345">
                     </div>
 
                     <!-- DSR Auto-Filled Row -->
                     <div class="dtr-field">
                         <label>DSR Style Number</label>
-                        <input type="text" name="StyleNumber_DSR" id="mf_StyleNumber_DSR" placeholder="From tblDSR">
+                        <input type="text" name="StyleNumber_DSR" id="mf_StyleNumber_DSR" placeholder="From DSR">
                     </div>
                     <div class="dtr-field">
                         <label>DSR Style Description</label>
-                        <input type="text" name="StyleDescription_DSR" id="mf_StyleDescription_DSR" placeholder="From tblDSR">
+                        <input type="text" name="StyleDescription_DSR" id="mf_StyleDescription_DSR" placeholder="From DSR">
                     </div>
                     <div class="dtr-field">
                         <label>DSR Component / Location</label>
@@ -392,7 +393,7 @@
                         <input type="text" name="Tested by" id="mf_TestedBy" placeholder="Technician">
                     </div>
                     <div class="dtr-field">
-                        <label>Status (<code>Complete</code> triggers Rating)</label>
+                        <label>Status (Complete sets the rating)</label>
                         <select name="Status" id="mf_Status">
                             <option value="Complete">Complete</option>
                             <option value="Ongoing">Ongoing</option>
@@ -400,7 +401,7 @@
                         </select>
                     </div>
                     <div class="dtr-field">
-                        <label>* Overall Rating (<code>Remarks</code>)</label>
+                        <label>* Overall Rating</label>
                         <input type="text" name="Remarks" id="mf_Remarks" class="bold mono" readonly style="background:#f8fafc">
                     </div>
                 </div>
@@ -409,8 +410,8 @@
             <!-- SECTION B: THICKNESS / HARDNESS (6-POINT AUTO MIN/MAX/AVE + SMART STANDARDS) -->
             <div class="dtr-subcard">
                 <div class="dtr-subcard-head">
-                    <h4>B. Thickness (mm) &amp; Durometer Hardness (Shore A) — 6-Point Auto Min / Max / Ave (<code>UpdateMinMax</code>)</h4>
-                    <span class="muted sm">Changing Thickness 1..6 automatically computes Min, Max, Average (<code>Round(Sum/6, 2)</code>) and updates thickness-dependent Standards!</span>
+                    <h4>B. Thickness (mm) &amp; Durometer Hardness (Shore A) — 6-Point Auto Min / Max / Ave</h4>
+                    <span class="muted sm">Changing Thickness 1..6 automatically computes Min, Max, Average and updates thickness-dependent Standards!</span>
                 </div>
                 <div class="dtr-grid-6">
                     <div class="dtr-field"><label>Thickness 1</label><input type="number" step="any" name="Thickness1" id="mf_Thickness1" class="dtr-calc-thick"></div>
@@ -420,11 +421,11 @@
                     <div class="dtr-field"><label>Thickness 5</label><input type="number" step="any" name="Thickness5" id="mf_Thickness5" class="dtr-calc-thick"></div>
                     <div class="dtr-field"><label>Thickness 6</label><input type="number" step="any" name="Thickness6" id="mf_Thickness6" class="dtr-calc-thick"></div>
 
-                    <div class="dtr-field"><label>Thickness Min (<code>TMin</code>)</label><input type="text" name="TMin" id="mf_TMin" readonly class="dtr-ro"></div>
-                    <div class="dtr-field"><label>Thickness Max (<code>TMax</code>)</label><input type="text" name="TMax" id="mf_TMax" readonly class="dtr-ro"></div>
-                    <div class="dtr-field"><label><b>Thickness Ave (<code>TAve</code>)</b></label><input type="text" name="TAve" id="mf_TAve" readonly class="dtr-ro bold"></div>
-                    <div class="dtr-field"><label>Thickness Std (<code>T_S</code>)</label><input type="text" name="T_S" id="mf_T_S" class="dtr-std-inp"></div>
-                    <div class="dtr-field"><label>Thickness Rating (<code>TRating</code>)</label><input type="text" name="TRating" id="mf_TRating" class="dtr-rate-inp"></div>
+                    <div class="dtr-field"><label>Thickness Min</label><input type="text" name="TMin" id="mf_TMin" readonly class="dtr-ro"></div>
+                    <div class="dtr-field"><label>Thickness Max</label><input type="text" name="TMax" id="mf_TMax" readonly class="dtr-ro"></div>
+                    <div class="dtr-field"><label><b>Thickness Ave</b></label><input type="text" name="TAve" id="mf_TAve" readonly class="dtr-ro bold"></div>
+                    <div class="dtr-field"><label>Thickness Std</label><input type="text" name="T_S" id="mf_T_S" class="dtr-std-inp"></div>
+                    <div class="dtr-field"><label>Thickness Rating</label><input type="text" name="TRating" id="mf_TRating" class="dtr-rate-inp"></div>
                     <div class="dtr-field"><label>Hardness Ave / Rate (Rubber/FTHL)</label>
                         <div style="display:flex;gap:4px">
                             <input type="text" name="Hardness_Ave" id="mf_Hardness_Ave" placeholder="Hard Ave">
@@ -439,12 +440,12 @@
                 <div class="dtr-subcard-head">
                     <h4>C. Weight, Specific Gravity, Compression Set, DIN Abrasion, Ross Flex &amp; Shrinkage</h4>
                     <div class="dtr-subcard-btns">
-                        <button type="button" class="dtr-btn-xs dtr-btn-outline" data-goto-calc="weight">🧮 Weight Calc</button>
-                        <button type="button" class="dtr-btn-xs dtr-btn-outline" data-goto-calc="sg">🧮 SG Calc</button>
-                        <button type="button" class="dtr-btn-xs dtr-btn-outline" data-goto-calc="comp">🧮 Compression Calc</button>
-                        <button type="button" class="dtr-btn-xs dtr-btn-outline" data-goto-calc="din">🧮 DIN Calc</button>
-                        <button type="button" class="dtr-btn-xs dtr-btn-outline" data-goto-calc="ross">🧮 Ross Flex Calc</button>
-                        <button type="button" class="dtr-btn-xs dtr-btn-outline" data-goto-calc="shrink">🧮 Shrinkage Calc</button>
+                        <button type="button" class="dtr-btn-xs dtr-btn-outline" data-goto-calc="weight"><svg class="ic" aria-hidden="true"><use href="#i-calc"/></svg> Weight Calc</button>
+                        <button type="button" class="dtr-btn-xs dtr-btn-outline" data-goto-calc="sg"><svg class="ic" aria-hidden="true"><use href="#i-calc"/></svg> SG Calc</button>
+                        <button type="button" class="dtr-btn-xs dtr-btn-outline" data-goto-calc="comp"><svg class="ic" aria-hidden="true"><use href="#i-calc"/></svg> Compression Calc</button>
+                        <button type="button" class="dtr-btn-xs dtr-btn-outline" data-goto-calc="din"><svg class="ic" aria-hidden="true"><use href="#i-calc"/></svg> DIN Calc</button>
+                        <button type="button" class="dtr-btn-xs dtr-btn-outline" data-goto-calc="ross"><svg class="ic" aria-hidden="true"><use href="#i-calc"/></svg> Ross Flex Calc</button>
+                        <button type="button" class="dtr-btn-xs dtr-btn-outline" data-goto-calc="shrink"><svg class="ic" aria-hidden="true"><use href="#i-calc"/></svg> Shrinkage Calc</button>
                     </div>
                 </div>
                 <div class="dtr-grid-6">
@@ -452,17 +453,17 @@
                     <div class="dtr-field"><label>Weight 1</label><input type="number" step="any" name="Weight1" id="mf_Weight1" class="dtr-calc-weight"></div>
                     <div class="dtr-field"><label>Weight 2</label><input type="number" step="any" name="Weight2" id="mf_Weight2" class="dtr-calc-weight"></div>
                     <div class="dtr-field"><label>Weight 3</label><input type="number" step="any" name="Weight3" id="mf_Weight3" class="dtr-calc-weight"></div>
-                    <div class="dtr-field"><label><b>Weight Ave (<code>WAve</code>)</b></label><input type="text" name="WAve" id="mf_WAve" readonly class="dtr-ro bold"></div>
-                    <div class="dtr-field"><label>Weight Std (<code>Weight_S</code>)</label><input type="text" name="Weight_S" id="mf_Weight_S" class="dtr-std-inp"></div>
-                    <div class="dtr-field"><label>Weight Rating (<code>WRating</code>)</label><input type="text" name="WRating" id="mf_WRating" class="dtr-rate-inp"></div>
+                    <div class="dtr-field"><label><b>Weight Ave</b></label><input type="text" name="WAve" id="mf_WAve" readonly class="dtr-ro bold"></div>
+                    <div class="dtr-field"><label>Weight Std</label><input type="text" name="Weight_S" id="mf_Weight_S" class="dtr-std-inp"></div>
+                    <div class="dtr-field"><label>Weight Rating</label><input type="text" name="WRating" id="mf_WRating" class="dtr-rate-inp"></div>
 
                     <!-- Specific Gravity -->
-                    <div class="dtr-field"><label>Spec. Gravity 1 (<code>SG1</code>)</label><input type="number" step="any" name="SG1" id="mf_SG1" class="dtr-calc-sg"></div>
-                    <div class="dtr-field"><label>Spec. Gravity 2 (<code>SG2</code>)</label><input type="number" step="any" name="SG2" id="mf_SG2" class="dtr-calc-sg"></div>
-                    <div class="dtr-field"><label>Spec. Gravity 3 (<code>SG3</code>)</label><input type="number" step="any" name="SG3" id="mf_SG3" class="dtr-calc-sg"></div>
-                    <div class="dtr-field"><label><b>SG Ave (<code>SG_Ave</code>)</b></label><input type="text" name="SG_Ave" id="mf_SG_Ave" readonly class="dtr-ro bold"></div>
+                    <div class="dtr-field"><label>Spec. Gravity 1</label><input type="number" step="any" name="SG1" id="mf_SG1" class="dtr-calc-sg"></div>
+                    <div class="dtr-field"><label>Spec. Gravity 2</label><input type="number" step="any" name="SG2" id="mf_SG2" class="dtr-calc-sg"></div>
+                    <div class="dtr-field"><label>Spec. Gravity 3</label><input type="number" step="any" name="SG3" id="mf_SG3" class="dtr-calc-sg"></div>
+                    <div class="dtr-field"><label><b>SG Ave</b></label><input type="text" name="SG_Ave" id="mf_SG_Ave" readonly class="dtr-ro bold"></div>
                     <div class="dtr-field"><label>SG Std (±0.02 Tol)</label><input type="text" name="SG_Std" id="mf_SG_Std" class="dtr-std-inp"></div>
-                    <div class="dtr-field"><label>SG Rating (<code>SG_Rate</code>)</label><input type="text" name="SG_Rate" id="mf_SG_Rate" class="dtr-rate-inp"></div>
+                    <div class="dtr-field"><label>SG Rating</label><input type="text" name="SG_Rate" id="mf_SG_Rate" class="dtr-rate-inp"></div>
 
                     <!-- DIN Abrasion, Ross Flex, Shrinkage -->
                     <div class="dtr-field"><label>DIN Abrasion 1..3 (≤150)</label>
@@ -472,7 +473,7 @@
                             <input type="number" step="any" name="DIN_3" id="mf_DIN_3" class="dtr-calc-din" placeholder="3">
                         </div>
                     </div>
-                    <div class="dtr-field"><label>DIN Rating (<code>DIN_Rate</code>)</label><input type="text" name="DIN_Rate" id="mf_DIN_Rate" class="dtr-rate-inp"></div>
+                    <div class="dtr-field"><label>DIN Rating</label><input type="text" name="DIN_Rate" id="mf_DIN_Rate" class="dtr-rate-inp"></div>
                     <div class="dtr-field"><label>Ross Flex 1..2 (≤50%)</label>
                         <div style="display:flex;gap:3px">
                             <input type="number" step="any" name="RossFlex_1" id="mf_RossFlex_1" class="dtr-calc-ross" placeholder="1">
@@ -498,7 +499,7 @@
             <!-- SECTION D: PHYSICAL & MECHANICAL DIRECTIONAL TESTS (AUTO L/W AVERAGES & RATINGS) -->
             <div class="dtr-subcard">
                 <div class="dtr-subcard-head">
-                    <h4>D. Physical &amp; Mechanical Tests — Directional Specimen Readings, Auto-Averages &amp; Pass/Fail (<code>UpdateDirectionalAverage</code>)</h4>
+                    <h4>D. Physical &amp; Mechanical Tests — Directional Specimen Readings, Auto-Averages &amp; Pass/Fail</h4>
                     <span class="muted sm">Formula: <code>Ave = Round((Spec1 + Spec2 + Spec3) / 3, 2)</code> · Rating = <code>PASS</code> if <code>Ave >= Standard</code> else <code>FAIL</code></span>
                 </div>
                 <div class="dtr-table-wrap">
@@ -618,7 +619,7 @@
             <!-- SECTION E: COLORFASTNESS (6-POINT MULTI-FIBER STRIP + CROCKING + WEATHERING) -->
             <div class="dtr-subcard">
                 <div class="dtr-subcard-head">
-                    <h4>E. Colorfastness (6-Fiber Multi-Fiber Evaluation <code>Evaluate6PointRating</code>, Crocking, UV, Heat Aging &amp; Hydrolysis)</h4>
+                    <h4>E. Colorfastness (6-Fiber Multi-Fiber Evaluation, Crocking, UV, Heat Aging &amp; Hydrolysis)</h4>
                     <span class="muted sm">6-Fiber Rule: Any fiber grade &lt; Standard = <code>FAIL</code>; all 6 fibers &ge; Standard = <code>PASS</code>.</span>
                 </div>
                 <div class="dtr-table-wrap">
@@ -744,8 +745,8 @@
             <!-- SECTION F: COMPLETE DATABASE COLUMNS INSPECTOR (ALL 68..250 COLUMNS) -->
             <div class="dtr-subcard">
                 <div class="dtr-subcard-head">
-                    <h4>F. Complete Database Column Editor (<span id="dtr-raw-col-count">250</span> Columns from Access Table)</h4>
-                    <button type="button" id="btn-toggle-raw-cols" class="dtr-btn-xs dtr-btn-outline">Show / Hide All Table Columns</button>
+                    <h4>F. Complete Field Editor (<span id="dtr-raw-col-count">250</span> Fields)</h4>
+                    <button type="button" id="btn-toggle-raw-cols" class="dtr-btn-xs dtr-btn-outline">Show / Hide All Fields</button>
                 </div>
                 <div id="dtr-raw-cols-container" class="dtr-grid-6" style="margin-top:8px;max-height:360px;overflow-y:auto;padding-right:6px">
                     <!-- Dynamically populated with every column of the selected table -->
@@ -763,23 +764,28 @@
         <div class="dtr-form-toolbar">
             <div class="dtr-form-pickers">
                 <div class="dtr-field">
-                    <label>Select Whole Shoe Bonding Record (1,091 Reports in <code>tbl_dtr_bonding_info</code>)</label>
+                    <label>Select Whole Shoe Bonding Record (1,091 Reports)</label>
                     <select id="dtr-bonding-record-select" class="dtr-select-lg"></select>
                 </div>
             </div>
             <div class="dtr-form-actions">
                 <button type="button" id="btn-bond-new" class="dtr-btn dtr-btn-outline">+ New Bonding Report</button>
-                <button type="button" id="btn-bond-load-u60" class="dtr-btn dtr-btn-amber" title="Reads/copies U60 .xlsx from \\192.168.32.45\OUTDATA\BONDING\">
-                    ⚡ Load U60 Machine File (192.168.32.45)
+                <button type="button" id="btn-bond-load-u60" class="dtr-btn dtr-btn-amber" title="Reads the U60 machine result file for this Lab Ref No. The source file is never modified.">
+                    <svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> Load U60 Machine File
                 </button>
                 <button type="button" id="btn-bond-recalc" class="dtr-btn dtr-btn-outline">
-                    🔄 Recalculate Spots &amp; Result
+                    <svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg> Recalculate Spots &amp; Result
                 </button>
-                <button type="button" id="btn-bond-print-preview" class="dtr-btn dtr-btn-purple" title="Access parity: Report - LEFT / RIGHT Printable Sheet">
-                    🖨️ Print / Preview Bonding Report
+                <button type="button" id="btn-bond-print-preview" class="dtr-btn dtr-btn-purple" title="View, print or save the official left / right report sheet">
+                    <svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg> Print / Preview Bonding Report
                 </button>
+                <?php if (! empty($dtrIsAdmin)): ?>
+                <a id="btn-bond-designer" class="dtr-btn dtr-btn-outline" href="<?= site_url('designer') ?>?tab=diagram" title="Admin only: place the points on the shoe, hide or add fields">
+                    <svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg> Adjust shoe points / layout (admin)
+                </a>
+                <?php endif ?>
                 <button type="button" id="btn-bond-save" class="dtr-btn dtr-btn-primary">
-                    💾 Save Bonding Report
+                    <svg class="ic" aria-hidden="true"><use href="#i-save"/></svg> Save Bonding Report
                 </button>
             </div>
         </div>
@@ -805,7 +811,7 @@
                         </select>
                     </div>
                     <div class="dtr-field">
-                        <label>* Standard Spec (<code>STD</code> kg/cm)</label>
+                        <label>* Standard Spec (kg/cm)</label>
                         <select name="STD" id="bf_STD">
                             <option value="2.5">2.5 kg/cm (Standard)</option>
                             <option value="2.0">2.0 kg/cm (Kids/Toddler)</option>
@@ -870,7 +876,7 @@
             <!-- 35-Spot Interactive Grid -->
             <div class="dtr-subcard">
                 <div class="dtr-subcard-head">
-                    <h4>Bonding Spot Readings (<code>tbl_dtr_bonding_points</code> · Points 1 to 35)</h4>
+                    <h4>Bonding Spot Readings (Points 1 to 35)</h4>
                     <span class="muted sm">Tolerance Rule: For Std 2.5, values 2.0..2.49 are <code>TOLERABLE</code> (yellow), &lt;2.0 is <code>FAIL</code> (red). For Std 2.0, values 1.8..1.99 are <code>TOLERABLE</code>, &lt;1.8 is <code>FAIL</code>.</span>
                 </div>
                 <div class="dtr-table-wrap" style="max-height:420px">
@@ -878,9 +884,9 @@
                         <thead>
                             <tr>
                                 <th style="width:90px">Spot #</th>
-                                <th>Upper to Foxing (<code>UTFpoint</code> kg/cm)</th>
-                                <th>Foxing to Outsole (<code>FTOpoint</code> kg/cm)</th>
-                                <th>Filler to Outsole (<code>FiTO</code> 1..13 kg/cm)</th>
+                                <th>Upper to Foxing (kg/cm)</th>
+                                <th>Foxing to Outsole (kg/cm)</th>
+                                <th>Filler to Outsole (1..13 kg/cm)</th>
                             </tr>
                         </thead>
                         <tbody id="dtr-bonding-points-tbody">
@@ -910,11 +916,24 @@
      TAB 4: BUILT-IN LAB CALCULATORS & STANDARDS / DSR LOOKUP EXPLORER
      ======================================================================= -->
 <section id="dtr-panel-calculators" class="dtr-panel <?= $activeTab === 'calculators' ? '' : 'hidden' ?>">
+    <?php if (! empty($dtrIsAdmin)): ?>
+    <div class="card glass dtr-section-card" style="margin-bottom:14px">
+        <div class="dtr-card-head"><div>
+            <h3><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg> Admin: customize reports</h3>
+            <p class="muted sm">Match the shoe lines and results, rearrange or hide inputs, add fields, and change which Excel cells are read per report type.</p>
+        </div></div>
+        <div class="dtr-form-actions">
+            <a class="dtr-btn dtr-btn-purple" href="<?= site_url('designer') ?>?tab=diagram">Shoe diagram &amp; points</a>
+            <a class="dtr-btn dtr-btn-outline" href="<?= site_url('designer') ?>?tab=form">Form fields</a>
+            <a class="dtr-btn dtr-btn-amber" href="<?= site_url('designer') ?>?tab=excel">Excel readers</a>
+        </div>
+    </div>
+    <?php endif ?>
     <div class="dtr-grid-3">
         <!-- 1. Weight Calculator -->
         <div class="card glass dtr-section-card" id="calc-card-weight">
             <h3>1. Weight Calculator (Fabric / Leather / Insole)</h3>
-            <p class="muted sm">Exact VBA Formula: <code>Weight_i = Round((Raw_i / 100) * 10000, 2)</code> · <code>WAve = Round((W1+W2+W3)/3, 2)</code></p>
+            <p class="muted sm">Formula: <code>Weight_i = Round((Raw_i / 100) * 10000, 2)</code> · <code>WAve = Round((W1+W2+W3)/3, 2)</code></p>
             <div class="dtr-grid-3" style="margin-top:8px">
                 <div class="dtr-field"><label>Raw Weight 1 (g)</label><input type="number" step="any" id="calc_raw_w1" value="2.45"></div>
                 <div class="dtr-field"><label>Raw Weight 2 (g)</label><input type="number" step="any" id="calc_raw_w2" value="2.48"></div>
@@ -924,7 +943,7 @@
                 <div class="dtr-field"><label>Weight 3 (g/m²)</label><input type="text" id="calc_res_w3" readonly class="dtr-ro"></div>
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
-                <div>Average (<code>WAve</code>): <b id="calc_res_wave" class="mono">246.33</b> g/m²</div>
+                <div>Average: <b id="calc_res_wave" class="mono">246.33</b> g/m²</div>
                 <button type="button" id="btn-apply-calc-weight" class="dtr-btn-xs dtr-btn-primary">Apply to Material Form</button>
             </div>
         </div>
@@ -932,7 +951,7 @@
         <!-- 2. Specific Gravity Calculator -->
         <div class="card glass dtr-section-card" id="calc-card-sg">
             <h3>2. Specific Gravity Calculator (SKL / FM / Rubber)</h3>
-            <p class="muted sm">Exact VBA Formula: <code>SG_i = Round(RawW_i / ((10 * 10) * (Thickness_i / 10)), 3)</code></p>
+            <p class="muted sm">Formula: <code>SG_i = Round(RawW_i / ((10 * 10) * (Thickness_i / 10)), 3)</code></p>
             <div class="dtr-grid-3" style="margin-top:8px">
                 <div class="dtr-field"><label>Raw W1 (g)</label><input type="number" step="any" id="calc_sg_w1" value="18.5"></div>
                 <div class="dtr-field"><label>Raw W2 (g)</label><input type="number" step="any" id="calc_sg_w2" value="18.6"></div>
@@ -950,7 +969,7 @@
         <!-- 3. Compression Set Calculator -->
         <div class="card glass dtr-section-card" id="calc-card-comp">
             <h3>3. Compression Set Calculator (Standard &amp; PU Foam)</h3>
-            <p class="muted sm">Exact VBA Formula: <code>pT_i = Round(((Before_i - After_i) / (Before_i - Spacer)) * 100, 1)</code></p>
+            <p class="muted sm">Formula: <code>pT_i = Round(((Before_i - After_i) / (Before_i - Spacer)) * 100, 1)</code></p>
             <div class="dtr-grid-3" style="margin-top:8px">
                 <div class="dtr-field"><label>Before 1 (mm)</label><input type="number" step="any" id="calc_cp_b1" value="10.0"></div>
                 <div class="dtr-field"><label>After 1 (mm)</label><input type="number" step="any" id="calc_cp_a1" value="9.2"></div>
@@ -968,7 +987,7 @@
         <!-- 4. DIN Abrasion Calculator -->
         <div class="card glass dtr-section-card" id="calc-card-din">
             <h3>4. DIN Abrasion Calculator (Rubber Outsole)</h3>
-            <p class="muted sm">Exact VBA Formula: <code>DIN_i = Round((((W_before - W_after) / SG) * (200 / SA)) * 1000, 2)</code></p>
+            <p class="muted sm">Formula: <code>DIN_i = Round((((W_before - W_after) / SG) * (200 / SA)) * 1000, 2)</code></p>
             <div class="dtr-grid-4" style="margin-top:8px">
                 <div class="dtr-field"><label>W Before (g)</label><input type="number" step="any" id="calc_din_wb" value="1.250"></div>
                 <div class="dtr-field"><label>W After (g)</label><input type="number" step="any" id="calc_din_wa" value="1.115"></div>
@@ -984,7 +1003,7 @@
         <!-- 5. Ross Flex Calculator -->
         <div class="card glass dtr-section-card" id="calc-card-ross">
             <h3>5. Ross Flexing Calculator (Rubber Outsole)</h3>
-            <p class="muted sm">Exact VBA Formula: <code>RossFlex_i = Round(((Lf_i - Li_i) / Li_i) * 100, 2)</code> (Default <code>Li = 2.5</code>)</p>
+            <p class="muted sm">Formula: <code>RossFlex_i = Round(((Lf_i - Li_i) / Li_i) * 100, 2)</code> (Default <code>Li = 2.5</code>)</p>
             <div class="dtr-grid-4" style="margin-top:8px">
                 <div class="dtr-field"><label>Initial L1 (mm)</label><input type="number" step="any" id="calc_rf_li1" value="2.5"></div>
                 <div class="dtr-field"><label>Final Lf1 (mm)</label><input type="number" step="any" id="calc_rf_lf1" value="3.0"></div>
@@ -1000,7 +1019,7 @@
         <!-- 6. Shrinkage Calculator -->
         <div class="card glass dtr-section-card" id="calc-card-shrink">
             <h3>6. Shrinkage Calculator (Fabric / Leather / SKLFM / Rubber)</h3>
-            <p class="muted sm">Exact VBA Formula: <code>Shrinkage = Round(((Before - After) / Before) * 100, 2)</code></p>
+            <p class="muted sm">Formula: <code>Shrinkage = Round(((Before - After) / Before) * 100, 2)</code></p>
             <div class="dtr-grid-4" style="margin-top:8px">
                 <div class="dtr-field"><label>Length Before</label><input type="number" step="any" id="calc_sh_lb" value="100"></div>
                 <div class="dtr-field"><label>Length After</label><input type="number" step="any" id="calc_sh_la" value="98.8"></div>
@@ -1018,7 +1037,7 @@
     <div class="card glass dtr-section-card" style="margin-top:14px">
         <div class="dtr-card-head">
             <div>
-                <h3>🔍 Live Master Database Lookup Explorer (<code>tbl_dtr_standards</code> · <code>tbl_dtr_material_list</code> · <code>tbl_dtr_shoe_list</code> · <code>tbl_dtr_dsr</code>)</h3>
+                <h3><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg> Live Master Lookup Explorer</h3>
                 <p class="muted sm">Test smart thickness-based standards or look up any Material Code (41,374), Production PO Code (74,741), or DSR MTL # (154,426).</p>
             </div>
         </div>
@@ -1032,7 +1051,7 @@
                 </select>
             </div>
             <div class="dtr-field">
-                <label>Sample Thickness (<code>TAve</code> mm)</label>
+                <label>Sample Thickness (mm)</label>
                 <input type="number" step="any" id="exp_t_ave" value="1.25">
             </div>
             <div class="dtr-field">
@@ -1051,8 +1070,8 @@
                         <th>Test Method / Control</th>
                         <th>Standard Value</th>
                         <th>Tolerance</th>
-                        <th>Thickness Min (<code>TMinC</code>)</th>
-                        <th>Thickness Max (<code>TMaxC</code>)</th>
+                        <th>Thickness Min</th>
+                        <th>Thickness Max</th>
                     </tr>
                 </thead>
                 <tbody id="exp-standards-tbody">
@@ -1080,10 +1099,13 @@
         <div class="dtr-modal-footer">
             <button type="button" id="btn-dtr-cancel-print" class="dtr-btn dtr-btn-outline">Close</button>
             <a id="btn-dtr-download-access-pdf" href="#" target="_blank" class="dtr-btn dtr-btn-outline hidden" style="border-color:#16a34a;color:#16a34a;text-decoration:none">
-                📥 Download Official Access PDF
+                <svg class="ic" aria-hidden="true"><use href="#i-download"/></svg> Download Official PDF
             </a>
+            <button type="button" id="btn-dtr-download-pdf" class="dtr-btn dtr-btn-outline" style="border-color:#2563eb;color:#2563eb">
+                <svg class="ic" aria-hidden="true"><use href="#i-file"/></svg> Download PDF
+            </button>
             <button type="button" id="btn-dtr-do-print" class="dtr-btn dtr-btn-primary">
-                🖨️ Print Report / Save as PDF
+                <svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg> Print Report / Save as PDF
             </button>
         </div>
     </div>

@@ -28,7 +28,8 @@ class AuthFilter implements FilterInterface
                 ->with('error', 'Please sign in to continue.');
         }
 
-        if (! empty($arguments) && ! in_array($auth->user()['role'], $arguments, true)) {
+        $role = strtolower(trim((string) ($auth->user()['role'] ?? '')));
+        if (! empty($arguments) && ! in_array($role, array_map('strtolower', $arguments), true)) {
             return redirect()->route('dashboard')->with('error', 'You are not authorized to access that page.');
         }
 

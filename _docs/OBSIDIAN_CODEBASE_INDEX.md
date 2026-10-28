@@ -1,7 +1,7 @@
 ---
 type: "CodebaseIndex"
 tags: [obsidian, graphify, icm, codebase-index, nexus-l, interlink, dtr, qc-lab]
-updated: "2026-10-27"
+updated: "2026-10-28"
 ---
 
 # NEXUS-L - Codebase Index
@@ -21,7 +21,8 @@ NEXUS-L is the laboratory intelligence and execution system built on CodeIgniter
 | `app/Models/InterlinkReportModel.php` | InterLink reports model, sample records, test items, specimen readings, and sync audit logs. |
 | `app/Views/interlink/index.php` | InterLink portal interface matching SearchForm, NormalForm, and UploadForm with Tab 1 & Tab 2 sub-grids and Pre-Sync Dialog. |
 | `app/Views/dtr/index.php` | QC Lab suite: Lab Tracker & IQC log, 10 material forms, whole shoe bonding, calculators, and print preview modal. |
-| `public/assets/js/interlink.js` | Pre-Sync Dialog logic, dynamic LabRef ComboBox loading, field highlight syncing, and 1-click submission. |
+| `public/assets/js/interlink.js` | Pre-Sync Dialog logic, dynamic LabRef ComboBox loading, field highlight syncing, 1-click submission, and the Upload Form **Generate Report** button (`window.nxReportPdf`: Lab Ref → DTR print sheet → `dtr/sheet-pdf` PDF attachment). |
+| `public/assets/js/interlink_center.js` | InterLink Sender hand-off (`nxFillHelper`): prepares the form values and attaches the generated/browsed report PDF. |
 | `public/assets/js/dtr.js` | 100% VBA computation port: `ApplyStandardValuesSmart`, directional averages, 6-point colorfastness, bonding spot rules, calculators, machine data parsing, and print preview rendering. |
 | `public/assets/css/interlink.css` | InterLink 2.0 theme styling, DevExpress pager, and status tags. |
 | `public/assets/css/dtr.css` | Laboratory cards, measurement inputs, rating stamps, and `@media print` A4 report sheet layouts. |

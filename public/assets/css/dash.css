@@ -23,7 +23,7 @@ a{color:var(--brand);text-decoration:none}a:hover{text-decoration:underline}
 .logo{width:34px;height:34px;border-radius:8px;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center}
 .logo svg{width:20px;height:20px}
 .side-head b{display:block;font-size:14px;letter-spacing:.14em;color:var(--brand)}
-.side-head small{display:block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
+.side-head small{display:block;font-size: 12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
 .nav{flex:1;overflow-y:auto;padding:10px}
 .nav-link{display:flex;align-items:center;gap:10px;width:100%;padding:9px 12px;margin-bottom:2px;border:0;border-radius:8px;background:none;color:var(--ink);font:inherit;cursor:pointer;text-align:left}
 .nav-link:hover{background:rgba(255,255,255,.7);text-decoration:none}
@@ -60,7 +60,7 @@ main{flex:1;padding:16px}
 @media(min-width:640px){.stats{grid-template-columns:1fr 1fr}}
 @media(min-width:1280px){.stats{grid-template-columns:repeat(4,1fr)}}
 .stat{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.stat small,.pair small,.hero-meta small{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute)}
+.stat small,.pair small,.hero-meta small{display:block;font-size: 12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute)}
 .stat b{display:block;margin-top:4px;font-size:19px}
 .ico{width:42px;height:42px;border-radius:8px;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
 .ico svg{width:22px;height:22px}
@@ -73,13 +73,13 @@ main{flex:1;padding:16px}
 .ring{--p:100;width:130px;height:130px;margin:6px auto 0;border-radius:50%;display:flex;align-items:center;justify-content:center;
   background:conic-gradient(var(--brand) calc(var(--p)*1%),#dbe3ef 0)}
 .ring span{width:98px;height:98px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center}
-.ring b{font-size:24px}.ring small{font-size:11px;color:var(--mute)}
+.ring b{font-size:24px}.ring small{font-size: 12px;color:var(--mute)}
 .pair{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-top:1px solid rgba(148,163,184,.3)}
 .pair b{font-size:20px}.bad{color:#b91c1c}
 .chart{display:flex;align-items:flex-end;gap:10px;height:190px;padding:4px 0}
 .col{flex:1;height:100%;display:flex;flex-direction:column;align-items:center;gap:6px}
 .stack{flex:1;width:100%;max-width:44px;display:flex;flex-direction:column-reverse;justify-content:flex-start}
-.col small{font-size:11px;color:var(--mute)}
+.col small{font-size: 12px;color:var(--mute)}
 .seg-ok{display:block;background:var(--brand);min-height:0}.seg-bad{display:block;background:#ef4444}
 .stack .seg-ok:first-child,.stack i{border-radius:3px 3px 0 0}
 .legend{display:flex;gap:16px;margin:10px 0 0;font-size:12px;color:var(--mute)}
@@ -92,7 +92,7 @@ main{flex:1;padding:16px}
 .mt{margin-top:14px}
 .tbl-wrap{overflow-x:auto;margin-top:8px}
 table{width:100%;border-collapse:collapse;font-size:14px}
-th{padding:8px 12px 8px 0;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute);font-weight:600}
+th{padding:8px 12px 8px 0;text-align:left;font-size: 12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute);font-weight:600}
 td{padding:9px 12px 9px 0;border-top:1px solid rgba(148,163,184,.3)}
 .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--mute)}
 .badge{display:inline-block;padding:1px 8px;border-radius:6px;font-size:12px}
@@ -103,9 +103,9 @@ td{padding:9px 12px 9px 0;border-top:1px solid rgba(148,163,184,.3)}
 .alert ul{margin:0;padding-left:18px}
 .alert-ok{background:#ecfdf5;border-color:#a7f3d0;color:#065f46}
 .alert-err{background:#fef2f2;border-color:#fecaca;color:#991b1b}
-.crumb{display:block;font-size:11px;color:var(--mute);line-height:1.2}
+.crumb{display:block;font-size: 12px;color:var(--mute);line-height:1.2}
 .top h1{line-height:1.2}
-.nav-badge{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:#ef4444;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.nav-badge{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:#ef4444;color:#fff;font-size: 12px;font-weight:700;display:flex;align-items:center;justify-content:center}
 
 /* Site-wide Browser Notification Prompt */
 .nexus-notif-prompt {
@@ -240,3 +240,94 @@ td{padding:9px 12px 9px 0;border-top:1px solid rgba(148,163,184,.3)}
   background: #e2e8f0;
   color: #1e293b;
 }
+
+.logo.logo-img{background-color:#fff;background-repeat:no-repeat;background-size:400% auto;background-position:4% 40.9%;border:1px solid var(--line)}
+
+/* ---- shared UX: focus ring, toasts, confirm dialog, states -------------------------------- */
+:focus-visible{outline:2px solid var(--brand,#2563eb);outline-offset:2px;border-radius:4px}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline-offset:0;box-shadow:0 0 0 3px rgba(37,99,235,.18)}
+.nx-toasts{position:fixed;right:16px;bottom:16px;z-index:10000;display:flex;flex-direction:column;gap:8px;max-width:min(380px,calc(100vw - 32px))}
+.nx-toast{background:#0f172a;color:#fff;padding:10px 14px;border-radius:8px;font-size:13px;line-height:1.4;box-shadow:0 6px 24px rgba(0,0,0,.25);transition:opacity .25s,transform .25s}
+.nx-toast.nx-out{opacity:0;transform:translateY(6px)}
+.nx-toast-error{background:#991b1b}.nx-toast-success{background:#166534}
+.nx-modal-back{position:fixed;inset:0;z-index:10001;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:16px}
+.nx-modal{background:#fff;color:#0f172a;border-radius:12px;padding:18px 20px;max-width:420px;width:100%;box-shadow:0 18px 48px rgba(0,0,0,.3)}
+.nx-modal p{margin:0 0 16px;font-size:14px;line-height:1.5}
+.nx-modal-actions{display:flex;justify-content:flex-end;gap:8px}
+.nx-btn{border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:8px;padding:8px 14px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.nx-btn.nx-primary{background:var(--brand,#2563eb);border-color:var(--brand,#2563eb);color:#fff}
+.nx-btn.nx-danger{background:#dc2626;border-color:#dc2626;color:#fff}
+.nx-state{display:flex;align-items:center;justify-content:center;gap:8px;padding:18px;font-size:13px;color:#64748b;text-align:center}
+.nx-state-error{color:#b91c1c}
+.nx-spin{width:14px;height:14px;border:2px solid #cbd5e1;border-top-color:var(--brand,#2563eb);border-radius:50%;animation:nxspin .8s linear infinite}
+@keyframes nxspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.nx-spin{animation:none}.nx-toast{transition:none}}
+
+/* accessibility helpers */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.skip-link{position:absolute;left:8px;top:-48px;z-index:10002;background:#0f172a;color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;text-decoration:none}
+.skip-link:focus{top:8px}
+main:focus{outline:none}
+
+/* icons (SVG sprite) - global so every page sizes them the same */
+.ic{width:1.15em;height:1.15em;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;vertical-align:-.2em;flex:none}
+button .ic,.dsg-btn .ic,.sc-btn .ic,.il-btn .ic{margin-right:4px}
+
+/* contrast: muted table headers on light grey */
+.sc th,.il-table th,table th{color:#475569}
+
+/* ---- collapsible sidebar (large screens): icon rail gives the content more room ------------- */
+@media(min-width:1024px){
+  .menu-btn{display:inline-flex}
+  .side,.shell{transition:width .2s ease,padding-left .2s ease}
+  html.side-collapsed{--side:68px}
+  html.side-collapsed .side-head{justify-content:center;padding:0}
+  html.side-collapsed .side-head>div:not(.logo){display:none}
+  html.side-collapsed .side .nav-link{font-size:0!important;justify-content:center;gap:0;padding:11px 0!important;position:relative}
+  html.side-collapsed .side .nav-link svg{width:20px!important;height:20px!important}
+  html.side-collapsed .side .nav-badge{position:absolute;top:3px;right:10px;font-size:10px}
+  html.side-collapsed .side .nav>div>div:first-child{display:none}
+  html.side-collapsed .side .nav>div{margin-top:6px!important;padding-top:6px!important}
+  html.side-collapsed .side-foot{padding:10px 6px}
+}
+@media (prefers-reduced-motion:reduce){.side,.shell{transition:none}}
+
+/* ---- NEXUS-L assistant widget ----------------------------------------------------------------- */
+#nxbot-fab{position:fixed;right:18px;bottom:18px;z-index:9990;width:52px;height:52px;border-radius:50%;border:0;background:var(--brand,#2563eb);color:#fff;cursor:pointer;box-shadow:0 8px 24px rgba(37,99,235,.4);display:flex;align-items:center;justify-content:center}
+#nxbot-fab .ic{width:26px;height:26px}
+#nxbot-fab:hover{filter:brightness(1.08)}
+.nxbot-dot{position:absolute;top:6px;right:6px;width:12px;height:12px;border-radius:50%;background:#ef4444;border:2px solid #fff}
+#nxbot-bubble{position:fixed;right:80px;bottom:26px;z-index:9990;background:#0f172a;color:#fff;border-radius:12px;padding:9px 12px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.28);display:flex;gap:10px;align-items:center;max-width:300px}
+#nxbot-bubble button{background:#fff;color:#0f172a;border:0;border-radius:6px;padding:3px 8px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;margin-left:4px}
+#nxbot-bubble i{font-style:normal;cursor:pointer;opacity:.7}
+#nxbot-panel{position:fixed;right:18px;bottom:82px;z-index:9991;width:380px;max-width:calc(100vw - 24px);height:min(600px,calc(100vh - 110px));background:#fff;color:#0f172a;border:1px solid #d6deea;border-radius:16px;box-shadow:0 18px 50px rgba(15,23,42,.28);display:flex;flex-direction:column;overflow:hidden}
+#nxbot-panel[hidden],#nxbot-bubble[hidden]{display:none}
+#nxbot-panel header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 14px;background:linear-gradient(135deg,#1e3a8a,#2563eb);color:#fff}
+#nxbot-panel header small{display:block;font-size:12px;opacity:.85}
+.nxbot-hbtns{display:flex;gap:6px}
+.nxbot-hbtns button{background:rgba(255,255,255,.18);border:0;color:#fff;border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer}
+.nxbot-msgs{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:9px;background:#f8fafc}
+.nxbot-m{max-width:92%;padding:9px 12px;border-radius:12px;font-size:13px;line-height:1.5;word-wrap:break-word}
+.nxbot-m p{margin:0 0 4px}.nxbot-m p:last-child{margin:0}
+.nxbot-m.user{align-self:flex-end;background:#2563eb;color:#fff;border-bottom-right-radius:3px}
+.nxbot-m.bot{align-self:flex-start;background:#fff;border:1px solid #e2e8f0;border-bottom-left-radius:3px}
+.nxbot-m.admin{align-self:flex-start;background:#ecfdf5;border:1px solid #a7f3d0;border-bottom-left-radius:3px}
+.nxbot-m.admin small{display:block;font-weight:700;color:#047857;margin-bottom:2px}
+.nxbot-t{display:block;margin-bottom:4px}
+.nxbot-m ol,.nxbot-m ul{margin:6px 0 6px 18px;padding:0}
+.nxbot-diag{margin-top:6px;padding:7px 9px;border-radius:8px;font-size:12.5px}
+.nxbot-diag.ok{background:#ecfdf5;color:#065f46}.nxbot-diag.bad{background:#fef2f2;color:#991b1b}
+.nxbot-acts,.nxbot-rel,.nxbot-fb,.nxbot-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+.nxbot-chips{padding:0 12px 8px;margin:0;background:#f8fafc}
+.nxbot-acts button,.nxbot-rel button,.nxbot-chips button,.nxbot-fb button,.nxbot-esc{border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:999px;padding:4px 10px;font:inherit;font-size:12px;cursor:pointer}
+.nxbot-acts button{background:#2563eb;border-color:#2563eb;color:#fff}
+.nxbot-esc{border-color:#fca5a5;color:#b91c1c}
+.nxbot-hist{list-style:none;margin:6px 0 0;padding:0;font-size:12px}.nxbot-hist li{padding:2px 0;border-bottom:1px solid #eef2f7}
+#nxbot-form{display:flex;gap:6px;padding:10px 12px;border-top:1px solid #e2e8f0;background:#fff}
+#nxbot-form input{flex:1;border:1px solid #cbd5e1;border-radius:10px;padding:8px 10px;font:inherit;font-size:14px;min-width:0}
+#nxbot-form button{border:0;background:#2563eb;color:#fff;border-radius:10px;padding:8px 14px;font:inherit;font-weight:600;cursor:pointer}
+#nxbot-panel footer{display:flex;flex-direction:column;gap:4px;padding:8px 12px 10px;border-top:1px solid #eef2f7;background:#fff;font-size:11.5px;color:#64748b}
+#nxbot-panel footer button{align-self:flex-start;border:1px solid #fca5a5;background:#fff;color:#b91c1c;border-radius:999px;padding:3px 10px;font:inherit;font-size:12px;cursor:pointer}
+#nxbot-panel.escalated header{background:linear-gradient(135deg,#065f46,#059669)}
+@media (max-width:640px){#nxbot-panel{right:0;bottom:0;width:100vw;max-width:100vw;height:100vh;border-radius:0}#nxbot-fab{right:12px;bottom:12px}#nxbot-form input{font-size:16px}}
+@media print{#nxbot-fab,#nxbot-panel,#nxbot-bubble{display:none!important}}

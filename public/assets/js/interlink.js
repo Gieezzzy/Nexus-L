@@ -55,29 +55,29 @@
   // Complete list of UploadForm.aspx [10072] / [10076] fields for the Pre-Sync Confirmation Dialog
   const FORM_FIELD_DEFINITIONS = [
     // Section 1: Top Service & Header (Tab 1)
-    { key: 'service_provider', label: '* Service Provider (DXEditor11)', section: 'Tab 1 · Top Header' },
-    { key: 'lab_location', label: '* Lab Location (ITS_OFFICE_DISP)', section: 'Tab 1 · Top Header' },
-    { key: 'application_no', label: 'Application No. (DXEditor13)', section: 'Tab 1 · Top Header', readonly: true },
-    { key: 'service_test_type', label: '* Service Test Type (CAL_CDTL_11)', section: 'Tab 1 · Top Header' },
-    { key: 'test_stage', label: '* Test Stage (DXEditor15)', section: 'Tab 1 · Top Header' },
-    { key: 'service_required', label: '* Service Required (DXEditor16)', section: 'Tab 1 · Top Header' },
-    { key: 'report_no', label: '* Report No. (DXEditor17)', section: 'Tab 1 · Top Header' },
-    { key: 'is_retest', label: '* Is this a Retest? (Radio)', section: 'Tab 1 · Top Header', type: 'select', options: ['No', 'Yes'] },
-    { key: 'previous_report_no', label: 'Previous Test Report No (DXEditor19)', section: 'Tab 1 · Top Header' },
-    { key: 'related_trf_no', label: 'Related TRF Number ([10076])', section: 'Tab 1 · Top Header' },
+    { key: 'service_provider', label: '* Service Provider', section: 'Tab 1 · Top Header' },
+    { key: 'lab_location', label: '* Lab Location', section: 'Tab 1 · Top Header' },
+    { key: 'application_no', label: 'Application No.', section: 'Tab 1 · Top Header', readonly: true },
+    { key: 'service_test_type', label: '* Service Test Type', section: 'Tab 1 · Top Header' },
+    { key: 'test_stage', label: '* Test Stage', section: 'Tab 1 · Top Header' },
+    { key: 'service_required', label: '* Service Required', section: 'Tab 1 · Top Header' },
+    { key: 'report_no', label: '* Report No.', section: 'Tab 1 · Top Header' },
+    { key: 'is_retest', label: '* Is this a Retest?', section: 'Tab 1 · Top Header', type: 'select', options: ['No', 'Yes'] },
+    { key: 'previous_report_no', label: 'Previous Test Report No', section: 'Tab 1 · Top Header' },
+    { key: 'related_trf_no', label: 'Related TRF Number', section: 'Tab 1 · Top Header' },
     { key: 'email_recipients', label: 'Email Notification Recipient(s)', section: 'Tab 1 · Top Header' },
 
     // Section 2: Vendor / Factory / Supplier / Facility Information (Tab 1)
-    { key: 'company_name', label: '* Company Name (DXEditor22)', section: 'Tab 1 · Vendor/Factory/Supplier' },
-    { key: 'interlink_code', label: '* Interlink Code (DXEditor23)', section: 'Tab 1 · Vendor/Factory/Supplier' },
-    { key: 'vendor_name', label: '* Vendor Name (TRPT_SUPPLIER_DISP)', section: 'Tab 1 · Vendor/Factory/Supplier' },
-    { key: 'vendor_id', label: '* Vendor ID (DXEditor25)', section: 'Tab 1 · Vendor/Factory/Supplier' },
-    { key: 'factory_name', label: '* Factory Name (DXEditor26)', section: 'Tab 1 · Vendor/Factory/Supplier' },
-    { key: 'factory_id', label: '* Factory ID (DXEditor27)', section: 'Tab 1 · Vendor/Factory/Supplier' },
-    { key: 'supplier_name', label: 'Supplier Name (DXEditor28)', section: 'Tab 1 · Vendor/Factory/Supplier' },
-    { key: 'supplier_id', label: 'Supplier ID (DXEditor29)', section: 'Tab 1 · Vendor/Factory/Supplier' },
-    { key: 'facility_name', label: 'Facility Name ([10076] Material)', section: 'Tab 1 · Vendor/Factory/Supplier' },
-    { key: 'facility_id', label: 'Facility ID ([10076] Material)', section: 'Tab 1 · Vendor/Factory/Supplier' },
+    { key: 'company_name', label: '* Company Name', section: 'Tab 1 · Vendor/Factory/Supplier' },
+    { key: 'interlink_code', label: '* Interlink Code', section: 'Tab 1 · Vendor/Factory/Supplier' },
+    { key: 'vendor_name', label: '* Vendor Name', section: 'Tab 1 · Vendor/Factory/Supplier' },
+    { key: 'vendor_id', label: '* Vendor ID', section: 'Tab 1 · Vendor/Factory/Supplier' },
+    { key: 'factory_name', label: '* Factory Name', section: 'Tab 1 · Vendor/Factory/Supplier' },
+    { key: 'factory_id', label: '* Factory ID', section: 'Tab 1 · Vendor/Factory/Supplier' },
+    { key: 'supplier_name', label: 'Supplier Name', section: 'Tab 1 · Vendor/Factory/Supplier' },
+    { key: 'supplier_id', label: 'Supplier ID', section: 'Tab 1 · Vendor/Factory/Supplier' },
+    { key: 'facility_name', label: 'Facility Name (Material)', section: 'Tab 1 · Vendor/Factory/Supplier' },
+    { key: 'facility_id', label: 'Facility ID (Material)', section: 'Tab 1 · Vendor/Factory/Supplier' },
 
     // Section 3A: Product / Material Information (ALL) (Tab 1)
     { key: 'sample_type', label: '* Sample Type', section: 'Tab 1 · Product/Material Info (ALL)', readonly: true },
@@ -92,27 +92,27 @@
     { key: 'season', label: '* Season', section: 'Tab 1 · Product/Material Info (ALL)' },
     { key: 'sourcing_office', label: '* Sourcing Office', section: 'Tab 1 · Product/Material Info (ALL)' },
     { key: 'size_category', label: '* Size Category', section: 'Tab 1 · Product/Material Info (ALL)' },
-    { key: 'age_group', label: '* Age Group (DXEditor44)', section: 'Tab 1 · Product/Material Info (ALL)' },
-    { key: 'cargo_receive_date', label: '* Cargo Receive Date (DXEditor45)', section: 'Tab 1 · Product/Material Info (ALL)' },
+    { key: 'age_group', label: '* Age Group', section: 'Tab 1 · Product/Material Info (ALL)' },
+    { key: 'cargo_receive_date', label: '* Cargo Receive Date', section: 'Tab 1 · Product/Material Info (ALL)' },
     { key: 'product_category', label: '* Product Category', section: 'Tab 1 · Product/Material Info (ALL)' },
     { key: 'test_packages', label: '* Test Package(s)', section: 'Tab 1 · Product/Material Info (ALL)' },
-    { key: 'material_code', label: 'Material Code ([10076])', section: 'Tab 1 · Product/Material Info (ALL)' },
-    { key: 'material_name', label: 'Material Description ([10076])', section: 'Tab 1 · Product/Material Info (ALL)' },
-    { key: 'material_type', label: 'Material Type ([10076])', section: 'Tab 1 · Product/Material Info (ALL)' },
+    { key: 'material_code', label: 'Material Code', section: 'Tab 1 · Product/Material Info (ALL)' },
+    { key: 'material_name', label: 'Material Description', section: 'Tab 1 · Product/Material Info (ALL)' },
+    { key: 'material_type', label: 'Material Type', section: 'Tab 1 · Product/Material Info (ALL)' },
 
     // Section 3B: GCC/CPC & Factory Address (Tab 1)
-    { key: 'gcc_cpc_required', label: 'GCC/CPC Required? (DXEditor52)', section: 'Tab 1 · GCC/CPC & Factory Address', type: 'select', options: ['No', 'Yes'] },
+    { key: 'gcc_cpc_required', label: 'GCC/CPC Required?', section: 'Tab 1 · GCC/CPC & Factory Address', type: 'select', options: ['No', 'Yes'] },
     { key: 'product_id', label: 'Product ID', section: 'Tab 1 · GCC/CPC & Factory Address' },
-    { key: 'manufacture_date', label: 'Manufacture Date (DXEditor54)', section: 'Tab 1 · GCC/CPC & Factory Address' },
-    { key: 'factory_address', label: 'Factory Address (DXEditor55)', section: 'Tab 1 · GCC/CPC & Factory Address' },
-    { key: 'factory_country', label: 'Factory Country (DXEditor56)', section: 'Tab 1 · GCC/CPC & Factory Address' },
-    { key: 'factory_city', label: 'Factory City (DXEditor58)', section: 'Tab 1 · GCC/CPC & Factory Address' },
-    { key: 'factory_state_province', label: 'Factory State/Province (DXEditor59)', section: 'Tab 1 · GCC/CPC & Factory Address' },
+    { key: 'manufacture_date', label: 'Manufacture Date', section: 'Tab 1 · GCC/CPC & Factory Address' },
+    { key: 'factory_address', label: 'Factory Address', section: 'Tab 1 · GCC/CPC & Factory Address' },
+    { key: 'factory_country', label: 'Factory Country', section: 'Tab 1 · GCC/CPC & Factory Address' },
+    { key: 'factory_city', label: 'Factory City', section: 'Tab 1 · GCC/CPC & Factory Address' },
+    { key: 'factory_state_province', label: 'Factory State/Province', section: 'Tab 1 · GCC/CPC & Factory Address' },
 
     // Section 4: Upload Result Tab (Tab 2)
-    { key: 'report_issue_date', label: '* Report Issue Date (DXEditor6_I)', section: 'Tab 2 · Upload Result' },
-    { key: 'overall_result', label: '* Overall Result (TRPT_RESULT_DISP_0)', section: 'Tab 2 · Upload Result', type: 'select', options: ['Pass', 'Fail', 'Data'] },
-    { key: 'attachment_name', label: '* Report Attachment PDF (JOB_DUMMY_004)', section: 'Tab 2 · Upload Result' },
+    { key: 'report_issue_date', label: '* Report Issue Date', section: 'Tab 2 · Upload Result' },
+    { key: 'overall_result', label: '* Overall Result', section: 'Tab 2 · Upload Result', type: 'select', options: ['Pass', 'Fail', 'Data'] },
+    { key: 'attachment_name', label: '* Report Attachment PDF', section: 'Tab 2 · Upload Result' },
   ];
 
   const escHtml = (str) => {
@@ -155,6 +155,19 @@
     return data;
   };
 
+  // Report PDF of a Digital Test Report record ({slug, id: DTR record id}), as base64: the DTR page opens the record in a
+  // hidden frame, builds its print sheet and turns it into a PDF with dtr/sheet-pdf (see the &export=1 hook in dtr.js)
+  window.nxReportPdf = (lab) => new Promise((resolve, reject) => {
+    const f = document.createElement('iframe');
+    f.style.cssText = 'position:fixed;left:-9999px;top:0;width:1200px;height:900px;border:0';
+    f.src = `${BASE_URL}dtr?open=${encodeURIComponent(lab.slug)}:${encodeURIComponent(lab.id)}&preview=1&export=1`;
+    const done = (fn, v) => { clearTimeout(timer); window.removeEventListener('message', on); f.remove(); fn(v); };
+    const on = (e) => { if (e.source === f.contentWindow && e.data && e.data.type === 'NXL_REPORT_PDF') { e.data.ok ? done(resolve, e.data.b64) : done(reject, new Error(e.data.error)); } };
+    const timer = setTimeout(() => done(reject, new Error('The report PDF took too long to create.')), 120000);
+    window.addEventListener('message', on);
+    document.body.appendChild(f);
+  });
+
   // =========================================================================
   // 1. RENDER SEARCH GRID (SearchFormWithHeader.aspx [10102] - All 38 Columns & 517 Pages)
   // =========================================================================
@@ -168,10 +181,21 @@
       const v = inp.value.trim().toLowerCase();
       if (v) filters[inp.dataset.topFilter] = v;
     });
+    const gs = ($('#itk-general-search')?.value || '').trim().toLowerCase();
+    if (gs) filters.__all = gs;
     return filters;
   };
 
   const renderPager = () => {
+    if (state.searchMode) {
+      const info = state.searchInfo || {};
+      const cp = $('#itk-curr-page'); const tp = $('#itk-total-pages');
+      if (cp) cp.textContent = '1';
+      if (tp) tp.textContent = '1';
+      const nums = $('#itk-pager-nums');
+      if (nums) nums.innerHTML = `<span style="padding:4px 8px;font-size:12px;color:#475569">Search results: ${state.reports.length}${info.capped ? '+' : ''} of ${info.loaded || 0} loaded applications${info.complete ? '' : ' (still loading the rest…)'}</span>`;
+      return;
+    }
     const currPageEl = $('#itk-curr-page');
     const totalPagesEl = $('#itk-total-pages');
     const totalItemsEl = $('#itk-total-items');
@@ -239,7 +263,7 @@
     renderPager();
 
     const filters = getActiveFilters();
-    const filtered = state.reports.filter((r) => {
+    const filtered = state.searchMode ? state.reports : state.reports.filter((r) => {
       return Object.keys(filters).every((col) => {
         const cellVal = String(r[col] ?? '').toLowerCase();
         return cellVal.includes(filters[col]);
@@ -260,7 +284,7 @@
     if ($('#stat-synced')) $('#stat-synced').textContent = syncedCount;
 
     if (!filtered.length) {
-      tbody.innerHTML = `<tr><td colspan="38" style="text-align:center;padding:20px;color:#6b7280">No matching InterLink applications found on Page ${state.currentPage}.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="38" style="text-align:center;padding:20px;color:#6b7280">${state.searchMode ? `Nothing matches in all ${(state.searchInfo && state.searchInfo.loaded) || 0} loaded applications.${state.searchInfo && !state.searchInfo.complete ? ' The rest of InterLink is still being loaded in the background; try again in a few minutes.' : ''}` : `No matching InterLink applications found on Page ${state.currentPage}.`}</td></tr>`;
       return;
     }
 
@@ -291,17 +315,18 @@
         <tr data-app-row="${escHtml(r.application_no)}" class="${isChanged ? 'itk-row-changed' : ''}">
           <td style="text-align:center">
             ${hasReport
-              ? `<button type="button" class="itk-eu-btn" data-open-upload="${escHtml(r.application_no)}" title="Open Report Detail Page (${escHtml(r.application_no)})">📄</button>`
+              ? `<button type="button" class="itk-eu-btn" data-open-detail="${escHtml(r.application_no)}" title="Report Detail Page"><svg class="ic" aria-hidden="true"><use href="#i-file"/></svg></button>`
               : ''}
           </td>
-          <td style="text-align:center">${hasReport ? '📎' : ''}</td>
+          <td style="text-align:center">${hasReport ? `<button type="button" class="itk-eu-btn" data-open-clip="${escHtml(r.application_no)}" title="Report Attachment"><svg class="ic" aria-hidden="true"><use href="#i-paperclip"/></svg></button>` : ''}</td>
           <td>
             <div class="itk-action-cell">
               <button type="button" class="itk-eu-btn" data-open-normal="${escHtml(r.application_no)}" title="Open Online Application Form NormalForm.aspx [10000] (E)">E</button>
-              <button type="button" class="itk-eu-btn" data-open-upload="${escHtml(r.application_no)}" title="Open Online Upload Form UploadForm.aspx [${escHtml(r.form_code || (r.sample_type === 'Material' ? '10076' : '10072'))}] (U)">U</button>
+              <button type="button" class="itk-eu-btn" data-open-umenu="${escHtml(r.application_no)}" title="Upload Form: Add or Edit report">U</button>
+              <button type="button" class="itk-eu-btn" data-open-upload="${escHtml(r.application_no)}" title="Open the filled-up upload form with the attachment">&#8593;</button>
             </div>
           </td>
-          <td style="text-align:center">📋</td>
+          <td></td>
           <td>${escHtml(r.sample_type || '')}</td>
           <td>
             <a href="javascript:void(0)" class="itk-app-link" data-open-upload="${escHtml(r.application_no)}">${escHtml(r.application_no)}</a>
@@ -357,9 +382,7 @@
     if (liveText) liveText.textContent = `Syncing Page ${page}...`;
 
     try {
-      if (!silent) {
-        await showLoading(`PortalMainLoadingPanel.Show() · Pulling Page ${page} of ${state.totalPages} live from InterLink 2.0...`, 180);
-      }
+      if (!silent) beginLoading(`Loading page ${page} of ${state.totalPages} from InterLink…`);
 
       const res = await apiFetch('interlink/fetch-live-page', {
         method: 'POST',
@@ -390,7 +413,7 @@
         }
 
         if (state.changedApps.length > 0 && silent) {
-          showToast(`⚡ Real-time InterLink update detected on ${state.changedApps.join(', ')}!`);
+          showToast(`Real-time InterLink update detected on ${state.changedApps.join(', ')}!`);
         } else if (!silent) {
           showToast(`✓ Loaded Page ${state.currentPage} of ${state.totalPages} (${state.reports.length} rows, ${state.totalItems} total items).`);
         }
@@ -401,6 +424,7 @@
       if (!silent) showToast(err.message || 'Could not fetch live page from InterLink.', true);
     } finally {
       state.isFetchingPage = false;
+      if (!silent) endLoading();
     }
   };
 
@@ -419,6 +443,25 @@
         resolve();
       }, duration);
     });
+  };
+
+  // Loading that stays on screen until the live data has arrived (the InterLink request can take several seconds)
+  let loadTimer = null;
+  let loadFailsafe = null;
+  const beginLoading = (subtitle) => {
+    const overlay = $('#il-loading-overlay');
+    const sub = $('#il-loading-sub');
+    if (sub && subtitle) sub.textContent = subtitle;
+    overlay?.classList.remove('hidden');
+    clearTimeout(loadTimer);
+    loadTimer = setTimeout(() => { if (sub) sub.textContent = 'Still loading from InterLink… this can take a few seconds.'; }, 2500);
+    clearTimeout(loadFailsafe);
+    loadFailsafe = setTimeout(endLoading, 30000); // never leave the screen covered
+  };
+  const endLoading = () => {
+    clearTimeout(loadTimer);
+    clearTimeout(loadFailsafe);
+    $('#il-loading-overlay')?.classList.add('hidden');
   };
 
   const getCurrentFormValues = () => {
@@ -594,6 +637,12 @@
     const tab2Rep = $('#uf_tab2_report_no');
     if (tab2Rep) tab2Rep.value = initialMap.report_no;
 
+    // a report PDF generated or browsed for another application is not shown here
+    if (window.nxAttachedPdf && window.nxAttachedPdf.app !== report.application_no) {
+      window.nxAttachedPdf = null;
+      $('#uf-att-meta')?.classList.add('hidden');
+    }
+
     const retestVal = isAlreadySynced ? (report.is_retest || 'No') : 'No';
     $$('input[name="uf_is_retest"]').forEach((r) => {
       r.checked = r.value === retestVal;
@@ -601,7 +650,7 @@
   };
 
   const navigateToUploadForm = async (appNo, pushHistory = true) => {
-    await showLoading(`PortalMainLoadingPanel.Show() · Opening live UploadForm.aspx for ${appNo}...`, 280);
+    beginLoading(`Opening UploadForm for ${appNo}…`);
 
     let report = state.reports.find((r) => r.application_no === appNo) || { application_no: appNo };
     state.currentView = 'upload';
@@ -612,6 +661,41 @@
       state.historyStack.push(`upload:${appNo}`);
       state.historyIndex = state.historyStack.length - 1;
     }
+
+    const reveal = () => {
+      populateInitialUploadForm(report);
+
+      // Switch viewport
+      $('#il-view-search')?.classList.add('hidden');
+      $('#il-view-normal')?.classList.add('hidden');
+      $('#il-view-upload')?.classList.remove('hidden');
+
+      // Update Address Bar with the real u_form_url if available
+      const urlInput = $('#il-url-input');
+      if (urlInput) {
+        urlInput.value = report.u_form_url || `${urlInput.dataset.uploadUrl}&appNo=${encodeURIComponent(appNo)}`;
+      }
+
+      const badge = $('#il-page-badge');
+      if (badge) {
+        const fCode = report.sample_type === 'Material' ? '10076' : '10072';
+        badge.textContent = `UploadForm.aspx [${fCode}]`;
+        badge.className = 'il-page-badge il-badge-upload';
+      }
+
+      // Reveal the SYNC and 1-Click Send buttons now that the technician has reached UploadForm.aspx
+      $('#il-step-hint')?.classList.add('hidden');
+      $('#il-upload-actions')?.classList.remove('hidden');
+      const appTag = $('#sync-btn-appno');
+      if (appTag) appTag.textContent = appNo;
+
+      const bannerApp = $('#uf-banner-appno');
+      if (bannerApp) bannerApp.textContent = appNo;
+
+      updateNavButtons();
+
+    };
+    reveal();
 
     // Fetch live UploadForm.aspx [10072] / [10076] fields + Sample Items, Test Items, and Test Readings
     try {
@@ -646,40 +730,12 @@
       }
     }
 
-    populateInitialUploadForm(report);
-
-    // Switch viewport
-    $('#il-view-search')?.classList.add('hidden');
-    $('#il-view-normal')?.classList.add('hidden');
-    $('#il-view-upload')?.classList.remove('hidden');
-
-    // Update Address Bar with the real u_form_url if available
-    const urlInput = $('#il-url-input');
-    if (urlInput) {
-      urlInput.value = report.u_form_url || `${urlInput.dataset.uploadUrl}&appNo=${encodeURIComponent(appNo)}`;
-    }
-
-    const badge = $('#il-page-badge');
-    if (badge) {
-      const fCode = report.sample_type === 'Material' ? '10076' : '10072';
-      badge.textContent = `UploadForm.aspx [${fCode}]`;
-      badge.className = 'il-page-badge il-badge-upload';
-    }
-
-    // Reveal the SYNC and 1-Click Send buttons now that the technician has reached UploadForm.aspx
-    $('#il-step-hint')?.classList.add('hidden');
-    $('#il-upload-actions')?.classList.remove('hidden');
-    const appTag = $('#sync-btn-appno');
-    if (appTag) appTag.textContent = appNo;
-
-    const bannerApp = $('#uf-banner-appno');
-    if (bannerApp) bannerApp.textContent = appNo;
-
-    updateNavButtons();
+    reveal();
+    endLoading();
   };
 
   const navigateToNormalForm = async (appNo, pushHistory = true) => {
-    await showLoading(`Opening live NormalForm.aspx [10000] (Online Application Form) for ${appNo}...`, 260);
+    beginLoading(`Opening the application form for ${appNo}…`);
 
     let report = state.reports.find((r) => r.application_no === appNo) || { application_no: appNo };
     state.currentView = 'normal';
@@ -690,6 +746,43 @@
       state.historyStack.push(`normal:${appNo}`);
       state.historyIndex = state.historyStack.length - 1;
     }
+
+    const reveal = () => {
+      $('#nf-banner-appno').textContent = appNo;
+      $('#nf_application_no').value = report.application_no || appNo;
+      $('#nf_company_name').value = report.company_name || 'KEY TRADE CO., LTD';
+      $('#nf_interlink_code').value = report.interlink_code || 'E126863';
+      $('#nf_applicant_address').value = report.applicant_address || 'Lot 1P7-A,Phase 2,Subic Bay GatewayPark, Subic Bay Freeport Zone';
+      $('#nf_contact_person').value = report.contact_person || 'Danica Agbuya';
+      $('#nf_contact_email').value = `${report.contact_email || 'dtp_qcasst@dtshoes.com'} | ${report.contact_phone || '(047) 252-2899'}`;
+      $('#nf_service_provider').value = report.service_provider || 'DATIAN SUBIC SHOES INC.';
+      $('#nf_service_test_type').value = report.service_test_type || 'In-House Lab Testing';
+      $('#nf_test_packages').value = report.test_packages || 'VANS Pull Strength';
+      $('#nf_style_sku').value = `${report.style_no || report.material_code || ''} / ${report.style_color_no || ''}`;
+      $('#nf_product_name').value = report.product_name || report.material_name || '';
+      $('#nf_colorway_name').value = report.colorway_name || '';
+
+      $('#il-view-search')?.classList.add('hidden');
+      $('#il-view-upload')?.classList.add('hidden');
+      $('#il-view-normal')?.classList.remove('hidden');
+
+      const urlInput = $('#il-url-input');
+      if (urlInput) {
+        urlInput.value = report.e_form_url || urlInput.dataset.normalUrl || urlInput.dataset.searchUrl;
+      }
+
+      const badge = $('#il-page-badge');
+      if (badge) {
+        badge.textContent = 'NormalForm.aspx [10000]';
+        badge.className = 'il-page-badge il-badge-search';
+      }
+
+      $('#il-upload-actions')?.classList.add('hidden');
+      $('#il-step-hint')?.classList.remove('hidden');
+      updateNavButtons();
+
+    };
+    reveal();
 
     try {
       const res = await apiFetch('interlink/fetch-live-form', {
@@ -708,38 +801,8 @@
       }
     } catch (_) {}
 
-    $('#nf-banner-appno').textContent = appNo;
-    $('#nf_application_no').value = report.application_no || appNo;
-    $('#nf_company_name').value = report.company_name || 'KEY TRADE CO., LTD';
-    $('#nf_interlink_code').value = report.interlink_code || 'E126863';
-    $('#nf_applicant_address').value = report.applicant_address || 'Lot 1P7-A,Phase 2,Subic Bay GatewayPark, Subic Bay Freeport Zone';
-    $('#nf_contact_person').value = report.contact_person || 'Danica Agbuya';
-    $('#nf_contact_email').value = `${report.contact_email || 'dtp_qcasst@dtshoes.com'} | ${report.contact_phone || '(047) 252-2899'}`;
-    $('#nf_service_provider').value = report.service_provider || 'DATIAN SUBIC SHOES INC.';
-    $('#nf_service_test_type').value = report.service_test_type || 'In-House Lab Testing';
-    $('#nf_test_packages').value = report.test_packages || 'VANS Pull Strength';
-    $('#nf_style_sku').value = `${report.style_no || report.material_code || ''} / ${report.style_color_no || ''}`;
-    $('#nf_product_name').value = report.product_name || report.material_name || '';
-    $('#nf_colorway_name').value = report.colorway_name || '';
-
-    $('#il-view-search')?.classList.add('hidden');
-    $('#il-view-upload')?.classList.add('hidden');
-    $('#il-view-normal')?.classList.remove('hidden');
-
-    const urlInput = $('#il-url-input');
-    if (urlInput) {
-      urlInput.value = report.e_form_url || urlInput.dataset.normalUrl || urlInput.dataset.searchUrl;
-    }
-
-    const badge = $('#il-page-badge');
-    if (badge) {
-      badge.textContent = 'NormalForm.aspx [10000]';
-      badge.className = 'il-page-badge il-badge-search';
-    }
-
-    $('#il-upload-actions')?.classList.add('hidden');
-    $('#il-step-hint')?.classList.remove('hidden');
-    updateNavButtons();
+    reveal();
+    endLoading();
   };
 
   const navigateToSearchList = async (pushHistory = true) => {
@@ -840,7 +903,7 @@
     const combo = $('#dlg-labref-combo');
     if (!combo) return;
     if (!rows || !rows.length) {
-      combo.innerHTML = `<option value="">-- No matching LabRefNo found in dbnexus --</option>`;
+      combo.innerHTML = `<option value="">-- No matching LabRefNo found in NEXUS-L --</option>`;
       return;
     }
     combo.innerHTML = rows.map((lr) => {
@@ -1099,6 +1162,9 @@
         }),
       });
 
+      // Sending is done by the person responsible, in their own browser: show the helper that fills the InterLink form
+      if (sendLive && window.nxFillHelper) window.nxFillHelper(appNo, fieldsToSync);
+
       // Fill every selected field into UploadForm.aspx (Tab 1 + Tab 2) with visual highlight
       Object.keys(fieldsToSync).forEach((key) => {
         const val = fieldsToSync[key];
@@ -1146,7 +1212,7 @@
 
       if (sendLive) {
         // Also switch to Tab 2 (Upload Result) briefly or highlight completion
-        showToast(`⚡ 1-Click Report Sent! Synced ${Object.keys(fieldsToSync).length} fields + Sample & Test Readings for ${appNo} (${fieldsToSync.report_no || ''}) to InterLink 2.0!`);
+        showToast(`1-Click Report Sent! Synced ${Object.keys(fieldsToSync).length} fields + Sample & Test Readings for ${appNo} (${fieldsToSync.report_no || ''}) to InterLink 2.0!`);
       } else {
         showToast(`✓ Synced ${Object.keys(fieldsToSync).length} fields from NEXUS-L into UploadForm.aspx (${appNo})!`);
       }
@@ -1180,11 +1246,69 @@
     `).join('');
   };
 
+  // ---- Report Detail Page (read-only copy of what InterLink shows) and the U menu ---------------------------------
+  const openUMenu = (btn, appNo) => {
+    document.querySelectorAll('.itk-umenu').forEach((m) => m.remove());
+    const m = document.createElement('div');
+    m.className = 'itk-umenu';
+    m.innerHTML = '<button type="button" data-a="add">Add (new report)</button><button type="button" data-a="edit">Edit (current report)</button>';
+    const rc = btn.getBoundingClientRect();
+    m.style.cssText = `position:fixed;left:${rc.left}px;top:${rc.bottom + 4}px;z-index:9000`;
+    document.body.appendChild(m);
+    const off = (ev) => { if (!m.contains(ev.target)) { m.remove(); document.removeEventListener('mousedown', off); } };
+    setTimeout(() => document.addEventListener('mousedown', off), 0);
+    m.addEventListener('click', (ev) => { if (!ev.target.dataset.a) return; m.remove(); navigateToUploadForm(appNo); });
+  };
+  // paper clip: the attached report is the Lab Reference's report sheet (the DTR print preview), opened in its own tab
+  const openAttachment = async (appNo) => {
+    const w = window.open('', '_blank');
+    try {
+      const j = await fetch(`${BASE_URL}interlink/labrefs?limit=5&q=${encodeURIComponent(appNo)}`).then((r) => r.json());
+      const lr = (j.rows || []).find((x) => x.tr_no === appNo) || (j.rows || [])[0];
+      if (!lr) throw new Error('No Lab Reference is linked to this application.');
+      const url = `${BASE_URL}dtr?open=${encodeURIComponent(lr.form_slug)}:${lr.id}&preview=1`;
+      if (w) w.location.href = url; else window.location.href = url;
+    } catch (e) { if (w) w.close(); nxToast(e.message || 'Could not open the report.', 'error', 6000); }
+  };
+  const openDetail = (appNo, focusAttach) => {
+    const r = state.reports.find((x) => x.application_no === appNo) || { application_no: appNo };
+    const v = (k, d = '') => escHtml(r[k] || d);
+    const idp = (n, i) => v(n) + (r[i] ? ' / ' + v(i) : '');
+    const pairs = [
+      ['Application No.', v('application_no')], ['Online TRF Submission Date', v('trf_submission_date')], ['Report No.', v('report_no')], ['Report Issue Date', v('report_issue_date')],
+      ['Sample Type', v('sample_type')], ['Brand Name', v('buyer_brand', 'Vans')], ['Company Name', v('company_name')], ['Interlink Code', v('interlink_code')],
+      ['Vendor Name/ID', idp('vendor_name', 'vendor_id')], ['Factory Name/ID', idp('factory_name', 'factory_id')],
+      ['Supplier Name/ID', idp('supplier_name', 'supplier_id')], ['Style No.', v('style_no')], ['SKU No.', v('style_color_no')],
+      ['Material Code', v('material_code')], ['Material Description', v('material_description')], ['Product Category', v('product_category')], ['Product Name', v('product_name')],
+      ['Season', v('season')], ['Age Group', v('age_group')], ['Sourcing Office', v('sourcing_office')], ['Service Test Type', v('service_test_type', 'In-House Lab Testing')],
+      ['Test Stage', v('test_stage', 'Production')], ['Product Export To', v('product_export_to')], ['Service Provider', v('service_provider', 'DATIAN SUBIC SHOES INC.')],
+      ['Lab Location', v('lab_location', 'PHILIPPINES')], ['Related TRF Number', v('related_trf_no')], ['Remarks', v('remarks')], ['Overall Result', v('overall_result')],
+    ];
+    const att = r.report_no ? `${escHtml(r.report_no)}.pdf` : '';
+    const back = document.createElement('div');
+    back.className = 'nx-modal-back';
+    back.innerHTML = `<div class="nx-modal itk-detail" role="dialog" aria-modal="true" aria-label="Report Detail Page">
+      <h3 class="itk-detail-h">VF Corporation - Report Detail Page</h3>
+      <div class="itk-detail-grid">${pairs.map(([l, val]) => `<div class="itk-dl">${l}</div><div class="itk-dv">${val || '&nbsp;'}</div>`).join('')}</div>
+      <div class="itk-detail-sec ${focusAttach ? 'itk-focus' : ''}"><b>Report Attachment</b><div>${att || '<span class="muted">No report attached</span>'}</div></div>
+      <div class="itk-detail-sec"><b>Supplementary Attachment</b><table class="itk-grid"><thead><tr><th>File Name</th><th>Date Added</th></tr></thead><tbody><tr><td colspan="2" class="muted">Empty</td></tr></tbody></table></div>
+      <div class="itk-detail-sec"><b>Report Review</b><div>Review Result: ${v('review_result')} &nbsp; Review Status Code: ${v('review_status')}</div>
+        <table class="itk-grid"><thead><tr><th>Date/Time</th><th>Comment</th><th>By Whom</th><th>Company</th></tr></thead><tbody><tr><td colspan="4">${v('latest_review_comment') || '<span class="muted">No comments</span>'}</td></tr></tbody></table></div>
+      <div class="nx-modal-actions"><button type="button" class="nx-btn" data-a="close">Close</button></div></div>`;
+    document.body.appendChild(back);
+    back.addEventListener('click', (e) => { if (e.target === back || e.target.dataset.a === 'close') back.remove(); });
+  };
+
   // =========================================================================
   // 6. EVENT LISTENERS
   // =========================================================================
   // Delegate clicks on "U", "E", or Application No. in SearchFormWithHeader.aspx
   $('#itk-grid-tbody')?.addEventListener('click', (e) => {
+    const dt = e.target.closest('[data-open-detail],[data-open-clip]');
+    if (dt && dt.dataset.openClip) { openAttachment(dt.dataset.openClip); return; }
+    if (dt) { openDetail(dt.dataset.openDetail, false); return; }
+    const um = e.target.closest('[data-open-umenu]');
+    if (um) { openUMenu(um, um.dataset.openUmenu); return; }
     const uploadTrigger = e.target.closest('[data-open-upload]');
     if (uploadTrigger) {
       const appNo = uploadTrigger.dataset.openUpload;
@@ -1204,16 +1328,46 @@
   });
 
   // Live filter inputs in SearchFormWithHeader.aspx (both grid filters and top criteria panel)
+  let searchTimer = null;
+  let searchSeq = 0;
+  const runSearch = async () => {
+    const f = getActiveFilters();
+    if (!Object.keys(f).length) {
+      if (state.searchMode) {                      // filters cleared: back to the live page the person was on
+        state.searchMode = false;
+        await fetchLiveInterlinkPage(state.liveReturnPage || 1, state.pageSize, false, false);
+      } else renderSearchGrid();
+      return;
+    }
+    if (!state.searchMode) state.liveReturnPage = state.currentPage;
+    state.searchMode = true;
+    const seq = ++searchSeq;
+    const tbody = $('#itk-grid-tbody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="38" style="text-align:center;padding:20px;color:#6b7280"><span class="nx-spin" aria-hidden="true"></span> Searching all InterLink applications…</td></tr>';
+    try {
+      const res = await apiFetch('interlink/search?filters=' + encodeURIComponent(JSON.stringify(f)));
+      if (seq !== searchSeq) return;               // a newer search started
+      state.reports = res.rows || [];
+      state.searchInfo = res;
+      renderSearchGrid();
+    } catch (err) {
+      if (seq === searchSeq) showToast(err.message || 'Search failed.', true);
+    }
+  };
+  const searchSoon = () => { clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 350); };
+  $('#itk-general-search')?.addEventListener('input', searchSoon);
+  $('#itk-general-search')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearTimeout(searchTimer); runSearch(); } });
   $$('#itk-search-table .itk-filter-row input[data-col], #itk-search-criteria-panel [data-top-filter]').forEach((inp) => {
-    inp.addEventListener('input', renderSearchGrid);
-    inp.addEventListener('change', renderSearchGrid);
+    inp.addEventListener('input', searchSoon);
+    inp.addEventListener('change', searchSoon);
   });
 
   $('#itk-btn-clear-filter')?.addEventListener('click', () => {
     $$('#itk-search-table .itk-filter-row input[data-col], #itk-search-criteria-panel [data-top-filter]').forEach((inp) => {
       if (!inp.readOnly) inp.value = '';
     });
-    renderSearchGrid();
+    if ($('#itk-general-search')) $('#itk-general-search').value = '';
+    runSearch();
   });
 
   $('#itk-btn-refresh')?.addEventListener('click', () => {
@@ -1225,6 +1379,7 @@
     const trigger = e.target.closest('[data-goto-page]');
     if (!trigger || trigger.disabled) return;
     const pg = Number(trigger.dataset.gotoPage);
+    if (state.searchMode) return;
     if (pg && pg >= 1 && pg <= state.totalPages && pg !== state.currentPage) {
       fetchLiveInterlinkPage(pg, state.pageSize, false, false);
     }
@@ -1372,14 +1527,104 @@
     }
   });
 
-  $('#uf-btn-browse-pdf')?.addEventListener('click', () => {
-    const appNo = state.activeAppNo || 'A005967935';
+  // ---- Report Attachment (PDF): generated from the Lab Reference through the Digital Test Report sheet, or browsed ----
+  // The chosen PDF is kept in window.nxAttachedPdf so the 1-click sender attaches this exact file to InterLink.
+  const b64ToBlob = (b64) => {
+    const bin = atob(b64);
+    const buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    return new Blob([buf], { type: 'application/pdf' });
+  };
+  const setAttachedPdf = (pdf) => {
+    window.nxAttachedPdf = pdf;
     const inp = $('#uf_attachment_name');
-    if (inp && !inp.value) {
-      inp.value = `TRF_${appNo}_VansReport.pdf`;
+    if (inp) inp.value = pdf.name;
+    const wrap = inp?.closest('[data-field-wrap]');
+    wrap?.querySelector('.uf-sync-tag')?.classList.remove('hidden');
+    wrap?.classList.add('uf-field-synced');
+    const kb = Math.max(1, Math.round((pdf.b64.length * 3) / 4 / 1024));
+    if ($('#uf-att-info')) $('#uf-att-info').textContent = `${pdf.source === 'generated' ? 'Generated from Lab Ref ' + pdf.lab_ref_no : 'Selected file'} · ${kb} KB`;
+    $('#uf-att-meta')?.classList.remove('hidden');
+  };
+  const openAttachedPdf = (download) => {
+    const pdf = window.nxAttachedPdf;
+    if (!pdf) return;
+    const url = URL.createObjectURL(b64ToBlob(pdf.b64));
+    if (download) {
+      const a = document.createElement('a');
+      a.href = url; a.download = pdf.name;
+      document.body.appendChild(a); a.click(); a.remove();
+    } else {
+      window.open(url, '_blank', 'noopener');
     }
-    showToast(`Selected PDF attachment: ${inp?.value || 'Report.pdf'}`);
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  };
+
+  // Lab Reference of the open application: the one picked in the sync dialog, the one saved on the report, or the
+  // Lab Reference whose TR No. is this application
+  const currentLabRef = () => {
+    const appNo = state.activeAppNo || $('#uf_application_no')?.value || '';
+    const rep = state.reports.find((r) => r.application_no === appNo) || {};
+    const byTr = state.labrefs.find((l) => appNo && String(l.tr_no || '').trim() === appNo);
+    const fromName = (($('#uf_attachment_name')?.value || '').match(/^(.+?)_TestReport\.pdf$/i) || [])[1];
+    return String($('#dlg-lr-labref')?.value || rep.lab_ref_no || byTr?.lab_ref_no || fromName || '').trim();
+  };
+
+  $('#uf-btn-generate-pdf')?.addEventListener('click', async () => {
+    const btn = $('#uf-btn-generate-pdf');
+    let labRef = currentLabRef();
+    if (!labRef) {
+      labRef = (prompt('No Lab Reference is linked to this application yet. Enter the Lab Ref. No. to build the report from:', '') || '').trim();
+      if (!labRef) return;
+    }
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+    try {
+      const det = await apiFetch(`interlink/labref-detail?lab_ref_no=${encodeURIComponent(labRef)}`);
+      const lr = det.labref || {};
+      if (!lr.form_slug || !(lr.source_id || lr.id)) throw new Error(`${labRef} has no Digital Test Report form to print.`);
+      showToast(`Creating the ${lr.form_category || ''} report PDF for ${lr.lab_ref_no}…`);
+      const b64 = await window.nxReportPdf({ slug: lr.form_slug, id: lr.source_id || lr.id });
+      setAttachedPdf({
+        app: state.activeAppNo || $('#uf_application_no')?.value || '',
+        lab_ref_no: lr.lab_ref_no,
+        name: `${lr.lab_ref_no}_TestReport.pdf`,
+        b64,
+        source: 'generated',
+      });
+      showToast(`Report PDF ready: ${lr.lab_ref_no}_TestReport.pdf (press View to check it)`);
+    } catch (e) {
+      showToast('Could not generate the report: ' + e.message, true);
+    }
+    btn.disabled = false;
+    btn.textContent = label;
   });
+
+  $('#uf-btn-browse-pdf')?.addEventListener('click', () => $('#uf-file-pdf')?.click());
+  $('#uf-file-pdf')?.addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') {
+      showToast('Please choose a PDF file.', true);
+      return;
+    }
+    const rd = new FileReader();
+    rd.onload = () => {
+      setAttachedPdf({
+        app: state.activeAppNo || $('#uf_application_no')?.value || '',
+        lab_ref_no: currentLabRef(),
+        name: file.name,
+        b64: String(rd.result).split(',')[1] || '',
+        source: 'file',
+      });
+      showToast(`Selected PDF attachment: ${file.name}`);
+    };
+    rd.readAsDataURL(file);
+  });
+  $('#uf-btn-view-pdf')?.addEventListener('click', () => openAttachedPdf(false));
+  $('#uf-btn-save-pdf')?.addEventListener('click', () => openAttachedPdf(true));
 
   // Open Pre-Sync Confirmation Dialog
   $('#btn-open-sync-dialog')?.addEventListener('click', openSyncDialog);

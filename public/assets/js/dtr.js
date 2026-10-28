@@ -90,12 +90,13 @@
   // 2. LAB TRACKER SEARCH & CATEGORY PILLS
   // =========================================================================
   const loadTrackerRows = async (slug = 'all', q = '') => {
+    const tbody = $('#dtr-tracker-tbody');
     try {
+      if (tbody && window.nxState) nxState(tbody, 'loading', 'Loading lab reports…', 16);
       const res = await apiFetch(`dtr/records?slug=${encodeURIComponent(slug)}&q=${encodeURIComponent(q)}`);
-      const tbody = $('#dtr-tracker-tbody');
       if (!tbody || !res.rows) return;
       if (!res.rows.length) {
-        tbody.innerHTML = `<tr><td colspan="16" class="muted" style="text-align:center;padding:18px">No matching LabRefNo records found.</td></tr>`;
+        nxState(tbody, 'empty', 'No lab reports match your search. Clear the filters or try another Lab Ref No.', 16);
         return;
       }
       tbody.innerHTML = res.rows.map((r) => {
@@ -128,6 +129,7 @@
       }).join('');
     } catch (err) {
       console.error(err);
+      if (tbody && window.nxState) nxState(tbody, 'error', 'The list could not be loaded. Check your connection and try again.', 16);
     }
   };
 
@@ -431,10 +433,12 @@
   // 4. LOAD & SAVE MATERIAL RECORDS
   // =========================================================================
   const loadMaterialRecordList = async (slug, selectedId = null) => {
+    const sel = $('#dtr-mat-record-select');
     try {
+      if (sel) sel.innerHTML = '<option value="">Loading records…</option>';
       const res = await apiFetch(`dtr/records?slug=${encodeURIComponent(slug)}`);
-      const sel = $('#dtr-mat-record-select');
       if (!sel || !res.rows) return;
+      if (!res.rows.length) { sel.innerHTML = '<option value="">No records yet - press “+ New Record”</option>'; return; }
       sel.innerHTML = res.rows.map((r) => `
         <option value="${escHtml(r.source_id)}" ${String(r.source_id) === String(selectedId) ? 'selected' : ''}>
           ${escHtml(r.lab_ref_no)} · ${escHtml(r.material_type || r.form_category)} · ${escHtml(r.model_style || r.material_code || '')} [${escHtml(r.overall_result || 'Pass')}]
@@ -442,6 +446,8 @@
       `).join('');
     } catch (err) {
       console.error(err);
+      if (sel) sel.innerHTML = '<option value="">Could not load records - reload the page</option>';
+      if (window.nxToast) nxToast('The record list could not be loaded.', 'error');
     }
   };
 
@@ -462,7 +468,7 @@
   const populateMaterialForm = (record, cfg = {}) => {
     activeRecord = record || {};
     if ($('#dtr-active-form-label') && cfg.label) {
-      $('#dtr-active-form-label').textContent = `${cfg.label} · dbnexus.${cfg.table}`;
+      $('#dtr-active-form-label').textContent = `${cfg.label}`;
     }
     if ($('#dtr-active-labref-title')) {
       $('#dtr-active-labref-title').textContent = `${record.LabRefNo || 'New Report'} — ${record['Material Description'] || record.MaterialDescription || record.MaterialType || ''}`;
@@ -715,7 +721,7 @@
         if ($('#dtr-machine-status')) {
           $('#dtr-machine-status').textContent = res.message || 'Machine data loaded.';
         }
-        showToast(`⚡ ${res.message}`);
+        showToast(`${res.message}`);
       }
     } catch (err) {
       showToast('Machine loader error: ' + (err.message || ''), true);
@@ -862,10 +868,12 @@
   };
 
   const loadBondingRecordList = async (selectedId = null) => {
+    const sel = $('#dtr-bonding-record-select');
     try {
+      if (sel) sel.innerHTML = '<option value="">Loading reports…</option>';
       const res = await apiFetch('dtr/records?slug=bonding');
-      const sel = $('#dtr-bonding-record-select');
       if (!sel || !res.rows) return;
+      if (!res.rows.length) { sel.innerHTML = '<option value="">No bonding reports yet</option>'; return; }
       sel.innerHTML = res.rows.map((r) => `
         <option value="${escHtml(r.source_id)}" ${String(r.source_id) === String(selectedId) ? 'selected' : ''}>
           ${escHtml(r.lab_ref_no)} · ${escHtml(r.model_style || '')} · ${escHtml(r.color || '')} [${escHtml(r.overall_result || 'Pass')}]
@@ -873,6 +881,8 @@
       `).join('');
     } catch (err) {
       console.error(err);
+      if (sel) sel.innerHTML = '<option value="">Could not load reports - reload the page</option>';
+      if (window.nxToast) nxToast('The bonding report list could not be loaded.', 'error');
     }
   };
 
@@ -888,6 +898,7 @@
         const el = $(`#bf_${k}`);
         if (el) el.value = rec[k] ?? '';
       });
+      $$('#dtr-bonding-form [name^="cf_"]').forEach((el) => { el.value = (res.customValues || {})[el.name] ?? ''; });
 
       for (let i = 1; i <= 35; i++) {
         if ($(`#bp_UTFpoint${i}`)) $(`#bp_UTFpoint${i}`).value = bp[`UTFpoint${i}`] ?? '';
@@ -941,7 +952,7 @@
           if (el) el.value = res.loadedFields[k];
         });
         computeBondingPoints();
-        showToast(`⚡ ${res.message}`);
+        showToast(`${res.message}`);
       }
     } catch (err) {
       showToast('Failed to load U60 machine file.', true);
@@ -1282,6 +1293,10 @@
 
     const html = `
       <div class="dtr-report-sheet">
+        <div class="rpt-logo-row">
+          <img class="rpt-logo-vf" src="${BASE_URL}assets/images/vf-logo.webp" alt="VF">
+          <img class="rpt-logo-satra" src="${BASE_URL}assets/images/satra-accredited.png" alt="SATRA Accredited Laboratory No. 08A03">
+        </div>
         <div class="dtr-sheet-header">
           <div class="dtr-sheet-title">
             <h2>DATIAN SUBIC SHOES INC. (DTP)</h2>
@@ -1373,7 +1388,7 @@
   const loadSketchConfigs = async () => {
     if (sketchConfigsCache) return sketchConfigsCache;
     try {
-      const res = await fetch('/assets/images/bonding_sketches/sketch_configs.json');
+      const res = await fetch(BASE_URL + 'assets/images/bonding_sketches/sketch_configs.json');
       if (res.ok) {
         sketchConfigsCache = await res.json();
         return sketchConfigsCache;
@@ -1453,7 +1468,30 @@
       const available = [26, 27, 28, 29, 30, 31, 32, 33, 34];
       numPts = available.reduce((prev, curr) => Math.abs(curr - numPts) < Math.abs(prev - numPts) ? curr : prev, 27);
     }
-    const cfg = configs ? configs[numPts] : null;
+    let cfg = configs ? configs[numPts] : null;
+
+    // Admin-designed layout (Report Designer): moved / hidden points and extra items
+    let layoutExtras = [];
+    let layoutVec = null;
+    if (cfg) {
+      try {
+        const lj = await apiFetch('dtr/layout?slug=bonding&variant=' + encodeURIComponent(numPts));
+        const L = lj && lj.layout;
+        if (L) {
+          cfg = JSON.parse(JSON.stringify(cfg));
+          if (L.image) Object.assign(cfg.image, L.image);
+          ['utf', 'fto'].forEach((k) => {
+            Object.keys(L[k] || {}).forEach((i) => {
+              if (L[k][i].hidden) delete cfg[k][i];
+              else cfg[k][i] = L[k][i];
+            });
+          });
+          layoutExtras = L.extras || [];
+          if (L.vector || L.start) layoutVec = L;
+          if (L.vector) cfg.image.file = L.imageFile || 'blank.png';
+        }
+      } catch (e) { /* default layout */ }
+    }
 
     // Spot Color logic
     const getValColorStyle = (val, threshold, isFiTO = false) => {
@@ -1483,7 +1521,7 @@
     let activeShoePointsHtml = '';
     if (cfg) {
       activeShoePointsHtml += `
-        <img src="/assets/images/bonding_sketches/${cfg.image.file}" 
+        <img src="${BASE_URL}assets/images/bonding_sketches/${cfg.image.file}" 
              class="vf-shoe-img" 
              style="left:${cfg.image.pctLeft}%; top:${cfg.image.pctTop}%; width:${cfg.image.pctWidth}%; height:${cfg.image.pctHeight}%;" 
              alt="${side} Shoe Sketch">
@@ -1518,12 +1556,53 @@
           `;
         }
       }
+      if (layoutVec) {
+        let svg = '<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none">';
+        let dots = '';
+        if (layoutVec.vector) {
+          ['utf', 'fto'].forEach((k) => Object.keys(cfg[k]).forEach((i) => {
+            const b = cfg[k][i]; const d = ((layoutVec.dots || {})[k] || {})[i];
+            if (!d) return;
+            const r = b.pctLeft + b.pctWidth; const cy = b.pctTop + b.pctHeight / 2;
+            const x = d.x < b.pctLeft ? b.pctLeft : d.x > r ? r : b.pctLeft + b.pctWidth / 2;
+            const y = (x === b.pctLeft || x === r) ? cy : (d.y < b.pctTop ? b.pctTop : b.pctTop + b.pctHeight);
+            const col = k === 'utf' ? '#2563eb' : '#7c3aed';
+            svg += `<line x1="${x}" y1="${y}" x2="${d.x}" y2="${d.y}" stroke="${col}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`;
+            dots += `<div style="position:absolute;left:${d.x}%;top:${d.y}%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border-radius:50%;background:${col}"></div>`;
+          }));
+        }
+        if (layoutVec.start) {
+          const st = layoutVec.start;
+          dots += `<div style="position:absolute;left:${st.x}%;top:${st.y}%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:3px;white-space:nowrap;color:#b91c1c;font:800 9px sans-serif"><i style="display:block;width:9px;height:9px;background:#dc2626;transform:rotate(45deg)"></i>${escHtml(st.label || 'START')}</div>`;
+        }
+        activeShoePointsHtml += svg + '</svg>' + dots;
+      }
+      layoutExtras.forEach((e) => {
+        const pos = `left:${e.pctLeft}%; top:${e.pctTop}%; width:${e.pctWidth}%; height:${e.pctHeight}%;`;
+        const txt = `color:${escHtml(e.color || '#111')}; font-size:${Number(e.size) || 12}px; font-weight:${e.bold ? 700 : 400};`;
+        let inner = '';
+        if (e.type === 'text') inner = escHtml(e.text);
+        else if (e.type === 'field') inner = escHtml($('#bf_' + e.field)?.value || '');
+        else if (e.type === 'image' && e.src) inner = `<img src="${BASE_URL}${escHtml(e.src)}" style="max-width:100%;max-height:100%" alt="">`;
+        else if (e.type === 'chart') {
+          let max = 0;
+          for (let i = 1; i <= cfg.pointsCount; i++) max = Math.max(max, parseFloat(utfVals[i]) || 0);
+          let bars = '';
+          for (let i = 1; i <= cfg.pointsCount; i++) {
+            const v = parseFloat(utfVals[i]) || 0;
+            bars += `<i style="flex:1;display:block;min-height:1px;height:${max ? (v / max) * 100 : 0}%;background:${v < 2 ? '#dc2626' : v < 3 ? '#d97706' : '#1d4ed8'}"></i>`;
+          }
+          inner = `<div style="display:flex;align-items:flex-end;gap:1px;width:100%;height:100%">${bars}</div>`;
+        }
+        const bg = e.type === 'line' ? `background:${escHtml(e.color || '#111')};` : '';
+        activeShoePointsHtml += `<div style="position:absolute;display:flex;align-items:center;overflow:hidden;${pos}${txt}${bg}">${inner}</div>`;
+      });
     } else {
       activeShoePointsHtml = `<div style="padding:20px;text-align:center;color:#64748b">Shoe sketch unavailable</div>`;
     }
 
     const blankShoeHtml = `
-      <img src="/assets/images/bonding_sketches/blank.png" 
+      <img src="${BASE_URL}assets/images/bonding_sketches/blank.png" 
            class="vf-shoe-img" 
            style="left:12%; top:8%; width:76%; height:84%; opacity:0.85;" 
            alt="Unmeasured Shoe Contour">
@@ -1578,28 +1657,23 @@
 
     const html = `
       <div class="vf-report-sheet">
-        <!-- VF Header -->
-        <div class="vf-header">
-          <div class="vf-brand-box">
-            <svg viewBox="0 0 100 100" class="vf-logo-svg">
-              <circle cx="50" cy="50" r="48" fill="#1e3a8a"/>
-              <text x="50%" y="64%" text-anchor="middle" fill="#ffffff" font-family="'Arial Black', sans-serif" font-weight="900" font-size="44" font-style="italic">VF</text>
-            </svg>
-            <div class="vf-form-no">Form # : Lab VF 001</div>
-          </div>
-
-          <div class="vf-title-box">
+        <!-- Row 1: VF logo | test method name | SATRA logo, all on one line -->
+        <div class="rpt-top">
+          <img class="rpt-logo-vf" src="${BASE_URL}assets/images/vf-logo.webp" alt="VF">
+          <div class="rpt-top-title">
             <h1 class="vf-title-en">Bonding Test Results</h1>
             <h2 class="vf-title-cn">胶着力测试</h2>
+          </div>
+          <img class="rpt-logo-satra" src="${BASE_URL}assets/images/satra-accredited.png" alt="SATRA Accredited Laboratory No. 08A03">
+        </div>
+
+        <!-- Row 2: form no / ETRF / lab ref + sample category (left), result + dates (right) -->
+        <div class="rpt-sub">
+          <div class="rpt-sub-left">
+            <div class="vf-form-no rpt-formno">Form # : Lab VF 001</div>
             <div class="vf-etrf-row">
               <span>ETRF No:</span>
               <span class="vf-val-underlined">${escHtml(etrf)}</span>
-            </div>
-          </div>
-
-          <div class="vf-meta-box">
-            <div class="vf-stamp-area">
-              <span class="vf-stamp ${stampCls}">${escHtml(overall)}</span>
             </div>
             <div class="vf-labref-row">
               <span>Lab Ref.No:</span>
@@ -1622,6 +1696,12 @@
                 <span style="display:inline-block;width:8px"></span>
                 <span class="vf-radio ${materialSource === 'Trial experiment' ? 'checked' : ''}"></span> 试胶试验
               </div>
+            </div>
+          </div>
+
+          <div class="rpt-sub-right">
+            <div class="vf-stamp-area">
+              <span class="vf-stamp ${stampCls}">${escHtml(overall)}</span>
             </div>
             <table class="vf-dates-table">
               <tr><td>Received Date 收到日期:</td><td class="vf-date-val">${escHtml(receivedDate)}</td></tr>
@@ -1779,7 +1859,7 @@
         <!-- Optional Collapsible Data Table -->
         <details class="no-print" style="margin-top:8px;font-size:11px;border:1px solid #cbd5e1;border-radius:4px;padding:6px 10px;background:#f8fafc">
           <summary style="cursor:pointer;font-weight:700;color:#334155">
-            📊 View Tabular Spot Values (${cfg ? cfg.pointsCount : 27} Points)
+            <svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg> View Tabular Spot Values (${cfg ? cfg.pointsCount : 27} Points)
           </summary>
           <table class="dtr-sheet-results-table" style="margin-top:8px;margin-bottom:0">
             <thead>
@@ -1827,7 +1907,7 @@
     const pdfBtn = $('#btn-dtr-download-access-pdf');
     if (pdfBtn) {
       if (bondingTestId > 0) {
-        pdfBtn.href = `/dtr/bonding-access-pdf?id=${bondingTestId}&side=${encodeURIComponent(side)}`;
+        pdfBtn.href = `${BASE_URL}dtr/bonding-access-pdf?id=${bondingTestId}&side=${encodeURIComponent(side)}`;
         pdfBtn.classList.remove('hidden');
       } else {
         pdfBtn.classList.add('hidden');
@@ -1839,6 +1919,27 @@
 
 
 
+  // Scale that makes the sheet fit ONE A4 page (210x297 mm, 6 mm margins): measures the sheet at the page width
+  const fitOnePageScale = (html) => {
+    const PAGE_W = 198 / 25.4 * 96;   // printable width  (px at 96 dpi)
+    const PAGE_H = 285 / 25.4 * 96;   // printable height
+    const probe = document.createElement('div');
+    probe.className = 'dtr-fit-probe';
+    probe.style.cssText = 'position:absolute;left:-99999px;top:0;visibility:hidden;';
+    document.body.appendChild(probe);
+    let scale = 1;
+    for (let i = 0; i < 4; i++) {
+      probe.style.width = (PAGE_W / scale) + 'px';
+      probe.innerHTML = html;
+      const h = probe.scrollHeight * scale;
+      const next = Math.min(1, scale * (PAGE_H / Math.max(h, 1)) * 0.985);
+      if (Math.abs(next - scale) < 0.005) { scale = next; break; }
+      scale = next;
+    }
+    probe.remove();
+    return Math.max(0.4, Math.round(scale * 1000) / 1000);
+  };
+
   $('#btn-dtr-print-preview')?.addEventListener('click', openMaterialPrintPreview);
   $('#btn-bond-print-preview')?.addEventListener('click', openBondingPrintPreview);
   $('#btn-dtr-close-print-modal')?.addEventListener('click', () => {
@@ -1847,9 +1948,86 @@
   $('#btn-dtr-cancel-print')?.addEventListener('click', () => {
     $('#dtr-print-modal-backdrop')?.classList.add('hidden');
   });
+  $('#btn-dtr-download-pdf')?.addEventListener('click', async () => {
+    const btn = $('#btn-dtr-download-pdf');
+    const src = $('#dtr-print-sheet-container');
+    if (!src || !btn) return;
+    const label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Creating PDF...';
+    try {
+      const res = await fetch(BASE_URL + 'dtr/sheet-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name="X-CSRF-TOKEN"]')?.content || '' },
+        body: JSON.stringify({ access_id: parseInt(($('#btn-dtr-download-access-pdf')?.href || '').match(/[?&]id=(\d+)/)?.[1] || 0, 10) && !$('#btn-dtr-download-access-pdf').classList.contains('hidden') ? parseInt($('#btn-dtr-download-access-pdf').href.match(/[?&]id=(\d+)/)[1], 10) : 0, side: (($('#btn-dtr-download-access-pdf')?.href || '').match(/side=(\w+)/) || [])[1] || 'Left', scale: fitOnePageScale(src.innerHTML), html: src.innerHTML, name: ($('#dtr-print-modal-title')?.textContent || 'Report').replace(/[^A-Za-z0-9._ -]+/g, '_') }),
+      });
+      if (!res.ok) throw new Error((await res.text()).slice(0, 200) || 'PDF failed');
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = (($('#dtr-print-modal-title')?.textContent || 'Report').replace(/[^A-Za-z0-9._ -]+/g, '_').trim() || 'Report') + '.pdf';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    } catch (e) { nxToast('Could not create the PDF: ' + e.message, 'error', 7000); }
+    btn.disabled = false; btn.textContent = label;
+  });
   $('#btn-dtr-do-print')?.addEventListener('click', () => {
+    // Print a clean copy of the sheet attached to <body>: the app layout (fixed height / overflow) would clip it
+    const src = $('#dtr-print-sheet-container');
+    if (!src) { window.print(); return; }
+    const root = document.createElement('div');
+    root.id = 'dtr-print-root';
+    root.innerHTML = src.innerHTML;
+    root.style.zoom = String(fitOnePageScale(src.innerHTML));
+    document.body.appendChild(root);
+    document.body.classList.add('dtr-printing');
+    const done = () => {
+      document.body.classList.remove('dtr-printing');
+      root.remove();
+      window.removeEventListener('afterprint', done);
+    };
+    window.addEventListener('afterprint', done);
     window.print();
   });
+
+  // =========================================================================
+  // 7b. ADMIN FORM LAYOUT (Report Designer): hidden / renamed / reordered fields + custom fields
+  // =========================================================================
+  const applyBondingFormLayout = async () => {
+    try {
+      const j = await apiFetch('dtr/layout?slug=bonding&variant=form');
+      const L = j && j.layout;
+      const form = $('#dtr-bonding-form');
+      if (!L || !form) return;
+
+      const wrapOf = (name) => form.querySelector(`[name="${name}"]`)?.closest('.dtr-field');
+
+      // custom fields are added at the end of the info grid, then ordered together with the rest
+      (L.customFields || []).forEach((c) => {
+        if (form.querySelector(`[name="${c.key}"]`)) return;
+        const host = $('#bf_LabRefNo')?.closest('.dtr-field')?.parentElement;
+        if (!host) return;
+        const d = document.createElement('div');
+        d.className = 'dtr-field';
+        d.innerHTML = `<label>${escHtml(c.label)}</label><input type="text" name="${escHtml(c.key)}" id="bf_${escHtml(c.key)}">`;
+        host.appendChild(d);
+      });
+
+      Object.entries(L.labels || {}).forEach(([n, t]) => {
+        const w = wrapOf(n);
+        const lab = w && w.querySelector('label');
+        if (lab && t) lab.textContent = t;
+      });
+      const host = $('#bf_LabRefNo')?.closest('.dtr-field')?.parentElement;
+      if (host && (L.order || []).length) {
+        L.order.forEach((n) => { const w = wrapOf(n); if (w && w.parentElement === host) host.appendChild(w); });
+        (L.customFields || []).forEach((c) => { const w = wrapOf(c.key); if (w) host.appendChild(w); });
+      }
+      (L.hiddenFields || []).forEach((n) => {
+        const w = wrapOf(n);
+        if (w) w.style.display = 'none';
+      });
+    } catch (e) { /* default form */ }
+  };
 
   // =========================================================================
   // 8. INITIALIZE ON PAGE LOAD
@@ -1857,7 +2035,44 @@
   updateCalculators();
   loadMaterialRecordList('fabric');
   loadSingleMaterialRecord('fabric', 0);
-  loadBondingRecordList();
-  loadSingleBondingRecord(0);
+  applyBondingFormLayout().then(() => { loadBondingRecordList(); loadSingleBondingRecord(0); });
   runStandardsExplorer();
+
+  // deep link from the assistant: ?open=<slug>:<id>  (+ &preview=1 opens the print preview)
+  (() => {
+    const q = new URLSearchParams(location.search);
+    const [slug, id] = String(q.get('open') || '').split(':');
+    if (!slug || !/^[a-z]+$/.test(slug) || !/^\d+$/.test(id || '')) return;
+    setTimeout(async () => {
+      const host = $('#dtr-tracker-tbody') || document.body;
+      const b = document.createElement('button');
+      b.type = 'button'; b.hidden = true; b.dataset.openRecord = slug; b.dataset.sourceId = id;
+      host.appendChild(b); b.click(); b.remove();
+      if (q.get('preview') === '1') {
+        await new Promise((r) => setTimeout(r, 2200));
+        (slug === 'bonding' ? $('#btn-bond-print-preview') : $('#btn-dtr-print-preview'))?.click();
+      }
+      // &export=1 inside the InterLink sender's hidden frame: hand the finished report PDF (as base64) to the parent page
+      if (q.get('export') === '1' && window.parent !== window) {
+        const reply = (m) => window.parent.postMessage(Object.assign({ type: 'NXL_REPORT_PDF' }, m), location.origin);
+        try {
+          await new Promise((r) => setTimeout(r, 800));
+          const src = $('#dtr-print-sheet-container');
+          if (!src || !src.innerHTML.trim()) throw new Error('The report sheet could not be prepared.');
+          const acc = $('#btn-dtr-download-access-pdf');
+          const accId = acc && !acc.classList.contains('hidden') ? parseInt(((acc.href || '').match(/[?&]id=(\d+)/) || [])[1] || 0, 10) : 0;
+          const res = await fetch(BASE_URL + 'dtr/sheet-pdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name="X-CSRF-TOKEN"]')?.content || '' },
+            body: JSON.stringify({ access_id: accId, side: ((acc?.href || '').match(/side=(\w+)/) || [])[1] || 'Left', scale: fitOnePageScale(src.innerHTML), html: src.innerHTML, name: 'Report' }),
+          });
+          if (!res.ok) throw new Error((await res.text()).slice(0, 200) || 'PDF failed');
+          const buf = new Uint8Array(await res.arrayBuffer());
+          let bin = '';
+          for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+          reply({ ok: true, b64: btoa(bin) });
+        } catch (e) { reply({ ok: false, error: e.message }); }
+      }
+    }, 900);
+  })();
 })();

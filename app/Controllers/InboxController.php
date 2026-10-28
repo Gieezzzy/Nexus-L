@@ -50,7 +50,7 @@ class InboxController extends BaseController
                     }
                 } catch (\Throwable $e) {
                     log_message('error', '[Inbox] ' . $store->source() . ': ' . $e->getMessage());
-                    $out['warnings'][] = $store->source() === 'r' ? 'The RMS database is unavailable right now.' : 'Messages are unavailable right now.';
+                    $out['warnings'][] = $store->source() === 'r' ? 'The RMS service is unavailable right now.' : 'Messages are unavailable right now.';
                 }
             }
             usort($out['conversations'], static fn ($a, $b) => strcmp($b['at'], $a['at']));

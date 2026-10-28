@@ -17,7 +17,7 @@
 
 .dtr-kpi small {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted, #64748b);
   font-weight: 600;
   text-transform: uppercase;
@@ -32,7 +32,7 @@
 }
 
 .dtr-kpi-sub {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted, #64748b);
 }
 
@@ -151,7 +151,7 @@
   padding: 1px 6px;
   border-radius: 999px;
   background: rgba(15, 23, 42, 0.08);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .dtr-pill.active {
@@ -216,7 +216,7 @@
   border-radius: 5px;
   background: #eff6ff;
   color: #1d4ed8;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -275,7 +275,7 @@
   padding: 4px 9px;
   border-radius: 5px;
   border: 1px solid transparent;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -320,7 +320,7 @@
 }
 
 .dtr-eyebrow {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   color: #2563eb;
@@ -395,7 +395,7 @@
 
 .dtr-field label {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: #475569;
   margin-bottom: 3px;
@@ -1065,3 +1065,86 @@
     display: none !important;
   }
 }
+
+/* Print of the bonding / material sheet: only the cloned sheet is printed (see #btn-dtr-do-print) */
+#dtr-print-root{display:none}
+@media print {
+  body.dtr-printing > *:not(#dtr-print-root){display:none !important}
+  body.dtr-printing #dtr-print-root{display:block !important;position:static;visibility:visible}
+  body.dtr-printing #dtr-print-root *{visibility:visible}
+  html,body{height:auto !important;overflow:visible !important}
+}
+
+/* Official logos on the generated reports */
+.vf-logo-img{width:58px;height:58px;object-fit:contain}
+.vf-satra-img{margin-top:6px;width:96px;height:auto;object-fit:contain}
+.dtr-sheet-logos{display:flex;flex-direction:column;align-items:center;gap:6px;margin-right:12px}
+.dtr-logo-vf{width:52px;height:52px;object-fit:contain}
+.dtr-logo-satra{width:88px;height:auto;object-fit:contain}
+.dtr-sheet-header .dtr-sheet-title{flex:1}
+
+/* Official logo row: VF on the left, SATRA on the right, on one level */
+.rpt-logo-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.rpt-logo-vf{height:58px;width:58px;object-fit:contain}
+.rpt-logo-satra{height:58px;width:auto;object-fit:contain}
+
+/* Bonding sheet header: VF | test method | SATRA on one line, then details (left) and result + dates (right) */
+.rpt-top{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px}
+.rpt-top-title{flex:1;text-align:center}
+.rpt-top-title .vf-title-en{margin:0}
+.rpt-top-title .vf-title-cn{margin:2px 0 0}
+.rpt-sub{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:8px}
+.rpt-sub-left,.rpt-sub-right{min-width:0}
+.rpt-formno{display:inline-block;width:auto !important;margin:0 0 6px}
+.rpt-sub .vf-etrf-row{margin:0 0 4px}
+.rpt-sub-right{display:flex;flex-direction:column;align-items:flex-end}
+.rpt-sub-right .vf-stamp-area{margin-bottom:6px}
+.rpt-sub-right .vf-dates-table{width:100%}
+.rpt-sub .vf-etrf-row{justify-content:flex-start !important;text-align:left;margin-left:0}
+.rpt-sub .vf-labref-row{justify-content:flex-start}
+
+/* Toolbar alignment: pickers and buttons share one baseline and one control height */
+.dtr-form-toolbar{align-items:flex-end;row-gap:12px}
+.dtr-form-pickers{align-items:flex-end;flex:1 1 560px;min-width:0}
+.dtr-form-pickers .dtr-field{flex:1 1 0;min-width:0;display:flex;flex-direction:column;justify-content:flex-end}
+.dtr-form-pickers .dtr-field label{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px}
+.dtr-form-pickers .dtr-select-lg,
+.dtr-form-actions .dtr-btn{box-sizing:border-box;height:38px;line-height:1.2}
+.dtr-form-actions{align-items:flex-end;justify-content:flex-end}
+.dtr-form-actions .dtr-btn{justify-content:center;white-space:nowrap}
+
+/* ---- one icon set (SVG sprite, partials/icons.php) ------------------------------------------ */
+.ic{width:1.15em;height:1.15em;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;vertical-align:-.2em;flex:none}
+.dtr-kpi-ico .ic{width:22px;height:22px}
+
+/* ---- responsive: tablets and phones ---------------------------------------------------------- */
+.dtr-tabs,.dsg-tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
+.dtr-tab-btn,.dsg-tab{white-space:nowrap;flex:none}
+.dtr-table-wrap{overflow-x:auto}
+@media (max-width:900px){
+  .dtr-nav-bar{flex-wrap:wrap;gap:8px}
+  .dtr-form-pickers{flex:1 1 100%}
+  .dtr-form-actions{width:100%;justify-content:flex-start}
+  .dtr-card-head{flex-wrap:wrap;gap:10px}
+  .dtr-search-box{width:100%}
+  .dtr-search-box input{min-width:0;flex:1}
+  .dtr-modal-dialog{max-width:100%!important}
+}
+@media (max-width:640px){
+  .dtr-form-pickers{flex-direction:column;align-items:stretch}
+  .dtr-form-actions .dtr-btn{flex:1 1 calc(50% - 8px)}
+  .dtr-form-toolbar{align-items:stretch}
+  .dtr-modal-backdrop{padding:0!important}
+  .dtr-modal-dialog{width:100%!important;max-height:100vh!important;border-radius:0!important}
+  .dtr-modal-footer{flex-wrap:wrap;gap:8px}
+  .dtr-modal-footer .dtr-btn{flex:1 1 45%;justify-content:center}
+  input,select,textarea{font-size:16px}
+  .dtr-btn,.dsg-btn,.sc-btn,.il-btn{min-height:40px}
+}
+
+/* contrast (WCAG AA) fixes found by the live audit */
+.dtr-btn-amber{background:#b45309;color:#fff}
+.dtr-btn-amber:hover{background:#92400e}
+.dtr-stamp-pass{color:#047857}
+.dtr-stamp-warn{color:#b45309}
+.dtr-stamp-fail{color:#b91c1c}

@@ -9,7 +9,7 @@ body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:c
 .logo{width:52px;height:52px;margin:0 auto 10px;border-radius:14px;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center}
 .logo svg{width:28px;height:28px}
 .brand h1{margin:0;font-size:26px;letter-spacing:.18em;color:var(--brand)}
-.brand p{margin:4px 0 0;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
+.brand p{margin:4px 0 0;font-size: 12px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
 /* Liquid-glass card: one static blurred layer (cheap); solid fallback if unsupported */
 .card{position:relative;background:#f4f7fb;border:1px solid var(--line);border-radius:12px;padding:28px;box-shadow:0 10px 30px rgba(30,41,59,.18)}
 @supports ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){
@@ -55,7 +55,7 @@ a{color:var(--brand);text-decoration:none}a:hover{text-decoration:underline}
 .hint{margin:4px 0 0;font-size:12px}.hint.ok{color:#059669}.hint.bad{color:#dc2626}
 .meter{margin-top:8px}.track{height:6px;background:#e5eaf2;border-radius:3px;overflow:hidden}
 .bar{height:100%;width:0;border-radius:3px;transition:width .2s}
-.meter-t{display:flex;justify-content:space-between;margin-top:4px;font-size:11px;color:var(--mute)}
+.meter-t{display:flex;justify-content:space-between;margin-top:4px;font-size: 12px;color:var(--mute)}
 .s0{background:#ef4444}.s1{background:#f97316}.s2{background:#f59e0b}.s3{background:#84cc16}.s4{background:#10b981}
 .otp{display:flex;gap:8px;justify-content:space-between;margin-bottom:18px}
 .otp .input{width:100%;max-width:56px;height:56px;padding:0;text-align:center;font:700 24px ui-monospace,Consolas,monospace}
@@ -64,3 +64,5 @@ a{color:var(--brand);text-decoration:none}a:hover{text-decoration:underline}
 .spin{width:18px;height:18px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.spin{animation:none}.bar{transition:none}}
+
+.brand-logo{width:min(340px,100%);aspect-ratio:1/.26;margin:0 auto 12px;background-repeat:no-repeat;background-size:100% auto;background-position:50% 40.5%}

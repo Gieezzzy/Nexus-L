@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "NEXUS-L InterLink Sender",
+  "version": "1.0.0",
+  "description": "One-click sending of NEXUS-L reports to InterLink, in your own browser with your own InterLink sign-in.",
+  "permissions": ["storage", "scripting", "tabs"],
+  "host_permissions": ["https://interlink2.intertek.com/*", "http://192.168.32.43/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    { "matches": ["http://192.168.32.43/NEXUS-L/*"], "js": ["nexus.js"], "run_at": "document_start" },
+    { "matches": ["https://interlink2.intertek.com/InterLink2/*"], "js": ["interlink.js"], "run_at": "document_idle" }
+  ]
+}

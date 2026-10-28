@@ -1,3 +1,4 @@
+<?php helper('nx'); ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,15 +8,14 @@
     <meta name="referrer" content="same-origin">
     <?= csrf_meta() ?>
     <title><?= esc($title ?? 'NEXUS-L') ?> · NEXUS-L</title>
-    <link rel="icon" href="<?= base_url('favicon.ico') ?>">
-    <link rel="stylesheet" href="<?= base_url('assets/css/auth.css') ?>?v=<?= @filemtime(FCPATH . 'assets/css/auth.css') ?>">
+    <link rel="icon" type="image/png" href="<?= base_url('favicon.png') ?>">
+    <link rel="apple-touch-icon" href="<?= base_url('favicon.png') ?>">
+    <link rel="stylesheet" href="<?= nx_asset('css/auth.css') ?>">
 </head>
 <body>
     <main class="wrap">
         <div class="brand">
-            <div class="logo"><svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M9 3h6M10 3v6.5L4.6 18.4A1.8 1.8 0 006.2 21h11.6a1.8 1.8 0 001.6-2.6L14 9.5V3"/><path d="M7.5 15h9"/></svg></div>
-            <h1>NEXUS-L</h1>
-            <p>Networked Execution &amp; Unified System for Laboratories</p>
+            <div class="brand-logo" role="img" aria-label="NEXUS-L - Networked Execution &amp; Unified System for Laboratories" style="background-image:url('<?= base_url('assets/images/nexus-l-logo.webp') ?>')"></div>
         </div>
 
         <section class="card">
