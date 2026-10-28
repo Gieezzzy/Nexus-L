@@ -22,12 +22,37 @@ const status = (job, ok, done, message) => chrome.tabs.sendMessage(job.nexusTab,
 const inPage = (tabId, func, args) => chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', func, args })
   .then((r) => (r && r[0] ? r[0].result : null));
 
+// Nothing is saved in InterLink unless NEXUS-L confirms, right now, that this report is APPROVED by a Manager / Supervisor and
+// the file about to be attached is exactly the approved (signed) PDF. Anything else - no answer, not signed in to NEXUS-L, an old
+// page without the check, a different file - stops here. Returns '' when allowed, else the reason.
+async function approvalProblem(job) {
+  try {
+    if (!job.verify || !job.verify.url || !job.pdf || !job.pdf.b64) return 'this page does not send the approval check. Reload NEXUS-L (Ctrl+F5) and try again.';
+    const r = await fetch(job.verify.url, { credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+    const j = await r.json();
+    if (!r.ok || !j.ok) return 'NEXUS-L could not confirm the approval. Sign in to NEXUS-L and try again.';
+    if (!j.approved) return 'this report is not approved yet. A Manager / Supervisor must approve it (QR) before it can be saved in InterLink.';
+    const bin = atob(job.pdf.b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map((b) => b.toString(16).padStart(2, '0')).join('');
+    if (hash !== j.sha256) return 'the file to attach is not the approved report. Generate it again and request approval.';
+    return '';
+  } catch (e) {
+    return 'NEXUS-L could not confirm the approval (' + e.message + ').';
+  }
+}
+
 chrome.runtime.onMessage.addListener((m, sender) => {
   if (m.type === 'send' && sender.tab) {
-    chrome.tabs.create({ url: PORTAL_HOME, active: true }, (t) => {
-      const job = Object.assign({}, m.job, { nexusTab: sender.tab.id, tabId: t.id, step: 'search', loads: 0 });
-      setJob(job);
-      status(job, true, false, `InterLink is opening - searching for ${job.application_no}…`);
+    const gate = { nexusTab: sender.tab.id, application_no: m.job && m.job.application_no };
+    approvalProblem(m.job || {}).then((problem) => {
+      if (problem) { status(gate, false, true, `${gate.application_no || 'The report'} was NOT sent: ${problem}`); return; }
+      chrome.tabs.create({ url: PORTAL_HOME, active: true }, (t) => {
+        const job = Object.assign({}, m.job, { nexusTab: sender.tab.id, tabId: t.id, step: 'search', loads: 0 });
+        setJob(job);
+        status(job, true, false, `InterLink is opening - searching for ${job.application_no}…`);
+      });
     });
   }
   if (m.type === 'ready' && sender.tab) step(sender.tab.id);
@@ -227,6 +252,8 @@ async function step(tabId) {
     if (r.state === 'signin') { status(job, false, false, 'Sign in to InterLink in the opened tab; sending continues by itself afterwards.'); job.loads -= 1; await setJob(job); return; }
     if (r.state === 'posting') return;                     // Edit was pressed; the page reloads and calls "ready" again
     if (r.state === 'error') { status(job, false, true, `${job.application_no}: ${r.message}`); endJob(job); return; }
+    const problem = await approvalProblem(job);          // asked again: the approval may have been replaced since the job started
+    if (problem) { status(job, false, true, `${job.application_no} was NOT saved: ${problem}`); endJob(job); return; }
     status(job, true, false, `${r.filled} field(s) filled and ${job.pdf.name} attached. Saving…`);
     job.step = 'submitting';
     await setJob(job);

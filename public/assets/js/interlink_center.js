@@ -53,7 +53,7 @@
   // PIC's own Chrome (their own InterLink sign-in) opens the form, fills it, attaches the PDF and saves it ---------------
   // 'none' = not installed, 'old' = installed but older than 1.3.1 (its Home -> grid navigation and reading do not work),
   // 'ok'. A page that was open before the extension was updated still carries the old version, so a reload fixes 'old'.
-  const MIN_SENDER = '1.3.1';
+  const MIN_SENDER = '1.4.0';   // 1.4.0 refuses to save anything in InterLink that is not an approved report
   const senderState = () => {
     if (document.documentElement.dataset.nxlSender !== '1') return 'none';
     const a = String(document.documentElement.dataset.nxlSenderVersion || '0').split('.').map(Number);
@@ -142,6 +142,8 @@
     window.postMessage({ type: 'NXL_SEND', job: {
       application_no: data.application_no, target_url: data.target_url, controls: data.controls,
       pdf: { name: att.name || `${appNo}.pdf`, b64: att.b64 },
+      // the extension asks NEXUS-L again before it opens InterLink and before it presses Save: no approval, no Save
+      verify: { url: new URL(BASE + 'dtr/approval/verify?lab_ref=' + encodeURIComponent(data.lab ? data.lab.lab_ref_no : (labRef || '')), location.origin).href },
     } }, location.origin);
     nxToast(`Sending ${appNo}: InterLink opens in a new tab and is filled, attached and saved for you.`, 'info', 7000);
   };

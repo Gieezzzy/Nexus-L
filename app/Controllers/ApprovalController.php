@@ -246,6 +246,22 @@ class ApprovalController extends BaseController
         return $this->json(['ok' => true, 'approval' => $this->publicRow($this->latest($lr['lab_ref_no']))]);
     }
 
+    /**
+     * GET dtr/approval/verify?lab_ref=: the sender extension asks this right before it opens InterLink and again right before it
+     * presses Save. Only an APPROVED report may be saved in InterLink; `sha256` is the hash of the signed PDF, which the extension
+     * compares with the file it is about to attach, so no other file can go in under an approval.
+     */
+    public function verify()
+    {
+        $a      = $this->latest(trim((string) $this->request->getGet('lab_ref')));
+        $signed = $a && $a['status'] === 'approved' ? $this->dir() . ($a['file_key'] ?: $a['token']) . '_signed.pdf' : '';
+        if ($signed === '' || ! is_file($signed)) {
+            return $this->json(['ok' => true, 'approved' => false, 'status' => $a['status'] ?? 'none']);
+        }
+
+        return $this->json(['ok' => true, 'approved' => true, 'sha256' => hash_file('sha256', $signed), 'by' => $a['decided_name'], 'at' => $a['decided_at']]);
+    }
+
     /** GET dtr/approval/file/<file_key>: the signed PDF once approved, else the PDF waiting for approval (signed-in users) */
     public function file(string $key)
     {

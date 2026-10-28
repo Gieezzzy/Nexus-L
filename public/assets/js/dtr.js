@@ -1184,6 +1184,16 @@
     const fmtDate = (v) => String(v || '').replace(/ 00:00:00$/, '');
     const testedDate = fmtDate(pick('TestedDate', 'Tested Date')) || new Date().toISOString().slice(0, 10);
     const tech = pick('Technician', 'TestedBy');
+    // the rest of the form's header block: country, quantity, who sent it, received / finished dates, and where the sample comes from
+    const country = pick("Supplier's Country", 'SupplierCountry', 'Country');
+    const qty = pick('Quantity', 'PO/LotQuantity');
+    const sendBy = pick('SendBy', 'Send by');
+    const recDate = fmtDate(pick('RecievedDate', 'ReceivedDate'));
+    const finDate = fmtDate(pick('FinishedDate'));
+    const source = pick('MaterialSource');
+    const srcOpts = [['Prod. Material', 'Prod. Material 量产材料'], ['Prod. Re-test', 'Prod. Re-test 量产重测'], ['New/Development', 'New/Development 开发按新材料'], ['Sales Sample', 'Sales Sample (销售样品)']]
+      .map(([k, label]) => `<span style="white-space:nowrap;margin-right:14px"><b style="color:${source === k ? '#1d4ed8' : '#94a3b8'}">${source === k ? '●' : '○'}</b> ${source === k ? '<b style="color:#1d4ed8">' + escHtml(label) + '</b>' : escHtml(label)}</span>`).join('');
+    const techOpts = [1, 2, 3, 4].map((n) => `<span style="margin-right:12px"><b style="color:#94a3b8">○</b> Tech ${n}</span>`).join('');
     const reviewer = pick('AuthorizedBy', 'ReviewedBy');
     const revDate = fmtDate(pick('AuthorizedDate'));
     const overall = (pick('Remarks') || 'PASS').toUpperCase();
@@ -1393,6 +1403,24 @@
             <td><b>${$('#mf_WAve')?.value || '-'} g/m²</b></td>
             <td class="label-cell">Technician</td>
             <td>${escHtml(tech || '-')}</td>
+          </tr>
+          <tr>
+            <td class="label-cell">Supplier's Country</td>
+            <td>${escHtml(country || '-')}</td>
+            <td class="label-cell">Quantity</td>
+            <td>${escHtml(qty || '-')}</td>
+            <td class="label-cell">Received Date</td>
+            <td>${escHtml(recDate || '-')}</td>
+          </tr>
+          <tr>
+            <td class="label-cell">Material Source</td>
+            <td colspan="3" style="line-height:1.9">${srcOpts}<br>${techOpts}</td>
+            <td class="label-cell">Finished Date</td>
+            <td>${escHtml(finDate || '-')}</td>
+          </tr>
+          <tr>
+            <td class="label-cell">Send by</td>
+            <td colspan="5">${escHtml(sendBy || '-')}</td>
           </tr>
         </table>
 
