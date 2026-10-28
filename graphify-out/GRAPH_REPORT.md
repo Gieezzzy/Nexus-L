@@ -1,17 +1,17 @@
 # Graph Report - NEXUS-L  (2026-10-28)
 
 ## Corpus Check
-- 190 files · ~375,421 words
+- 191 files · ~376,071 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 38 file(s) not represented in the graph (top: .css 18, (none) 16, .canvas 1)
 
 ## Summary
-- 1051 nodes · 1857 edges · 138 communities (20 shown, 118 thin omitted)
-- Extraction: 93% EXTRACTED · 7% INFERRED · 0% AMBIGUOUS · INFERRED: 136 edges (avg confidence: 0.85)
+- 1058 nodes · 1864 edges · 143 communities (21 shown, 122 thin omitted)
+- Extraction: 93% EXTRACTED · 7% INFERRED · 0% AMBIGUOUS · INFERRED: 137 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `5ac42529`
+- Built from commit: `ffb0e29c`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -30,6 +30,7 @@
 - package.json
 - SynologyChat
 - Filters.php
+- DesignerController
 - Paths
 - Running Application Tests
 - Cache.php
@@ -59,6 +60,7 @@
 - background.js
 - Format.php
 - MachineFileReader
+- DtrController
 - manifest.json
 - assets/js/brain.js
 - 2026-10-27-000009_CreateMachineMaps.php
@@ -74,9 +76,8 @@
 - CreateBrain
 - ExampleMigration
 - DtrSyncAccess
-- Brain
-- Commands/BrainSeed.php
-- .flush
+- BrainSeed5.php
+- BrainSeed2.php
 - Libraries/BrainSeed.php
 - BrainSeed3.php
 - BrainSeed4.php
@@ -114,15 +115,15 @@
 ## Import Cycles
 - None detected.
 
-## Communities (138 total, 118 thin omitted)
+## Communities (143 total, 122 thin omitted)
 
 ### Community 0 - "InboxController"
 Cohesion: 0.06
 Nodes (24): {closure#1}(), {closure#10}(), {closure#11}(), {closure#12}(), {closure#13}(), {closure#14}(), {closure#15}(), {closure#16}() (+16 more)
 
 ### Community 1 - "Auth"
-Cohesion: 0.05
-Nodes (10): Auth, AuthController, DashboardController, PasswordResetController, Auth, AuthLogModel, InterlinkReportModel, PasswordResetModel (+2 more)
+Cohesion: 0.07
+Nodes (9): Auth, AuthController, DashboardController, PasswordResetController, Auth, AuthLogModel, PasswordResetModel, RememberTokenModel (+1 more)
 
 ### Community 2 - "ChatStore"
 Cohesion: 0.08
@@ -144,6 +145,10 @@ Nodes (30): autoload, autoload-dev, psr-4, exclude-from-classmap, psr-4, config,
 Cohesion: 0.12
 Nodes (12): ContentSecurityPolicy, Cors, CURLRequest, Email, Encryption, Feature, Generators, Honeypot (+4 more)
 
+### Community 8 - "InterlinkController"
+Cohesion: 0.07
+Nodes (3): InterlinkController, DtrLabrefIndex, InterlinkReportModel
+
 ### Community 9 - "App"
 Cohesion: 0.12
 Nodes (7): App, ExampleDatabaseTest, ExampleSessionTest, ExampleSeeder, ConfigReader, ExampleModel, HealthTest
@@ -164,6 +169,10 @@ Nodes (10): Creating Tests, Database Tests, Generating Code Coverage, PHPUnit XM
 Cohesion: 0.25
 Nodes (7): CodeIgniter 4 Application Starter, Important Change with index.php, Installation & updates, Repository Management, Server Requirements, Setup, What is CodeIgniter?
 
+### Community 22 - "BotController"
+Cohesion: 0.07
+Nodes (3): BotController, BotSessions, Brain
+
 ### Community 23 - "debug.js"
 Cohesion: 0.53
 Nodes (4): getFirstChildWithTagName(), getHash(), init(), showTab()
@@ -173,24 +182,20 @@ Cohesion: 0.53
 Nodes (3): {closure#1}(), {closure#2}(), {closure#3}()
 
 ### Community 32 - "CodeIgniter\CLI\BaseCommand"
-Cohesion: 0.21
-Nodes (3): BrainAsk, BrainMaintain, InterlinkWork
+Cohesion: 0.24
+Nodes (4): BrainAsk, BrainMaintain, BrainSeed, InterlinkWork
 
 ### Community 79 - "background.js"
 Cohesion: 0.33
 Nodes (10): checkSubmitted(), endJob(), fillAndAttach(), getJob(), inPage(), key(), pressSubmit(), setJob() (+2 more)
-
-### Community 84 - "MachineFileReader"
-Cohesion: 0.05
-Nodes (3): DesignerController, DtrController, MachineFileReader
 
 ### Community 86 - "manifest.json"
 Cohesion: 0.20
 Nodes (9): background, service_worker, content_scripts, description, host_permissions, manifest_version, name, permissions (+1 more)
 
 ### Community 127 - "DtrSyncAccess"
-Cohesion: 0.22
-Nodes (5): {closure#2}(), {closure#3}(), {closure#6}(), {closure#7}(), DtrSyncAccess
+Cohesion: 0.27
+Nodes (5): {closure#3}(), {closure#4}(), {closure#7}(), {closure#8}(), DtrSyncAccess
 
 ### Community 137 - "ICM Record: NEXUS-L"
 Cohesion: 0.08
@@ -198,23 +203,23 @@ Nodes (22): 1. Bonding PASS / TOLERABLE / FAIL now matches Access exactly, 1. "G
 
 ## Knowledge Gaps
 - **2 isolated node(s):** `@tailwindcss/cli`, `tailwindcss`
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 377 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **118 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 384 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **122 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `BaseController` connect `BaseController` to `InboxController`, `Auth`, `InterlinkController`, `MachineFileReader`, `BotController`?**
-  _High betweenness centrality (0.105) - this node is a cross-community bridge._
+- **Why does `ChatStore` connect `ChatStore` to `InboxController`, `NexusStore`, `RmsStore`?**
+  _High betweenness centrality (0.108) - this node is a cross-community bridge._
 - **What connects `@tailwindcss/cli`, `tailwindcss` to the rest of the system?**
   _2 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `InboxController` be split into smaller, more focused modules?**
-  _Cohesion score 0.06315789473684211 - nodes in this community are weakly interconnected._
-- **Why does `ChatStore` connect `ChatStore` to `InboxController`, `NexusStore`, `RmsStore`?**
-  _High betweenness centrality (0.097) - this node is a cross-community bridge._
+  _Cohesion score 0.0645045045045045 - nodes in this community are weakly interconnected._
+- **Why does `BaseController` connect `BaseController` to `InboxController`, `Auth`, `InterlinkController`, `DesignerController`, `DtrController`, `BotController`?**
+  _High betweenness centrality (0.093) - this node is a cross-community bridge._
 - **Should `Auth` be split into smaller, more focused modules?**
-  _Cohesion score 0.050239234449760764 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06597222222222222 - nodes in this community are weakly interconnected._
 - **Why does `InboxController` connect `InboxController` to `BaseController`?**
-  _High betweenness centrality (0.070) - this node is a cross-community bridge._
+  _High betweenness centrality (0.069) - this node is a cross-community bridge._
 - **Should `ChatStore` be split into smaller, more focused modules?**
   _Cohesion score 0.07626582278481013 - nodes in this community are weakly interconnected._

@@ -23,8 +23,8 @@ class DtrSyncAccess extends BaseCommand
     protected $group       = 'NEXUS-L';
     protected $name        = 'dtr:sync-access';
     protected $description = 'Imports all standards, tolerances, test results and master data from the Access databases into dbnexus.';
-    protected $usage       = 'dtr:sync-access [--dry] [--table=AccessTableName]';
-    protected $options     = ['--dry' => 'Only report what would change', '--table' => 'Sync one Access table only', '--show' => 'Print sample field differences'];
+    protected $usage       = 'dtr:sync-access [--dry] [--show] [--log] [--table=AccessTableName]';
+    protected $options     = ['--dry' => 'Only report what would change', '--table' => 'Sync one Access table only', '--show' => 'Print sample field differences', '--log' => 'Append a summary to writable/logs/dtr-sync-access.log (scheduled runs)'];
 
     private const MATERIAL_DB = 'D:\\#Digital Test Report\\V20261006.accdb';
     private const BONDING_DB  = 'D:\\#Digital Test Report\\BondingReportV2.accdb';
@@ -71,6 +71,10 @@ class DtrSyncAccess extends BaseCommand
     {
         $this->dry = CLI::getOption('dry') !== null;
         $this->show = CLI::getOption('show') !== null;
+        $log        = CLI::getOption('log') !== null;
+        $notes      = [];
+        ini_set('memory_limit', '1536M'); // DSR has 150k+ rows
+        $t0 = microtime(true);
         $only      = (string) (CLI::getOption('table') ?? '');
         foreach (array_keys(CLI::getOptions()) as $o) { // --table=Name arrives as one option key
             if (str_starts_with((string) $o, 'table=')) {
@@ -97,6 +101,7 @@ class DtrSyncAccess extends BaseCommand
             foreach (preg_split('/\R/', trim($out)) as $l) {
                 if (str_starts_with($l, 'ERR')) {
                     CLI::error('  ' . $l);
+                    $notes[] = trim($l);
                 }
             }
         }
@@ -107,6 +112,7 @@ class DtrSyncAccess extends BaseCommand
             $file = $dir . preg_replace('/[^A-Za-z0-9_-]/', '_', $acc) . '.ndjson';
             if (! is_file($file)) {
                 CLI::write(sprintf('%-34s %s', $acc, 'not read'), 'red');
+                $notes[] = $acc . ' not read';
 
                 continue;
             }
@@ -115,6 +121,9 @@ class DtrSyncAccess extends BaseCommand
                 $tot[$k] = $v + $r[$k];
             }
             CLI::write(sprintf('%-34s %8d %8d %8d %8d %8d', $acc, $r['rows'], $r['added'], $r['updated'], $r['filled'], $r['conflict']), $r['conflict'] ? 'yellow' : 'green');
+            if ($r['added'] + $r['updated'] + $r['filled'] + $r['conflict'] > 0) {
+                $notes[] = sprintf('%s +%d ~%d fill %d conflict %d', $acc, $r['added'], $r['updated'], $r['filled'], $r['conflict']) . ($r['conflicts'] ? ' (' . implode('; ', array_slice($r['conflicts'], 0, 3)) . ')' : '');
+            }
             foreach (array_slice($r['conflicts'], 0, 5) as $c) {
                 CLI::write('    conflict ' . $c, 'yellow');
             }
@@ -122,7 +131,21 @@ class DtrSyncAccess extends BaseCommand
         }
         $idx = \App\Libraries\DtrLabrefIndex::addMissing($this->db, $this->dry);
         CLI::write(sprintf('%-34s %8s %8d', 'Lab Ref list (unified)', '', $idx), 'green');
-        CLI::write(sprintf('%s added %d, updated %d, filled %d, conflicts %d', $this->dry ? 'DRY RUN -' : 'Done -', $tot['added'], $tot['updated'], $tot['filled'], $tot['conflict']), 'white');
+        $sum = sprintf('%s added %d, updated %d, filled %d, conflicts %d', $this->dry ? 'DRY RUN -' : 'Done -', $tot['added'], $tot['updated'], $tot['filled'], $tot['conflict']);
+        CLI::write($sum, 'white');
+        if ($idx) {
+            $notes[] = "Lab Ref list +{$idx}";
+        }
+        if ($log) {
+            $file = WRITEPATH . 'logs/dtr-sync-access.log';
+            if (is_file($file) && filesize($file) > 5 * 1024 * 1024) {
+                @rename($file, $file . '.1'); // keeps one older log
+            }
+            file_put_contents($file, date('Y-m-d H:i:s') . ' ' . $sum . ' (' . round(microtime(true) - $t0) . " s)
+"
+                . implode('', array_map(static fn ($n) => '    ' . $n . "
+", $notes)), FILE_APPEND | LOCK_EX);
+        }
 
         return EXIT_SUCCESS;
     }
@@ -286,13 +309,42 @@ class DtrSyncAccess extends BaseCommand
             return $res;
         }
 
-        $mine = [];
+        $mine  = [];
+        $mineN = [];
         foreach ($this->db->query('SELECT ' . implode(', ', array_map(fn ($n) => $this->q($n), $names)) . ' FROM ' . $this->q($table))->getResultArray() as $r) {
-            $mine[self::norm($r[$key])] = $r;
+            $mk           = self::norm($r[$key]);
+            $mine[$mk]    = $r;
+            $mineN[$mk][] = $r;
         }
         $labCol = in_array('LabRefNo', $names, true) ? 'LabRefNo' : null;
         $new    = [];
         $this->db->transStart();
+
+        // Access sometimes repeats an ID (e.g. MaterialList 41371 x4): those rows are kept as a group, replaced as a whole
+        // when the group differs, instead of overwriting each other on every run
+        $groups = [];
+        foreach ($access as $i => $a) {
+            $groups[self::norm($a[$key] ?? null)][] = $i;
+        }
+        $sig = static fn (array $rows) => (static function (array $s) { sort($s); return $s; })(array_map(static fn ($r) => implode("\x1f", array_map([self::class, 'norm'], array_values($r))), $rows));
+        foreach ($groups as $k => $idx) {
+            if ($k === '' || count($idx) < 2 && count($mineN[$k] ?? []) < 2) {
+                continue;
+            }
+            $rows = array_map(static fn ($i) => $access[$i], $idx);
+            $have = array_map(static fn ($r) => array_intersect_key($r, array_flip($names)), $mineN[$k] ?? []);
+            if ($mode === 'mirror' && $sig($rows) !== $sig($have)) {
+                $res['updated'] += count($rows);
+                if (! $this->dry) {
+                    $this->db->query('DELETE FROM ' . $this->q($table) . ' WHERE ' . $this->q($key) . ' = ' . $this->db->escape($rows[0][$key]));
+                    $this->insertRows($table, $names, $rows);
+                }
+            }
+            foreach ($idx as $i) {
+                unset($access[$i]);
+            }
+        }
+
         foreach ($access as $a) {
             $k = self::norm($a[$key] ?? null);
             if ($k === '') {
