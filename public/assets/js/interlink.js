@@ -1778,6 +1778,12 @@
         : 'Needs approval, but no Manager / Supervisor is registered yet (Designer → Signatories).';
       return;
     }
+    if (a.status === 'approved' && window.nxAttachedPdf && window.nxAttachedPdf.regenerate) {
+      // a new version of an already approved report: the approved copy stays until the new one is approved
+      $('#uf-apv-status').textContent = `A new version was generated. The report approved by ${a.decided_name} on ${a.decided_at} stays valid until this one is approved: request approval to replace it.`;
+      if (req) req.textContent = 'Request approval for the new version (QR)';
+      return;
+    }
     if (a.status === 'approved') {
       box.classList.add('is-approved');
       req?.classList.add('hidden');
@@ -1822,7 +1828,7 @@
     try {
       const j = await apiFetch(`dtr/approval/status?lab_ref=${encodeURIComponent(labRef)}`);
       const a = j.approval;
-      if (a && a.status === 'approved' && !(window.nxAttachedPdf && window.nxAttachedPdf.approved)) {
+      if (a && a.status === 'approved' && !(window.nxAttachedPdf && (window.nxAttachedPdf.approved || window.nxAttachedPdf.regenerate))) {
         await attachSigned(a);
         if (quiet) showToast(`${a.lab_ref_no} was approved by ${a.decided_name}. The signed report is attached; you can send it to InterLink.`);
       }
@@ -1846,7 +1852,7 @@
       // another Lab Reference was chosen: the report attached for the previous one is not this one
       if (cur && cur.lab_ref_no && cur.lab_ref_no !== labRef && cur.source === 'generated') { window.nxAttachedPdf = null; $('#uf-att-meta')?.classList.add('hidden'); }
       if (!a) { if (chosen) $('#uf-apv')?.classList.add('hidden'); showNameFmt(); return; }
-      if (a.status === 'approved' && !(window.nxAttachedPdf && window.nxAttachedPdf.approved)) await attachSigned(a);
+      if (a.status === 'approved' && !(window.nxAttachedPdf && (window.nxAttachedPdf.approved || window.nxAttachedPdf.regenerate))) await attachSigned(a);
       showApproval(a, j.signatories);
       showNameFmt();
     } catch (e) { /* the panel stays hidden until the report is generated */ }
@@ -1872,8 +1878,9 @@
       const j = await apiFetch('dtr/approval/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lab_ref: pdf.lab_ref_no, application_no: pdf.app, pdf_b64: pdf.b64, sheet_html: sheet }),
+        body: JSON.stringify({ lab_ref: pdf.lab_ref_no, application_no: pdf.app, pdf_b64: pdf.b64, sheet_html: sheet, replace: !!pdf.regenerate }),
       });
+      pdf.regenerate = false;                       // the new version is now the report on record
       showApproval(j.approval, 1);
       showToast('Approval requested. The Managers / Supervisors were notified; they can also scan the QR code.');
     } catch (e) {
@@ -1895,6 +1902,18 @@
       labRef = (prompt('No Lab Reference is linked to this application yet. Enter the Lab Ref. No. to build the report from:', '') || '').trim();
       if (!labRef) return;
     }
+    // a report already exists for this Lab Reference: show it and let the user choose to make a new version
+    let regenerate = false;
+    try {
+      const st = await apiFetch(`dtr/approval/status?lab_ref=${encodeURIComponent(labRef)}`);
+      const ex = st.approval;
+      if (ex && ex.status === 'approved') {
+        if (!confirm(`A report for ${labRef} is already approved (by ${ex.decided_name}, ${ex.decided_at}).\n\nGenerate it again? Use this when the report was changed or the sign-off names were wrong.\nThe new version needs approval again; the approved one stays valid until then.`)) return;
+        regenerate = true;
+      } else if (ex && ex.status === 'pending' && !ex.expired) {
+        if (!confirm(`A report for ${labRef} is waiting for approval.\n\nGenerate it again? The waiting link is replaced by a new one for the new report.`)) return;
+      }
+    } catch (e) { /* no status: generate as usual */ }
     const label = btn.textContent;
     btn.disabled = true;
     btn.textContent = 'Generating...';
@@ -1908,7 +1927,7 @@
       const b64 = lr.form_slug === 'bonding'
         ? await window.nxReportPdf({ slug: lr.form_slug, id: lr.source_id || lr.id })
         : await pdfAsB64(`dtr/report-pdf?lab_ref=${encodeURIComponent(lr.lab_ref_no)}&app=${encodeURIComponent(app)}`);
-      setAttachedPdf({ app, lab_ref_no: lr.lab_ref_no, name: fileNameFor(app, lr), b64, source: 'generated' });
+      setAttachedPdf({ app, lab_ref_no: lr.lab_ref_no, name: fileNameFor(app, lr), b64, source: 'generated', regenerate });
       showToast(`Report ready: ${app}.pdf. Check the report view, then request approval.`);
       try { showReportView(await sheetFor(window.nxAttachedPdf), lr.lab_ref_no); } catch (e) { showToast('The report view could not be prepared: ' + e.message, true); }
     } catch (e) {

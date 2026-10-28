@@ -64,7 +64,7 @@ class ApprovalController extends BaseController
 
     private function latest(string $labRef): ?array
     {
-        return $this->db()->table('tbl_dtr_report_approvals')->where('lab_ref_no', $labRef)->orderBy('id', 'DESC')->get()->getRowArray();
+        return $this->db()->table('tbl_dtr_report_approvals')->where('lab_ref_no', $labRef)->where('status !=', 'superseded')->orderBy('id', 'DESC')->get()->getRowArray();
     }
 
     private function publicRow(?array $a): ?array
@@ -195,7 +195,7 @@ class ApprovalController extends BaseController
         $me  = $this->me();
         $now = date('Y-m-d H:i:s');
         $a   = $this->latest($lr['lab_ref_no']);
-        if ($a && $a['status'] === 'approved') {
+        if ($a && $a['status'] === 'approved' && empty($p['replace'])) {
             return $this->json(['ok' => true, 'approval' => $this->publicRow($a), 'message' => 'This report is already approved.']);
         }
         // the name printed after "Approved by" on the report is the one who must sign it
@@ -209,6 +209,12 @@ class ApprovalController extends BaseController
             if (! $signRows) {
                 return $this->json(['ok' => false, 'error' => 'This report says "Approved by ' . $printed . '", but no registered signatory has that name. Ask an admin to add ' . $printed . ' in Report Designer → Signatories (with their NEXUS-L account), then request approval again.'], 422);
             }
+        }
+        if ($a && $a['status'] === 'approved') {
+            // a new version of an approved report: the approved one is kept on file but no longer counts, so nothing is sent
+            // to InterLink until the new version is approved
+            $this->db()->table('tbl_dtr_report_approvals')->where('id', $a['id'])->update(['status' => 'superseded', 'token' => $this->spentToken(), 'updated_at' => $now]);
+            $a = null;
         }
         $token   = bin2hex(random_bytes(20));
         $expires = date('Y-m-d H:i:s', time() + self::LINK_MINUTES * 60);
