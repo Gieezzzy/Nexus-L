@@ -4,6 +4,58 @@
 
 ---
 
+## Phase 197 - No Save in InterLink Without Approval; Full Header Block on the Report View (2026-10-29)
+
+### 1. Approval gate in the sender extension (v1.4.0)
+- `ApprovalController::verify()` (`GET dtr/approval/verify?lab_ref=`, auth-protected): answers `approved` plus the SHA-256 of the signed PDF.
+- `tools/interlink-sender/background.js` `approvalProblem(job)`: asked once before InterLink is opened and again right before **Save** is pressed. It refuses when the report is not approved, the approval was replaced, NEXUS-L cannot be reached / is not signed in, the page did not send the check (`job.verify`), or the hash of the file to attach differs from the approved signed PDF.
+- `interlink_center.js` sends `job.verify.url`; the minimum extension for 1-Click Send is now **1.4.0** (older copies could bypass the check). Zip rebuilt: `public/downloads/nexus-l-interlink-sender.zip`.
+- Manual entry in InterLink itself cannot be blocked by NEXUS-L.
+
+### 2. Report view header block
+- `public/assets/js/dtr.js` (`openMaterialPrintPreview`): the sheet now shows Supplier's Country, Quantity, Received Date, Finished Date, Send by, Material Source (Prod. Material / Prod. Re-test / New/Development / Sales Sample, chosen one marked) and Tech 1-4, as on the lab form.
+
+---
+
+## Phase 196 - Detached from Access: Reports Print from dbnexus (2026-10-28)
+
+### 1. Final sync, then the sync is retired
+- One last `dtr:sync-access` run: all 29 tables identical to Access (hardware 503, DSR 154,426, bonding tests 1,092, ...). Not copied (by design): Access `tblUsers` passwords, empty `MainMenu` / `tblLoginTracker`, scratch `Paste Errors`, old `BondingTestPoints - Copy`.
+- Removed: `DtrSyncAccess.php`, `export_access_tables.ps1`, `export_access_report.ps1`, `export_bonding_pdf.ps1`, `tools/dtr-sync-access.ps1`; Windows task `NEXUS-L Access Sync` unregistered; `DeployCheck` no longer looks for it. dbnexus is the only database NEXUS-L reads or writes.
+
+### 2. Material reports without Access
+- `app/Libraries/report_templates/`: per report (16 forms) a **blank form PDF** (printed once from Access with `tools/access-report-templates.ps1`, which swaps each results table for a one-row empty query in a private copy) and a **layout JSON** (every text box, position, font, bound field / expression; `tools/access-report-layout.ps1`).
+- `tools/build/render-report.js` (pdf-lib + `@pdf-lib/fontkit`): evaluates the Access expressions (`IIf`, `Switch`, `Nz`, `&`, `Len`, `Trim`) and writes the record's values at the Access positions. Single-line boxes shrink instead of wrapping; the big PASS/FAIL word is coloured; untested rows (0 / ratings written by *Refresh & Apply Smart Standards*) print blank.
+- `ReportPdf::material()` now calls the renderer. Chinese text needs `writable/cache/fonts/cjk.ttf` (`python tools/make-cjk-font.py`, from Microsoft YaHei; not stored in git).
+- Verified: 48 renders over all 16 report variants, and the Hardware form against the Access print.
+- Bonding: no Access print any more; the "Access PDF" button is hidden and the VF sheet is the report.
+- Re-making a form after a change in Access: see `app/Libraries/report_templates/README.md`.
+
+---
+
+## Phase 195 - Bot Retrieval: Per-Word Matching, Weighted by Rarity (2026-10-28)
+
+- `app/Libraries/Brain.php` `search()` now looks at the question **one word at a time** over the whole approved knowledge base (cached tokenised copy `writable/cache/brain_corpus.ser`, rebuilt when entries change): exact, same stem/prefix, or a 1-2 letter typo, each word weighted by IDF (rare words count more).
+- Entries are ranked by the share of the question's weight they explain (keywords 3.0 > title 2.5 > body 0.8), plus keyword-phrase (all words present, any order), adjacent-word and title-coverage bonuses; page / error / helpful factors kept.
+- Measured on 623 generated questions: title + filler words 94.5 → 98.1 % top-1, typos 89.4 → 97.1 %, keyword phrase 89.9 → 91.7 %, first sentence of an answer top-3 85.8 → 90.2 %, half of a title top-3 77.3 → 81.4 %.
+
+---
+
+## Phase 194 - Report Sign-off (QR Approval) and the InterLink Sender Extension (2026-10-28)
+
+### 1. Approval before InterLink
+- Tables `tbl_dtr_signatories`, `tbl_dtr_report_approvals` (+ `file_key`, `expires_at`, `used_at`, `required_name`); `ApprovalController`, views `approval/page|gone`, `approval.js/css`, Report Designer → **Signatories** tab (account, printed name, title, signature drawn or uploaded PNG).
+- Flow: *Generate Report* → report view → **Request approval (QR)** → the signatory scans, signs in, checks the report sheet and signs → the signed PDF becomes the attachment. Links are single-use (40-hex token, 60 min, rotated per request, replaced by a spent token on a decision); the PDF keeps a permanent `file_key`. Synology messages go per recipient (requester told at once, other signatories told it was decided); an in-app feed pill shows waiting reports.
+- **The name printed after "Approved by" on the report is the one who must sign** (`tools/pdf_signoff.py` reads it from the PDF; `ReportPdf::nameMatches`; unregistered names are refused with a message). Signature (background removed) goes beside the printed lines and an outline-only stamp under them (`tools/build/stamp-pdf.js`).
+- An already approved Lab Ref can be **regenerated**: the approved version stays valid until the new one is approved, then it is marked `superseded`.
+- Per-user PDF file-name format (`{app}` ...), report grids filled from the Lab Reference, report view instead of a PDF viewer on the approval page.
+
+### 2. InterLink sender extension 1.3.x
+- Save commits (no Submit button); the Application No. is searched in the live grid; Home → grid navigation through the portal's own link; live reading of any grid page (`pullGrid`, `pullGridHtml`) with ACK / progress / bounded waits; version handshake (`dataset.nxlSenderVersion`); sign-in hardening (never a second sign-in, never closes a tab the user signs in on).
+- NEXUS-L never stores an InterLink login: only the user's own browser reads and writes InterLink.
+
+---
+
 ## Phase 193 - Access Rules Parity for Bonding & Full Access → dbnexus Sync (2026-10-28)
 
 ### 1. Bonding PASS / TOLERABLE / FAIL now matches Access exactly
@@ -19,7 +71,7 @@
 - `public/assets/js/dtr.js`: one rule (`evaluateSpotVerdict`, `bondingTolerance`, `FITO_STD = 1.0`) now drives the form calculation, the spot colours and the print sheet. Before, FiTO needed ≥ 1.9 (so e.g. `DTP20260612SHB14-L`, Center 1.20–1.38, printed **FAIL** while Access says **PASS**), adult tolerable started at 2.0 instead of 2.4, and the Status column showed "-" for a failed section (`FAIL` vs `FAILED`).
 - Report: the STD column shows the tolerable limit under each standard, e.g. `2.5 (≥ 2)`, `1 (≥ 0.8)` (`.vf-tol` in `dtr.css`).
 
-### 2. `php spark dtr:sync-access` - everything in Access into dbnexus
+### 2. `php spark dtr:sync-access` - everything in Access into dbnexus  _(retired in Phase 196: the sync, its task and scripts were removed after a final run)_
 - `app/Commands/DtrSyncAccess.php` + `app/Libraries/export_access_tables.ps1`. Reads the live Access back-ends (through the front-ends `V20261006.accdb` and `BondingReportV2.accdb`, linked to `\192.168.32.130\qc lab files\#Digital Test Report\...`) with .NET OleDb, because PHP ODBC turns Chinese into `???`.
 - 29 tables: Standards (with Tolerance / TMinC / TMaxC), field map, form numbers, permissions, settings, filters, MaterialList, ShoeList, DSR, containers, materials master, material type status, import raw, audit trail, all 12 material result tables, Bally, Laminar, BondingTestInfo, BondingTestPoints. Not copied: `tblUsers` (Access passwords), empty `MainMenu` / `tblLoginTracker`, scratch `Paste Errors`.
 - Reference tables mirror Access; result tables add missing rows, fill blank / `???` values, and overwrite only when Access has a newer `LastModified` (web edits kept). Same ID with a different Lab Ref is reported as a conflict and never overwritten. Missing tables / columns are created. Options: `--dry`, `--show`, `--table=Name`.

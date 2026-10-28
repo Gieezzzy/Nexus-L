@@ -1,7 +1,7 @@
 ---
 type: "CodebaseIndex"
 tags: [obsidian, graphify, icm, codebase-index, nexus-l, interlink, dtr, qc-lab]
-updated: "2026-10-28"
+updated: "2026-10-29"
 ---
 
 # NEXUS-L - Codebase Index
@@ -22,7 +22,11 @@ NEXUS-L is the laboratory intelligence and execution system built on CodeIgniter
 | `app/Views/interlink/index.php` | InterLink portal interface matching SearchForm, NormalForm, and UploadForm with Tab 1 & Tab 2 sub-grids and Pre-Sync Dialog. |
 | `app/Views/dtr/index.php` | QC Lab suite: Lab Tracker & IQC log, 10 material forms, whole shoe bonding, calculators, and print preview modal. |
 | `public/assets/js/interlink.js` | Pre-Sync Dialog logic, dynamic LabRef ComboBox loading, field highlight syncing, 1-click submission, and the Upload Form **Generate Report** button (`window.nxReportPdf`: Lab Ref → DTR print sheet → `dtr/sheet-pdf` PDF attachment). |
-| `app/Commands/DtrSyncAccess.php` | `php spark dtr:sync-access`: imports all Access standards (with tolerances), test results, master lists, DSR and audit trail into dbnexus via `app/Libraries/export_access_tables.ps1` (Unicode-safe). |
+| `app/Libraries/ReportPdf.php` | Material report PDFs without Access (blank form + dbnexus values via `tools/build/render-report.js`), sign-off line finder, signature background removal, stamping. Forms in `app/Libraries/report_templates/`. |
+| `app/Controllers/ApprovalController.php` | QR approval of reports by registered Managers / Supervisors: request, single-use links, sign, signed PDF, verify (`dtr/approval/verify`), signatories admin, per-user PDF name format. |
+| `app/Libraries/Brain.php` | Bot knowledge search: per-word, rarity-weighted matching and ranking (cached corpus), confidence. |
+| `tools/interlink-sender/` | Chrome extension (v1.4.0): fills and saves InterLink forms, reads the live grid, and refuses to save anything not approved. |
+| `tools/build/render-report.js`, `tools/access-report-*.ps1`, `tools/pdf_signoff.py`, `tools/build/stamp-pdf.js` | Report rendering, one-time Access form/layout extraction, sign-off finder, signature + stamp. |
 | `public/assets/js/interlink_center.js` | InterLink Sender hand-off (`nxFillHelper`): prepares the form values and attaches the generated/browsed report PDF. |
 | `public/assets/js/dtr.js` | 100% VBA computation port: `ApplyStandardValuesSmart`, directional averages, 6-point colorfastness, bonding spot rules, calculators, machine data parsing, and print preview rendering. |
 | `public/assets/css/interlink.css` | InterLink 2.0 theme styling, DevExpress pager, and status tags. |
@@ -45,3 +49,8 @@ NEXUS-L is the laboratory intelligence and execution system built on CodeIgniter
 - `MATERIALS\LAMINAR\`: Laminar peel dry/wet data.
 - `BONDING\`: Whole shoe bonding test files (`U60.xls` and CSV).
 - *Strict Rule:* Network files are read-only; never modified or deleted.
+
+
+## Status (2026-10-29)
+- NEXUS-L is detached from Access: `dbnexus` is the only database; reports print from it (ICM Phase 196).
+- Nothing is saved in InterLink without an approved, signed report (ICM Phases 194 and 197).
