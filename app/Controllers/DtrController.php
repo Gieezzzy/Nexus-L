@@ -20,7 +20,7 @@ namespace App\Controllers;
  */
 class DtrController extends BaseController
 {
-    private const FORM_CONFIG = [
+    public const FORM_CONFIG = [
         'fabric' => [
             'table'       => 'tbl_dtr_fabric_results',
             'pk'          => 'ID',
@@ -735,52 +735,7 @@ class DtrController extends BaseController
         // Sync into tbl_dtr_unified_labrefs so InterLink Pre-Sync Dialog ComboBox reflects the save immediately
         $labRefNo = trim((string) ($saveData['LabRefNo'] ?? $fields['LabRefNo'] ?? ''));
         if ($labRefNo !== '') {
-            $trNo       = trim((string) ($saveData['TR'] ?? $saveData['ETRFNo'] ?? $fields['TR'] ?? $fields['ETRFNo'] ?? ''));
-            $matType    = trim((string) ($saveData['MaterialType'] ?? $saveData['AgeCategory'] ?? ''));
-            $matCode    = trim((string) ($saveData['MaterialCode'] ?? $saveData['AdhesiveSupplier'] ?? ''));
-            $matDesc    = trim((string) ($saveData['Material Description'] ?? $saveData['MaterialDescription'] ?? $matType));
-            $supplier   = trim((string) ($saveData['Supplier/Factory'] ?? $saveData['Supplier'] ?? $saveData['Factory'] ?? ''));
-            $modelStyle = trim((string) ($saveData['Model No/Style'] ?? $saveData['ModelNoStyle'] ?? $saveData['ModelStyle'] ?? ''));
-            $color      = trim((string) ($saveData['Color'] ?? ''));
-            $poLot      = trim((string) ($saveData['PO/Lot No'] ?? $saveData['POLotNo'] ?? $saveData['POLotNO'] ?? ''));
-            $mtl        = trim((string) ($saveData['MTL'] ?? ''));
-            $status     = trim((string) ($saveData['Status'] ?? 'Complete'));
-            $overallRaw = strtoupper(trim((string) ($saveData['Remarks'] ?? $saveData['Result'] ?? 'PASS')));
-            $overall    = ($overallRaw === 'FAIL') ? 'Fail' : (($overallRaw === 'TOLERABLE') ? 'Tolerable' : 'Pass');
-
-            $uniData = [
-                'lab_ref_no'            => $labRefNo,
-                'tr_no'                 => $trNo,
-                'form_category'         => $cfg['label'],
-                'form_slug'             => $slug,
-                'interlink_sample_type' => $cfg['sample_type'],
-                'source_table'          => $table,
-                'source_id'             => $recordId,
-                'material_type'         => $matType,
-                'material_code'         => $matCode,
-                'material_description'  => $matDesc,
-                'supplier'              => $supplier,
-                'model_style'           => $modelStyle,
-                'color'                 => $color,
-                'po_lot_no'             => $poLot,
-                'mtl_no'                => $mtl,
-                'status'                => $status,
-                'overall_result'        => $overall,
-                'thickness_ave'         => (string) ($saveData['TAve'] ?? $saveData['Hardness_Ave'] ?? ''),
-                'weight_ave'            => (string) ($saveData['WAve'] ?? $saveData['SG_Ave'] ?? ''),
-            ];
-
-            $existingUni = $db->table('tbl_dtr_unified_labrefs')
-                ->where('source_table', $table)
-                ->where('source_id', $recordId)
-                ->get()
-                ->getRowArray();
-
-            if ($existingUni) {
-                $db->table('tbl_dtr_unified_labrefs')->where('id', $existingUni['id'])->update($uniData);
-            } else {
-                $db->table('tbl_dtr_unified_labrefs')->insert($uniData);
-            }
+            \App\Libraries\DtrLabrefIndex::upsert($db, $slug, $recordId, $saveData + $fields);
         }
 
         return $this->response->setJSON([

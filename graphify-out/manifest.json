@@ -306,9 +306,9 @@
     "semantic_hash": ""
   },
   "app/Controllers/DtrController.php": {
-    "mtime": 1793145179.2655208,
-    "seen": 1793147682.1675513,
-    "ast_hash": "f915934cac7d16022fafa41497454b8d",
+    "mtime": 1793152089.75851,
+    "seen": 1793152124.8633316,
+    "ast_hash": "e3894eaf29a3822e76f81f44fbfc4704",
     "semantic_hash": ""
   },
   "app/Controllers/Home.php": {
@@ -948,9 +948,9 @@
     "semantic_hash": ""
   },
   "_docs/ICM_CHANGELOG.md": {
-    "mtime": 1793151919.2307494,
-    "seen": 1793151926.3421617,
-    "ast_hash": "86a8ee8a1b77db6d623c14d3a90efcb7",
+    "mtime": 1793152118.7918112,
+    "seen": 1793152124.8635104,
+    "ast_hash": "199c5e46d895d223d0265dae14e8e84d",
     "semantic_hash": ""
   },
   "_docs/OBSIDIAN_CODEBASE_INDEX.md": {
@@ -1350,9 +1350,9 @@
     "semantic_hash": ""
   },
   "app/Commands/DtrSyncAccess.php": {
-    "mtime": 1793151883.1539793,
-    "seen": 1793151926.3416276,
-    "ast_hash": "2f1ef82c257ff33bcc94f73ae7b345cd",
+    "mtime": 1793152089.75851,
+    "seen": 1793152124.8632538,
+    "ast_hash": "e82e034527eccf66698758285cb44b9f",
     "semantic_hash": ""
   },
   "app/Database/Migrations/2026-10-28-000020_CreateBotSessions.php": {
@@ -1377,6 +1377,12 @@
     "mtime": 1793149234.4714344,
     "seen": 1793151926.341925,
     "ast_hash": "cc05f6a4a49c8544b0fcc661ed84e4f6",
+    "semantic_hash": ""
+  },
+  "app/Libraries/DtrLabrefIndex.php": {
+    "mtime": 1793152089.75851,
+    "seen": 1793152124.863382,
+    "ast_hash": "c6cc9a6cb69460931aab00b3a6012016",
     "semantic_hash": ""
   }
 }

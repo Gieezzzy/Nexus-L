@@ -16,6 +16,7 @@ use CodeIgniter\CLI\CLI;
  * - merge tables (test results): missing rows are added, blank or "???" values filled, and a row is only overwritten
  *   when Access has a newer LastModified, so reports edited in the web are kept.
  * - a row whose ID is used by a different Lab Ref in dbnexus is never touched; it is listed as a conflict.
+ * - reports that arrived from Access get their row in tbl_dtr_unified_labrefs (DTR tracker, InterLink Lab Ref list).
  */
 class DtrSyncAccess extends BaseCommand
 {
@@ -119,6 +120,8 @@ class DtrSyncAccess extends BaseCommand
             }
             @unlink($file);
         }
+        $idx = \App\Libraries\DtrLabrefIndex::addMissing($this->db, $this->dry);
+        CLI::write(sprintf('%-34s %8s %8d', 'Lab Ref list (unified)', '', $idx), 'green');
         CLI::write(sprintf('%s added %d, updated %d, filled %d, conflicts %d', $this->dry ? 'DRY RUN -' : 'Done -', $tot['added'], $tot['updated'], $tot['filled'], $tot['conflict']), 'white');
 
         return EXIT_SUCCESS;

@@ -25,6 +25,7 @@
 - Reference tables mirror Access; result tables add missing rows, fill blank / `???` values, and overwrite only when Access has a newer `LastModified` (web edits kept). Same ID with a different Lab Ref is reported as a conflict and never overwritten. Missing tables / columns are created. Options: `--dry`, `--show`, `--table=Name`.
 - First run repaired the Chinese text lost by the original migration (MaterialList, ShoeList, DSR, result descriptions) and brought in sign-offs, TR / SARGE / ERP status, ratings and audit-trail rows recorded in Access since then.
 - Backup taken first: `writable/backups/dbnexus_tbl_dtr_before_access_sync_20261028_0920.sql` (now gitignored).
+- Reports that arrive from Access also get their `tbl_dtr_unified_labrefs` row (DTR tracker, InterLink Lab Ref list, Generate Report). The row builder moved to `app/Libraries/DtrLabrefIndex.php`, shared with `DtrController::save()`; it now reads a bonding report's `Result` (not its `Remarks` comment) and maps Access `FAILED` to Fail (it used to become Pass). First run added `DTP20261019HLR-1..4`.
 - Data fix: `DTP20260605SHB4-L` (BondingTestID 9) had been re-saved from the web as FAIL under the old FiTO ≥ 1.9 rule; Access and the corrected rule say PASS (Center min 1.19). Set back to PASS in `tbl_dtr_bonding_info`, `tbl_dtr_bonding_points` and `tbl_dtr_unified_labrefs`. The 8 web-only bonding records already follow the Access rules.
 
 ---
