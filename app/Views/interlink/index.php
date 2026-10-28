@@ -55,7 +55,7 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
     </div>
 </div>
 
-<?= view('interlink/center', ['reports' => $reports ?? [], 'searchUrl' => $searchUrl ?? '']) ?>
+<?= view('interlink/center', ['reports' => $reports ?? [], 'openUrl' => $openUrl ?? 'https://interlink2.intertek.com/']) ?>
 
 <!-- Main Embedded InterLink 2.0 Browser Shell -->
 <div class="card glass il-browser-shell mt">
@@ -764,6 +764,25 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                             <span id="uf-att-info"></span>
                             <button type="button" class="uf-att-link" id="uf-btn-view-pdf">View</button>
                             <button type="button" class="uf-att-link" id="uf-btn-save-pdf">Download</button>
+                        </div>
+                        <div class="uf-namefmt">
+                            <span>File name format:</span> <b id="uf-namefmt-cur">{app}</b>
+                            <button type="button" class="uf-att-link" id="uf-namefmt-edit">Change</button>
+                            <span class="muted" id="uf-namefmt-ex"></span>
+                        </div>
+                        <!-- sign-off: a registered Manager / Supervisor approves the report before it can go to InterLink -->
+                        <div class="uf-apv hidden" id="uf-apv">
+                            <div class="uf-apv-line"><span class="uf-apv-dot" id="uf-apv-dot"></span><span id="uf-apv-status">Needs approval before it can be sent to InterLink.</span></div>
+                            <button type="button" class="uf-action-btn uf-btn-gen" id="uf-apv-request">Request approval (QR)</button>
+                            <div class="uf-apv-qr-wrap hidden" id="uf-apv-qr-wrap">
+                                <div class="uf-apv-qr" id="uf-apv-qr" aria-label="QR code of the approval link"></div>
+                                <div class="uf-apv-qr-txt">
+                                    <b>Manager / Supervisor:</b> scan, sign in, check the report and sign.
+                                    <a id="uf-apv-link" href="#" target="_blank" rel="noopener">Open approval link</a>
+                                    <button type="button" class="uf-att-link" id="uf-apv-copy">Copy link</button>
+                                    <button type="button" class="uf-att-link" id="uf-apv-new">New link</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="uf-field" data-field-wrap="supplementary_attachment">

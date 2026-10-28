@@ -33,6 +33,7 @@
     $('#dsg-pane-form').hidden = b.dataset.tab !== 'form';
     $('#dsg-pane-excel').hidden = b.dataset.tab !== 'excel';
     $('#dsg-pane-locations').hidden = b.dataset.tab !== 'locations';
+    $('#dsg-pane-signatories').hidden = b.dataset.tab !== 'signatories';
     if (b.dataset.tab === 'excel' && !xLoaded) loadMaps();
   }));
 
@@ -744,7 +745,73 @@
   };
   loadLoc();
 
-  if (['form', 'excel', 'locations'].includes(startTab)) $(`.dsg-tab[data-tab="${startTab}"]`)?.click();
+  // ------------------------------------------------------------- signatories
+  let sigPad = null;
+  let sigData = { rows: [], users: [] };
+  let sigDirty = false;
+  const sigForm = (r) => {
+    $('#dsg-sig-id').value = r ? r.id : '';
+    $('#dsg-sig-user').value = r ? r.user_id : '';
+    $('#dsg-sig-name').value = r ? r.full_name : '';
+    $('#dsg-sig-title').value = r ? r.title : 'QA Laboratory Supervisor';
+    $('#dsg-sig-active').checked = r ? String(r.is_active) === '1' : true;
+    $('#dsg-sig-form-title').textContent = r ? 'Edit ' + r.full_name : 'Add a signatory';
+    if (sigPad) { sigPad.clear(); if (r && r.signature_png) sigPad.load(r.signature_png); }
+    sigDirty = false;
+  };
+  const sigRender = () => {
+    $('#dsg-sig-user').innerHTML = '<option value="">- choose -</option>' + sigData.users.map((u) => `<option value="${u.UserID}">${esc(u.FullName || u.Username)} (${esc(u.Username)}, ${esc(u.Role)})</option>`).join('');
+    $('#dsg-sig-table').innerHTML = '<tr><th>Name</th><th>Position</th><th>Account</th><th>Signature</th><th>Active</th><th></th></tr>' + (sigData.rows.map((r) => `<tr><td>${esc(r.full_name)}</td><td>${esc(r.title)}</td>`
+      + `<td>${esc(r.Username || '')}${r.SynologyID ? '' : ' <span class="muted sm">(no Synology ID: web notices only)</span>'}</td>`
+      + `<td>${r.signature_png ? `<img class="sig-thumb" src="${r.signature_png}" alt="signature">` : '<span class="muted sm">signs on the page</span>'}</td>`
+      + `<td>${String(r.is_active) === '1' ? '✔' : '✖'}</td><td><button type="button" class="dsg-mini" data-sig-edit="${r.id}">Edit</button> <button type="button" class="dsg-mini dsg-danger" data-sig-del="${r.id}">✕</button></td></tr>`).join('')
+      || '<tr><td colspan="6" class="muted sm">No signatory yet: reports cannot be approved until one is added.</td></tr>');
+  };
+  const sigLoad = async () => {
+    try { sigData = await api('designer/signatories'); sigRender(); } catch (e) { $('#dsg-sig-status').textContent = e.message; }
+  };
+  $('#dsg-sig-table').addEventListener('click', async (ev) => {
+    const ed = ev.target.dataset.sigEdit;
+    const del = ev.target.dataset.sigDel;
+    if (ed) sigForm(sigData.rows.find((r) => String(r.id) === ed));
+    if (del && confirm('Remove this signatory? Reports they already signed stay signed.')) {
+      try { sigData = await post('designer/signatories/delete', { id: del }); sigRender(); sigForm(null); } catch (e) { $('#dsg-sig-status').textContent = e.message; }
+    }
+  });
+  $('#dsg-sig-user').addEventListener('change', () => {
+    const u = sigData.users.find((x) => String(x.UserID) === $('#dsg-sig-user').value);
+    if (u && !$('#dsg-sig-name').value) $('#dsg-sig-name').value = u.FullName || u.Username;
+  });
+  $('#dsg-sig-pad').addEventListener('pointerdown', () => { sigDirty = true; });
+  $('#dsg-sig-clear').onclick = () => { if (sigPad) sigPad.clear(); sigDirty = false; };
+  $('#dsg-sig-upload').onclick = () => $('#dsg-sig-file').click();
+  $('#dsg-sig-file').onchange = async (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    ev.target.value = '';
+    if (!f) return;
+    if (!sigPad) sigPad = window.nxSignaturePad($('#dsg-sig-pad'));
+    try { await sigPad.loadFile(f); sigDirty = true; $('#dsg-sig-status').textContent = 'Picture loaded: check it in the box, then Save signatory.'; }
+    catch (e) { $('#dsg-sig-status').textContent = e.message; }
+  };
+  $('#dsg-sig-new').onclick = () => sigForm(null);
+  $('#dsg-sig-save').onclick = async () => {
+    try {
+      sigData = await post('designer/signatories/save', {
+        id: $('#dsg-sig-id').value, user_id: $('#dsg-sig-user').value, full_name: $('#dsg-sig-name').value, title: $('#dsg-sig-title').value,
+        is_active: $('#dsg-sig-active').checked ? 1 : 0, signature_png: sigDirty && sigPad && !sigPad.isEmpty() ? sigPad.toDataURL() : '',
+      });
+      sigRender();
+      $('#dsg-sig-status').textContent = 'Saved ✔ ' + new Date().toLocaleTimeString();
+      sigForm(null);
+    } catch (e) { $('#dsg-sig-status').textContent = 'Save failed: ' + e.message; }
+  };
+  // the pad is sized when its tab is first shown (a hidden canvas has no size)
+  $$('.dsg-tab').forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.tab === 'signatories' && !sigPad) setTimeout(() => { sigPad = window.nxSignaturePad($('#dsg-sig-pad')); }, 30);
+  }));
+  sigLoad();
+
+  if (['form', 'excel', 'locations', 'signatories'].includes(startTab)) $(`.dsg-tab[data-tab="${startTab}"]`)?.click();
 
   (async () => {
     try { const j = await api('dtr/layout?slug=bonding&variant=form'); if (j.layout) formCfg = Object.assign(formCfg, j.layout); } catch (e) { /* default */ }

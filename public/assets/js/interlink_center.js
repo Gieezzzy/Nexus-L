@@ -50,9 +50,8 @@
   });
 
   // ---- One-click send: NEXUS-L prepares the values and the report PDF; the "NEXUS-L InterLink Sender" extension in the
-  // PIC's own Chrome (their own InterLink sign-in) opens the form, fills it, attaches the PDF and presses Submit ----------
+  // PIC's own Chrome (their own InterLink sign-in) opens the form, fills it, attaches the PDF and saves it ---------------
   const hasSender = () => document.documentElement.dataset.nxlSender === '1';
-  const reportPdf = (lab) => window.nxReportPdf(lab); // defined in interlink.js
   const installHelp = () => {
     const back = document.createElement('div');
     back.className = 'nx-modal-back';
@@ -81,20 +80,30 @@
       data = await post('interlink/center/fill', labRef ? { application_no: appNo, lab_ref_no: labRef } : { application_no: appNo, fields });
     } catch (e) { nxToast('Could not prepare the values: ' + e.message, 'error', 7000); return; }
     // the PDF already generated or browsed on the Upload Form for this application is sent as is
-    const att = window.nxAttachedPdf && window.nxAttachedPdf.app === appNo ? window.nxAttachedPdf : null;
-    if (!data.lab && !att) { nxToast(`No Lab Reference is linked to ${appNo}, so there is no report to attach.`, 'error', 8000); return; }
-    let b64 = att ? att.b64 : '';
-    if (!b64) {
+    // only a report signed by a Manager / Supervisor goes to InterLink: the signed PDF attached on the Upload Form, or
+    // the signed PDF of the Lab Reference's approval
+    let att = window.nxAttachedPdf && window.nxAttachedPdf.app === appNo && window.nxAttachedPdf.approved ? window.nxAttachedPdf : null;
+    if (!att && data.lab) {
       try {
-        nxToast(`Creating the report PDF for ${data.lab.lab_ref_no}…`, 'info', 6000);
-        b64 = await reportPdf(data.lab);
-      } catch (e) { nxToast('Could not create the report PDF: ' + e.message, 'error', 8000); return; }
+        const st = await api(`dtr/approval/status?lab_ref=${encodeURIComponent(data.lab.lab_ref_no)}`);
+        if (st.approval && st.approval.status === 'approved') {
+          const r = await fetch(st.approval.file, { credentials: 'same-origin' });
+          const buf = new Uint8Array(await r.arrayBuffer());
+          let bin = '';
+          for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+          att = { name: window.nxPdfName ? window.nxPdfName(appNo, data.lab.lab_ref_no) : `${appNo}.pdf`, b64: btoa(bin) };
+        }
+      } catch (e) { /* reported below */ }
+    }
+    if (!att) {
+      nxToast(`${appNo} cannot be sent yet: its report needs a Manager / Supervisor approval. Open the Upload Form → Generate Report → Request approval (QR).`, 'error', 10000);
+      return;
     }
     window.postMessage({ type: 'NXL_SEND', job: {
       application_no: data.application_no, target_url: data.target_url, controls: data.controls,
-      pdf: { name: att ? att.name : `${data.lab.lab_ref_no}_TestReport.pdf`, b64 },
+      pdf: { name: att.name || `${appNo}.pdf`, b64: att.b64 },
     } }, location.origin);
-    nxToast(`Sending ${appNo}: InterLink opens in a new tab and is filled, attached and submitted for you.`, 'info', 7000);
+    nxToast(`Sending ${appNo}: InterLink opens in a new tab and is filled, attached and saved for you.`, 'info', 7000);
   };
 
   loadLabrefs();

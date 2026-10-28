@@ -125,3 +125,74 @@
   window.addEventListener('resize', () => { if (!isDesktop()) root.classList.remove('side-collapsed'); else { try { if (localStorage.getItem('nx.side') === '1') root.classList.add('side-collapsed'); } catch (x) { /* ignore */ } } sync(); });
   sync();
 })();
+
+// Signature pad on a <canvas> (report approval page, Designer → Signatories). Returns {clear, isEmpty, toDataURL, load}.
+window.nxSignaturePad = (canvas) => {
+  const ctx = canvas.getContext('2d');
+  let drawing = false;
+  let empty = true;
+  const fit = () => {                       // keep the drawing sharp at the displayed size
+    const r = canvas.getBoundingClientRect();
+    if (!r.width) return;
+    const keep = empty ? null : canvas.toDataURL();
+    canvas.width = Math.round(r.width * (window.devicePixelRatio || 1));
+    canvas.height = Math.round(r.height * (window.devicePixelRatio || 1));
+    ctx.lineWidth = 2.4 * (window.devicePixelRatio || 1);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#1e3a8a';
+    if (keep) pad.load(keep);
+  };
+  const at = (e) => {
+    const r = canvas.getBoundingClientRect();
+    return [(e.clientX - r.left) * (canvas.width / r.width), (e.clientY - r.top) * (canvas.height / r.height)];
+  };
+  canvas.addEventListener('pointerdown', (e) => { drawing = true; empty = false; canvas.setPointerCapture(e.pointerId); ctx.beginPath(); ctx.moveTo(...at(e)); });
+  canvas.addEventListener('pointermove', (e) => { if (!drawing) return; ctx.lineTo(...at(e)); ctx.stroke(); });
+  ['pointerup', 'pointercancel'].forEach((t) => canvas.addEventListener(t, () => { drawing = false; }));
+  const pad = {
+    clear: () => { ctx.clearRect(0, 0, canvas.width, canvas.height); empty = true; },
+    isEmpty: () => empty,
+    toDataURL: () => canvas.toDataURL('image/png'),
+    load: (src) => new Promise((res) => {
+      const img = new Image();
+      img.onload = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const k = Math.min(canvas.width / img.width, canvas.height / img.height);
+        ctx.drawImage(img, (canvas.width - img.width * k) / 2, (canvas.height - img.height * k) / 2, img.width * k, img.height * k);
+        empty = false;
+        res();
+      };
+      img.src = src;
+    }),
+  };
+  // A picture of a signature (PNG / JPG, up to 2 MB) drawn into the box. A white or near-white background becomes
+  // transparent, so a scanned signature does not put a white block over the report when it is stamped.
+  pad.loadFile = (file) => new Promise((resolve, reject) => {
+    if (!file || !/^image\/(png|jpeg)$/.test(file.type)) { reject(new Error('Choose a PNG or JPG picture of the signature.')); return; }
+    if (file.size > 2 * 1024 * 1024) { reject(new Error('The picture is larger than 2 MB.')); return; }
+    const rd = new FileReader();
+    rd.onerror = () => reject(new Error('The picture could not be read.'));
+    rd.onload = () => {
+      pad.load(String(rd.result)).then(() => {
+        const px = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const d = px.data;
+        let hasAlpha = false;
+        for (let i = 3; i < d.length; i += 4) { if (d[i] < 250) { hasAlpha = true; break; } }
+        if (!hasAlpha) {
+          for (let i = 0; i < d.length; i += 4) {
+            const lum = (d[i] + d[i + 1] + d[i + 2]) / 3;
+            if (lum > 240) d[i + 3] = 0;
+            else if (lum > 200) d[i + 3] = Math.round(((240 - lum) / 40) * 255);
+          }
+          ctx.putImageData(px, 0, 0);
+        }
+        resolve();
+      }).catch(() => reject(new Error('The picture could not be opened.')));
+    };
+    rd.readAsDataURL(file);
+  });
+  fit();
+  window.addEventListener('resize', fit);
+  return pad;
+};

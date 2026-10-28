@@ -1,5 +1,5 @@
 <?php
-/** InterLink work panel: everyone signs in to InterLink with their own account; NEXUS-L prepares and fills the values. Data: $reports, $searchUrl */
+/** InterLink work panel: everyone signs in to InterLink with their own account; NEXUS-L prepares and fills the values. Data: $reports, $openUrl */
 ?>
 <style>
 .sc{margin-top:14px;padding:14px}
@@ -23,7 +23,7 @@
             <h3 style="margin:0">Send a report to InterLink</h3>
             <p class="muted sm" style="margin:2px 0 0">The person in charge (PIC) signs in to InterLink with their own account and submits the report themselves.</p>
         </div>
-        <a class="sc-btn primary" id="sc-open" href="<?= esc($searchUrl ?? 'https://interlink2.intertek.com/', 'attr') ?>" target="_blank" rel="noopener">Open InterLink (sign in with your account)</a>
+        <a class="sc-btn primary" id="sc-open" href="<?= esc($openUrl ?? 'https://interlink2.intertek.com/', 'attr') ?>" target="_blank" rel="noopener">Open InterLink (sign in with your account)</a>
     </div>
     <p class="sc-note">NEXUS-L does not log in to InterLink and keeps nobody's InterLink login. It prepares the values of a Lab Reference; you fill the InterLink form in your own browser and press Save / Submit yourself.</p>
 

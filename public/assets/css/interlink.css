@@ -1419,3 +1419,31 @@
 .itk-detail-sec{margin:10px 0;font-size:13px}
 .itk-focus{outline:2px solid #2563eb;padding:6px;border-radius:6px}
 @media(max-width:700px){.itk-detail-grid{grid-template-columns:140px 1fr}}
+
+/* Report sign-off panel under the Report Attachment (QR approval) */
+.uf-apv {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid #fcd34d;
+  background: #fffbeb;
+  border-radius: 6px;
+  font-size: 12px;
+  display: grid;
+  gap: 6px;
+}
+.uf-apv.is-approved { border-color: #6ee7b7; background: #ecfdf5; }
+.uf-apv.is-rejected { border-color: #fca5a5; background: #fef2f2; }
+.uf-apv-line { display: flex; align-items: center; gap: 6px; }
+.uf-apv-dot { width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; flex: none; }
+.uf-apv.is-approved .uf-apv-dot { background: #10b981; }
+.uf-apv.is-rejected .uf-apv-dot { background: #ef4444; }
+.uf-apv > .uf-action-btn { justify-self: start; }
+.uf-apv-qr-wrap { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.uf-apv-qr { background: #fff; padding: 4px; border: 1px solid #e5e7eb; border-radius: 4px; line-height: 0; }
+.uf-apv-qr img, .uf-apv-qr svg { width: 132px; height: 132px; }
+.uf-apv-qr-txt { display: grid; gap: 4px; max-width: 260px; }
+
+/* the user's own file name format for the report sent to InterLink */
+.uf-namefmt { margin-top: 4px; font-size: 11.5px; color: #475569; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.uf-namefmt b { font-family: ui-monospace, Menlo, Consolas, monospace; color: #0f172a; }
+.uf-namefmt .muted { color: #94a3b8; }

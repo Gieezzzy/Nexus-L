@@ -153,6 +153,40 @@
     poll(); setInterval(poll, 30000);
   }
 
+  // ---- Report approvals: reports waiting for a signatory, decisions on my requests (toast + browser notification) ----
+  (() => {
+    const base = (document.querySelector('meta[name="base-url"]')?.content || '/').replace(/\/?$/, '/');
+    let cursor = '';
+    let pill = null;
+    const notify = (ev) => {
+      const text = (ev.kind === 'pending' ? 'For approval: ' : ev.kind === 'approved' ? 'Approved: ' : 'Returned: ') + ev.text;
+      if (window.nxToast) window.nxToast(text, ev.kind === 'rejected' ? 'error' : ev.kind === 'approved' ? 'success' : 'info', 9000);
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try { const n = new Notification('NEXUS-L report approval', { body: text, tag: 'nxl-apv-' + ev.text }); n.onclick = () => { window.focus(); location.href = ev.url; }; } catch (e) { /* not allowed here */ }
+      }
+      window.dispatchEvent(new CustomEvent('nxl:approval', { detail: ev }));
+    };
+    const showPill = (j) => {
+      if (!j.pending) { if (pill) pill.remove(); pill = null; return; }
+      if (!pill) {
+        pill = document.createElement('details');
+        pill.className = 'nx-apv-pill';
+        pill.style.cssText = 'position:fixed;right:16px;bottom:84px;z-index:9000;background:#fff;border:1px solid #f59e0b;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.12);font-size:13px;max-width:min(360px,calc(100vw - 32px))';
+        document.body.appendChild(pill);
+      }
+      pill.innerHTML = `<summary style="cursor:pointer;padding:8px 12px;font-weight:700;color:#92400e">${j.pending} report(s) waiting for your approval</summary>`
+        + (j.waiting || []).map((w) => `<a href="${w.url}" style="display:block;padding:6px 12px;border-top:1px solid #f1f5f9;color:#1d4ed8;word-break:break-word">${w.text.replace(/</g, '&lt;')}</a>`).join('');
+    };
+    const tick = () => {
+      if (document.hidden) return;
+      fetch(base + 'dtr/approval/feed' + (cursor ? '?after=' + encodeURIComponent(cursor) : ''), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => { if (!j || !j.ok) return; (j.events || []).forEach(notify); showPill(j); cursor = j.cursor; })
+        .catch(() => {});
+    };
+    if (document.querySelector('meta[name="base-url"]') && !/\/login\b/.test(location.pathname)) { tick(); setInterval(tick, 20000); }
+  })();
+
   // ---- Auto-dismiss success alerts ----
   $$('[data-autodismiss]').forEach((el) => setTimeout(() => { el.style.transition = 'opacity .5s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 500); }, 6000));
 

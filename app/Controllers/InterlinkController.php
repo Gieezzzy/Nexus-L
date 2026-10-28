@@ -13,6 +13,18 @@ use App\Models\InterlinkReportModel;
  */
 class InterlinkController extends BaseController
 {
+    /**
+     * Where "Open InterLink (sign in with your account)" sends the PIC: the plain site root, never a deep link with
+     * args=/iudsReqId= tokens. Those tokens belong to one specific InterLink browser session and die with it, so a
+     * hardcoded deep link like the DEFAULT_*_URL constants below goes stale (opens to an error or a blank page) the
+     * moment that session ends - which is what made this button "not work". The root always works: InterLink's own
+     * site sends an unauthenticated visitor to its login page, and an already-signed-in one straight to their portal.
+     */
+    private const PORTAL_HOME_URL = 'https://interlink2.intertek.com/';
+
+    // Deep links used only as a *fallback* for server-side calls when no live u_form_url is on file yet (sync /
+    // backfill / proxy). These go stale the same way (see PORTAL_HOME_URL above) and should be refreshed from a
+    // current InterLink session when backfill/proxy next needs re-pointing; they are never shown to the user to click.
     private const DEFAULT_SEARCH_URL = 'https://interlink2.intertek.com/InterLink2/aspx/eFormPage/Forms/SearchFormWithHeader.aspx?args=F78A0B062541AEA81E8BA8297FBA2DA7BFB450E4918CF9B85888D42DCB6F1622F872FC64087A2E07ADC02A4D3A1FF2D8A066332B88A666B27023BC1B4FF7A06E&iudsReqId=6ead4327f9354dcdb4a63f1ee1c1af92';
     private const DEFAULT_UPLOAD_URL = 'https://interlink2.intertek.com/InterLink2/aspx/eFormPage/Forms/UploadForm.aspx?args=F78A0B062541AEA81E8BA8297FBA2DA76CAE8B7A92CD3B50145C27C4686D805274963B3E625332DCB961FB2AA7B050E11ED37E8ADDC797FA837E2FBF33BEC69F5E38D540277895A37A82BA2C59CA8C89F7988B57262F9C3E904C1500439116CA80060F6EC333A3B6997758DE9FDC9A481C1ADC7E9AD5FB46C72662B98219C2E2EC9823206BF54FB3D1F5C5BE4E833009F43506020D1F5EFB25EC439FA87F4669AB716CF1720D4FE6D1FC5C07B473582D940E8526AD6A152F23BEA566349729BC&iudsReqId=3301b54d2d754f9290fbe7683e8cf2ce';
     private const DEFAULT_NORMAL_URL = 'https://interlink2.intertek.com/InterLink2/aspx/eFormPage/Forms/NormalForm.aspx?args=BCE93E107653E70D6FB33A4A4693CF4D0C61DB3DC4E36B40E70C31AF171D96F0FB57100B223EA24651893E72239C984CBA4DCE7C73729CD2556ACA1A540D1CE34BFEF47D0D6CE64D7B111F152C414F0AFD78C439EB67B8A1C06A183F8285808CE050395A0FDBAD6CC5FE545726F50C79065149AF61F6D78E6A12CD809D58312B31755D316F1CF373355FE079D207B94D&iudsReqId=3f4f7229bc304c548654559bba9f49fe';
@@ -46,7 +58,7 @@ class InterlinkController extends BaseController
         return $this->render('interlink/index', [
             'title'          => 'InterLink Sync',
             'withCss'        => 'interlink.css',
-            'withJs'         => ['interlink.js', 'interlink_center.js'],
+            'withJs'         => ['qrcode.js', 'interlink.js', 'interlink_center.js'],
             'reports'        => $reports,
             'logs'           => $logs,
             'partners'       => $partners,
@@ -57,6 +69,7 @@ class InterlinkController extends BaseController
             'searchUrl'      => self::DEFAULT_SEARCH_URL,
             'uploadUrl'      => self::DEFAULT_UPLOAD_URL,
             'normalUrl'      => self::DEFAULT_NORMAL_URL,
+            'openUrl'        => self::PORTAL_HOME_URL,
         ]);
     }
 
@@ -1222,8 +1235,12 @@ JS;
     }
 
     /**
-     * Executes a live HTTP GET + ASP.NET ViewState extraction against UploadForm.aspx
-     * and maps the NEXUS-L fields to the exact DevExpress control IDs discovered from the live HTML.
+     * Maps the chosen NEXUS-L fields to DevExpress control IDs for the Material [10076] Upload Form, from a control map
+     * captured once from that live form's HTML. Despite the name, this does not fetch anything live: `$uFormUrl` is
+     * carried through only to echo back as `target_url` for display / older sender versions - see centerFill(). It is
+     * used for the browser extension's text-field fill step (interlink.js probes these by name); it plays no part in
+     * opening the Upload Form itself any more (the extension finds and clicks the application's own Upload icon on the
+     * live search grid instead - see tools/interlink-sender/background.js).
      */
     public function executeLiveInterlinkPostback(string $appNo, array $fields, string $uFormUrl): array
     {
@@ -1375,9 +1392,25 @@ JS;
             ]);
         }
 
+        // the grids of the Upload Form come from the report's own record (what was actually tested); the summary stored with
+        // the Lab Reference is only a fallback when the record cannot be read
         $parsedJson = json_decode((string) ($row['test_items_json'] ?? '{}'), true) ?: [];
         $items      = $parsedJson['items'] ?? [];
         $readings   = $parsedJson['readings'] ?? [];
+        $samples    = [];
+        $cfg        = \App\Controllers\DtrController::FORM_CONFIG[$row['form_slug'] ?? ''] ?? null;
+        if ($cfg && (int) ($row['source_id'] ?? 0) > 0) {
+            $rec = $db->table($cfg['table'])->where($cfg['pk'], (int) $row['source_id'])->get()->getRowArray();
+            if ($rec) {
+                $pts = ($row['form_slug'] ?? '') === 'bonding' ? ($db->table('tbl_dtr_bonding_points')->where('BondingTestID', (int) $row['source_id'])->get()->getRowArray() ?: []) : [];
+                $gen = \App\Libraries\ReportTests::build((string) $row['form_slug'], $rec, $pts);
+                $samples = $gen['samples'];
+                if ($gen['items']) {
+                    $items    = $gen['items'];
+                    $readings = $gen['readings'];
+                }
+            }
+        }
 
         // Enrich from tbl_dtr_dsr if mtl_no is present
         $dsrInfo = null;
@@ -1402,6 +1435,7 @@ JS;
             'labref'   => $row,
             'items'    => $items,
             'readings' => $readings,
+            'samples'  => $samples,
             'dsr'      => $dsrInfo,
             'material' => $matInfo,
             'csrf'     => csrf_hash(),
@@ -1655,8 +1689,19 @@ JS;
         if (! preg_match('/^[A-Za-z0-9_-]{3,40}$/', $appNo) || ! $fields) {
             return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'error' => 'Choose an Application No. and the fields to fill.', 'csrf' => csrf_hash()]);
         }
+        // a report goes to InterLink only after a registered Manager / Supervisor signed it (ApprovalController)
+        $apv = $lr ? $this->il()->table('tbl_dtr_report_approvals')->where('lab_ref_no', $lr['lab_ref_no'])->orderBy('id', 'DESC')->get()->getRowArray() : null;
+        if ($lr && ($apv['status'] ?? '') !== 'approved') {
+            return $this->response->setStatusCode(409)->setJSON(['ok' => false, 'error' => "The report {$lr['lab_ref_no']} is not approved yet. Generate it on the Upload Form and request approval (QR) first.", 'csrf' => csrf_hash()]);
+        }
         $existing = model(InterlinkReportModel::class)->findByAppNo($appNo);
-        $url      = (string) ($existing['u_form_url'] ?? '') ?: self::DEFAULT_UPLOAD_URL;
+        // `u_form_url` is a per-application link that dies with the session that made it, and is essentially never
+        // actually stored for a real application. The NEXUS-L InterLink Sender (background.js, >= v1.1) no longer opens
+        // this URL directly: it opens the stable portal root and finds + clicks this application's own Upload icon on
+        // the live grid itself, so a correct, fresh link is generated by InterLink every time, never guessed. `url` here
+        // is still returned for older sender versions and for display; it is honest about being a fallback, not a link
+        // known to be valid for this application.
+        $url = (string) ($existing['u_form_url'] ?? '') ?: self::PORTAL_HOME_URL;
         if (! preg_match('#^https?://#i', $url)) {
             $url = 'https://interlink2.intertek.com' . (str_starts_with($url, '/') ? '' : '/') . $url;
         }

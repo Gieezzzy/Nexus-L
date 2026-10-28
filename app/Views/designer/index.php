@@ -11,6 +11,7 @@
         <button type="button" class="dsg-tab" data-tab="form">Form fields</button>
         <button type="button" class="dsg-tab" data-tab="excel">Excel readers</button>
         <button type="button" class="dsg-tab" data-tab="locations">File locations</button>
+        <button type="button" class="dsg-tab" data-tab="signatories">Signatories</button>
     </div>
 </div>
 
@@ -119,6 +120,42 @@
             <h4>Test result</h4>
             <div id="dsg-x-result" class="dsg-xres muted sm">Nothing tested yet.</div>
         </aside>
+    </div>
+</section>
+
+<!-- ============================ SIGNATORIES ============================ -->
+<section id="dsg-pane-signatories" class="dsg-pane" hidden>
+    <div class="card glass">
+        <h4>Managers &amp; Supervisors who approve reports</h4>
+        <p class="muted sm">A report can be sent to InterLink only after one of these people approves it: they scan the QR code on the Upload Form (or open the link from Synology Chat), sign in with their NEXUS-L account, check the report and sign. Their signature and the date are stamped on the report PDF.</p>
+        <table class="dsg-xt" id="dsg-sig-table"><tr><td class="muted sm">Loading…</td></tr></table>
+    </div>
+    <div class="card glass">
+        <h4 id="dsg-sig-form-title">Add a signatory</h4>
+        <input type="hidden" id="dsg-sig-id">
+        <div class="dsg-sig-grid">
+            <label class="dsg-xl">NEXUS-L account (signs in with)
+                <select id="dsg-sig-user"></select>
+            </label>
+            <label class="dsg-xl">Name printed on reports
+                <input type="text" id="dsg-sig-name" maxlength="120" placeholder="e.g. Nila B. Estrada">
+            </label>
+            <label class="dsg-xl">Position
+                <input type="text" id="dsg-sig-title" maxlength="80" list="dsg-sig-titles" placeholder="QA Laboratory Supervisor">
+                <datalist id="dsg-sig-titles"><option value="QA Laboratory Supervisor"><option value="QA Laboratory Head"><option value="QA Manager"><option value="Laboratory Manager"></datalist>
+            </label>
+            <label class="dsg-xl dsg-sig-active"><input type="checkbox" id="dsg-sig-active" checked> Active (can approve)</label>
+        </div>
+        <p class="muted sm">Signature (draw with the mouse, a pen or a finger). It is offered on the approval page; the signatory can also sign there.</p>
+        <canvas id="dsg-sig-pad" class="sig-pad" aria-label="Signature box"></canvas>
+        <div class="dsg-row">
+            <button type="button" class="dsg-btn" id="dsg-sig-upload">Upload PNG / JPG</button>
+            <input type="file" id="dsg-sig-file" accept="image/png,image/jpeg" hidden>
+            <button type="button" class="dsg-btn" id="dsg-sig-clear">Clear signature</button>
+            <button type="button" class="dsg-btn dsg-primary" id="dsg-sig-save"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg> Save signatory</button>
+            <button type="button" class="dsg-btn" id="dsg-sig-new">New</button>
+            <span id="dsg-sig-status" class="muted sm"></span>
+        </div>
     </div>
 </section>
 

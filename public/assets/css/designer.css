@@ -80,3 +80,9 @@
 /* contrast: point numbers on the diagram, table headers */
 .dsg-pt .n{color:#334155;font-size:9px}
 .dsg-xgrid th{color:#334155}
+
+/* Signatories tab */
+.dsg-sig-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 8px; }
+.dsg-sig-active { flex-direction: row; align-items: center; gap: 6px; align-self: end; }
+.sig-pad { display: block; width: 100%; max-width: 460px; height: 140px; border: 1px dashed #94a3b8; border-radius: 8px; background: #fff; touch-action: none; }
+.sig-thumb { height: 34px; max-width: 140px; object-fit: contain; background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; }

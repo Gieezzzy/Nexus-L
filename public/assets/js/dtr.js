@@ -1169,11 +1169,24 @@
     const color = $('#mf_Color')?.value || '-';
     const poLot = $('#mf_POLotNo')?.value || '-';
     const mtl = $('#mf_MTL')?.value || '-';
-    const testedDate = $('#mf_TestedDate')?.value || new Date().toISOString().slice(0, 10);
-    const tech = $('#mf_Technician')?.value || 'Lab Technician';
-    const reviewer = $('#mf_AuthorizedBy')?.value || 'QA Manager';
-    const revDate = $('#mf_AuthorizedDate')?.value || '';
-    const overall = ($('#mf_Remarks')?.value || 'PASS').toUpperCase();
+    // the loaded record (plus anything edited in the field editor): not every column has its own input on the form
+    const rec = Object.assign({}, activeRecord || {});
+    $$('[data-raw-col]').forEach((i) => { rec[i.dataset.rawCol] = i.value; });
+    const pick = (...names) => {
+      for (const n of names) {
+        const v = $('#mf_' + n)?.value;
+        if (v !== undefined && String(v).trim() !== '') return String(v).trim();
+        const r = rec[n];
+        if (r !== undefined && r !== null && String(r).trim() !== '') return String(r).trim();
+      }
+      return '';
+    };
+    const fmtDate = (v) => String(v || '').replace(/ 00:00:00$/, '');
+    const testedDate = fmtDate(pick('TestedDate', 'Tested Date')) || new Date().toISOString().slice(0, 10);
+    const tech = pick('Technician', 'TestedBy');
+    const reviewer = pick('AuthorizedBy', 'ReviewedBy');
+    const revDate = fmtDate(pick('AuthorizedDate'));
+    const overall = (pick('Remarks') || 'PASS').toUpperCase();
 
     const stampCls = overall === 'PASS' ? '' : (overall === 'TOLERABLE' ? 'stamp-tol' : 'stamp-fail');
 
@@ -1285,6 +1298,50 @@
       `);
     }
 
+    // Tests this form stores under its own names (Hardware: heat aging, corrosion, hydrolysis ...): every rated test that
+    // the fixed rows above did not list is listed from the record, so a recorded test is never missing from the sheet.
+    // A test with no reading (blank or 0, as in the Access report) is left out.
+    (() => {
+      const covered = items.length ? /^(tensile|elongation|trousertear|stitchtear|mullen|diec|ctp|ctw|ctcdry|ctcwet)/i : /^$/;
+      const NAMES = {
+        heataging: 'Heat Aging (72 hrs, 70°C)', corrosion: 'Corrosion Resistance', hydrolysis: 'Hydrolysis (7 days, 60°C, 95% RH)', uv: 'UV Light (24 hrs, 50°C)',
+        ctcdry: 'Colorfastness to Crocking (Dry)', ctcwet: 'Colorfastness to Crocking (Wet)', ctw: 'Colorfastness to Water', ctp: 'Colorfastness to Perspiration',
+        shrinkage12: 'Shrinkage (1 hr, 70°C) 1-2', shrinkage34: 'Shrinkage (1 hr, 70°C) 3-4', tensile: 'Tensile', elongation: 'Elongation', stitchtear: 'Stitch Tear',
+        peelstrength: 'Peel Strength', shearstrength: 'Shear Strength', laceTipRet: 'Lace Tip Retention', knotslip: 'Knot Slip', laceabrasion: 'Lace Abrasion',
+        hardness: 'Hardness', sg: 'Specific Gravity', pvc: 'PVC Contact Discoloration',
+      };
+      const ALIAS = { corrosion: ['CorrosionRes'], ctcdry: ['CtCDry'], ctcwet: ['CtCWet'], shrinkage12: ['Shrinkageave12'], shrinkage34: ['Shrinkageave34'] };
+      const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const norm = (v) => { const u = String(v).trim().toUpperCase(); return ['P', 'PASS'].includes(u) ? 'PASS' : ['F', 'FAIL', 'FAILED'].includes(u) ? 'FAIL' : u === 'T' ? 'TOLERABLE' : u; };
+      const seen = new Set();
+      Object.keys(rec).forEach((key) => {
+        const m = key.match(/^(.+?)(?:_R|_?Rating|_?rating)$/);
+        const rating = m && String(rec[key] ?? '').trim();
+        if (!rating) return;
+        const base = m[1].replace(/txt/i, '');
+        const lb = base.toLowerCase();
+        if (base.length < 3 || seen.has(lb) || covered.test(base)) return;
+        const prefixes = [base, ...(ALIAS[lb] || [])];
+        const isMeta = (k) => /(_S|_std|Std|_Std|_R|Rating|_rating)$/.test(k);
+        const reads = Object.keys(rec).filter((k) => !isMeta(k) && prefixes.some((pf) => new RegExp('^' + esc(pf) + '(?:txt)?(\\d*|_?ave)$', 'i').test(k)))
+          .map((k) => String(rec[k] ?? '').trim()).filter((v) => v !== '' && !/^0(\.0+)?$/.test(v));
+        if (!reads.length) return;
+        seen.add(lb);
+        const stdKey = Object.keys(rec).find((k) => prefixes.some((pf) => new RegExp('^' + esc(pf) + '(?:txt)?(_S|_std|Std|_Std)$', 'i').test(k)) && String(rec[k] ?? '').trim() !== '');
+        const label = NAMES[lb] || base.replace(/([a-z])([A-Z0-9])/g, '$1 $2');
+        const r = norm(rating);
+        items.push(`
+          <tr>
+            <td class="text-left"><b>${escHtml(label)}</b></td>
+            <td>-</td>
+            <td><b>${reads.map(escHtml).join(' &nbsp; ')}</b></td>
+            <td>${escHtml(stdKey ? rec[stdKey] : '-')}</td>
+            <td><b class="${r === 'PASS' ? 'dtr-rate-pass' : (r === 'TOLERABLE' ? 'dtr-rate-warn' : 'dtr-rate-fail')}">${escHtml(r)}</b></td>
+          </tr>
+        `);
+      });
+    })();
+
     const html = `
       <div class="dtr-report-sheet">
         <div class="rpt-logo-row">
@@ -1335,7 +1392,7 @@
             <td class="label-cell">Weight (WAve)</td>
             <td><b>${$('#mf_WAve')?.value || '-'} g/m²</b></td>
             <td class="label-cell">Technician</td>
-            <td>${escHtml(tech)}</td>
+            <td>${escHtml(tech || '-')}</td>
           </tr>
         </table>
 
@@ -2051,6 +2108,16 @@
           let bin = '';
           for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
           reply({ ok: true, b64: btoa(bin) });
+        } catch (e) { reply({ ok: false, error: e.message }); }
+      }
+      // &export=html: hand the finished report sheet itself (what the approver reads) to the parent page
+      if (q.get('export') === 'html' && window.parent !== window) {
+        const reply = (m) => window.parent.postMessage(Object.assign({ type: 'NXL_REPORT_HTML' }, m), location.origin);
+        try {
+          await new Promise((r) => setTimeout(r, 1200));
+          const src = $('#dtr-print-sheet-container');
+          if (!src || !src.innerHTML.trim()) throw new Error('The report sheet could not be prepared.');
+          reply({ ok: true, html: src.innerHTML });
         } catch (e) { reply({ ok: false, error: e.message }); }
       }
     }, 900);

@@ -84,6 +84,17 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->post('dtr/save', 'DtrController::save');
     $routes->get('dtr/bonding-access-pdf', 'DtrController::bondingAccessPdf');
     $routes->post('dtr/sheet-pdf', 'DtrController::sheetPdf');
+    // report sign-off before InterLink (QR approval by a registered Manager / Supervisor)
+    $routes->get('dtr/report-pdf', 'ApprovalController::reportPdf');
+    $routes->get('dtr/approval/status', 'ApprovalController::status');
+    $routes->post('dtr/approval/request', 'ApprovalController::request');
+    $routes->get('dtr/approval/file/(:segment)', 'ApprovalController::file/$1');
+    $routes->get('dtr/approval/feed', 'ApprovalController::feed');
+    $routes->get('dtr/approval/name-format', 'ApprovalController::nameFormat');
+    $routes->post('dtr/approval/name-format', 'ApprovalController::nameFormat');
+    $routes->get('approve/(:segment)/pdf', 'ApprovalController::preview/$1');
+    $routes->get('approve/(:segment)', 'ApprovalController::page/$1');
+    $routes->post('approve/(:segment)', 'ApprovalController::decide/$1');
     $routes->get('dtr/layout', 'DesignerController::layout');
     // Help bot (local, system-only): chat, activity events
     $routes->post('bot/ask', 'BotController::ask');
@@ -112,6 +123,9 @@ $routes->group('', ['filter' => 'auth:admin'], static function (RouteCollection 
     $routes->get('brain/threads', 'BotController::threads');
     $routes->get('brain/thread/(:num)', 'BotController::threadMessages/$1');
     $routes->post('brain/reply', 'BotController::reply');
+    $routes->get('brain/live', 'BotController::live');
+    $routes->get('brain/session/(:num)', 'BotController::session/$1');
+    $routes->post('brain/session/close', 'BotController::sessionClose');
     $routes->post('brain/resolve', 'BotController::resolve');
     $routes->get('brain/learn-draft', 'BotController::learnDraft');
     $routes->get('brain/knowledge', 'BotController::knowledge');
@@ -128,4 +142,7 @@ $routes->group('', ['filter' => 'auth:admin'], static function (RouteCollection 
     $routes->get('designer/settings', 'DesignerController::settings');
     $routes->post('designer/settings/save', 'DesignerController::saveSettings');
     $routes->post('designer/settings/test', 'DesignerController::testSettings');
+    $routes->get('designer/signatories', 'ApprovalController::signatories');
+    $routes->post('designer/signatories/save', 'ApprovalController::saveSignatory');
+    $routes->post('designer/signatories/delete', 'ApprovalController::deleteSignatory');
 });

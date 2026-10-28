@@ -168,6 +168,18 @@
     document.body.appendChild(f);
   });
 
+  // The finished report sheet (HTML) of a Digital Test Report record: what a Manager / Supervisor reads before signing
+  window.nxReportHtml = (lab) => new Promise((resolve, reject) => {
+    const f = document.createElement('iframe');
+    f.style.cssText = 'position:fixed;left:-9999px;top:0;width:1200px;height:900px;border:0';
+    f.src = `${BASE_URL}dtr?open=${encodeURIComponent(lab.slug)}:${encodeURIComponent(lab.id)}&preview=1&export=html`;
+    const done = (fn, v) => { clearTimeout(timer); window.removeEventListener('message', on); f.remove(); fn(v); };
+    const on = (e) => { if (e.source === f.contentWindow && e.data && e.data.type === 'NXL_REPORT_HTML') { e.data.ok ? done(resolve, e.data.html) : done(reject, new Error(e.data.error)); } };
+    const timer = setTimeout(() => done(reject, new Error('The report sheet took too long to prepare.')), 60000);
+    window.addEventListener('message', on);
+    document.body.appendChild(f);
+  });
+
   // =========================================================================
   // 1. RENDER SEARCH GRID (SearchFormWithHeader.aspx [10102] - All 38 Columns & 517 Pages)
   // =========================================================================
@@ -543,6 +555,21 @@
     }
   };
 
+  // Test grids of an application that has no saved ones yet: taken from its Lab Reference (the one linked by TR No.)
+  const fillGridsFromLabRef = async () => {
+    if (state.activeItems && state.activeItems.length) return;
+    const labRef = currentLabRef();
+    if (!labRef) return;
+    try {
+      const res = await apiFetch(`interlink/labref-detail?lab_ref_no=${encodeURIComponent(labRef)}`);
+      if (!res || !res.labref) return;
+      state.activeSamples = res.samples || [];
+      state.activeItems = res.items || [];
+      state.activeReadings = res.readings || [];
+      renderTab2SubGrids(state.activeSamples, state.activeItems, state.activeReadings);
+    } catch (e) { /* the grids stay as they were */ }
+  };
+
   const populateInitialUploadForm = (report) => {
     clearSyncedHighlights();
     const isAlreadySynced = Number(report.synced_to_interlink) === 1;
@@ -641,6 +668,8 @@
     if (window.nxAttachedPdf && window.nxAttachedPdf.app !== report.application_no) {
       window.nxAttachedPdf = null;
       $('#uf-att-meta')?.classList.add('hidden');
+      $('#uf-apv')?.classList.add('hidden');
+      clearInterval(apvTimer);
     }
 
     const retestVal = isAlreadySynced ? (report.is_retest || 'No') : 'No';
@@ -664,6 +693,8 @@
 
     const reveal = () => {
       populateInitialUploadForm(report);
+      setTimeout(() => restoreApproval(), 300);   // show the approval state of this application's report, if one was requested
+      setTimeout(() => fillGridsFromLabRef(), 500);
 
       // Switch viewport
       $('#il-view-search')?.classList.add('hidden');
@@ -987,13 +1018,11 @@
       // Update Tab 2 items & readings in state and render preview
       state.activeItems = res.items || [];
       state.activeReadings = res.readings || [];
-      state.activeSamples = [{
-        sample_no: '001',
-        item_name: matDescVal || styleVal || lr.lab_ref_no,
-        material_no: matCodeVal || lr.mtl_no || '-',
-        colorway: colorVal || '-',
-        sample_qty: lr.po_quantity || '1 pc',
-        sample_condition: `LabRef: ${lr.lab_ref_no} (${lr.status || 'Complete'})`,
+      // Sample Information, Test Items and Readings are the ones of this Lab Reference's own record (server: ReportTests)
+      state.activeSamples = (res.samples && res.samples.length) ? res.samples : [{
+        sample_id_code: 'S001',
+        sample_description: matDescVal || styleVal || lr.lab_ref_no,
+        sample_color: colorVal || '',
       }];
       renderLabRefTestsPreview(state.activeItems, state.activeReadings);
 
@@ -1006,7 +1035,7 @@
         report_no: reportNoVal,
         overall_result: overallVal,
         report_issue_date: lr.finished_date || baseReport.report_issue_date || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-        attachment_name: `${lr.lab_ref_no}_TestReport.pdf`,
+        attachment_name: fileNameFor(appNo, lr),
       });
       if (supplierVal) merged.supplier_name = supplierVal;
       if (styleVal) {
@@ -1190,6 +1219,10 @@
       if (fieldsToSync.report_no && $('#uf_tab2_report_no')) {
         $('#uf_tab2_report_no').value = fieldsToSync.report_no;
       }
+
+      // this Lab Reference may already have a report approved and signed: show it as the attachment (under the user's file
+      // name format) instead of a name made up by the sync
+      restoreApproval($('#dlg-lr-labref')?.value || '');
 
       // Render Tab 2 Sample Info, Test Items, and Test Readings from the selected LabRefNo
       renderTab2SubGrids(state.activeSamples, state.activeItems, state.activeReadings);
@@ -1543,8 +1576,9 @@
     wrap?.querySelector('.uf-sync-tag')?.classList.remove('hidden');
     wrap?.classList.add('uf-field-synced');
     const kb = Math.max(1, Math.round((pdf.b64.length * 3) / 4 / 1024));
-    if ($('#uf-att-info')) $('#uf-att-info').textContent = `${pdf.source === 'generated' ? 'Generated from Lab Ref ' + pdf.lab_ref_no : 'Selected file'} · ${kb} KB`;
+    if ($('#uf-att-info')) $('#uf-att-info').textContent = `${pdf.approved ? 'Signed by ' + pdf.approved_by : (pdf.source === 'generated' ? 'Generated from Lab Ref ' + pdf.lab_ref_no : 'Selected file')} · ${kb} KB`;
     $('#uf-att-meta')?.classList.remove('hidden');
+    if (!pdf.approved) checkApproval(pdf.lab_ref_no);
   };
   const openAttachedPdf = (download) => {
     const pdf = window.nxAttachedPdf;
@@ -1570,6 +1604,222 @@
     return String($('#dlg-lr-labref')?.value || rep.lab_ref_no || byTr?.lab_ref_no || fromName || '').trim();
   };
 
+  // Report view (like Print Preview): the finished report sheet is read on screen before any file is downloaded
+  const showReportView = (html, title) => {
+    if (!document.getElementById('nx-sheet-css')) {
+      const l = document.createElement('link');
+      l.id = 'nx-sheet-css'; l.rel = 'stylesheet'; l.href = BASE_URL + 'assets/css/dtr.css';
+      document.head.appendChild(l);
+    }
+    document.getElementById('nx-rv')?.remove();
+    const m = document.createElement('div');
+    m.id = 'nx-rv';
+    m.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(15,23,42,.6);overflow:auto;padding:20px 12px;display:flex;justify-content:center;align-items:flex-start';
+    m.innerHTML = `<div style="background:#fff;border-radius:10px;width:100%;max-width:1000px;box-shadow:0 20px 50px rgba(0,0,0,.35)">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#0f172a;color:#fff;border-radius:10px 10px 0 0;position:sticky;top:0;z-index:1">
+        <b>Report view — ${escHtml(title || '')}</b><button type="button" data-rv="close" style="background:none;border:0;color:#fff;font-size:20px;cursor:pointer" aria-label="Close">×</button></div>
+      <div style="padding:16px;overflow-x:auto">${html}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;padding:12px 16px;border-top:1px solid #e2e8f0;position:sticky;bottom:0;background:#fff;border-radius:0 0 10px 10px">
+        <button type="button" class="uf-action-btn" data-rv="close">Close</button>
+        <button type="button" class="uf-action-btn" data-rv="download">Download PDF</button>
+        <button type="button" class="uf-action-btn uf-btn-gen" data-rv="request">Request approval (QR)</button></div></div>`;
+    m.addEventListener('click', (e) => {
+      const a = e.target.dataset && e.target.dataset.rv;
+      if (e.target === m || a === 'close') m.remove();
+      if (a === 'download') openAttachedPdf(true);
+      if (a === 'request') { m.remove(); const b = $('#uf-apv-request'); b?.classList.remove('hidden'); b?.click(); }
+    });
+    document.body.appendChild(m);
+  };
+  // the sheet of a record: the one kept with the attached report, else read it from the record
+  const sheetFor = async (pdf) => {
+    if (pdf.sheet) return pdf.sheet;
+    const det = await apiFetch(`interlink/labref-detail?lab_ref_no=${encodeURIComponent(pdf.lab_ref_no)}`);
+    const lr = det.labref || {};
+    if (!lr.form_slug) throw new Error('This report has no sheet to show.');
+    pdf.sheet = await window.nxReportHtml({ slug: lr.form_slug, id: lr.source_id || lr.id });
+    return pdf.sheet;
+  };
+
+  const pdfAsB64 = async (path) => {
+    const r = await fetch(BASE_URL + path, { credentials: 'same-origin' });
+    if (!r.ok) throw new Error((await r.text()).slice(0, 200) || 'The report PDF could not be made.');
+    const buf = new Uint8Array(await r.arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+    return btoa(bin);
+  };
+
+  // ---- Sign-off: the report must be approved (signed) by a registered Manager / Supervisor before InterLink ----
+  // ---- File name of the report sent to InterLink: each user has their own format, and can still rename one report ----
+  state.pdfNameFmt = '{app}';
+  const cleanPdfName = (n) => {
+    const base = String(n || '').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').replace(/\s+/g, ' ').trim().replace(/\.pdf$/i, '').slice(0, 120);
+    return (base || 'report') + '.pdf';
+  };
+  const fileNameFor = (app, lr) => {
+    const d = new Date();
+    const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    const v = {
+      app: app || '', tr: (lr && lr.tr_no) || app || '', labref: (lr && lr.lab_ref_no) || '', style: (lr && lr.model_style) || '',
+      material: (lr && lr.material_description) || '', result: (lr && lr.overall_result) || '', date: ymd,
+    };
+    return cleanPdfName(String(state.pdfNameFmt || '{app}').replace(/\{(\w+)\}/g, (m, k) => (k in v ? v[k] : '')) || app);
+  };
+  const labrefRow = (labRef) => state.labrefs.find((l) => l.lab_ref_no === labRef) || { lab_ref_no: labRef };
+  window.nxPdfName = (app, labRef) => fileNameFor(app, labrefRow(labRef));
+  const showNameFmt = () => {
+    if ($('#uf-namefmt-cur')) $('#uf-namefmt-cur').textContent = state.pdfNameFmt;
+    const app = state.activeAppNo || $('#uf_application_no')?.value || 'A005953693';
+    const lab = (window.nxAttachedPdf && window.nxAttachedPdf.lab_ref_no) || currentLabRef();
+    if ($('#uf-namefmt-ex')) $('#uf-namefmt-ex').textContent = `→ ${fileNameFor(app, labrefRow(lab))}`;
+  };
+  apiFetch('dtr/approval/name-format').then((j) => { if (j && j.format) { state.pdfNameFmt = j.format; showNameFmt(); } }).catch(() => {});
+  $('#uf-namefmt-edit')?.addEventListener('click', async () => {
+    const f = prompt('Your file name format (saved for your account).\nTokens: {app} Application No.  {tr}  {labref} Lab Ref  {style}  {material}  {result}  {date} YYYYMMDD\nExample: {app}_{labref}\nLeave empty to go back to {app}.', state.pdfNameFmt);
+    if (f === null) return;
+    try {
+      const j = await apiFetch('dtr/approval/name-format', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ format: f.trim() }) });
+      state.pdfNameFmt = j.format;
+      showNameFmt();
+      // the report already attached takes the new name; a name typed by hand for it is replaced
+      const cur = window.nxAttachedPdf;
+      if (cur && cur.source === 'generated') { cur.name = fileNameFor(cur.app, labrefRow(cur.lab_ref_no)); if ($('#uf_attachment_name')) $('#uf_attachment_name').value = cur.name; }
+      showToast('File name format saved.');
+    } catch (e) { showToast(e.message, true); }
+  });
+  // renaming this one report by hand
+  $('#uf_attachment_name')?.addEventListener('change', (e) => {
+    const v = cleanPdfName(e.target.value);
+    e.target.value = v;
+    if (window.nxAttachedPdf) { window.nxAttachedPdf.name = v; showToast(`File name for InterLink: ${v}`); }
+  });
+
+  let apvTimer = null;
+  let restoreApproval = () => {};   // set below, called when the Upload Form opens
+  const showApproval = (a, signers) => {
+    const box = $('#uf-apv');
+    if (!box) return;
+    box.classList.remove('hidden', 'is-approved', 'is-rejected');
+    $('#uf-apv-qr-wrap')?.classList.add('hidden');
+    const req = $('#uf-apv-request');
+    if (req) { req.classList.remove('hidden'); req.disabled = false; }
+    clearInterval(apvTimer);
+    if (!a) {
+      $('#uf-apv-status').textContent = signers ? 'Needs approval by a Manager / Supervisor before it can be sent to InterLink.'
+        : 'Needs approval, but no Manager / Supervisor is registered yet (Designer → Signatories).';
+      return;
+    }
+    if (a.status === 'approved') {
+      box.classList.add('is-approved');
+      req?.classList.add('hidden');
+      $('#uf-apv-status').textContent = `Approved by ${a.decided_name} (${a.decided_title}) · ${a.decided_at}. The signed report is attached.`;
+      return;
+    }
+    if (a.status === 'rejected') {
+      box.classList.add('is-rejected');
+      $('#uf-apv-status').textContent = `Returned by ${a.decided_name}: ${a.remarks || ''} — correct the report, Generate it again and request approval.`;
+      if (req) req.textContent = 'Request approval again (QR)';
+      return;
+    }
+    // pending, but the temporary link ran out: a new one has to be made (the old QR code no longer works)
+    if (a.expired) {
+      $('#uf-apv-status').textContent = 'The approval link expired before anyone used it. Make a new link (it is sent to the Managers / Supervisors again).';
+      if (req) req.textContent = 'Get a new link (QR)';
+      return;
+    }
+    // pending: QR code of the temporary single-use link + live wait for the decision
+    req?.classList.add('hidden');
+    const until = Date.now() + (a.expires_in || 0) * 1000;
+    const left = () => { const m = Math.max(0, Math.ceil((until - Date.now()) / 60000)); return m > 1 ? `${m} min` : 'under a minute'; };
+    $('#uf-apv-status').textContent = `Waiting for approval · requested by ${a.requested_name} ${a.requested_at} · link works once, expires in ${left()}`;
+    const qr = window.qrcode ? window.qrcode(0, 'M') : null;
+    if (qr) { qr.addData(a.url); qr.make(); $('#uf-apv-qr').innerHTML = qr.createSvgTag({ cellSize: 3, margin: 2 }); }
+    $('#uf-apv-link').href = a.url;
+    $('#uf-apv-qr-wrap')?.classList.remove('hidden');
+    apvTimer = setInterval(() => {
+      if (Date.now() >= until) { checkApproval(a.lab_ref_no, false); return; }   // expired: show the "new link" state
+      $('#uf-apv-status').textContent = `Waiting for approval · requested by ${a.requested_name} ${a.requested_at} · link works once, expires in ${left()}`;
+      checkApproval(a.lab_ref_no, true);
+    }, 3000);
+  };
+  // the signed PDF of an approved report becomes the attachment
+  const attachSigned = async (a) => {
+    const b64 = await pdfAsB64(`dtr/approval/file/${a.token}`);
+    const app = a.application_no || state.activeAppNo || '';
+    setAttachedPdf({ app, lab_ref_no: a.lab_ref_no, name: fileNameFor(app, labrefRow(a.lab_ref_no)), b64, source: 'generated', approved: true, approved_by: a.decided_name });
+  };
+  const checkApproval = async (labRef, quiet) => {
+    if (!labRef) return;
+    try {
+      const j = await apiFetch(`dtr/approval/status?lab_ref=${encodeURIComponent(labRef)}`);
+      const a = j.approval;
+      if (a && a.status === 'approved' && !(window.nxAttachedPdf && window.nxAttachedPdf.approved)) {
+        await attachSigned(a);
+        if (quiet) showToast(`${a.lab_ref_no} was approved by ${a.decided_name}. The signed report is attached; you can send it to InterLink.`);
+      }
+      if (a && a.status === 'rejected' && quiet) showToast(`${a.lab_ref_no} was returned by ${a.decided_name}: ${a.remarks || ''}`, true);
+      if (!quiet || !a || a.status !== 'pending') showApproval(a, j.signatories);
+    } catch (e) { /* the status shows on the next check */ }
+  };
+  window.addEventListener('nxl:approval', (e) => {
+    const cur = window.nxAttachedPdf;
+    if (cur && e.detail && e.detail.lab_ref === cur.lab_ref_no) checkApproval(cur.lab_ref_no, true);
+  });
+  // Opening the form (or reloading the page) brings the approval panel back as it stands: waiting with its QR code,
+  // approved with the signed report attached, or returned. Nothing has to be generated again to see it.
+  restoreApproval = async (chosen) => {
+    const labRef = chosen || (window.nxAttachedPdf && window.nxAttachedPdf.lab_ref_no) || currentLabRef();
+    if (!labRef) return;
+    try {
+      const j = await apiFetch(`dtr/approval/status?lab_ref=${encodeURIComponent(labRef)}`);
+      const a = j.approval;
+      const cur = window.nxAttachedPdf;
+      // another Lab Reference was chosen: the report attached for the previous one is not this one
+      if (cur && cur.lab_ref_no && cur.lab_ref_no !== labRef && cur.source === 'generated') { window.nxAttachedPdf = null; $('#uf-att-meta')?.classList.add('hidden'); }
+      if (!a) { if (chosen) $('#uf-apv')?.classList.add('hidden'); showNameFmt(); return; }
+      if (a.status === 'approved' && !(window.nxAttachedPdf && window.nxAttachedPdf.approved)) await attachSigned(a);
+      showApproval(a, j.signatories);
+      showNameFmt();
+    } catch (e) { /* the panel stays hidden until the report is generated */ }
+  };
+  // coming back to the tab (browsers slow background timers) checks at once
+  const refreshApproval = () => {
+    if (document.hidden || state.currentView !== 'upload') return;
+    const cur = window.nxAttachedPdf;
+    if (cur && cur.lab_ref_no && !cur.approved) checkApproval(cur.lab_ref_no, true);
+  };
+  document.addEventListener('visibilitychange', refreshApproval);
+  window.addEventListener('focus', refreshApproval);
+  $('#uf-apv-request')?.addEventListener('click', async () => {
+    const pdf = window.nxAttachedPdf;
+    if (!pdf || !pdf.lab_ref_no) { showToast('Generate the report (or Browse for it) first.', true); return; }
+    const btn = $('#uf-apv-request');
+    btn.disabled = true;
+    try {
+      // the sheet the approver reads comes from the same record as the PDF, captured now so it is current
+      showToast('Preparing the report for the approver…');
+      let sheet = '';
+      try { sheet = await sheetFor(pdf); } catch (e) { throw new Error('the report view could not be prepared (' + e.message + '). Generate the report again.'); }
+      const j = await apiFetch('dtr/approval/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lab_ref: pdf.lab_ref_no, application_no: pdf.app, pdf_b64: pdf.b64, sheet_html: sheet }),
+      });
+      showApproval(j.approval, 1);
+      showToast('Approval requested. The Managers / Supervisors were notified; they can also scan the QR code.');
+    } catch (e) {
+      showToast('Could not request approval: ' + e.message, true);
+      btn.disabled = false;
+    }
+  });
+  // a different temporary link every time: the previous QR code / link stops working
+  $('#uf-apv-new')?.addEventListener('click', () => { const b = $('#uf-apv-request'); b?.classList.remove('hidden'); b?.click(); });
+  $('#uf-apv-copy')?.addEventListener('click', () => {
+    const url = $('#uf-apv-link')?.href || '';
+    (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(() => showToast('Approval link copied.')).catch(() => prompt('Approval link:', url));
+  });
+
   $('#uf-btn-generate-pdf')?.addEventListener('click', async () => {
     const btn = $('#uf-btn-generate-pdf');
     let labRef = currentLabRef();
@@ -1584,16 +1834,15 @@
       const det = await apiFetch(`interlink/labref-detail?lab_ref_no=${encodeURIComponent(labRef)}`);
       const lr = det.labref || {};
       if (!lr.form_slug || !(lr.source_id || lr.id)) throw new Error(`${labRef} has no Digital Test Report form to print.`);
+      const app = state.activeAppNo || $('#uf_application_no')?.value || lr.tr_no || lr.lab_ref_no;
       showToast(`Creating the ${lr.form_category || ''} report PDF for ${lr.lab_ref_no}…`);
-      const b64 = await window.nxReportPdf({ slug: lr.form_slug, id: lr.source_id || lr.id });
-      setAttachedPdf({
-        app: state.activeAppNo || $('#uf_application_no')?.value || '',
-        lab_ref_no: lr.lab_ref_no,
-        name: `${lr.lab_ref_no}_TestReport.pdf`,
-        b64,
-        source: 'generated',
-      });
-      showToast(`Report PDF ready: ${lr.lab_ref_no}_TestReport.pdf (press View to check it)`);
+      // material reports: the lab's official Access report; bonding: the VF sheet made in the browser
+      const b64 = lr.form_slug === 'bonding'
+        ? await window.nxReportPdf({ slug: lr.form_slug, id: lr.source_id || lr.id })
+        : await pdfAsB64(`dtr/report-pdf?lab_ref=${encodeURIComponent(lr.lab_ref_no)}&app=${encodeURIComponent(app)}`);
+      setAttachedPdf({ app, lab_ref_no: lr.lab_ref_no, name: fileNameFor(app, lr), b64, source: 'generated' });
+      showToast(`Report ready: ${app}.pdf. Check the report view, then request approval.`);
+      try { showReportView(await sheetFor(window.nxAttachedPdf), lr.lab_ref_no); } catch (e) { showToast('The report view could not be prepared: ' + e.message, true); }
     } catch (e) {
       showToast('Could not generate the report: ' + e.message, true);
     }
@@ -1623,7 +1872,11 @@
     };
     rd.readAsDataURL(file);
   });
-  $('#uf-btn-view-pdf')?.addEventListener('click', () => openAttachedPdf(false));
+  $('#uf-btn-view-pdf')?.addEventListener('click', async () => {
+    const pdf = window.nxAttachedPdf;
+    if (!pdf) return;
+    try { showReportView(await sheetFor(pdf), pdf.lab_ref_no); } catch (e) { openAttachedPdf(false); }   // a browsed file has no sheet: show the file
+  });
   $('#uf-btn-save-pdf')?.addEventListener('click', () => openAttachedPdf(true));
 
   // Open Pre-Sync Confirmation Dialog
