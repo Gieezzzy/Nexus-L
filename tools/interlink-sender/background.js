@@ -53,9 +53,10 @@ const queuePull = (nexusTabId, req) => { pullChain = pullChain.then(() => pullGr
 async function pullGrid(nexusTabId, req) {
   const reply = (msg) => chrome.tabs.sendMessage(nexusTabId, Object.assign({ reqId: req.reqId }, msg)).catch(() => {});
   const progress = (message) => { if (!req.silent) reply({ type: 'grid-progress', message }); };
+  let keepOpen = false;                                 // a tab left for the user to sign in must not be closed under them
   try {
     const helper = await helperTab(!!req.silent, progress);
-    if (helper.error) { reply({ type: 'grid-status', ok: false, message: helper.error }); return; }
+    if (helper.error) { keepOpen = !!helper.signIn; reply({ type: 'grid-status', ok: false, message: helper.error }); return; }
     const pages = [];
     const first = Math.max(1, Number(req.firstPage) || 1);
     const count = Math.max(1, Math.min(Number(req.count) || 1, 8));
@@ -71,7 +72,7 @@ async function pullGrid(nexusTabId, req) {
   } catch (e) {
     reply({ type: 'grid-status', ok: false, message: e.message });
   } finally {
-    if (!req.silent) chrome.alarms.create('close-grid-tab', { delayInMinutes: 1 });   // timer-driven reads do not extend its life
+    if (!req.silent && !keepOpen) chrome.alarms.create('close-grid-tab', { delayInMinutes: 1 });   // timer-driven reads do not extend its life
   }
 }
 
@@ -83,6 +84,9 @@ async function helperTab(silent, progress = () => {}) {
   let tab = gridTab ? await chrome.tabs.get(gridTab).catch(() => null) : null;
   if (!tab) {
     if (silent) return { error: 'The InterLink reader tab is not open.' };
+    // never start a second sign-in while one is already open: two at once can leave Microsoft's sign-in state tangled
+    const signingIn = (await chrome.tabs.query({ url: ['https://login.microsoftonline.com/*'] })).length > 0;
+    if (signingIn) return { error: 'A sign-in to InterLink is already open in another tab. Finish it there, then try again.', signIn: true };
     progress('Opening InterLink in a background tab…');
     tab = await chrome.tabs.create({ url: PORTAL_HOME, active: false });
     await chrome.storage.session.set({ gridTab: tab.id });
@@ -97,7 +101,7 @@ async function helperTab(silent, progress = () => {}) {
       if (failures === 6) progress('Waiting for InterLink to finish signing in…');
       if (failures >= 16 && !silent) {
         await chrome.tabs.update(tab.id, { active: true }).catch(() => {});
-        return { error: 'Sign in to InterLink in the tab that just opened, then try again.' };
+        return { error: 'Sign in to InterLink in the tab that just opened, then try again.', signIn: true };
       }
     } else {
       failures = 0;
