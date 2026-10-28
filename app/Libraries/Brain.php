@@ -251,93 +251,193 @@ class Brain
         return array_values(array_unique($out));
     }
 
+    /** @var array<string,mixed>|null per-process copy of the tokenised knowledge base */
+    private static ?array $corpus = null;
+
     /**
+     * The approved knowledge base with every entry already split into words, plus how many entries each word appears in.
+     * Cached on disk and rebuilt when an entry is added, edited or removed.
+     *
+     * @return array{rows:array<int,array>,tok:array<int,array{kw:array,ti:array,bo:array}>,df:array<string,int>,n:int}
+     */
+    private static function corpus(): array
+    {
+        $db  = \Config\Database::connect();
+        $sig = $db->query('SELECT COUNT(*) c, COALESCE(MAX(updated_at),\'\') u, COALESCE(SUM(helpful),0) h FROM tbl_bot_knowledge WHERE status = \'approved\'')->getRowArray();
+        $sig = md5(json_encode($sig) . filesize(__FILE__));
+        if (self::$corpus !== null && self::$corpus['sig'] === $sig) {
+            return self::$corpus;
+        }
+        $file = WRITEPATH . 'cache' . DIRECTORY_SEPARATOR . 'brain_corpus.ser';
+        if (is_file($file)) {
+            $c = @unserialize((string) @file_get_contents($file), ['allowed_classes' => false]);
+            if (is_array($c) && ($c['sig'] ?? '') === $sig) {
+                return self::$corpus = $c;
+            }
+        }
+        $rows = $tok = $df = [];
+        foreach ($db->table('tbl_bot_knowledge')->where('status', 'approved')->get()->getResultArray() as $r) {
+            $id        = (int) $r['id'];
+            $rows[$id] = $r;
+            $kp = [];
+            foreach (array_filter(array_map('trim', explode(',', (string) $r['keywords']))) as $phrase) {
+                $pt = self::tokens($phrase);
+                if ($pt) {
+                    $kp[] = $pt;
+                }
+            }
+            $tok[$id]  = ['kw' => self::tokens((string) $r['keywords']), 'ti' => self::tokens((string) $r['title']), 'bo' => self::tokens((string) $r['body']), 'kp' => $kp];
+            foreach (array_unique(array_merge($tok[$id]['kw'], $tok[$id]['ti'], $tok[$id]['bo'])) as $w) {
+                $df[$w] = ($df[$w] ?? 0) + 1;
+            }
+        }
+        $c = ['sig' => $sig, 'rows' => $rows, 'tok' => $tok, 'df' => $df, 'n' => count($rows)];
+        @file_put_contents($file, serialize($c), LOCK_EX);
+
+        return self::$corpus = $c;
+    }
+
+    /**
+     * Finds the knowledge entries that answer a question by looking at it ONE WORD AT A TIME.
+     * Every word is looked up on its own across the whole knowledge base (exact, same stem/prefix, or a one-or-two-letter
+     * typo), weighted by how rare it is (a word only a few entries use says far more than "report"), then each entry is
+     * ranked by how much of the question's weight it explains, with keywords > title > body.
+     *
      * @param array{page?:string,role?:string,errors?:list<string>} $ctx
      *
      * @return list<array{row:array,score:float}> best first
      */
     public static function search(string $question, array $ctx = [], int $limit = 5): array
     {
-        $db     = \Config\Database::connect();
-        $q      = self::tokens($question);
+        $q       = self::tokens($question);
         $isAdmin = strcasecmp((string) ($ctx['role'] ?? ''), 'admin') === 0;
         if (! $q) {
             return [];
         }
+        $C  = self::corpus();
+        $N  = max(1, $C['n']);
+        $df = $C['df'];
 
-        // 1. candidates: FULLTEXT first, LIKE as the safety net, plus entries bound to this page / these errors
-        $ids = [];
-        try {
-            $boolean = implode(' ', array_map(static fn ($t) => '' . preg_replace('/[^\p{L}\p{N}]/u', '', $t) . '*', $q));
-            $rows    = $db->query('SELECT id FROM tbl_bot_knowledge WHERE status = \'approved\' AND MATCH(title, keywords, body) AGAINST (? IN BOOLEAN MODE) LIMIT 80', [$boolean])->getResultArray();
-            $ids     = array_column($rows, 'id');
-        } catch (\Throwable $e) {
-            // no fulltext index
-        }
-        $builder = $db->table('tbl_bot_knowledge')->where('status', 'approved');
-        $cand    = [];
-        if ($ids) {
-            $cand = $builder->whereIn('id', $ids)->get()->getResultArray();
-        }
-        if (count($cand) < 8) {
-            $b = $db->table('tbl_bot_knowledge')->where('status', 'approved')->groupStart();
-            foreach (array_slice($q, 0, 6) as $t) {
-                $b->orLike('keywords', $t)->orLike('title', $t);
-            }
-            $more = $b->groupEnd()->limit(120)->get()->getResultArray();
-            $seen = array_column($cand, 'id');
-            foreach ($more as $m) {
-                if (! in_array($m['id'], $seen, true)) {
-                    $cand[] = $m;
+        // 1. each question word -> the knowledge-base words it can stand for, with how sure that match is
+        $vocab  = array_keys($df);
+        $expand = [];
+        $idf    = [];
+        foreach ($q as $t) {
+            $m = [$t => 1.0];
+            $L = strlen($t);
+            if ($L >= 4) {
+                foreach ($vocab as $v) {
+                    if ($v === $t) {
+                        continue;
+                    }
+                    $lv = strlen($v);
+                    if ($lv >= 4 && (str_starts_with($v, $t) || str_starts_with($t, $v)) && abs($lv - $L) <= 4) {
+                        $m[$v] = max($m[$v] ?? 0, 0.75);
+                    } elseif ($L >= 5 && abs($lv - $L) <= 2 && levenshtein($t, $v) <= ($L >= 8 ? 2 : 1)) {
+                        $m[$v] = max($m[$v] ?? 0, 0.65);
+                    }
                 }
             }
+            $expand[$t] = $m;
+            $best       = 0;
+            foreach ($m as $v => $f) {
+                $best = max($best, $df[$v] ?? 0);
+            }
+            $idf[$t] = $best > 0 ? log(1 + $N / (1 + $best)) : 0.0;     // 0 = no entry uses this word at all
         }
+        $known = array_filter($idf);
+        if (! $known) {
+            return [];
+        }
+        $mean = array_sum($known) / count($known);
+        $w    = [];
+        foreach ($q as $t) {
+            $w[$t] = $idf[$t] > 0 ? $idf[$t] / $mean : 0.4;              // a word nobody uses still counts a little against an entry
+        }
+        $wTotal = array_sum($w);
+
+        // 2. every entry that contains at least one of the words, scored by what it explains
         $page = strtolower((string) ($ctx['page'] ?? ''));
-        if ($page !== '') {
-            $more = $db->table('tbl_bot_knowledge')->where('status', 'approved')->like('page_match', explode('/', trim($page, '/'))[0] ?? '')->limit(40)->get()->getResultArray();
-            $seen = array_column($cand, 'id');
-            foreach ($more as $m) {
-                if (! in_array($m['id'], $seen, true)) {
-                    $cand[] = $m;
-                }
-            }
-        }
-
-        // 2. score
+        $ql   = mb_strtolower($question);
+        $FW   = ['kw' => 3.0, 'ti' => 2.5, 'bo' => 0.8];
         $scored = [];
-        foreach ($cand as $r) {
+        foreach ($C['rows'] as $id => $r) {
             if (($r['role_min'] ?? 'user') === 'admin' && ! $isAdmin) {
                 continue;
             }
-            $kw    = self::tokens((string) $r['keywords']);
-            $ti    = self::tokens((string) $r['title']);
-            $bo    = self::tokens((string) $r['body']);
-            $score = 0.0;
+            $T       = $C['tok'][$id];
+            $score   = 0.0;
+            $covered = 0.0;
             foreach ($q as $t) {
-                if (in_array($t, $kw, true)) {
-                    $score += 3.0;
+                $top = 0.0;
+                foreach ($FW as $f => $fw) {
+                    foreach ($expand[$t] as $v => $factor) {
+                        if ($factor * $fw > $top && in_array($v, $T[$f], true)) {
+                            $top = $factor * $fw;
+                            if ($factor === 1.0) {
+                                break;
+                            }
+                        }
+                    }
                 }
-                if (in_array($t, $ti, true)) {
-                    $score += 2.5;
-                }
-                if (in_array($t, $bo, true)) {
-                    $score += 0.8;
-                }
-            }
-            // phrase bonus: the whole question inside keywords/title
-            $ql = mb_strtolower($question);
-            foreach (array_filter(array_map('trim', explode(',', mb_strtolower((string) $r['keywords'])))) as $phrase) {
-                if (strlen($phrase) > 5 && str_contains($ql, $phrase)) {
-                    $score += 4.0;
+                if ($top > 0) {
+                    $score   += $w[$t] * $top;
+                    $covered += $w[$t] * min(1.0, $top / 0.8);
                 }
             }
             if ($score <= 0) {
                 continue;
             }
-            // coverage: share of the question that this entry explains
-            $hit   = count(array_intersect($q, array_merge($kw, $ti, $bo)));
-            $score *= 0.6 + 0.8 * ($hit / max(1, count($q)));
-            // context: page and recent errors
+            // words that sit next to each other in the question and in the title / keywords: a phrase, not just two words
+            for ($i = 0; $i + 1 < count($q); $i++) {
+                $pair = $q[$i] . ' ' . $q[$i + 1];
+                if (str_contains(implode(' ', $T['ti']), $pair) || str_contains(implode(' ', $T['kw']), $pair)) {
+                    $score += 1.5 * min($w[$q[$i]], $w[$q[$i + 1]]);
+                }
+            }
+            foreach (array_filter(array_map('trim', explode(',', mb_strtolower((string) $r['keywords'])))) as $phrase) {
+                if (strlen($phrase) > 5 && str_contains($ql, $phrase)) {
+                    $score += 4.0;
+                }
+            }
+            // a keyword phrase of 2+ words whose every word is in the question (in any order, typos allowed) is a strong sign
+            $wm = $wTotal / count($q);
+            foreach ($T['kp'] as $P) {
+                if (count($P) < 2) {
+                    continue;
+                }
+                $all = true;
+                foreach ($P as $p) {
+                    $found = false;
+                    foreach ($expand as $m) {
+                        if (isset($m[$p])) {
+                            $found = true;
+                            break;
+                        }
+                    }
+                    if (! $found) {
+                        $all = false;
+                        break;
+                    }
+                }
+                if ($all) {
+                    $score += 1.2 * count($P) * $wm;
+                }
+            }
+            // how much of the TITLE the question accounts for: "What is Ross Flex?" beats an overview that merely lists it
+            if ($T['ti']) {
+                $tc = 0;
+                foreach ($T['ti'] as $p) {
+                    foreach ($expand as $m) {
+                        if (isset($m[$p])) {
+                            $tc++;
+                            break;
+                        }
+                    }
+                }
+                $score *= 1 + 0.5 * ($tc / count($T['ti']));
+            }
+            $score *= 0.5 + 1.0 * ($covered / max(0.0001, $wTotal));
             if ($page !== '' && ! empty($r['page_match']) && str_contains($page, strtolower((string) $r['page_match']))) {
                 $score *= 1.25;
             }
