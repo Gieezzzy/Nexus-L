@@ -388,16 +388,30 @@
   // only way to show InterLink's own pages is through the sender extension, in the user's own signed-in browser. It reads
   // InterLink's grid pages (15 rows each) in a background tab it opens and closes by itself - nobody has to keep InterLink
   // open. Without the extension this view can only show NEXUS-L's saved copy, which holds far fewer rows than InterLink.
-  const hasGridSender = () => document.documentElement.dataset.nxlSender === '1';
+  // Reading needs sender 1.3.1 or newer (older ones answer in a format this page cannot match, which used to look like an
+  // endless "loading"): the page checks the version, and every request must be acknowledged within a few seconds.
+  const MIN_SENDER = '1.3.1';
+  const senderVersion = () => document.documentElement.dataset.nxlSenderVersion || '';
+  const versionAtLeast = (v, min) => {
+    const a = String(v || '0').split('.').map(Number);
+    const b = min.split('.').map(Number);
+    for (let i = 0; i < 3; i++) { if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0); }
+    return true;
+  };
+  const senderInstalled = () => document.documentElement.dataset.nxlSender === '1';
+  const hasGridSender = () => senderInstalled() && versionAtLeast(senderVersion(), MIN_SENDER);
   let pullSeq = 0;
   const nxPullGrid = ({ firstPage, count, silent }) => new Promise((resolve, reject) => {
     const reqId = `g${Date.now()}_${++pullSeq}`;
-    const cleanup = () => { clearTimeout(timer); window.removeEventListener('message', onMsg); };
+    const cleanup = () => { clearTimeout(timer); clearTimeout(ackTimer); window.removeEventListener('message', onMsg); };
     const onMsg = (e) => {
       if (e.source !== window || !e.data || e.data.reqId !== reqId) return;
+      if (e.data.type === 'NXL_GRID_ACK') clearTimeout(ackTimer);
+      if (e.data.type === 'NXL_GRID_PROGRESS' && !silent) { const sub = $('#il-loading-sub'); if (sub && e.data.message) sub.textContent = e.data.message; }
       if (e.data.type === 'NXL_GRID_HTML') { cleanup(); resolve(e.data.pages || []); }
       if (e.data.type === 'NXL_GRID_STATUS' && e.data.ok === false) { cleanup(); reject(new Error(e.data.message || 'Could not read InterLink.')); }
     };
+    const ackTimer = setTimeout(() => { cleanup(); reject(new Error('The extension did not answer. Reload this page (Ctrl+F5); if that does not help, update the NEXUS-L InterLink Sender extension.')); }, 5000);
     const timer = setTimeout(() => { cleanup(); reject(new Error('InterLink took too long to answer.')); }, 150000);
     window.addEventListener('message', onMsg);
     window.postMessage({ type: 'NXL_PULL_GRID', reqId, firstPage, count, silent: !!silent }, location.origin);
@@ -429,6 +443,10 @@
     // the reader tab is still open from a recent read (it closes by itself about a minute after the last one): they never
     // open a tab on their own, so nothing pops up while you work.
     const useSender = hasGridSender() && (!silent || Date.now() < (state.liveWarmUntil || 0));
+    if (!silent && senderInstalled() && !hasGridSender() && !state.warnedOldSender) {
+      state.warnedOldSender = true;
+      showToast(`Your NEXUS-L InterLink Sender is out of date${senderVersion() ? ` (v${senderVersion()})` : ''}: pages are shown from NEXUS-L's saved copy only. Download v${MIN_SENDER} or newer with "Install the sender", reload it in chrome://extensions, then reload this page.`, true);
+    }
 
     try {
       if (!silent) {

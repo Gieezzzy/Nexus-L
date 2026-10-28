@@ -51,7 +51,17 @@
 
   // ---- One-click send: NEXUS-L prepares the values and the report PDF; the "NEXUS-L InterLink Sender" extension in the
   // PIC's own Chrome (their own InterLink sign-in) opens the form, fills it, attaches the PDF and saves it ---------------
-  const hasSender = () => document.documentElement.dataset.nxlSender === '1';
+  // 'none' = not installed, 'old' = installed but older than 1.3.1 (its Home -> grid navigation and reading do not work),
+  // 'ok'. A page that was open before the extension was updated still carries the old version, so a reload fixes 'old'.
+  const MIN_SENDER = '1.3.1';
+  const senderState = () => {
+    if (document.documentElement.dataset.nxlSender !== '1') return 'none';
+    const a = String(document.documentElement.dataset.nxlSenderVersion || '0').split('.').map(Number);
+    const b = MIN_SENDER.split('.').map(Number);
+    for (let i = 0; i < 3; i++) { if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0) ? 'ok' : 'old'; }
+    return 'ok';
+  };
+  const hasSender = () => senderState() === 'ok';
   const installHelp = () => {
     const back = document.createElement('div');
     back.className = 'nx-modal-back';
@@ -77,10 +87,16 @@
     const text = $('#sc-status-text');
     const install = $('#sc-status-install');
     if (!dot) return;
-    if (hasSender()) {
+    const st = senderState();
+    if (st === 'ok') {
       dot.className = 'sc-dot sc-dot-ok';
-      text.textContent = 'Sender extension: detected in this browser. When you press "Send to InterLink", InterLink opens and asks you to sign in there if you are not already - NEXUS-L cannot check that in advance.';
+      text.textContent = `Sender extension v${document.documentElement.dataset.nxlSenderVersion}: detected in this browser. When you press "Send to InterLink", InterLink opens and asks you to sign in there if you are not already - NEXUS-L cannot check that in advance.`;
       install.hidden = true;
+    } else if (st === 'old') {
+      dot.className = 'sc-dot sc-dot-off';
+      const v = document.documentElement.dataset.nxlSenderVersion;
+      text.textContent = `Sender extension${v ? ' v' + v : ''}: out of date (needs v${MIN_SENDER} or newer). Download it, reload it in chrome://extensions, then reload this page.`;
+      install.hidden = false;
     } else {
       dot.className = 'sc-dot sc-dot-off';
       text.textContent = 'Sender extension: not detected in this browser. If you just installed or updated it, reload this page.';

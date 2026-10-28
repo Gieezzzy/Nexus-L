@@ -44,19 +44,25 @@ chrome.runtime.onMessage.addListener((m, sender) => {
 //    It is reused for follow-up page clicks and closed about a minute after the last one.
 //  - A silent (auto-refresh) request never opens a tab; it only uses the helper tab if one is already open.
 const GRID_ID = 'PH1_SF1_GVBUILDER_BuilderGridView';
+const TIMED_OUT = Symbol('timed out');
+// a scripted page that never answers (stuck load, sign-in page) must not hang a read: every wait is bounded
+const bounded = (promise, ms) => Promise.race([promise.catch(() => null), new Promise((r) => setTimeout(() => r(TIMED_OUT), ms))]);
 let pullChain = Promise.resolve();                      // one read at a time: they all share the helper tab
 const queuePull = (nexusTabId, req) => { pullChain = pullChain.then(() => pullGrid(nexusTabId, req)).catch(() => {}); };
 
 async function pullGrid(nexusTabId, req) {
   const reply = (msg) => chrome.tabs.sendMessage(nexusTabId, Object.assign({ reqId: req.reqId }, msg)).catch(() => {});
+  const progress = (message) => { if (!req.silent) reply({ type: 'grid-progress', message }); };
   try {
-    const helper = await helperTab(!!req.silent);
+    const helper = await helperTab(!!req.silent, progress);
     if (helper.error) { reply({ type: 'grid-status', ok: false, message: helper.error }); return; }
     const pages = [];
     const first = Math.max(1, Number(req.firstPage) || 1);
     const count = Math.max(1, Math.min(Number(req.count) || 1, 8));
     for (let p = first; p < first + count; p++) {
-      const r = await inPage(helper.id, gotoPageAndRead, [p]);
+      progress(`Reading InterLink page ${p}…`);
+      const r = await bounded(inPage(helper.id, gotoPageAndRead, [p]), 80000);
+      if (r === TIMED_OUT) { reply({ type: 'grid-status', ok: false, message: `InterLink did not show page ${p} in time.` }); return; }
       if (!r || !r.ok) { reply({ type: 'grid-status', ok: false, message: (r && r.message) || 'Could not read the InterLink grid.' }); return; }
       pages.push(r.html);
       if (r.page !== p) break;                          // asked past the last page: InterLink's last page was read instead
@@ -71,12 +77,13 @@ async function pullGrid(nexusTabId, req) {
 
 /** The background tab that reads the grid: reused if it is still open, otherwise opened (unless silent) and taken to the
  *  grid. Returns { id } or { error }. */
-async function helperTab(silent) {
+async function helperTab(silent, progress = () => {}) {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const { gridTab } = await chrome.storage.session.get('gridTab');
   let tab = gridTab ? await chrome.tabs.get(gridTab).catch(() => null) : null;
   if (!tab) {
     if (silent) return { error: 'The InterLink reader tab is not open.' };
+    progress('Opening InterLink in a background tab…');
     tab = await chrome.tabs.create({ url: PORTAL_HOME, active: false });
     await chrome.storage.session.set({ gridTab: tab.id });
   }
@@ -84,9 +91,10 @@ async function helperTab(silent) {
   let failures = 0;
   let navigatedAt = 0;
   for (let i = 0; i < 90; i++) {                        // about 45 s to reach the grid
-    const st = await inPage(tab.id, gridProbe, []).catch(() => null);
-    if (!st) {                                          // not scriptable: InterLink's sign-in (Microsoft) page, or still loading
+    const st = await bounded(inPage(tab.id, gridProbe, []), 6000);
+    if (!st || st === TIMED_OUT) {                      // not scriptable: InterLink's sign-in (Microsoft) page, or still loading
       failures += 1;
+      if (failures === 6) progress('Waiting for InterLink to finish signing in…');
       if (failures >= 16 && !silent) {
         await chrome.tabs.update(tab.id, { active: true }).catch(() => {});
         return { error: 'Sign in to InterLink in the tab that just opened, then try again.' };
@@ -95,7 +103,8 @@ async function helperTab(silent) {
       failures = 0;
       if (st.grid) return { id: tab.id };
       if (st.home && Date.now() - navigatedAt > 10000) {
-        await inPage(tab.id, goToGridFromHome, []).catch(() => {});
+        progress('Going to InterLink\'s search page…');
+        await bounded(inPage(tab.id, goToGridFromHome, []), 6000);
         navigatedAt = Date.now();
       }
     }
