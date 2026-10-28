@@ -87,9 +87,102 @@ class ReportPdf
         return is_file($pdf) && filesize($pdf) > 1000 ? $pdf : null;
     }
 
+    /** The "Reviewed by" / "Approved by" lines printed on page 1: ['approved' => ['name', 'label', ...], 'reviewed' => [...], 'w', 'h'] or []. */
+    public static function signoff(string $pdf): array
+    {
+        $py  = is_file('C:\\Python314\\python.exe') ? 'C:\\Python314\\python.exe' : 'python';
+        $out = @shell_exec('"' . $py . '" "' . ROOTPATH . 'tools\\pdf_signoff.py" "' . $pdf . '" 2>NUL');
+        $j   = json_decode((string) $out, true);
+
+        return is_array($j) && empty($j['error']) ? $j : [];
+    }
+
+    /** Does the name printed on a report ("nila", "KATE G.", "N.B.E.") belong to this signatory's full name? */
+    public static function nameMatches(string $printed, string $fullName): bool
+    {
+        $norm = static fn (string $s): array => array_values(array_filter(preg_split('/[^a-z]+/', strtolower((string) iconv('UTF-8', 'ASCII//TRANSLIT', $s))) ?: [], static fn ($x) => $x !== ''));
+        $p    = $norm($printed);
+        $f    = $norm($fullName);
+        if (! $p || ! $f) {
+            return false;
+        }
+        if (implode('', $p) === implode('', array_map(static fn ($x) => $x[0], $f))) {
+            return true;                                                  // initials: N.B.E.
+        }
+        foreach ($p as $tok) {
+            $hit = false;
+            foreach ($f as $ft) {
+                if ($ft === $tok || (strlen($tok) === 1 && $ft[0] === $tok)) {
+                    $hit = true;
+                    break;
+                }
+            }
+            if (! $hit) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** Signature PNG (base64) with its background removed: white / near-white turns transparent, then it is cropped to the ink. */
+    public static function transparentPng(string $b64): string
+    {
+        $im = @imagecreatefromstring((string) base64_decode($b64, true));
+        if (! $im) {
+            return $b64;
+        }
+        $w = imagesx($im);
+        $h = imagesy($im);
+        $o = imagecreatetruecolor($w, $h);
+        imagealphablending($o, false);
+        imagesavealpha($o, true);
+        imagefill($o, 0, 0, imagecolorallocatealpha($o, 0, 0, 0, 127));
+        [$x0, $y0, $x1, $y1] = [$w, $h, -1, -1];
+        for ($y = 0; $y < $h; $y++) {
+            for ($x = 0; $x < $w; $x++) {
+                $c  = imagecolorat($im, $x, $y);
+                $a  = ($c >> 24) & 0x7F;                                  // 0 opaque .. 127 clear
+                $r  = ($c >> 16) & 255;
+                $g  = ($c >> 8) & 255;
+                $b  = $c & 255;
+                $lo = min($r, $g, $b);
+                if ($lo >= 235) {
+                    $a = 127;                                             // paper white
+                } elseif ($lo >= 190) {
+                    $a = max($a, (int) round(127 * (($lo - 190) / 45)));   // soft edge
+                }
+                if ($a >= 120) {
+                    continue;
+                }
+                imagesetpixel($o, $x, $y, ($a << 24) | ($r << 16) | ($g << 8) | $b);
+                $x0 = min($x0, $x);
+                $x1 = max($x1, $x);
+                $y0 = min($y0, $y);
+                $y1 = max($y1, $y);
+            }
+        }
+        if ($x1 < 0) {
+            return $b64;                                                  // nothing drawn
+        }
+        $crop = imagecreatetruecolor($x1 - $x0 + 1, $y1 - $y0 + 1);
+        imagealphablending($crop, false);
+        imagesavealpha($crop, true);
+        imagefill($crop, 0, 0, imagecolorallocatealpha($crop, 0, 0, 0, 127));
+        imagecopy($crop, $o, 0, 0, $x0, $y0, $x1 - $x0 + 1, $y1 - $y0 + 1);
+        ob_start();
+        imagepng($crop);
+
+        return base64_encode((string) ob_get_clean());
+    }
+
     /** Copies $in to $out with the signature and date stamp of $s {png(base64), name, title, date, kind access|web}. */
     public static function stamp(string $in, string $out, array $s): bool
     {
+        if (! empty($s['png'])) {
+            $s['png'] = self::transparentPng($s['png']);
+        }
+        $s['pos'] = self::signoff($in);
         $json = tempnam(sys_get_temp_dir(), 'stp');
         file_put_contents($json, json_encode($s));
         $node = is_file('C:\\Program Files\\nodejs\\node.exe') ? 'C:\\Program Files\\nodejs\\node.exe' : 'node';

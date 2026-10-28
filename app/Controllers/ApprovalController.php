@@ -198,6 +198,18 @@ class ApprovalController extends BaseController
         if ($a && $a['status'] === 'approved') {
             return $this->json(['ok' => true, 'approval' => $this->publicRow($a), 'message' => 'This report is already approved.']);
         }
+        // the name printed after "Approved by" on the report is the one who must sign it
+        $tmp = tempnam(sys_get_temp_dir(), 'so');
+        file_put_contents($tmp, $pdf);
+        $printed = trim((string) (ReportPdf::signoff($tmp)['approved']['name'] ?? ''));
+        @unlink($tmp);
+        $signRows = $this->db()->table('tbl_dtr_signatories')->where('is_active', 1)->get()->getResultArray();
+        if ($printed !== '') {
+            $signRows = array_values(array_filter($signRows, static fn ($r) => ReportPdf::nameMatches($printed, (string) $r['full_name'])));
+            if (! $signRows) {
+                return $this->json(['ok' => false, 'error' => 'This report says "Approved by ' . $printed . '", but no registered signatory has that name. Ask an admin to add ' . $printed . ' in Report Designer → Signatories (with their NEXUS-L account), then request approval again.'], 422);
+            }
+        }
         $token   = bin2hex(random_bytes(20));
         $expires = date('Y-m-d H:i:s', time() + self::LINK_MINUTES * 60);
         if ($a && $a['status'] === 'pending') {
@@ -208,6 +220,7 @@ class ApprovalController extends BaseController
             $this->db()->table('tbl_dtr_report_approvals')->where('id', $a['id'])->update([
                 'token' => $token, 'file_key' => $key, 'expires_at' => $expires, 'application_no' => $app ?: $a['application_no'],
                 'requested_by' => (int) ($me['id'] ?? 0), 'requested_name' => (string) ($me['name'] ?? $me['username'] ?? ''), 'requested_at' => $now, 'updated_at' => $now,
+                'required_name' => $printed !== '' ? mb_substr($printed, 0, 120) : null,
             ]);
         } else {
             $key = bin2hex(random_bytes(20));
@@ -217,9 +230,10 @@ class ApprovalController extends BaseController
                 'token' => $token, 'file_key' => $key, 'lab_ref_no' => $lr['lab_ref_no'], 'application_no' => $app ?: $lr['tr_no'], 'form_slug' => $lr['form_slug'],
                 'source_id' => (int) $lr['source_id'], 'status' => 'pending', 'requested_by' => (int) ($me['id'] ?? 0),
                 'requested_name' => (string) ($me['name'] ?? $me['username'] ?? ''), 'requested_at' => $now, 'expires_at' => $expires, 'updated_at' => $now,
+                'required_name' => $printed !== '' ? mb_substr($printed, 0, 120) : null,
             ]);
         }
-        $signers = array_column($this->db()->table('tbl_dtr_signatories')->select('user_id')->where('is_active', 1)->get()->getResultArray(), 'user_id');
+        $signers = array_column($signRows, 'user_id');
         $this->synology($signers, "NEXUS-L: report {$lr['lab_ref_no']} (" . ($app ?: $lr['tr_no']) . ", {$lr['overall_result']}) from "
             . ($me['name'] ?? 'the lab') . " is waiting for your approval before it goes to InterLink.\nThis link works once and expires in " . self::LINK_MINUTES . " minutes:\n" . site_url('approve/' . $token));
 
@@ -292,6 +306,9 @@ class ApprovalController extends BaseController
         if (! $sg) {
             return $this->json(['ok' => false, 'error' => 'Only a registered Manager or Supervisor can approve reports.'], 403);
         }
+        if (! empty($a['required_name']) && ! ReportPdf::nameMatches((string) $a['required_name'], (string) $sg['full_name'])) {
+            return $this->json(['ok' => false, 'error' => 'This report is signed off by ' . $a['required_name'] . '. Only ' . $a['required_name'] . ' can approve it: sign in with that account.'], 403);
+        }
         $now    = date('Y-m-d H:i:s');
         $action = ($p['action'] ?? '') === 'reject' ? 'rejected' : 'approved';
         $remark = trim((string) ($p['remarks'] ?? ''));
@@ -322,7 +339,8 @@ class ApprovalController extends BaseController
         $when = date('H:i', strtotime($now));
         $this->synology([(int) $a['requested_by']], "NEXUS-L: report {$a['lab_ref_no']} ({$a['application_no']}) was " . strtoupper($action)
             . " by {$sg['full_name']} at {$when}" . ($remark !== '' ? ": {$remark}" : '') . ($action === 'approved' ? '. The signed report is ready: you can now send it to InterLink.' : '. Correct it and request approval again.'));
-        $others = array_column($this->db()->table('tbl_dtr_signatories')->select('user_id')->where('is_active', 1)->get()->getResultArray(), 'user_id');
+        $others = array_column(array_filter($this->db()->table('tbl_dtr_signatories')->where('is_active', 1)->get()->getResultArray(),
+            static fn ($r) => empty($a['required_name']) || ReportPdf::nameMatches((string) $a['required_name'], (string) $r['full_name'])), 'user_id');
         $others = array_values(array_diff(array_map('intval', $others), [(int) $sg['user_id'], (int) $a['requested_by']]));
         $this->synology($others, "NEXUS-L: report {$a['lab_ref_no']} ({$a['application_no']}) was already " . $action . " by {$sg['full_name']} at {$when}. Its approval link no longer works; nothing more to do.");
 
