@@ -4,17 +4,14 @@ namespace App\Libraries;
 
 /**
  * Report PDFs for InterLink:
- * - material reports are the lab's official Access reports ("Hardware Test Report Form", "VH Test Report Form", ...)
- *   printed for one record through Access (app/Libraries/export_access_report.ps1);
+ * - material reports use the lab's report forms ("Hardware Test Report Form", "VH Test Report Form", ...) filled from dbnexus,
+ *   no Access involved (app/Libraries/report_templates + tools/build/render-report.js);
  * - signatures are stamped on page 1 by tools/build/stamp-pdf.js.
  * Bonding reports are the VF sheet made in the browser (dtr/sheet-pdf).
  */
 class ReportPdf
 {
-    /** the Access front-end that holds the material reports; a private copy is used so the lab's file is never locked */
-    private const MATERIAL_FE = 'D:\\#Digital Test Report\\V20261006.accdb';
-
-    /** Access report of a material record, chosen like the lab does: by form and material type. */
+    /** Report form of a material record, chosen like the lab does: by form and material type. */
     public static function accessReportFor(string $slug, array $row): ?string
     {
         $t = strtolower((string) ($row['MaterialType'] ?? ''));
@@ -36,24 +33,10 @@ class ReportPdf
         };
     }
 
-    private static function frontEnd(): ?string
-    {
-        if (! is_file(self::MATERIAL_FE)) {
-            return null;
-        }
-        $dir = WRITEPATH . 'cache/access_fe/';
-        if (! is_dir($dir)) {
-            @mkdir($dir, 0775, true);
-        }
-        $copy = $dir . 'material_fe.accdb';
-        if (! is_file($copy) || filemtime($copy) < filemtime(self::MATERIAL_FE)) {
-            @copy(self::MATERIAL_FE, $copy . '.tmp') && @rename($copy . '.tmp', $copy);
-        }
-
-        return is_file($copy) ? $copy : null;
-    }
-
-    /** Official Access report of a material record as a PDF file path (kept 5 minutes), or null. */
+    /**
+     * The report of a material record as a PDF file path, or null. Printed without Access: the lab's blank report form plus the
+     * record's values from dbnexus (tools/build/render-report.js), laid out exactly where the Access report puts them.
+     */
     public static function material(string $slug, int $id): ?string
     {
         $cfg = \App\Controllers\DtrController::FORM_CONFIG[$slug] ?? null;
@@ -62,27 +45,25 @@ class ReportPdf
         }
         $row = \Config\Database::connect()->table($cfg['table'])->where($cfg['pk'], $id)->get()->getRowArray();
         $rpt = $row ? self::accessReportFor($slug, $row) : null;
-        $fe  = $rpt ? self::frontEnd() : null;
-        if (! $fe) {
+        if (! $rpt) {
             return null;
         }
-        $dir = WRITEPATH . 'cache/report_pdfs/';
-        if (! is_dir($dir)) {
-            @mkdir($dir, 0775, true);
+        $base   = preg_replace('/[^A-Za-z0-9]+/', '_', $rpt);
+        $dir    = APPPATH . 'Libraries' . DIRECTORY_SEPARATOR . 'report_templates' . DIRECTORY_SEPARATOR;
+        $outDir = WRITEPATH . 'cache/report_pdfs/';
+        if (! is_file($dir . $base . '.pdf') || ! is_file($dir . $base . '.json')) {
+            return null;
         }
-        $pdf = $dir . "{$slug}_{$id}.pdf";
-        if (is_file($pdf) && filesize($pdf) > 1000 && filemtime($pdf) > time() - 300) {
-            return $pdf;
+        if (! is_dir($outDir)) {
+            @mkdir($outDir, 0775, true);
         }
-        // one Access at a time: two reports printed together would fight over the same front-end copy
-        $lock = fopen($dir . 'access.lock', 'c');
-        flock($lock, LOCK_EX);
+        $pdf = $outDir . "{$slug}_{$id}.pdf";
         @unlink($pdf);
-        @shell_exec('powershell -NoProfile -ExecutionPolicy Bypass -File ' . escapeshellarg(APPPATH . 'Libraries/export_access_report.ps1')
-            . ' -Database ' . escapeshellarg($fe) . ' -Report ' . escapeshellarg($rpt) . ' -Where ' . escapeshellarg('ID = ' . $id)
-            . ' -OutPdf ' . escapeshellarg($pdf) . ' 2>&1');
-        flock($lock, LOCK_UN);
-        fclose($lock);
+        $job = tempnam(sys_get_temp_dir(), 'rpt');
+        file_put_contents($job, json_encode(['layout' => $dir . $base . '.json', 'template' => $dir . $base . '.pdf', 'record' => $row, 'out' => $pdf], JSON_INVALID_UTF8_SUBSTITUTE));
+        $node = is_file('C:\Program Files\nodejs\node.exe') ? 'C:\Program Files\nodejs\node.exe' : 'node';
+        @shell_exec('"' . $node . '" "' . ROOTPATH . 'tools\build\render-report.js" "' . $job . '" 2>&1');
+        @unlink($job);
 
         return is_file($pdf) && filesize($pdf) > 1000 ? $pdf : null;
     }

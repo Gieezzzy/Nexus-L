@@ -939,17 +939,7 @@ class DtrController extends BaseController
         }
         $pdfPath = $cacheDir . "bonding_report_{$id}_{$side}.pdf";
 
-        // Generate PDF using Access COM script if not cached or empty
-        if (! file_exists($pdfPath) || filesize($pdfPath) === 0) {
-            $psScript    = APPPATH . 'Libraries/export_bonding_pdf.ps1';
-            $psScriptEsc = escapeshellarg($psScript);
-            $sideEsc     = escapeshellarg($side);
-            $pdfPathEsc  = escapeshellarg($pdfPath);
-
-            $cmd = "powershell -ExecutionPolicy Bypass -File {$psScriptEsc} -BondingTestID {$id} -Side {$sideEsc} -OutPdf {$pdfPathEsc}";
-            @shell_exec($cmd);
-        }
-
+        // Access is no longer used: only a copy made earlier can still be served
         if (file_exists($pdfPath) && filesize($pdfPath) > 0) {
             return $this->response
                 ->setHeader('Content-Type', 'application/pdf')
@@ -957,10 +947,10 @@ class DtrController extends BaseController
                 ->setBody(file_get_contents($pdfPath));
         }
 
-        return $this->response->setStatusCode(500)->setBody('The Access PDF could not be created for report #' . (int) $id . ' (Microsoft Access must be installed on the server and this report must exist in the Access file). Please close this tab and use "Print Report / Save as PDF" instead.');
+        return $this->response->setStatusCode(404)->setBody('NEXUS-L no longer prints bonding reports through Access. Use "Print Report / Save as PDF" for report #' . (int) $id . '.');
     }
 
-    /** Path of the Access-made machine result PDF for a BondingTestID (created on first use), or null. */
+    /** Path of an Access-made machine result PDF for a BondingTestID made before Access was retired, or null (nothing is made through Access any more). */
     private function ensureAccessPdf(int $id, string $side): ?string
     {
         $cacheDir = WRITEPATH . 'cache/bonding_pdfs/';
@@ -968,10 +958,6 @@ class DtrController extends BaseController
             @mkdir($cacheDir, 0777, true);
         }
         $pdfPath = $cacheDir . "bonding_report_{$id}_{$side}.pdf";
-        if (! is_file($pdfPath) || filesize($pdfPath) === 0) {
-            @shell_exec('powershell -ExecutionPolicy Bypass -File ' . escapeshellarg(APPPATH . 'Libraries/export_bonding_pdf.ps1') . " -BondingTestID {$id} -Side " . escapeshellarg($side) . ' -OutPdf ' . escapeshellarg($pdfPath));
-        }
-
         return is_file($pdfPath) && filesize($pdfPath) > 0 ? $pdfPath : null;
     }
 

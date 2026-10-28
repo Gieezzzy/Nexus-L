@@ -1943,12 +1943,7 @@
     // Show/Update Access PDF download button
     const pdfBtn = $('#btn-dtr-download-access-pdf');
     if (pdfBtn) {
-      if (bondingTestId > 0) {
-        pdfBtn.href = `${BASE_URL}dtr/bonding-access-pdf?id=${bondingTestId}&side=${encodeURIComponent(side)}`;
-        pdfBtn.classList.remove('hidden');
-      } else {
-        pdfBtn.classList.add('hidden');
-      }
+      pdfBtn.classList.add('hidden');   // Access is no longer used: the report is the VF sheet itself
     }
 
     $('#dtr-print-modal-backdrop')?.classList.remove('hidden');

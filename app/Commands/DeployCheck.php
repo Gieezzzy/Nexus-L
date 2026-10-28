@@ -78,8 +78,6 @@ class DeployCheck extends BaseCommand
         $this->line(@is_dir($root) ? 'OK' : 'FAIL', 'Machine files location', $root);
         $task = (string) @shell_exec('schtasks /query /tn "NEXUS-L InterLink Worker" 2>&1');
         $this->line(stripos($task, 'NEXUS-L InterLink Worker') !== false && stripos($task, 'ERROR') === false ? 'OK' : 'WARN', 'Scheduled task "NEXUS-L InterLink Worker"', 'runs the background sync + Brain export every minute (tools\\interlink-worker.ps1, elevated)');
-        $acc = (string) @shell_exec('schtasks /query /tn "NEXUS-L Access Sync" 2>&1');
-        $this->line(stripos($acc, 'NEXUS-L Access Sync') !== false && stripos($acc, 'ERROR') === false ? 'OK' : 'WARN', 'Scheduled task "NEXUS-L Access Sync"', 'copies the Access lab data into dbnexus every 15 minutes (tools\\dtr-sync-access.ps1, as a user who can open the lab share)');
         $httpd = 'C:\\xampp\\apache\\conf\\httpd.conf';
         if (is_file($httpd)) {
             $conf = (string) file_get_contents($httpd);
