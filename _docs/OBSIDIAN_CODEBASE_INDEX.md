@@ -22,6 +22,7 @@ NEXUS-L is the laboratory intelligence and execution system built on CodeIgniter
 | `app/Views/interlink/index.php` | InterLink portal interface matching SearchForm, NormalForm, and UploadForm with Tab 1 & Tab 2 sub-grids and Pre-Sync Dialog. |
 | `app/Views/dtr/index.php` | QC Lab suite: Lab Tracker & IQC log, 10 material forms, whole shoe bonding, calculators, and print preview modal. |
 | `public/assets/js/interlink.js` | Pre-Sync Dialog logic, dynamic LabRef ComboBox loading, field highlight syncing, 1-click submission, and the Upload Form **Generate Report** button (`window.nxReportPdf`: Lab Ref → DTR print sheet → `dtr/sheet-pdf` PDF attachment). |
+| `app/Commands/DtrSyncAccess.php` | `php spark dtr:sync-access`: imports all Access standards (with tolerances), test results, master lists, DSR and audit trail into dbnexus via `app/Libraries/export_access_tables.ps1` (Unicode-safe). |
 | `public/assets/js/interlink_center.js` | InterLink Sender hand-off (`nxFillHelper`): prepares the form values and attaches the generated/browsed report PDF. |
 | `public/assets/js/dtr.js` | 100% VBA computation port: `ApplyStandardValuesSmart`, directional averages, 6-point colorfastness, bonding spot rules, calculators, machine data parsing, and print preview rendering. |
 | `public/assets/css/interlink.css` | InterLink 2.0 theme styling, DevExpress pager, and status tags. |

@@ -136,3 +136,6 @@ _modules/*
 node_modules/
 .claude/
 
+
+# database backups made before data syncs
+writable/backups/

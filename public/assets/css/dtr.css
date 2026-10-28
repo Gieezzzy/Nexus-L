@@ -1148,3 +1148,10 @@
 .dtr-stamp-pass{color:#047857}
 .dtr-stamp-warn{color:#b45309}
 .dtr-stamp-fail{color:#b91c1c}
+
+/* tolerable limit under the STD on the bonding report (80% of STD, as in Access) */
+.vf-tol {
+  font-size: 9px;
+  font-weight: 600;
+  color: #d97706;
+}

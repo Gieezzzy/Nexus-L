@@ -1,17 +1,17 @@
 # Graph Report - NEXUS-L  (2026-10-28)
 
 ## Corpus Check
-- 184 files · ~358,040 words
+- 189 files · ~375,042 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 38 file(s) not represented in the graph (top: .css 18, (none) 16, .canvas 1)
 
 ## Summary
-- 992 nodes · 1652 edges · 129 communities (18 shown, 111 thin omitted)
-- Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 69 edges (avg confidence: 0.85)
+- 1043 nodes · 1777 edges · 143 communities (19 shown, 124 thin omitted)
+- Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 71 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `22857181`
+- Built from commit: `4c5b4f6b`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -75,12 +75,24 @@
 - CreateInterlinkSyncCenter
 - CreateBrain
 - ExampleMigration
+- DtrSyncAccess
+- Brain
+- Commands/BrainSeed.php
+- .flush
+- Libraries/BrainSeed.php
+- BrainSeed3.php
+- BrainSeed4.php
+- BrainSeed6.php
+- Session.php
 - ICM Record: NEXUS-L
+- CreateBotSessions
+- DeployCheck
+- Cookie.php
 
 ## God Nodes (most connected - your core abstractions)
 1. `ChatStore` - 75 edges
-2. `InboxController` - 43 edges
-3. `BotController` - 41 edges
+2. `BotController` - 44 edges
+3. `InboxController` - 43 edges
 4. `InterlinkController` - 36 edges
 5. `NexusStore` - 28 edges
 6. `RmsStore` - 27 edges
@@ -104,7 +116,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (129 total, 111 thin omitted)
+## Communities (143 total, 124 thin omitted)
 
 ### Community 0 - "InboxController"
 Cohesion: 0.06
@@ -112,7 +124,7 @@ Nodes (24): {closure#1}(), {closure#10}(), {closure#11}(), {closure#12}(), {clos
 
 ### Community 1 - "Auth"
 Cohesion: 0.06
-Nodes (10): Auth, Session, DashboardController, PasswordResetController, Auth, AuthLogModel, InterlinkReportModel, PasswordResetModel (+2 more)
+Nodes (9): Auth, DashboardController, PasswordResetController, Auth, AuthLogModel, InterlinkReportModel, PasswordResetModel, RememberTokenModel (+1 more)
 
 ### Community 2 - "ChatStore"
 Cohesion: 0.08
@@ -131,8 +143,8 @@ Cohesion: 0.06
 Nodes (30): autoload, autoload-dev, psr-4, exclude-from-classmap, psr-4, config, optimize-autoloader, preferred-install (+22 more)
 
 ### Community 7 - "CodeIgniter\Config\BaseConfig"
-Cohesion: 0.11
-Nodes (13): ContentSecurityPolicy, Cookie, Cors, CURLRequest, Email, Encryption, Feature, Generators (+5 more)
+Cohesion: 0.12
+Nodes (12): ContentSecurityPolicy, Cors, CURLRequest, Email, Encryption, Feature, Generators, Honeypot (+4 more)
 
 ### Community 9 - "App"
 Cohesion: 0.13
@@ -143,7 +155,7 @@ Cohesion: 0.11
 Nodes (18): author, description, devDependencies, tailwindcss, @tailwindcss/cli, directories, test, keywords (+10 more)
 
 ### Community 12 - "SynologyChat"
-Cohesion: 0.21
+Cohesion: 0.19
 Nodes (3): Services, Synology, SynologyChat
 
 ### Community 16 - "Running Application Tests"
@@ -163,8 +175,8 @@ Cohesion: 0.53
 Nodes (3): {closure#1}(), {closure#2}(), {closure#3}()
 
 ### Community 32 - "CodeIgniter\CLI\BaseCommand"
-Cohesion: 0.06
-Nodes (10): BrainAsk, BrainMaintain, BrainSeed, DeployCheck, InterlinkWork, BrainSeed2, BrainSeed3, BrainSeed4 (+2 more)
+Cohesion: 0.21
+Nodes (3): BrainAsk, BrainMaintain, InterlinkWork
 
 ### Community 79 - "background.js"
 Cohesion: 0.33
@@ -174,29 +186,33 @@ Nodes (10): checkSubmitted(), endJob(), fillAndAttach(), getJob(), inPage(), key
 Cohesion: 0.20
 Nodes (9): background, service_worker, content_scripts, description, host_permissions, manifest_version, name, permissions (+1 more)
 
+### Community 127 - "DtrSyncAccess"
+Cohesion: 0.22
+Nodes (5): {closure#2}(), {closure#3}(), {closure#6}(), {closure#7}(), DtrSyncAccess
+
 ### Community 137 - "ICM Record: NEXUS-L"
-Cohesion: 0.10
-Nodes (19): 1. "Generate Report" button beside Browse (Tab 2 · Report Attachment, `JOB_DUMMY_004`), 1. Intertek InterLink 2.0 Full Integration & Live Parity, 1. Vector/Raster Shoe Contour Sketch Diagram with Spot Readings & Leader Lines, 2. Complete Database Migration (#Digital Test Report &rarr; MySQL `dbnexus`), 2. Fix: wrong DTR record opened for the report PDF, 2. Official VF Laboratory Report Header & 3-Part Evaluation Table, 3. Build, 3. QC Lab Digital Test Reports Web Suite (`/dtr`) (+11 more)
+Cohesion: 0.08
+Nodes (22): 1. Bonding PASS / TOLERABLE / FAIL now matches Access exactly, 1. "Generate Report" button beside Browse (Tab 2 · Report Attachment, `JOB_DUMMY_004`), 1. Intertek InterLink 2.0 Full Integration & Live Parity, 1. Vector/Raster Shoe Contour Sketch Diagram with Spot Readings & Leader Lines, 2. Complete Database Migration (#Digital Test Report &rarr; MySQL `dbnexus`), 2. Fix: wrong DTR record opened for the report PDF, 2. Official VF Laboratory Report Header & 3-Part Evaluation Table, 2. `php spark dtr:sync-access` - everything in Access into dbnexus (+14 more)
 
 ## Knowledge Gaps
 - **2 isolated node(s):** `@tailwindcss/cli`, `tailwindcss`
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 374 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **111 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 387 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **124 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `BaseController` connect `BaseController` to `InboxController`, `Auth`, `InterlinkController`, `DtrController`, `DesignerController`, `BotController`?**
-  _High betweenness centrality (0.185) - this node is a cross-community bridge._
+  _High betweenness centrality (0.186) - this node is a cross-community bridge._
 - **What connects `@tailwindcss/cli`, `tailwindcss` to the rest of the system?**
   _2 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `InboxController` be split into smaller, more focused modules?**
-  _Cohesion score 0.06315789473684211 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.0645045045045045 - nodes in this community are weakly interconnected._
 - **Why does `InboxController` connect `InboxController` to `BaseController`?**
   _High betweenness centrality (0.121) - this node is a cross-community bridge._
 - **Should `Auth` be split into smaller, more focused modules?**
-  _Cohesion score 0.056338028169014086 - nodes in this community are weakly interconnected._
-- **Why does `ChatStore` connect `ChatStore` to `InboxController`, `NexusStore`, `RmsStore`?**
-  _High betweenness centrality (0.097) - this node is a cross-community bridge._
+  _Cohesion score 0.05516431924882629 - nodes in this community are weakly interconnected._
+- **Why does `BotController` connect `BotController` to `Brain`, `Auth`, `.flush`, `BaseController`, `MachineFileReader`?**
+  _High betweenness centrality (0.093) - this node is a cross-community bridge._
 - **Should `ChatStore` be split into smaller, more focused modules?**
   _Cohesion score 0.07626582278481013 - nodes in this community are weakly interconnected._

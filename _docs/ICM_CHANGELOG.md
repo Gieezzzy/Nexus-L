@@ -4,6 +4,31 @@
 
 ---
 
+## Phase 193 - Access Rules Parity for Bonding & Full Access → dbnexus Sync (2026-10-28)
+
+### 1. Bonding PASS / TOLERABLE / FAIL now matches Access exactly
+- Source of truth: `BondingReportV2.accdb` form "Test Log - Bonding", `UpdateBondingResult` / `UpdateFillerResult`:
+
+  | Section | PASS | TOLERABLE | FAILED |
+  | --- | --- | --- | --- |
+  | UTF / FTO, Adult (STD 3.0) | ≥ 3.0 | 2.4 – 2.99 | < 2.4 |
+  | UTF / FTO, Children (STD 2.5) | ≥ 2.5 | 2.0 – 2.49 | < 2.0 |
+  | Center IS/OS (FiTO, STD 1.0) | ≥ 1.0 | 0.8 – 0.99 | < 0.8 |
+
+  i.e. PASS ≥ STD, TOLERABLE ≥ 80 % of STD.
+- `public/assets/js/dtr.js`: one rule (`evaluateSpotVerdict`, `bondingTolerance`, `FITO_STD = 1.0`) now drives the form calculation, the spot colours and the print sheet. Before, FiTO needed ≥ 1.9 (so e.g. `DTP20260612SHB14-L`, Center 1.20–1.38, printed **FAIL** while Access says **PASS**), adult tolerable started at 2.0 instead of 2.4, and the Status column showed "-" for a failed section (`FAIL` vs `FAILED`).
+- Report: the STD column shows the tolerable limit under each standard, e.g. `2.5 (≥ 2)`, `1 (≥ 0.8)` (`.vf-tol` in `dtr.css`).
+
+### 2. `php spark dtr:sync-access` - everything in Access into dbnexus
+- `app/Commands/DtrSyncAccess.php` + `app/Libraries/export_access_tables.ps1`. Reads the live Access back-ends (through the front-ends `V20261006.accdb` and `BondingReportV2.accdb`, linked to `\192.168.32.130\qc lab files\#Digital Test Report\...`) with .NET OleDb, because PHP ODBC turns Chinese into `???`.
+- 29 tables: Standards (with Tolerance / TMinC / TMaxC), field map, form numbers, permissions, settings, filters, MaterialList, ShoeList, DSR, containers, materials master, material type status, import raw, audit trail, all 12 material result tables, Bally, Laminar, BondingTestInfo, BondingTestPoints. Not copied: `tblUsers` (Access passwords), empty `MainMenu` / `tblLoginTracker`, scratch `Paste Errors`.
+- Reference tables mirror Access; result tables add missing rows, fill blank / `???` values, and overwrite only when Access has a newer `LastModified` (web edits kept). Same ID with a different Lab Ref is reported as a conflict and never overwritten. Missing tables / columns are created. Options: `--dry`, `--show`, `--table=Name`.
+- First run repaired the Chinese text lost by the original migration (MaterialList, ShoeList, DSR, result descriptions) and brought in sign-offs, TR / SARGE / ERP status, ratings and audit-trail rows recorded in Access since then.
+- Backup taken first: `writable/backups/dbnexus_tbl_dtr_before_access_sync_20261028_0920.sql` (now gitignored).
+- Data fix: `DTP20260605SHB4-L` (BondingTestID 9) had been re-saved from the web as FAIL under the old FiTO ≥ 1.9 rule; Access and the corrected rule say PASS (Center min 1.19). Set back to PASS in `tbl_dtr_bonding_info`, `tbl_dtr_bonding_points` and `tbl_dtr_unified_labrefs`. The 8 web-only bonding records already follow the Access rules.
+
+---
+
 ## Phase 192 - InterLink Upload Form: Generate Report PDF from the Lab Reference (2026-10-28)
 
 ### 1. "Generate Report" button beside Browse (Tab 2 · Report Attachment, `JOB_DUMMY_004`)

@@ -772,25 +772,21 @@
     ADULT: 35,
   };
 
+  // Access rules (BondingReportV2 "Test Log - Bonding": UpdateBondingResult / UpdateFillerResult): PASS >= STD,
+  // TOLERABLE >= 80% of STD, else FAIL. UTF/FTO: Adult 3.0 / 2.4, Children 2.5 / 2.0; Center IS/OS (FiTO): 1.0 / 0.8
+  const FITO_STD = 1.0;
+  const bondingTolerance = (std) => Math.round(std * 0.8 * 100) / 100;
   const evaluateSpotVerdict = (val, std) => {
     if (!Number.isFinite(val) || val <= 0) return null;
-    if (std >= 2.5) {
-      if (val >= 2.5) return 'PASS';
-      if (val >= 2.0) return 'TOLERABLE';
-      return 'FAIL';
-    } else {
-      // Std = 2.0
-      if (val >= 2.0) return 'PASS';
-      if (val >= 1.8) return 'TOLERABLE';
-      return 'FAIL';
-    }
+    if (val >= std) return 'PASS';
+    if (val >= bondingTolerance(std)) return 'TOLERABLE';
+    return 'FAIL';
   };
 
   const computeBondingPoints = () => {
     const ageCat = ($('#bf_AgeCategory')?.value || 'ADULT').toUpperCase();
     const maxSpots = AGE_SPOT_LIMITS[ageCat] || 35;
     const stdVal = parseFloat($('#bf_STD')?.value ?? '2.5') || 2.5;
-    const fitoStd = 1.9;
 
     // Show/hide rows up to maxSpots
     $$('#dtr-bonding-points-tbody [data-spot-row]').forEach((tr) => {
@@ -809,9 +805,7 @@
         inp.classList.remove('dtr-rate-pass', 'dtr-rate-warn', 'dtr-rate-fail');
         if (Number.isFinite(v) && v > 0) {
           vals.push(v);
-          const verdict = (prefix === 'FiTO')
-            ? (v >= fitoStd ? 'PASS' : 'FAIL')
-            : evaluateSpotVerdict(v, specStd);
+          const verdict = evaluateSpotVerdict(v, specStd);
           if (verdict === 'FAIL') {
             hasFail = true;
             inp.classList.add('dtr-rate-fail');
@@ -834,7 +828,7 @@
 
     const utf = calcSeries('UTFpoint', maxSpots, stdVal);
     const fto = calcSeries('FTOpoint', maxSpots, stdVal);
-    const fito = calcSeries('FiTO', 13, fitoStd);
+    const fito = calcSeries('FiTO', 13, FITO_STD);
 
     if ($('#bp_UTFMin')) $('#bp_UTFMin').value = utf.min;
     if ($('#bp_UTFMax')) $('#bp_UTFMax').value = utf.max;
@@ -1494,26 +1488,12 @@
     }
 
     // Spot Color logic
+    // blue = pass, amber = tolerable, red = fail (same rules as the result)
     const getValColorStyle = (val, threshold, isFiTO = false) => {
-      const num = parseFloat(val);
-      if (!Number.isFinite(num) || num <= 0) return 'color:#94a3b8';
-      if (isFiTO) {
-        if (num < 1.0) return 'color:#dc2626;font-weight:800;';
-        if (num < 1.2) return 'color:#d97706;font-weight:800;';
-        return 'color:#1d4ed8;font-weight:800;';
-      }
-      if (threshold >= 3.0) {
-        if (num < 2.0) return 'color:#dc2626;font-weight:800;';
-        if (num < 3.0) return 'color:#d97706;font-weight:800;';
-        return 'color:#1d4ed8;font-weight:800;';
-      }
-      if (threshold >= 2.5) {
-        if (num < 1.8) return 'color:#dc2626;font-weight:800;';
-        if (num < 2.5) return 'color:#d97706;font-weight:800;';
-        return 'color:#1d4ed8;font-weight:800;';
-      }
-      if (num < 1.5) return 'color:#dc2626;font-weight:800;';
-      if (num < 2.0) return 'color:#d97706;font-weight:800;';
+      const verdict = evaluateSpotVerdict(parseFloat(val), isFiTO ? FITO_STD : threshold);
+      if (!verdict) return 'color:#94a3b8';
+      if (verdict === 'FAIL') return 'color:#dc2626;font-weight:800;';
+      if (verdict === 'TOLERABLE') return 'color:#d97706;font-weight:800;';
       return 'color:#1d4ed8;font-weight:800;';
     };
 
@@ -1631,7 +1611,7 @@
     const getEvalStatus = (res) => {
       if (res === 'PASS') return { pass: 'PASS', fail: '', passCls: 'vf-rate-pass', failCls: '' };
       if (res === 'TOLERABLE') return { pass: 'TOLE', fail: '', passCls: 'vf-rate-tol', failCls: '' };
-      if (res === 'FAILED') return { pass: '', fail: 'FAIL', passCls: '', failCls: 'vf-rate-fail' };
+      if (res === 'FAIL' || res === 'FAILED') return { pass: '', fail: 'FAIL', passCls: '', failCls: 'vf-rate-fail' };
       return { pass: '-', fail: '', passCls: '', failCls: '' };
     };
 
@@ -1750,7 +1730,7 @@
             <tr>
               <th rowspan="2" style="width:20%">Shoe Part</th>
               <th rowspan="2" style="width:11%">VF Test<br>Method</th>
-              <th rowspan="2" style="width:8%">STD<br>kgf/cm</th>
+              <th rowspan="2" style="width:8%">STD<br>kgf/cm<br><span style="font-size:8.5px;font-weight:600">(Tolerable)</span></th>
               <th colspan="2" style="width:16%">Test Result<br>kgf/cm</th>
               <th colspan="2" style="width:12%">Status</th>
               <th rowspan="2" style="width:17%">Mode of Failure(s)<br>失败的方式</th>
@@ -1767,7 +1747,7 @@
             <tr>
               <td class="text-left font-bold">Upper/Foxing Tape<br>(鞋面/围条)</td>
               <td>VF-F01<br><span style="font-size:9.5px">(2019/05)</span></td>
-              <td class="font-bold text-blue">${std}</td>
+              <td class="font-bold text-blue">${std}<br><span class="vf-tol">(≥ ${bondingTolerance(std)})</span></td>
               <td class="font-bold text-blue">${utfMin !== '-' ? Number(utfMin).toFixed(2) : '-'}</td>
               <td class="font-bold text-blue">${utfMax !== '-' ? Number(utfMax).toFixed(2) : '-'}</td>
               <td><span class="${utfStat.passCls}">${utfStat.pass}</span></td>
@@ -1795,7 +1775,7 @@
             <tr>
               <td class="text-left font-bold">Foxing Tape / OS<br>(围条/橡胶大底)</td>
               <td>VF-F01<br><span style="font-size:9.5px">(2019/05)</span></td>
-              <td class="font-bold text-blue">${std}</td>
+              <td class="font-bold text-blue">${std}<br><span class="vf-tol">(≥ ${bondingTolerance(std)})</span></td>
               <td class="font-bold text-blue">${ftoMin !== '-' ? Number(ftoMin).toFixed(2) : '-'}</td>
               <td class="font-bold text-blue">${ftoMax !== '-' ? Number(ftoMax).toFixed(2) : '-'}</td>
               <td><span class="${ftoStat.passCls}">${ftoStat.pass}</span></td>
@@ -1804,7 +1784,7 @@
             <tr>
               <td class="text-left font-bold">Center : IS/OS<br>(中插 / 大底)</td>
               <td>VF-F01<br><span style="font-size:9.5px">(2019/05)</span></td>
-              <td class="font-bold text-blue">1</td>
+              <td class="font-bold text-blue">${FITO_STD}<br><span class="vf-tol">(≥ ${bondingTolerance(FITO_STD)})</span></td>
               <td class="font-bold text-blue">${fitoMin !== '-' ? Number(fitoMin).toFixed(2) : '-'}</td>
               <td class="font-bold text-blue">${fitoMax !== '-' ? Number(fitoMax).toFixed(2) : '-'}</td>
               <td><span class="${fitoStat.passCls}">${fitoStat.pass}</span></td>
