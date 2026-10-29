@@ -1261,7 +1261,7 @@
       });
 
       // Sending is done by the person responsible, in their own browser: show the helper that fills the InterLink form
-      if (sendLive && window.nxFillHelper) window.nxFillHelper(appNo, fieldsToSync);
+      if (sendLive && window.nxFillHelper) window.nxFillHelper(appNo, fieldsToSync, currentLabRef());   // the Lab Reference chosen in the dialog: its samples and test items go with the send
 
       // Fill every selected field into UploadForm.aspx (Tab 1 + Tab 2) with visual highlight
       Object.keys(fieldsToSync).forEach((key) => {

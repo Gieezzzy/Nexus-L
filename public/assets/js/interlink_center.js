@@ -146,7 +146,7 @@
     let data;
     try {
       nxToast(`Preparing ${appNo} for InterLink…`, 'info', 4000);
-      data = await post('interlink/center/fill', labRef ? { application_no: appNo, lab_ref_no: labRef } : { application_no: appNo, fields });
+      data = await post('interlink/center/fill', labRef ? (fields ? { application_no: appNo, lab_ref_no: labRef, fields } : { application_no: appNo, lab_ref_no: labRef }) : { application_no: appNo, fields });
     } catch (e) { nxToast('Could not prepare the values: ' + e.message, 'error', 7000); return; }
     // the PDF already generated or browsed on the Upload Form for this application is sent as is
     // only a report signed by a Manager / Supervisor goes to InterLink: the signed PDF attached on the Upload Form, or
