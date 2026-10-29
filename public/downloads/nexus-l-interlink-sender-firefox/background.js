@@ -342,12 +342,17 @@ async function fillAndAttach(job) {
   const coll = window.ASPxClientControl && ASPxClientControl.GetControlCollection();
   let filled = 0;
   const missing = [];
-  for (const [name, value] of Object.entries(job.controls || {})) {
-    const el = document.getElementsByName(name)[0];
-    if (!el) { missing.push(name); continue; }
-    const ctl = coll && (coll.Get(name.replace(/\$/g, '_')) || coll.Get(el.id.replace(/_I$/, '')));
+  // NEXUS-L's control names are the ones the portal posts back; the live page's names carry extra "$TC$" parts and differ per form
+  // (Material [10076], Product [10072]), so the three Upload Result values are found by their stable endings instead, and nothing
+  // else on the form is touched (the rest is filled by InterLink itself from the application).
+  const ctl0 = job.controls || {};
+  const pick = (re) => { const k = Object.keys(ctl0).find((n) => re.test(n)); return k === undefined ? undefined : ctl0[k]; };
+  const want = { reportNo: pick(/\$DXEditor5$/) ?? pick(/\$DXEditor17$/), issueDate: pick(/\$DXEditor6$/), result: pick(/TRPT_RESULT_DISP/) };
+  const live = (list) => list.find(visible) || list[0];
+  const setEl = (el, value) => {
+    const ctl = coll && (coll.Get(el.name.replace(/\$/g, '_')) || coll.Get(el.id.replace(/_I$/, '')) || coll.Get(el.id));
     try {
-      if (ctl && typeof ctl.GetItemCount === 'function') {          // combo box: pick the item whose text matches
+      if (ctl && typeof ctl.GetItemCount === 'function') {
         let idx = -1;
         for (let k = 0; k < ctl.GetItemCount(); k++) { if (String(ctl.GetItem(k).text).trim().toLowerCase() === String(value).trim().toLowerCase()) { idx = k; break; } }
         if (idx >= 0) ctl.SetSelectedIndex(idx); else ctl.SetText(value);
@@ -358,8 +363,26 @@ async function fillAndAttach(job) {
       }
       ['input', 'change', 'blur'].forEach((t) => el.dispatchEvent(new Event(t, { bubbles: true })));
       if (ctl && ctl.RaiseValueChangedEvent) ctl.RaiseValueChangedEvent();
-      filled++;
-    } catch (e) { missing.push(name); }
+      return true;
+    } catch (e) { return false; }
+  };
+  const onTab2 = !!document.querySelector('[name*="cbpTestReportUploader"]');
+  if (!onTab2) {
+    // Product form [10072] opens on its first tab: Report No. there, then over to "Upload Result" (a postback; this script runs again)
+    const rn = live([...document.querySelectorAll('input[name$="$DXEditor17"]')]);
+    if (rn && want.reportNo !== undefined && !rn.value) { setEl(rn, want.reportNo); filled++; }
+    const tabLink = document.getElementById('UF1_NewTabControl_aTabPage_1');
+    if (tabLink) { tabLink.click(); return { state: 'posting' }; }
+  } else {
+    const fields = [
+      [live([...document.querySelectorAll('input[name$="$DXEditor5"]')]), want.reportNo, 'Report No.'],
+      [live([...document.querySelectorAll('input[name$="$DXEditor6"]')]), want.issueDate, 'Report Issue Date'],
+      [live([...document.querySelectorAll('input[name*="TpEdr_TRPT_RESULT_DISP"][name$="tb1_textbox"],input[name*="TpEdr_TRPT_RESULT_DISP"][name$="tb1"]')]), want.result, 'Overall Result'],
+    ];
+    for (const [el, value, label] of fields) {
+      if (!el || value === undefined || value === '') { if (value !== undefined && value !== '') missing.push(label); continue; }
+      if (setEl(el, value)) filled++; else missing.push(label);
+    }
   }
 
   // The Report Attachment upload box: the real Upload Form's markup order does NOT match its visual layout (the file
@@ -371,7 +394,11 @@ async function fillAndAttach(job) {
     .find((el) => el.children.length === 0 && /report attachment/i.test(el.textContent || '') && el.textContent.trim().length < 40);
   const fileInputs = [...document.querySelectorAll('input[type=file]')].filter(visible);
   let file = null;
-  if (label && fileInputs.length) {
+  // Product form [10072]: the Report Attachment is an upload control inside a same-origin frame (TempTestReportUploader.aspx); its
+  // file box uploads by itself when a file is chosen
+  const upFrame = document.querySelector('iframe[id*="cbpTestReportUploader"]');
+  if (upFrame) { try { file = (upFrame.contentDocument && upFrame.contentDocument.querySelector('input[type=file]')) || null; } catch (e) { file = null; } }
+  if (!file && label && fileInputs.length) {
     const lr = label.getBoundingClientRect();
     file = fileInputs.reduce((best, f) => {
       const r = f.getBoundingClientRect();
@@ -393,11 +420,16 @@ async function fillAndAttach(job) {
   const up = [...document.querySelectorAll('a,input[type=button],input[type=submit],span,div')]
     .find((b) => visible(b) && /^upload$/i.test((b.value || b.textContent || '').trim()) && (b.closest('[id*="Upload" i]') || b.id.match(/upload/i)));
   if (up) up.click();
+  const shown = () => {
+    if (document.body.innerText.includes(job.pdf.name)) return true;
+    if ([...document.querySelectorAll('input[name*="cbpTestReportUploader"]')].some((i) => String(i.value).includes(job.pdf.name))) return true;
+    try { return !!(upFrame && upFrame.contentDocument && upFrame.contentDocument.body.innerText.includes(job.pdf.name)); } catch (e) { return false; }
+  };
   for (let i = 0; i < 60; i++) {                                     // wait (up to 30 s) until the file name shows on the page
-    if (document.body.innerText.includes(job.pdf.name)) break;
+    if (shown()) break;
     await sleep(500);
   }
-  if (!document.body.innerText.includes(job.pdf.name)) return { state: 'error', message: `the attachment ${job.pdf.name} did not finish uploading. Please attach it in the InterLink tab.` };
+  if (!shown()) return { state: 'error', message: `the attachment ${job.pdf.name} did not finish uploading. Please attach it in the InterLink tab.` };
   return { state: 'filled', filled, missing };
 }
 
