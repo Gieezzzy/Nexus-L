@@ -762,6 +762,7 @@
     const reveal = () => {
       populateInitialUploadForm(report);
       setTimeout(() => restoreApproval(), 300);   // show the approval state of this application's report, if one was requested
+      setTimeout(() => { if (!window.nxAttachedPdf) restoreApproval(); }, 2000);   // again once the Lab Reference list has loaded
       setTimeout(() => fillGridsFromLabRef(), 500);
 
       // Switch viewport
@@ -1848,11 +1849,14 @@
   // Opening the form (or reloading the page) brings the approval panel back as it stands: waiting with its QR code,
   // approved with the signed report attached, or returned. Nothing has to be generated again to see it.
   restoreApproval = async (chosen) => {
-    const labRef = chosen || (window.nxAttachedPdf && window.nxAttachedPdf.lab_ref_no) || currentLabRef();
-    if (!labRef) return;
+    let labRef = chosen || (window.nxAttachedPdf && window.nxAttachedPdf.lab_ref_no) || currentLabRef();
+    const appNo = state.activeAppNo || $('#uf_application_no')?.value || '';
+    if (!labRef && !appNo) return;
     try {
-      const j = await apiFetch(`dtr/approval/status?lab_ref=${encodeURIComponent(labRef)}`);
+      // opened on an application whose Lab Reference is not known yet: the report already made for it is found by Application No.
+      const j = await apiFetch(`dtr/approval/status?lab_ref=${encodeURIComponent(labRef)}${labRef ? '' : '&application_no=' + encodeURIComponent(appNo)}`);
       const a = j.approval;
+      if (!labRef && a) labRef = a.lab_ref_no;
       const cur = window.nxAttachedPdf;
       // another Lab Reference was chosen: the report attached for the previous one is not this one
       if (cur && cur.lab_ref_no && cur.lab_ref_no !== labRef && cur.source === 'generated') { window.nxAttachedPdf = null; $('#uf-att-meta')?.classList.add('hidden'); }

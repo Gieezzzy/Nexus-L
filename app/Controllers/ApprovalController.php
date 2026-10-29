@@ -177,6 +177,11 @@ class ApprovalController extends BaseController
     public function status()
     {
         $a = $this->latest(trim((string) $this->request->getGet('lab_ref')));
+        $app = preg_replace('/[^A-Za-z0-9_-]/', '', (string) $this->request->getGet('application_no'));
+        if (! $a && $app !== '') {
+            // the Lab Reference is not known yet (the form just opened): find the report already made for this Application No.
+            $a = $this->db()->table('tbl_dtr_report_approvals')->where('application_no', $app)->where('status !=', 'superseded')->orderBy('id', 'DESC')->get()->getRowArray();
+        }
         $signers = (int) $this->db()->table('tbl_dtr_signatories')->where('is_active', 1)->countAllResults();
 
         return $this->json(['ok' => true, 'approval' => $this->publicRow($a), 'signatories' => $signers]);
