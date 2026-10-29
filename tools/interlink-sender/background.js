@@ -254,10 +254,14 @@ chrome.tabs.onCreated.addListener(async (tab) => {
   await adoptPopup(job, tab.id);
 });
 
+const queuedReady = new Set();
 async function step(tabId) {
-  if (running.has(tabId)) return;                       // the same tab pinged twice: one run at a time
+  if (running.has(tabId)) { queuedReady.add(tabId); return; }    // pinged while a step is still running: run again right after it
   running.add(tabId);
-  try { await stepOnce(tabId); } finally { running.delete(tabId); }
+  try { await stepOnce(tabId); } finally {
+    running.delete(tabId);
+    if (queuedReady.delete(tabId)) setTimeout(() => step(tabId), 400);
+  }
 }
 async function stepOnce(tabId) {
   const job = await getJob(tabId);
@@ -302,7 +306,11 @@ async function stepOnce(tabId) {
     if (!r) return;
     if (r.state === 'signin') { status(job, false, false, 'Sign in to InterLink in the opened tab; sending continues by itself afterwards.'); job.loads -= 1; await setJob(job); return; }
     if (r.patch) { Object.assign(job, r.patch); await setJob(job); }
-    if (r.state === 'posting') return;                     // Edit / a tab / a reading page was opened; the page reloads and calls "ready" again
+    if (r.state === 'posting') {                           // Edit / a tab / a reading page was opened; the page reloads and calls "ready" again
+      const loadsAt = job.loads;
+      setTimeout(async () => { try { const j = await getJob(tabId); if (j && j.loads === loadsAt && j.step === 'open') step(tabId); } catch (e) { /* tab gone */ } }, 12000);   // no reload came: look again
+      return;
+    }
     if (r.state === 'error') { status(job, false, true, `${job.application_no}: ${r.message}`); endJob(job); return; }
     const problem = await approvalProblem(job);          // asked again: the approval may have been replaced since the job started
     if (problem) { status(job, false, true, `${job.application_no} was NOT saved: ${problem}`); endJob(job); return; }
@@ -465,6 +473,7 @@ async function fillAndAttach(job) {
     const rd = (T.readings || []).filter((r) => String(r.test_item_name || '') === String(it.test_name || ''));
     return {
       code, name: it.test_name, sample: it.sample_id_code || 'S001', result: it.result_status || it.test_result || 'Pass',
+      readings: rd.map((r) => ({ element: String(r.test_element || '').trim(), value: r.reading_value_raw, requirement: r.target_spec || '', unit: r.unit || '', rating: r.reading_status })),
       value: it.actual_reading || it.actual_result_summary || (rd[0] && rd[0].reading_value_raw) || '',
       requirement: (rd.find((r) => r.target_spec) || {}).target_spec || '', unit: (rd.find((r) => r.unit) || {}).unit || '',
     };
@@ -480,23 +489,34 @@ async function fillAndAttach(job) {
     const code = codeOf(m && m.value);
     const it = wanted.find((x) => x.code === code);
     if (it) {
-      // a test can have several rows (one per condition, e.g. 60℃ and 70℃): the row whose condition numbers appear in the test's
-      // name gets the reading; with one row, or no clear match, it is the first row
       const idxs = [...document.querySelectorAll('textarea[name*="JOB_DUMMY_013_REF_FLD27_TEST_ITEM_READING_INPUT_"]')].map((t) => t.name.match(/INPUT_(\d+)$/)[1]);
-      const nums = (str) => (String(str).match(/\d+/g) || []);
-      const want = new Set(nums(it.name));
-      let bestIdx = idxs[0], bestScore = -1;
+      const cell = (i, f) => document.querySelector(`[name$="JOB_DUMMY_013_REF_${f}_TEST_ITEM_READING_INPUT_${i}"]`);
+      const fillRow = (i, v, requirement, unit, rating) => {
+        const ind = cell(i, 'FLD20'); if (ind) setNative(ind, '3');                    // "="
+        const val = cell(i, 'FLD47'); if (val) setNative(val, String(v));
+        const req = cell(i, 'FLD04'); if (req && requirement) setNative(req, String(requirement));
+        const uom = cell(i, 'FLD07'); if (uom && unit) setNative(uom, String(unit));
+        const rat = cell(i, 'FLD23'); if (rat) setNative(rat, ratingIdx(rating));
+      };
+      const elementOf = (i) => String((cell(i, 'FLD03') || {}).value || '').trim().toLowerCase();
+      // 1) rows whose element is named like one of the report's readings ("Specimen 1", "Specimen 2"): each gets its own reading
+      let used = 0;
       for (const i of idxs) {
-        const el = document.querySelector(`[name$="JOB_DUMMY_013_REF_FLD03_TEST_ITEM_READING_INPUT_${i}"]`);
-        const sc = nums(el && el.value).filter((x) => want.has(x)).length;
-        if (sc > bestScore) { bestScore = sc; bestIdx = i; }
+        const rd = it.readings.find((x) => x.element && x.element.toLowerCase() === elementOf(i));
+        if (rd) { fillRow(i, rd.value, rd.requirement, rd.unit, rd.rating); used++; }
       }
-      const q = (f) => document.querySelector(`[name$="JOB_DUMMY_013_REF_${f}_TEST_ITEM_READING_INPUT_${bestIdx}"]`);
-      const ind = q('FLD20'); if (ind) setNative(ind, '3');                       // "="
-      const val = q('FLD47'); if (val) setNative(val, String(it.value));
-      const req = q('FLD04'); if (req && it.requirement) setNative(req, String(it.requirement));
-      const uom = q('FLD07'); if (uom && it.unit) setNative(uom, String(it.unit));
-      const rat = q('FLD23'); if (rat) setNative(rat, ratingIdx(it.result));
+      if (!used) {
+        // 2) otherwise ONE row holds the whole test: the row whose condition numbers (60℃ / 95% / 7 days) appear in the test's name,
+        // else the first row
+        const nums = (str) => (String(str).match(/\d+/g) || []);
+        const want = new Set(nums(it.name));
+        let bestIdx = idxs[0], bestScore = -1;
+        for (const i of idxs) {
+          const sc = nums(elementOf(i)).filter((x) => want.has(x)).length;
+          if (sc > bestScore) { bestScore = sc; bestIdx = i; }
+        }
+        fillRow(bestIdx, it.value, it.requirement, it.unit, it.result);
+      }
     }
     await sleep(500);
     document.querySelector('input[name$="butOk"][value*="Update and Go Back"]').click();
