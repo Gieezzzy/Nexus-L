@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "NEXUS-L InterLink Sender",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "description": "One-click sending of NEXUS-L reports to InterLink, in your own browser with your own InterLink sign-in.",
   "browser_specific_settings": { "gecko": { "id": "interlink-sender@nexus-l.local", "strict_min_version": "128.0" } },
   "permissions": ["storage", "scripting", "tabs", "alarms"],

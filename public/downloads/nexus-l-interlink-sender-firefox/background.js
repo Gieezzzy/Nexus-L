@@ -547,10 +547,8 @@ async function fillAndAttach(job) {
         const words = (t) => String(t || '').toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2);
         const score = (r) => { const w = new Set(words(it.name)); return words(r.innerText).filter((x) => w.has(x)).length; };
         const closePopup = async () => {
-          try {
-            const clr = [...document.querySelectorAll('input,button,a,span,div')].find((e) => e.children.length === 0 && /^clear selection$/i.test((e.value || e.textContent || '').trim()) && e.offsetParent !== null);
-            if (clr) clr.click(); else document.body.click();
-          } catch (e) { /* the popup stays; the next picker click reuses it */ }
+          // the list popup is a DevExpress popup control: hide it through its own API (clicking around it does not close it)
+          try { const pc = ASPxClientControl.GetControlCollection().GetByName('UF1_LOVRL1_ASPxLOVIFramePopup'); if (pc && pc.Hide) pc.Hide(); } catch (e) { /* not there */ }
           await sleep(800);
         };
         // opens the list for row n and finds the test with this method code; `search` types the code into the list's own filter
@@ -612,11 +610,14 @@ async function fillAndAttach(job) {
           }
           return false;
         };
-        let hit = await openAndFind(false);
-        if (!hit) {
-          await closePopup();
-          if (await enableFullList()) { notes.push('"Enable Full Test Item List" was switched on to find ' + it.code); hit = await openAndFind(true); }
-        }
+        // "Enable Full Test Item List" is switched on BEFORE any test is picked: every test is then found by its method code in the
+        // full list. If that cannot be done, the package's own shorter list is used.
+        await closePopup();
+        const fullOn = await enableFullList();
+        if (fullOn && !job.fullNoted) { job.fullNoted = true; notes.push('"Enable Full Test Item List" was switched on first'); }
+        await closePopup();
+        let hit = await openAndFind(fullOn);
+        if (!hit && fullOn) { await closePopup(); hit = await openAndFind(false); }
         if (!hit) {
           notes.push(`${it.name} (${it.code}) was not found in InterLink's test list`);
           await closePopup();
