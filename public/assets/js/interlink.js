@@ -1993,11 +1993,29 @@
     rd.readAsDataURL(file);
   });
   $('#uf-btn-view-pdf')?.addEventListener('click', async () => {
-    let pdf;
-    try { pdf = await ensureAttachedPdf(); } catch (e) { showToast(e.message, true); return; }
-    try { showReportView(await sheetFor(pdf), pdf.lab_ref_no); } catch (e) { openAttachedPdf(false); }   // a browsed file has no sheet: show the file
+    const link = $('#uf-btn-view-pdf');
+    if (link && link.dataset.busy) return;                                   // a second click while it is loading does nothing
+    if (link) { link.dataset.busy = '1'; link.dataset.label = link.textContent; link.textContent = 'Loading…'; link.style.opacity = '.6'; }
+    beginLoading('Loading the report…', 60000);                              // so it is clear something is happening
+    try {
+      let pdf;
+      try { pdf = await ensureAttachedPdf(); } catch (e) { showToast(e.message, true); return; }
+      try { showReportView(await sheetFor(pdf), pdf.lab_ref_no); } catch (e) { openAttachedPdf(false); }   // a browsed file has no sheet: show the file
+    } finally {
+      endLoading();
+      if (link) { link.textContent = link.dataset.label || 'View'; link.style.opacity = ''; delete link.dataset.busy; }
+    }
   });
-  $('#uf-btn-save-pdf')?.addEventListener('click', () => openAttachedPdf(true));
+  $('#uf-btn-save-pdf')?.addEventListener('click', async () => {
+    const link = $('#uf-btn-save-pdf');
+    if (link && link.dataset.busy) return;
+    if (link) { link.dataset.busy = '1'; link.dataset.label = link.textContent; link.textContent = 'Preparing…'; link.style.opacity = '.6'; }
+    beginLoading('Preparing the download…', 60000);
+    try { await openAttachedPdf(true); } finally {
+      endLoading();
+      if (link) { link.textContent = link.dataset.label || 'Download'; link.style.opacity = ''; delete link.dataset.busy; }
+    }
+  });
 
   // Open Pre-Sync Confirmation Dialog
   $('#btn-open-sync-dialog')?.addEventListener('click', openSyncDialog);
