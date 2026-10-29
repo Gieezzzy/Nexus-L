@@ -62,19 +62,46 @@
     return 'ok';
   };
   const hasSender = () => senderState() === 'ok';
+  // Which browser this is, so the right package and steps are shown (Edge is Chromium: same package as Chrome)
+  const browserKind = () => {
+    const ua = navigator.userAgent || '';
+    if (/\bFirefox\//.test(ua)) return 'firefox';
+    if (/\bEdg(e|A|iOS)?\//.test(ua)) return 'edge';
+    if (/\b(Chrome|Chromium|CriOS)\//.test(ua)) return 'chrome';
+    return 'other';
+  };
+  const BROWSERS = {
+    chrome: { name: 'Chrome', zip: 'nexus-l-interlink-sender.zip', steps: [
+      'Download the sender and unzip it to a folder you keep (for example Documents).',
+      'Open <b>chrome://extensions</b> and turn on <b>Developer mode</b> (top right).',
+      'Press <b>Load unpacked</b> and choose the unzipped folder.',
+      'Reload this page (Ctrl+F5) and press Send again.'] },
+    edge: { name: 'Microsoft Edge', zip: 'nexus-l-interlink-sender.zip', steps: [
+      'Download the sender and unzip it to a folder you keep (for example Documents).',
+      'Open <b>edge://extensions</b> and turn on <b>Developer mode</b> (left side).',
+      'Press <b>Load unpacked</b> and choose the unzipped folder.',
+      'Reload this page (Ctrl+F5) and press Send again.'] },
+    firefox: { name: 'Firefox', zip: 'nexus-l-interlink-sender-firefox.zip', steps: [
+      'Download the sender and unzip it to a folder you keep (Firefox 128 or newer).',
+      'Open <b>about:debugging#/runtime/this-firefox</b> and press <b>Load Temporary Add-on</b>, then pick <b>manifest.json</b> in the unzipped folder (a temporary add-on is removed when Firefox closes).',
+      'Open <b>about:addons</b> → the add-on → <b>Permissions</b> and switch on access to <b>interlink2.intertek.com</b> and <b>192.168.32.43</b>.',
+      'Reload this page (Ctrl+F5) and press Send again.'] },
+  };
   const installHelp = () => {
+    const kind = browserKind();
+    const mine = BROWSERS[kind] || BROWSERS.chrome;
+    const sameZip = Object.entries(BROWSERS).filter(([k]) => k !== kind && BROWSERS[k].zip === mine.zip).map(([, v]) => v.name);
     const back = document.createElement('div');
     back.className = 'nx-modal-back';
-    back.innerHTML = `<div class="nx-modal" role="dialog" aria-modal="true" style="max-width:520px">
-      <p><b>Install the NEXUS-L InterLink Sender (one time)</b><br>One-click sending runs in your own Chrome, with your own InterLink sign-in.</p>
-      <ol style="margin:0 0 12px 18px;padding:0;font-size:13px;line-height:1.6">
-        <li>Download the sender and unzip it to a folder you keep (for example Documents).</li>
-        <li>Open <b>chrome://extensions</b>, turn on <b>Developer mode</b> (top right).</li>
-        <li>Press <b>Load unpacked</b> and choose the unzipped folder.</li>
-        <li>Reload this page and press Send again.</li>
-      </ol>
-      <div class="sc-row"><a class="nx-btn nx-primary" href="${BASE}downloads/nexus-l-interlink-sender.zip" download>Download for Chrome</a> <a class="nx-btn" href="${BASE}downloads/nexus-l-interlink-sender-firefox.zip" download>Download for Firefox</a></div>
-      <p class="muted sm" style="margin:8px 0 0">Firefox 128 or newer: open <b>about:debugging#/runtime/this-firefox</b> → Load Temporary Add-on → pick <b>manifest.json</b> inside the unzipped folder (it is removed when Firefox closes). Then allow the site access in <b>about:addons</b> → the add-on → Permissions.</p>
+    back.innerHTML = `<div class="nx-modal" role="dialog" aria-modal="true" style="max-width:560px">
+      <p><b>Install the NEXUS-L InterLink Sender (one time)</b><br>${kind === 'other'
+        ? 'This browser is not recognised. Choose the package for the browser you use.'
+        : `You are using <b>${mine.name}</b>: this is the package and the steps for it.`}</p>
+      <ol style="margin:0 0 12px 18px;padding:0;font-size:13px;line-height:1.6">${mine.steps.map((x) => `<li>${x}</li>`).join('')}</ol>
+      <div class="sc-row"><a class="nx-btn nx-primary" href="${BASE}downloads/${mine.zip}" download>Download for ${mine.name}</a></div>
+      ${sameZip.length ? `<p class="muted sm" style="margin:6px 0 0">The same file also works in ${sameZip.join(' and ')}.</p>` : ''}
+      <p class="muted sm" style="margin:10px 0 4px">Using a different browser?</p>
+      <div class="sc-row" style="gap:6px;flex-wrap:wrap">${Object.entries(BROWSERS).filter(([k]) => k !== kind).map(([, v]) => `<a class="nx-btn" href="${BASE}downloads/${v.zip}" download>Download for ${v.name}</a>`).join(' ')}</div>
       <div class="nx-modal-actions"><button type="button" class="nx-btn" data-a="close">Close</button></div></div>`;
     document.body.appendChild(back);
     back.addEventListener('click', (e) => { if (e.target === back || e.target.dataset.a === 'close') back.remove(); });
@@ -105,6 +132,7 @@
     }
   };
   $('#sc-status-install')?.addEventListener('click', installHelp);
+  { const b = $('#sc-status-install'); if (b) b.textContent = `Install the sender for ${(BROWSERS[browserKind()] || BROWSERS.chrome).name}`; }
   renderSenderStatus();
   window.addEventListener('focus', renderSenderStatus);   // catches "I just installed it and switched back to this tab"
   setInterval(renderSenderStatus, 4000);
