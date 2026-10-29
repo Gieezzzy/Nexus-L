@@ -1702,6 +1702,11 @@
   // the sheet of a record: the one kept with the attached report, else read it from the record
   const sheetFor = async (pdf) => {
     if (pdf.sheet) return pdf.sheet;
+    // the report as printed (page images of this very PDF): always what is signed and sent, and nothing depends on the DTR page
+    try {
+      const j = await apiFetch('dtr/approval/pdf-pages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pdf_b64: pdf.b64 }) });
+      if (j && j.html) { pdf.sheet = j.html; return pdf.sheet; }
+    } catch (e) { /* fall back to the DTR sheet below */ }
     const det = await apiFetch(`interlink/labref-detail?lab_ref_no=${encodeURIComponent(pdf.lab_ref_no)}`);
     const lr = det.labref || {};
     if (!lr.form_slug) throw new Error('This report has no sheet to show.');

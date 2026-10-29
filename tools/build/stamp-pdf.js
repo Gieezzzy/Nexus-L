@@ -35,8 +35,15 @@ const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
     const rv = s.pos.reviewed && s.pos.reviewed.label ? s.pos.reviewed : null;
     const top = Math.min(ap.label[1], rv ? rv.label[1] : ap.label[1]);          // top-origin coordinates
     const bottom = Math.max(ap.label[3], rv ? rv.label[3] : ap.label[3]);
-    const bx = Math.max(12, ap.label[0] - 88), bw = ap.label[0] - 4 - bx;
-    const bh = (bottom - top) + 14, by = H - bottom - 5;
+    // the signature is laid over the printed name(s) on the Reviewed by / Approved by lines (transparent, so the name stays readable)
+    const nr = [ap.name_rect, rv && rv.name_rect].filter(Boolean);
+    let bx, bw;
+    if (nr.length) {
+      const x0 = Math.min(...nr.map((r) => r[0])), x1 = Math.max(...nr.map((r) => r[2]));
+      bw = Math.max(70, (x1 - x0) + 40);
+      bx = Math.min(width - 6 - bw, Math.max(12, (x0 + x1) / 2 - bw / 2));
+    } else { bx = Math.max(12, ap.label[0] - 88); bw = ap.label[0] - 4 - bx; }
+    const bh = (bottom - top) + 22, by = H - bottom - 9;
     if (s.png) {
       const img = await doc.embedPng(Buffer.from(s.png, 'base64'));
       const k = Math.min(bw / img.width, bh / img.height);

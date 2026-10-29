@@ -68,6 +68,29 @@ class ReportPdf
         return is_file($pdf) && filesize($pdf) > 1000 ? $pdf : null;
     }
 
+    /**
+     * The report exactly as printed, as an HTML block of page images (no PDF viewer, nothing to download): what the person
+     * requesting approval, and the Manager / Supervisor who signs, read. '' when the pages cannot be rendered.
+     */
+    public static function pagesHtml(string $pdfBytes): string
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'pg');
+        file_put_contents($tmp . '.pdf', $pdfBytes);
+        $py  = is_file('C:\\Python314\\python.exe') ? 'C:\\Python314\\python.exe' : 'python';
+        $out = (string) @shell_exec('"' . $py . '" "' . ROOTPATH . 'tools\\pdf_pages.py" "' . $tmp . '.pdf" "' . $tmp . '" 1.7 3 2>NUL');
+        $html = '';
+        foreach (preg_split('/\R/', trim($out)) as $f) {
+            if ($f !== '' && is_file($f)) {
+                $html .= '<img alt="Report page" style="display:block;width:100%;max-width:900px;height:auto;margin:0 auto 10px;border:1px solid #e2e8f0" src="data:image/png;base64,' . base64_encode((string) file_get_contents($f)) . '">';
+                @unlink($f);
+            }
+        }
+        @unlink($tmp . '.pdf');
+        @unlink($tmp);
+
+        return $html;
+    }
+
     /** The "Reviewed by" / "Approved by" lines printed on page 1: ['approved' => ['name', 'label', ...], 'reviewed' => [...], 'w', 'h'] or []. */
     public static function signoff(string $pdf): array
     {

@@ -90,6 +90,7 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->post('dtr/approval/request', 'ApprovalController::request');
     $routes->get('dtr/approval/file/(:segment)', 'ApprovalController::file/$1');
     $routes->get('dtr/approval/verify', 'ApprovalController::verify');
+    $routes->post('dtr/approval/pdf-pages', 'ApprovalController::pdfPages');
     $routes->get('dtr/approval/feed', 'ApprovalController::feed');
     $routes->get('dtr/approval/name-format', 'ApprovalController::nameFormat');
     $routes->post('dtr/approval/name-format', 'ApprovalController::nameFormat');

@@ -198,6 +198,11 @@ class ApprovalController extends BaseController
         if ($a && $a['status'] === 'approved' && empty($p['replace'])) {
             return $this->json(['ok' => true, 'approval' => $this->publicRow($a), 'message' => 'This report is already approved.']);
         }
+        // the approver reads the report exactly as printed: page images of this PDF (always the same file that is signed and sent)
+        $pages = ReportPdf::pagesHtml($pdf);
+        if ($pages !== '') {
+            $p['sheet_html'] = '<div class="apv-pages">' . $pages . '</div>';
+        }
         // the name printed after "Approved by" on the report is the one who must sign it
         $tmp = tempnam(sys_get_temp_dir(), 'so');
         file_put_contents($tmp, $pdf);
@@ -260,6 +265,19 @@ class ApprovalController extends BaseController
         }
 
         return $this->json(['ok' => true, 'approved' => true, 'sha256' => hash_file('sha256', $signed), 'by' => $a['decided_name'], 'at' => $a['decided_at']]);
+    }
+
+    /** POST dtr/approval/pdf-pages {pdf_b64}: the report as page images, for the report view (no PDF viewer needed) */
+    public function pdfPages()
+    {
+        $p   = $this->request->getJSON(true) ?? [];
+        $pdf = base64_decode((string) ($p['pdf_b64'] ?? ''), true);
+        if ($pdf === false || ! str_starts_with($pdf, '%PDF') || strlen($pdf) > 20 * 1024 * 1024) {
+            return $this->json(['ok' => false, 'error' => 'No report to show.'], 422);
+        }
+        $html = ReportPdf::pagesHtml($pdf);
+
+        return $html === '' ? $this->json(['ok' => false, 'error' => 'The report pages could not be drawn.'], 500) : $this->json(['ok' => true, 'html' => $html]);
     }
 
     /** GET dtr/approval/file/<file_key>: the signed PDF once approved, else the PDF waiting for approval (signed-in users) */
