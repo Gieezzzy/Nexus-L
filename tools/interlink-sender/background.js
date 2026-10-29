@@ -56,12 +56,25 @@ async function approvalProblem(job, nexusTab) {
 chrome.runtime.onMessage.addListener((m, sender) => {
   if (m.type === 'send' && sender.tab) {
     const gate = { nexusTab: sender.tab.id, application_no: m.job && m.job.application_no };
-    approvalProblem(m.job || {}, sender.tab.id).then((problem) => {
+    approvalProblem(m.job || {}, sender.tab.id).then(async (problem) => {
       if (problem) { status(gate, false, true, `${gate.application_no || 'The report'} was NOT sent: ${problem}`); return; }
+      // Firefox runs an extension on a site only after the user allows it (about:addons -> the add-on -> Permissions); without that the
+      // InterLink tab would open and nothing would ever happen in it, so say so before opening anything
+      try {
+        const allowed = await chrome.permissions.contains({ origins: ['https://interlink2.intertek.com/*'] });
+        if (!allowed) { status(gate, false, true, `${gate.application_no || 'The report'} was NOT sent: this extension is not allowed to run on interlink2.intertek.com. In Firefox open about:addons, click the NEXUS-L InterLink Sender, choose Permissions and switch on access to interlink2.intertek.com, then try again.`); return; }
+      } catch (e) { /* browsers without this check: carry on */ }
       chrome.tabs.create({ url: PORTAL_HOME, active: true }, (t) => {
         const job = Object.assign({}, m.job, { nexusTab: sender.tab.id, tabId: t.id, step: 'search', loads: 0 });
         setJob(job);
         status(job, true, false, `InterLink is opening - searching for ${job.application_no}…`);
+        // if the new tab never reports in (sign-in page, blocked site) the user is told instead of waiting for nothing
+        setTimeout(async () => {
+          try {
+            const j = await getJob(t.id);
+            if (j && j.step === 'search' && !j.loads) status(j, false, false, `The InterLink tab has not reported back after 30 seconds. If it shows a sign-in page, sign in there and sending continues by itself. If it shows InterLink's home page and nothing moves, allow this extension on interlink2.intertek.com (Firefox: about:addons → the add-on → Permissions) and send again.`);
+          } catch (e) { /* the tab is gone */ }
+        }, 30000);
       });
     });
   }
