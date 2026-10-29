@@ -1649,9 +1649,25 @@
     $('#uf-att-meta')?.classList.remove('hidden');
     if (!pdf.approved) checkApproval(pdf.lab_ref_no);
   };
-  const openAttachedPdf = (download) => {
-    const pdf = window.nxAttachedPdf;
-    if (!pdf) return;
+  // The attachment is tied to its Lab Reference's saved report, never to its file name: if the copy held by the page is missing or
+  // empty (a sync, a reload, another tab), the saved report is fetched again from NEXUS-L before it is viewed or downloaded.
+  const ensureAttachedPdf = async () => {
+    let pdf = window.nxAttachedPdf;
+    if (!pdf || !pdf.b64 || pdf.b64.length < 2000) {
+      await restoreApproval(pdf && pdf.lab_ref_no ? pdf.lab_ref_no : currentLabRef());
+      pdf = window.nxAttachedPdf;
+      if ((!pdf || !pdf.b64 || pdf.b64.length < 2000) && pdf && pdf.lab_ref_no) {
+        const j = await apiFetch(`dtr/approval/status?lab_ref=${encodeURIComponent(pdf.lab_ref_no)}`);
+        const key = j.approval && j.approval.file && (j.approval.file.match(/[a-f0-9]{40}/) || [])[0];
+        if (key) { pdf.b64 = await pdfAsB64('dtr/approval/file/' + key); pdf.sheet = null; }
+      }
+    }
+    if (!pdf || !pdf.b64 || pdf.b64.length < 2000) throw new Error('No saved report was found for this Lab Reference. Press Generate Report.');
+    return pdf;
+  };
+  const openAttachedPdf = async (download) => {
+    let pdf;
+    try { pdf = await ensureAttachedPdf(); } catch (e) { showToast(e.message, true); return; }
     const url = URL.createObjectURL(b64ToBlob(pdf.b64));
     if (download) {
       const a = document.createElement('a');
@@ -1977,8 +1993,8 @@
     rd.readAsDataURL(file);
   });
   $('#uf-btn-view-pdf')?.addEventListener('click', async () => {
-    const pdf = window.nxAttachedPdf;
-    if (!pdf) return;
+    let pdf;
+    try { pdf = await ensureAttachedPdf(); } catch (e) { showToast(e.message, true); return; }
     try { showReportView(await sheetFor(pdf), pdf.lab_ref_no); } catch (e) { openAttachedPdf(false); }   // a browsed file has no sheet: show the file
   });
   $('#uf-btn-save-pdf')?.addEventListener('click', () => openAttachedPdf(true));
