@@ -12,7 +12,7 @@
 // header so it keeps working if columns are ever reordered), click that row's real Upload icon - InterLink then opens
 // a genuine, fresh, correctly-scoped popup every time - and commit with Save (or Submit, if a page variant has one).
 
-const PORTAL_HOME = 'https://interlink2.intertek.com/';
+const PORTAL_HOME = 'https://interlink2.intertek.com/InterLink2/aspx/DlkPage/Portal2/Home.aspx';   // straight to the portal home: no extra redirect through the site root
 
 const key = (tabId) => `job_${tabId}`;
 const getJob = async (tabId) => (await chrome.storage.session.get(key(tabId)))[key(tabId)];
@@ -69,12 +69,14 @@ chrome.runtime.onMessage.addListener((m, sender) => {
         setJob(job);
         status(job, true, false, `InterLink is opening - searching for ${job.application_no}…`);
         // if the new tab never reports in (sign-in page, blocked site) the user is told instead of waiting for nothing
-        setTimeout(async () => {
+        const watch = (ms, text) => setTimeout(async () => {
           try {
             const j = await getJob(t.id);
-            if (j && j.step === 'search' && !j.loads) status(j, false, false, `The InterLink tab has not reported back after 30 seconds. If it shows a sign-in page, sign in there and sending continues by itself. If it shows InterLink's home page and nothing moves, allow this extension on interlink2.intertek.com (Firefox: about:addons → the add-on → Permissions) and send again.`);
+            if (j && j.step === 'search' && !j.loads) status(j, false, false, text);
           } catch (e) { /* the tab is gone */ }
-        }, 30000);
+        }, ms);
+        watch(45000, 'InterLink is still loading in its tab (it can be slow). Sending continues by itself as soon as the page is ready; if the tab shows a sign-in page, sign in there.');
+        watch(120000, 'InterLink has not finished loading after 2 minutes. Check that tab: sign in if it asks, or reload it (F5). If it is stuck on a "Working…" sign-in page, try the same in a private window or clear interlink2.intertek.com site data, then send again.');
       });
     });
   }
