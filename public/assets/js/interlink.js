@@ -1858,6 +1858,14 @@
       if (cur && cur.lab_ref_no && cur.lab_ref_no !== labRef && cur.source === 'generated') { window.nxAttachedPdf = null; $('#uf-att-meta')?.classList.add('hidden'); }
       if (!a) { if (chosen) $('#uf-apv')?.classList.add('hidden'); showNameFmt(); return; }
       if (a.status === 'approved' && !(window.nxAttachedPdf && (window.nxAttachedPdf.approved || window.nxAttachedPdf.regenerate))) await attachSigned(a);
+      else if (a.status !== 'approved' && !window.nxAttachedPdf && a.file) {
+        // after a reload: the report already made for this Lab Ref (waiting for approval, returned or expired) can still be viewed and downloaded
+        try {
+          const b64 = await pdfAsB64('dtr/approval/file/' + (a.file.match(/[a-f0-9]{40}/) || [''])[0]);
+          const app = a.application_no || state.activeAppNo || '';
+          setAttachedPdf({ app, lab_ref_no: a.lab_ref_no, name: fileNameFor(app, labrefRow(a.lab_ref_no)), b64, source: 'generated' });
+        } catch (e) { /* no file to show */ }
+      }
       showApproval(a, j.signatories);
       showNameFmt();
     } catch (e) { /* the panel stays hidden until the report is generated */ }
