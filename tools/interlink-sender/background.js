@@ -479,8 +479,19 @@ async function fillAndAttach(job) {
     const m = document.querySelector('textarea[name$="JOB_DUMMY_013_REF_FLD27_TEST_ITEM_READING_INPUT_0"]');
     const code = codeOf(m && m.value);
     const it = wanted.find((x) => x.code === code);
-    const q = (f) => document.querySelector(`[name$="JOB_DUMMY_013_REF_${f}_TEST_ITEM_READING_INPUT_0"]`);
     if (it) {
+      // a test can have several rows (one per condition, e.g. 60℃ and 70℃): the row whose condition numbers appear in the test's
+      // name gets the reading; with one row, or no clear match, it is the first row
+      const idxs = [...document.querySelectorAll('textarea[name*="JOB_DUMMY_013_REF_FLD27_TEST_ITEM_READING_INPUT_"]')].map((t) => t.name.match(/INPUT_(\d+)$/)[1]);
+      const nums = (str) => (String(str).match(/\d+/g) || []);
+      const want = new Set(nums(it.name));
+      let bestIdx = idxs[0], bestScore = -1;
+      for (const i of idxs) {
+        const el = document.querySelector(`[name$="JOB_DUMMY_013_REF_FLD03_TEST_ITEM_READING_INPUT_${i}"]`);
+        const sc = nums(el && el.value).filter((x) => want.has(x)).length;
+        if (sc > bestScore) { bestScore = sc; bestIdx = i; }
+      }
+      const q = (f) => document.querySelector(`[name$="JOB_DUMMY_013_REF_${f}_TEST_ITEM_READING_INPUT_${bestIdx}"]`);
       const ind = q('FLD20'); if (ind) setNative(ind, '3');                       // "="
       const val = q('FLD47'); if (val) setNative(val, String(it.value));
       const req = q('FLD04'); if (req && it.requirement) setNative(req, String(it.requirement));
@@ -533,46 +544,85 @@ async function fillAndAttach(job) {
         let n = 0;
         while (dispOf(n) && dispOf(n).value) n++;
         if (!dispOf(n) || !picker(n)) { notes.push(`${it.name}: no free row`); break; }
-        picker(n).click();
-        let row = null, frameDoc = null, frameWin = null;
-        for (let k = 0; k < 40 && !row; k++) {                         // the list loads inside a frame: wait for its rows
-          await sleep(500);
-          try {
-            const f = document.getElementById('UF1_LOVRL1_ASPxLOVIFramePopup_CIF-1');
-            frameDoc = f && f.contentDocument; frameWin = f && f.contentWindow;
-            const rows = frameDoc ? [...frameDoc.querySelectorAll('tr.dxgvDataRow')] : [];
-            if (rows.length) {
-              // the list remembers the page it was on last time: always start from page 1
-              const cur = Number((frameDoc.body.innerText.match(/Page (\d+) of/) || [])[1] || 1);
-              if (cur !== 1) {
-                try { frameWin.ASPx.GVPagerOnClick('cgvLOVAppList', 'PN0'); } catch (e) { /* single page */ }
-                await sleep(1800);
-              }
-              const here = () => [...frameDoc.querySelectorAll('tr.dxgvDataRow')].find((r) => r.innerText.toUpperCase().includes(`(${it.code})`));
-              row = here();
-              if (!row) {                                                 // the list has more pages: look on them too
-                const pages = (frameDoc.body.innerText.match(/Page \d+ of (\d+)/) || [])[1];
-                for (let pg = 1; pg < Number(pages || 1) && !row; pg++) {
-                  try { frameWin.ASPx.GVPagerOnClick('cgvLOVAppList', 'PN' + pg); } catch (e) { break; }
-                  await sleep(1800);
-                  row = here();
-                }
-                break;
-              }
-            }
-          } catch (e) { /* the frame is still loading */ }
-        }
-        if (!row) {
-          notes.push(`${it.name} (${it.code}) is not in InterLink's list for this test package`);
-          // close the popup without choosing anything: its own "Clear Selection" button, else a click outside
+        const words = (t) => String(t || '').toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2);
+        const score = (r) => { const w = new Set(words(it.name)); return words(r.innerText).filter((x) => w.has(x)).length; };
+        const closePopup = async () => {
           try {
             const clr = [...document.querySelectorAll('input,button,a,span,div')].find((e) => e.children.length === 0 && /^clear selection$/i.test((e.value || e.textContent || '').trim()) && e.offsetParent !== null);
             if (clr) clr.click(); else document.body.click();
           } catch (e) { /* the popup stays; the next picker click reuses it */ }
           await sleep(800);
+        };
+        // opens the list for row n and finds the test with this method code; `search` types the code into the list's own filter
+        // (needed for the full list: 1,110 tests over 111 pages)
+        const openAndFind = async (search) => {
+          picker(n).click();
+          for (let k = 0; k < 40; k++) {
+            await sleep(500);
+            try {
+              const f = document.getElementById('UF1_LOVRL1_ASPxLOVIFramePopup_CIF-1');
+              const fd = f && f.contentDocument, fw = f && f.contentWindow;
+              if (!fd || !fd.querySelectorAll('tr.dxgvDataRow').length) continue;
+              const matching = () => [...fd.querySelectorAll('tr.dxgvDataRow')].filter((r) => r.innerText.toUpperCase().includes(`(${it.code})`));
+              const bestOf = (list) => list.sort((x, y) => score(y) - score(x))[0] || null;
+              const cur = Number((fd.body.innerText.match(/Page (\d+) of/) || [])[1] || 1);
+              if (cur !== 1) {                                            // the list remembers the page it was on: start from page 1
+                try { fw.ASPx.GVPagerOnClick('cgvLOVAppList', 'PN0'); } catch (e) { /* single page */ }
+                await sleep(1800);
+              }
+              if (search) {
+                const box = [...fd.querySelectorAll('input[type=text]')].find((i) => /DXFREditor/.test(i.id));
+                if (!box) return null;
+                box.focus(); box.value = it.code;
+                ['input', 'change'].forEach((t) => box.dispatchEvent(new fw.Event(t, { bubbles: true })));
+                ['keydown', 'keypress', 'keyup'].forEach((t) => box.dispatchEvent(new fw.KeyboardEvent(t, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true })));
+                await sleep(3500);
+                const r = bestOf(matching());
+                return r ? { row: r, fw } : null;
+              }
+              let r = bestOf(matching());
+              if (!r) {                                                   // the package list has more pages: look on them too
+                const pages = (fd.body.innerText.match(/Page \d+ of (\d+)/) || [])[1];
+                for (let pg = 1; pg < Number(pages || 1) && !r; pg++) {
+                  try { fw.ASPx.GVPagerOnClick('cgvLOVAppList', 'PN' + pg); } catch (e) { break; }
+                  await sleep(1800);
+                  r = bestOf(matching());
+                }
+              }
+              return r ? { row: r, fw } : null;
+            } catch (e) { /* the frame is still loading */ }
+          }
+          return null;
+        };
+        // "Enable Full Test Item List" -> "Enable": the test list then holds every InterLink test, searched by code
+        const enableFullList = async () => {
+          const box = document.querySelector('input[name$="TpEdr_TRPT_LINE_ITEM$tb1_textbox"]');
+          if (box && box.value) return true;
+          const btn = document.querySelector('[id*="TpEdr_TRPT_LINE_ITEM"][id*="btPick"]');
+          if (!btn) return false;
+          btn.click();
+          for (let k = 0; k < 30; k++) {
+            await sleep(500);
+            try {
+              const f = document.getElementById('UF1_LOVRL1_ASPxLOVIFramePopup_CIF-1');
+              const fd = f && f.contentDocument, fw = f && f.contentWindow;
+              const r = fd && [...fd.querySelectorAll('tr.dxgvDataRow')].find((x) => /enable/i.test(x.innerText));
+              if (r) { r.querySelector('td').dispatchEvent(new fw.MouseEvent('click', { bubbles: true, cancelable: true, view: fw })); await sleep(3500); return !!(box && box.value); }
+            } catch (e) { /* loading */ }
+          }
+          return false;
+        };
+        let hit = await openAndFind(false);
+        if (!hit) {
+          await closePopup();
+          if (await enableFullList()) { notes.push('"Enable Full Test Item List" was switched on to find ' + it.code); hit = await openAndFind(true); }
+        }
+        if (!hit) {
+          notes.push(`${it.name} (${it.code}) was not found in InterLink's test list`);
+          await closePopup();
           continue;
         }
-        row.querySelector('td').dispatchEvent(new frameWin.MouseEvent('click', { bubbles: true, cancelable: true, view: frameWin }));
+        hit.row.querySelector('td').dispatchEvent(new hit.fw.MouseEvent('click', { bubbles: true, cancelable: true, view: hit.fw }));
         await sleep(1800);
         const sid = document.querySelector(`input[name$="JOB_DUMMY_008_REF_FLD03_TEST_ITEM_INP_${n}"]`);
         if (sid) setNative(sid, it.sample);
