@@ -205,6 +205,34 @@ const bgr = (c) => {
 
       const x = (c.left + ml) / 20, w = c.width / 20, h = c.height / 20;
       const yTop = (c.top + mt) / 20;
+      // "Material source" options (Prod. Material / Prod. Re-test): the blank form prints them half hidden behind these boxes, so the
+      // box is cleared and BOTH options are written in full, the chosen one marked (like the lab's other report forms)
+      const opt = isExpr ? /^=IIf\(\[MaterialSource\]="([^"]+)","O ([^"]+)",""\)$/.exec(String(c.controlSource).replace(/\s+/g, ' ')) : null;
+      if (opt) {
+        page.drawRectangle({ x: x + 0.8, y: H - yTop - h + 0.8, width: Math.max(0, w - 1.6), height: Math.max(0, h - 1.6) + 3.6, color: rgb(1, 1, 1) });   // also the cut-off top of the form's own label
+        const chosen = String(lookup('MaterialSource') ?? '').trim().toLowerCase() === opt[1].toLowerCase();
+        const sz = Number(c.fontSize) || 8, cy = H - yTop - h / 2;
+        page.drawCircle({ x: x + 5, y: cy, size: 2.8, borderColor: rgb(0, 0, 0), borderWidth: 0.7, color: rgb(1, 1, 1) });
+        if (chosen) page.drawCircle({ x: x + 5, y: cy, size: 1.4, color: rgb(0, 0, 0) });
+        // Latin part in Helvetica, Chinese part in the Chinese font
+        let cx = x + 11;
+        for (const run of opt[2].match(/[\u2E80-\u9FFF\uFF00-\uFFEF]+|[^\u2E80-\u9FFF\uFF00-\uFFEF]+/g) || []) {
+          const isCjk = /[\u2E80-\u9FFF\uFF00-\uFFEF]/.test(run);
+          if (isCjk && !cjk) continue;
+          const f = isCjk ? cjk : (chosen ? bold : regular);
+          page.drawText(isCjk ? run : safe(run), { x: cx, y: cy - sz * 0.32, size: sz, font: f, color: rgb(0, 0, 0) });
+          cx += f.widthOfTextAtSize(isCjk ? run : safe(run), sz);
+        }
+        if (!layout.hasNewDev && /Prod\. Material/.test(opt[1])) {
+          const nChosen = String(lookup('MaterialSource') ?? '').trim().toLowerCase() === 'new/development';
+          const ny = cy - 13;
+          page.drawCircle({ x: x + 5, y: ny, size: 2.8, borderColor: rgb(0, 0, 0), borderWidth: 0.7, color: rgb(1, 1, 1) });
+          if (nChosen) page.drawCircle({ x: x + 5, y: ny, size: 1.4, color: rgb(0, 0, 0) });
+          page.drawText('New/Development', { x: x + 11, y: ny - sz * 0.32, size: sz, font: nChosen ? bold : regular, color: rgb(0, 0, 0) });
+          if (cjk) page.drawText('开发按新材料', { x: x + 11 + (nChosen ? bold : regular).widthOfTextAtSize('New/Development ', sz), y: ny - sz * 0.32, size: sz, font: cjk, color: rgb(0, 0, 0) });
+        }
+        continue;
+      }
       // an expression that glues fields together ("a / b") leaves its separator on the blank form: clear it first
       if (isExpr && /&\s*"/.test(c.controlSource)) {
         page.drawRectangle({ x: x + 1.2, y: H - yTop - h + 1.2, width: Math.max(0, w - 2.4), height: Math.max(0, h - 2.4), color: rgb(1, 1, 1) });
