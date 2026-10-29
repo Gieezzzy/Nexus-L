@@ -1362,6 +1362,52 @@
     m.addEventListener('click', (ev) => { if (!ev.target.dataset.a) return; m.remove(); navigateToUploadForm(appNo); });
   };
   // paper clip: the attached report is the Lab Reference's report sheet (the DTR print preview), opened in its own tab
+  // The paperclip (and the attachment name in the detail page): the PDF of the report made for that application, shown right here.
+  // An approved report shows the signed PDF; otherwise the report as generated now from the NEXUS-L record, marked as not approved.
+  const viewRowReport = async (appNo) => {
+    beginLoading(`Loading the report for ${appNo}…`, 60000);
+    try {
+      let b64 = '';
+      let status = '';
+      let labRef = '';
+      const st = await apiFetch(`dtr/approval/status?lab_ref=&application_no=${encodeURIComponent(appNo)}`).catch(() => null);
+      const a = st && st.approval;
+      const key = a && a.file && (a.file.match(/[a-f0-9]{40}/) || [])[0];
+      if (key) {
+        b64 = await pdfAsB64('dtr/approval/file/' + key);
+        labRef = a.lab_ref_no;
+        status = a.status === 'approved' ? `Signed by ${a.decided_name} · ${a.decided_at}` : (a.status === 'rejected' ? 'Returned for correction' : 'Waiting for approval - not signed yet');
+      } else {
+        const j = await fetch(`${BASE_URL}interlink/labrefs?limit=5&q=${encodeURIComponent(appNo)}`, { credentials: 'same-origin' }).then((r) => r.json());
+        const lr = (j.rows || []).find((x) => x.tr_no === appNo) || (j.rows || [])[0];
+        if (!lr) throw new Error(`No Lab Reference is linked to ${appNo}, so there is no report to show.`);
+        labRef = lr.lab_ref_no;
+        b64 = lr.form_slug === 'bonding'
+          ? await window.nxReportPdf({ slug: lr.form_slug, id: lr.source_id || lr.id })
+          : await pdfAsB64(`dtr/report-pdf?lab_ref=${encodeURIComponent(lr.lab_ref_no)}&app=${encodeURIComponent(appNo)}`);
+        status = 'Generated now from the NEXUS-L record - not approved yet';
+      }
+      const url = URL.createObjectURL(b64ToBlob(b64));
+      document.getElementById('nx-rowpdf')?.remove();
+      const m = document.createElement('div');
+      m.id = 'nx-rowpdf';
+      m.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(15,23,42,.6);display:flex;justify-content:center;align-items:center;padding:14px';
+      m.innerHTML = `<div style="background:#fff;border-radius:10px;width:100%;max-width:1000px;height:94vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.35)">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 16px;background:#0f172a;color:#fff;border-radius:10px 10px 0 0">
+          <div><b>Report ${escHtml(appNo)}</b> <span style="opacity:.8;font-size:12px">· ${escHtml(labRef)} · ${escHtml(status)}</span></div>
+          <div style="display:flex;gap:8px;align-items:center"><a class="uf-action-btn" style="text-decoration:none" href="${url}" download="${escHtml(appNo)}.pdf">Download</a>
+          <button type="button" data-rp="close" style="background:none;border:0;color:#fff;font-size:22px;cursor:pointer" aria-label="Close">×</button></div></div>
+        <iframe title="Report ${escHtml(appNo)}" src="${url}" style="flex:1;border:0;width:100%;background:#e2e8f0"></iframe></div>`;
+      m.addEventListener('click', (e) => { if (e.target === m || (e.target.dataset && e.target.dataset.rp === 'close')) { m.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000); } });
+      document.body.appendChild(m);
+    } catch (e) {
+      nxToast(e.message || 'Could not show the report.', 'error', 7000);
+    } finally { endLoading(); }
+  };
+  document.addEventListener('click', (e) => {
+    const l = e.target.closest && e.target.closest('[data-view-report]');
+    if (l) { e.preventDefault(); viewRowReport(l.dataset.viewReport); }
+  });
   const openAttachment = async (appNo) => {
     const w = window.open('', '_blank');
     try {
@@ -1392,7 +1438,7 @@
     back.innerHTML = `<div class="nx-modal itk-detail" role="dialog" aria-modal="true" aria-label="Report Detail Page">
       <h3 class="itk-detail-h">VF Corporation - Report Detail Page</h3>
       <div class="itk-detail-grid">${pairs.map(([l, val]) => `<div class="itk-dl">${l}</div><div class="itk-dv">${val || '&nbsp;'}</div>`).join('')}</div>
-      <div class="itk-detail-sec ${focusAttach ? 'itk-focus' : ''}"><b>Report Attachment</b><div>${att || '<span class="muted">No report attached</span>'}</div></div>
+      <div class="itk-detail-sec ${focusAttach ? 'itk-focus' : ''}"><b>Report Attachment</b><div>${att ? `<a href="#" data-view-report="${escHtml(r.application_no)}" style="color:#1d4ed8;font-weight:600">${att}</a>` : '<span class="muted">No report attached</span>'}</div></div>
       <div class="itk-detail-sec"><b>Supplementary Attachment</b><table class="itk-grid"><thead><tr><th>File Name</th><th>Date Added</th></tr></thead><tbody><tr><td colspan="2" class="muted">Empty</td></tr></tbody></table></div>
       <div class="itk-detail-sec"><b>Report Review</b><div>Review Result: ${v('review_result')} &nbsp; Review Status Code: ${v('review_status')}</div>
         <table class="itk-grid"><thead><tr><th>Date/Time</th><th>Comment</th><th>By Whom</th><th>Company</th></tr></thead><tbody><tr><td colspan="4">${v('latest_review_comment') || '<span class="muted">No comments</span>'}</td></tr></tbody></table></div>
@@ -1407,7 +1453,7 @@
   // Delegate clicks on "U", "E", or Application No. in SearchFormWithHeader.aspx
   $('#itk-grid-tbody')?.addEventListener('click', (e) => {
     const dt = e.target.closest('[data-open-detail],[data-open-clip]');
-    if (dt && dt.dataset.openClip) { openAttachment(dt.dataset.openClip); return; }
+    if (dt && dt.dataset.openClip) { viewRowReport(dt.dataset.openClip); return; }
     if (dt) { openDetail(dt.dataset.openDetail, false); return; }
     const um = e.target.closest('[data-open-umenu]');
     if (um) { openUMenu(um, um.dataset.openUmenu); return; }
