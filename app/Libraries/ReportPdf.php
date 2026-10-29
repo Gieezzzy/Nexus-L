@@ -187,6 +187,8 @@ class ReportPdf
             $s['png'] = self::transparentPng($s['png']);
         }
         $s['pos'] = self::signoff($in);
+        // the Reviewed by line gets the signature too when its printed name is the signer's
+        $s['pos']['reviewed_is_signer'] = ! empty($s['pos']['reviewed']['name']) && self::nameMatches((string) $s['pos']['reviewed']['name'], (string) ($s['name'] ?? ''));
         $json = tempnam(sys_get_temp_dir(), 'stp');
         file_put_contents($json, json_encode($s));
         $node = is_file('C:\\Program Files\\nodejs\\node.exe') ? 'C:\\Program Files\\nodejs\\node.exe' : 'node';

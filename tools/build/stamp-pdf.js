@@ -36,18 +36,26 @@ const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
     const top = Math.min(ap.label[1], rv ? rv.label[1] : ap.label[1]);          // top-origin coordinates
     const bottom = Math.max(ap.label[3], rv ? rv.label[3] : ap.label[3]);
     // the signature is laid over the printed name(s) on the Reviewed by / Approved by lines (transparent, so the name stays readable)
-    const nr = [ap.name_rect, rv && rv.name_rect].filter(Boolean);
-    let bx, bw;
-    if (nr.length) {
-      const x0 = Math.min(...nr.map((r) => r[0])), x1 = Math.max(...nr.map((r) => r[2]));
-      bw = Math.max(70, (x1 - x0) + 40);
-      bx = Math.min(width - 6 - bw, Math.max(12, (x0 + x1) / 2 - bw / 2));
-    } else { bx = Math.max(12, ap.label[0] - 88); bw = ap.label[0] - 4 - bx; }
-    const bh = (bottom - top) + 22, by = H - bottom - 9;
+    // a SMALL copy of the signature on each printed name that is the signer's (transparent, so the name stays readable)
     if (s.png) {
       const img = await doc.embedPng(Buffer.from(s.png, 'base64'));
-      const k = Math.min(bw / img.width, bh / img.height);
-      page.drawImage(img, { x: bx + (bw - img.width * k) / 2, y: by + (bh - img.height * k) / 2, width: img.width * k, height: img.height * k });
+      const place = (row) => {
+        const r = row && row.name_rect;
+        if (!r) return;
+        const nameW = r[2] - r[0], nameH = r[3] - r[1];
+        const w = Math.min(Math.max(nameW + 6, 34), 62), h = Math.max(nameH * 1.7, 14);     // small: about the size of the name
+        const k = Math.min(w / img.width, h / img.height);
+        const iw = img.width * k, ih = img.height * k;
+        const cx = (r[0] + r[2]) / 2, cy = (r[1] + r[3]) / 2;                            // centre of the name (top-origin y)
+        page.drawImage(img, { x: Math.min(width - 4 - iw, Math.max(4, cx - iw / 2)), y: H - cy - ih / 2, width: iw, height: ih });
+      };
+      place(ap);
+      if (rv && s.pos.reviewed_is_signer) place(rv);
+      if (!ap.name_rect) {
+        const bx = Math.max(12, ap.label[0] - 88), bw = ap.label[0] - 4 - bx, bh = (bottom - top) + 14, by = H - bottom - 5;
+        const k = Math.min(bw / img.width, bh / img.height);
+        page.drawImage(img, { x: bx + (bw - img.width * k) / 2, y: by + (bh - img.height * k) / 2, width: img.width * k, height: img.height * k });
+      }
     }
     const sx = ap.label[0], sw = width - 6 - sx, sh = 19, sy = H - bottom - 3 - sh;
     stampBox(sx, Math.max(3, sy), sw, sh, line1, line2);
