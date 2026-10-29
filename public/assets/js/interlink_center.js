@@ -73,7 +73,8 @@
         <li>Press <b>Load unpacked</b> and choose the unzipped folder.</li>
         <li>Reload this page and press Send again.</li>
       </ol>
-      <div class="sc-row"><a class="nx-btn nx-primary" href="${BASE}downloads/nexus-l-interlink-sender.zip" download>Download the sender</a></div>
+      <div class="sc-row"><a class="nx-btn nx-primary" href="${BASE}downloads/nexus-l-interlink-sender.zip" download>Download for Chrome</a> <a class="nx-btn" href="${BASE}downloads/nexus-l-interlink-sender-firefox.zip" download>Download for Firefox</a></div>
+      <p class="muted sm" style="margin:8px 0 0">Firefox 128 or newer: open <b>about:debugging#/runtime/this-firefox</b> → Load Temporary Add-on → pick <b>manifest.json</b> inside the unzipped folder (it is removed when Firefox closes). Then allow the site access in <b>about:addons</b> → the add-on → Permissions.</p>
       <div class="nx-modal-actions"><button type="button" class="nx-btn" data-a="close">Close</button></div></div>`;
     document.body.appendChild(back);
     back.addEventListener('click', (e) => { if (e.target === back || e.target.dataset.a === 'close') back.remove(); });
