@@ -1793,7 +1793,19 @@ JS;
             return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'error' => 'None of the chosen fields map to an InterLink form box.', 'csrf' => csrf_hash()]);
         }
 
-        return $this->response->setJSON(['ok' => true, 'application_no' => $appNo, 'target_url' => $url, 'fields' => count($controls), 'controls' => $controls,
+        // the report's own Sample Information, Test Item Result and readings: what the Upload Result tab of InterLink asks for
+        $tables = ['samples' => [], 'items' => [], 'readings' => []];
+        $cfgT   = $lr ? (\App\Controllers\DtrController::FORM_CONFIG[$lr['form_slug'] ?? ''] ?? null) : null;
+        if ($cfgT && (int) ($lr['source_id'] ?? 0) > 0) {
+            $recT = $this->il()->table($cfgT['table'])->where($cfgT['pk'], (int) $lr['source_id'])->get()->getRowArray();
+            if ($recT) {
+                $ptsT = ($lr['form_slug'] ?? '') === 'bonding' ? ($this->il()->table('tbl_dtr_bonding_points')->where('BondingTestID', (int) $lr['source_id'])->get()->getRowArray() ?: []) : [];
+                $genT = \App\Libraries\ReportTests::build((string) $lr['form_slug'], $recT, $ptsT);
+                $tables = ['samples' => $genT['samples'], 'items' => $genT['items'], 'readings' => $genT['readings']];
+            }
+        }
+
+        return $this->response->setJSON(['ok' => true, 'application_no' => $appNo, 'target_url' => $url, 'fields' => count($controls), 'controls' => $controls, 'tables' => $tables,
             // id is the record id of the DTR form (source_id): the DTR page opens records by it, not by the unified row id
             'lab' => $lr ? ['slug' => (string) $lr['form_slug'], 'id' => (int) ($lr['source_id'] ?: $lr['id']), 'lab_ref_no' => (string) $lr['lab_ref_no']] : null, 'csrf' => csrf_hash()]);
     }

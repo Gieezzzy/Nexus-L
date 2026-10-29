@@ -430,6 +430,29 @@ async function fillAndAttach(job) {
       return true;
     } catch (e) { return false; }
   };
+  // "Sample Information" rows: the first row is already on the form, more are added with its own Add button
+  const fillSamples = async (samples) => {
+    let done = 0;
+    for (let i = 0; i < samples.length && i < 10; i++) {
+      let id = document.querySelector(`input[name$="JOB_DUMMY_007_REF_FLD01_SAMPLE_ITEM_${i}"]`);
+      if (!id) {
+        const add = document.querySelector('input[name$="TpEdr_JOB_DUMMY_007$cbpTableInput$btAdd"]');
+        if (!add) break;
+        add.click();
+        for (let k = 0; k < 20 && !id; k++) { await sleep(400); id = document.querySelector(`input[name$="JOB_DUMMY_007_REF_FLD01_SAMPLE_ITEM_${i}"]`); }
+        if (!id) break;
+      }
+      const set = (suffix, value) => {
+        const el = document.querySelector(`input[name$="JOB_DUMMY_007_REF_FLD${suffix}_SAMPLE_ITEM_${i}"]`);
+        if (el && value !== undefined && value !== null) { el.value = String(value); ['input', 'change', 'blur'].forEach((t) => el.dispatchEvent(new Event(t, { bubbles: true }))); }
+      };
+      set('01', samples[i].sample_id_code || `S${String(i + 1).padStart(3, '0')}`);
+      set('24', samples[i].sample_description || '');
+      set('25', samples[i].sample_color || '');
+      done++;
+    }
+    return done;
+  };
   const onTab2 = !!document.querySelector('[name*="cbpTestReportUploader"]');
   if (!onTab2) {
     // Product form [10072] opens on its first tab: Report No. there, then over to "Upload Result" (a postback; this script runs again)
@@ -447,6 +470,8 @@ async function fillAndAttach(job) {
       if (!el || value === undefined || value === '') { if (value !== undefined && value !== '') missing.push(label); continue; }
       if (setEl(el, value)) filled++; else missing.push(label);
     }
+    const nSamples = await fillSamples((job.tables && job.tables.samples) || []);
+    if (nSamples) filled += nSamples; else if (job.tables && job.tables.samples && job.tables.samples.length) missing.push('Sample Information');
   }
 
   // The Report Attachment upload box: the real Upload Form's markup order does NOT match its visual layout (the file
