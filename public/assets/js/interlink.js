@@ -1825,7 +1825,7 @@
   };
   // the signed PDF of an approved report becomes the attachment
   const attachSigned = async (a) => {
-    const b64 = await pdfAsB64(`dtr/approval/file/${a.token}`);
+    const b64 = await pdfAsB64('dtr/approval/file/' + ((String(a.file || '').match(/[a-f0-9]{40}/) || [])[0] || a.token));   // the file key; the live link token is never sent for a decided report
     const app = a.application_no || state.activeAppNo || '';
     setAttachedPdf({ app, lab_ref_no: a.lab_ref_no, name: fileNameFor(app, labrefRow(a.lab_ref_no)), b64, source: 'generated', approved: true, approved_by: a.decided_name });
   };
