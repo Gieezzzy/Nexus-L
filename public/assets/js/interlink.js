@@ -1894,7 +1894,7 @@
   const checkApproval = async (labRef, quiet) => {
     if (!labRef) return;
     try {
-      const j = await apiFetch(`dtr/approval/status?lab_ref=${encodeURIComponent(labRef)}`);
+      const j = await apiFetch(`dtr/approval/status?lab_ref=${encodeURIComponent(labRef)}&application_no=${encodeURIComponent((window.nxAttachedPdf && window.nxAttachedPdf.app) || state.activeAppNo || '')}`);
       const a = j.approval;
       if (a && a.status === 'approved' && !(window.nxAttachedPdf && (window.nxAttachedPdf.approved || window.nxAttachedPdf.regenerate))) {
         await attachSigned(a);
@@ -1916,7 +1916,7 @@
     if (!labRef && !appNo) return;
     try {
       // opened on an application whose Lab Reference is not known yet: the report already made for it is found by Application No.
-      const j = await apiFetch(`dtr/approval/status?lab_ref=${encodeURIComponent(labRef)}${labRef ? '' : '&application_no=' + encodeURIComponent(appNo)}`);
+      const j = await apiFetch(`dtr/approval/status?lab_ref=${encodeURIComponent(labRef)}&application_no=${encodeURIComponent(appNo)}`);
       const a = j.approval;
       if (!labRef && a) labRef = a.lab_ref_no;
       const cur = window.nxAttachedPdf;

@@ -176,8 +176,14 @@ class ApprovalController extends BaseController
     /** GET dtr/approval/status?lab_ref= */
     public function status()
     {
-        $a = $this->latest(trim((string) $this->request->getGet('lab_ref')));
+        $lab = trim((string) $this->request->getGet('lab_ref'));
         $app = preg_replace('/[^A-Za-z0-9_-]/', '', (string) $this->request->getGet('application_no'));
+        $a   = null;
+        if ($lab !== '' && $app !== '') {
+            // one Lab Reference can be used by several applications: the approval made for THIS application comes first
+            $a = $this->db()->table('tbl_dtr_report_approvals')->where(['lab_ref_no' => $lab, 'application_no' => $app])->where('status !=', 'superseded')->orderBy('id', 'DESC')->get()->getRowArray();
+        }
+        $a = $a ?: $this->latest($lab);
         if (! $a && $app !== '') {
             // the Lab Reference is not known yet (the form just opened): find the report already made for this Application No.
             $a = $this->db()->table('tbl_dtr_report_approvals')->where('application_no', $app)->where('status !=', 'superseded')->orderBy('id', 'DESC')->get()->getRowArray();
@@ -200,6 +206,9 @@ class ApprovalController extends BaseController
         $me  = $this->me();
         $now = date('Y-m-d H:i:s');
         $a   = $this->latest($lr['lab_ref_no']);
+        if ($a && $app !== '' && (string) $a['application_no'] !== $app) {
+            $a = null;            // the latest request of this Lab Reference belongs to another application: it stays as it is
+        }
         if ($a && $a['status'] === 'approved' && empty($p['replace'])) {
             return $this->json(['ok' => true, 'approval' => $this->publicRow($a), 'message' => 'This report is already approved.']);
         }
@@ -263,7 +272,13 @@ class ApprovalController extends BaseController
      */
     public function verify()
     {
-        $a      = $this->latest(trim((string) $this->request->getGet('lab_ref')));
+        $a   = $this->latest(trim((string) $this->request->getGet('lab_ref')));
+        $app = preg_replace('/[^A-Za-z0-9_-]/', '', (string) $this->request->getGet('application_no'));
+        if ((! $a || $a['status'] !== 'approved') && $app !== '') {
+            // the Lab Reference was not sent (or is shared by several applications): the approval made for this Application No.
+            $byApp = $this->db()->table('tbl_dtr_report_approvals')->where('application_no', $app)->where('status', 'approved')->orderBy('id', 'DESC')->get()->getRowArray();
+            $a     = $byApp ?: $a;
+        }
         $signed = $a && $a['status'] === 'approved' ? $this->dir() . ($a['file_key'] ?: $a['token']) . '_signed.pdf' : '';
         if ($signed === '' || ! is_file($signed)) {
             return $this->json(['ok' => true, 'approved' => false, 'status' => $a['status'] ?? 'none']);

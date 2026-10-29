@@ -125,7 +125,7 @@
     let att = window.nxAttachedPdf && window.nxAttachedPdf.app === appNo && window.nxAttachedPdf.approved ? window.nxAttachedPdf : null;
     if (!att && data.lab) {
       try {
-        const st = await api(`dtr/approval/status?lab_ref=${encodeURIComponent(data.lab.lab_ref_no)}`);
+        const st = await api(`dtr/approval/status?lab_ref=${encodeURIComponent(data.lab.lab_ref_no)}&application_no=${encodeURIComponent(appNo)}`);
         if (st.approval && st.approval.status === 'approved') {
           const r = await fetch(st.approval.file, { credentials: 'same-origin' });
           const buf = new Uint8Array(await r.arrayBuffer());
@@ -143,7 +143,7 @@
       application_no: data.application_no, target_url: data.target_url, controls: data.controls,
       pdf: { name: att.name || `${appNo}.pdf`, b64: att.b64 },
       // the extension asks NEXUS-L again before it opens InterLink and before it presses Save: no approval, no Save
-      verify: { url: new URL(BASE + 'dtr/approval/verify?lab_ref=' + encodeURIComponent(data.lab ? data.lab.lab_ref_no : (labRef || '')), location.origin).href },
+      verify: { url: new URL(BASE + 'dtr/approval/verify?lab_ref=' + encodeURIComponent((att && att.lab_ref_no) || (data.lab ? data.lab.lab_ref_no : (labRef || ''))) + '&application_no=' + encodeURIComponent(appNo), location.origin).href },
     } }, location.origin);
     nxToast(`Sending ${appNo}: InterLink opens in a new tab and is filled, attached and saved for you.`, 'info', 7000);
   };
