@@ -272,12 +272,14 @@ async function stepOnce(tabId) {
     return;
   }
   await setJob(job);
+  // say which InterLink page the sender is on (Home -> search grid -> Upload Form), so a stall shows exactly where it stopped
+  try { const tb = await chrome.tabs.get(tabId); status(job, true, false, `Step ${job.loads} (${job.step}): InterLink page ${String(new URL(tb.url).pathname).split('/').pop() || '/'}`); } catch (e) { /* tab info not available */ }
   try {
     if (job.step === 'search') {
       const r = await inPage(tabId, searchAndOpenUpload, [job.application_no]);
       if (!r) return;
       if (r.state === 'signin') { status(job, false, false, 'Sign in to InterLink in the opened tab; sending continues by itself afterwards.'); job.loads -= 1; await setJob(job); return; }
-      if (r.state === 'navigating') return;                  // on the portal Home page: heading to the grid, "ready" fires again there
+      if (r.state === 'navigating') { status(job, true, false, 'On the InterLink home page: going to the search grid…'); return; }   // "ready" fires again there
       if (r.state === 'error') { status(job, false, true, `${job.application_no}: ${r.message}`); endJob(job); return; }
       // r.state === 'clicked': the popup opens separately and is picked up by chrome.tabs.onCreated above
       job.step = 'awaiting-popup';
