@@ -397,13 +397,19 @@ class ApprovalController extends BaseController
         $uid   = (int) ($me['id'] ?? 0);
         $after = (string) $this->request->getGet('after');
         $out   = ['ok' => true, 'pending' => 0, 'events' => [], 'cursor' => date('Y-m-d H:i:s')];
-        if ($this->mySignatory()) {
-            $waiting = $this->db()->table('tbl_dtr_report_approvals')->where('status', 'pending')->orderBy('id', 'DESC')->get(10)->getResultArray();
-            $out['pending'] = (int) $this->db()->table('tbl_dtr_report_approvals')->where('status', 'pending')->countAllResults();
-            $out['waiting'] = array_map(static fn ($a) => ['text' => "{$a['lab_ref_no']} · {$a['application_no']} · {$a['requested_name']}", 'url' => site_url('approve/' . $a['token'])], $waiting);
+        if ($sg = $this->mySignatory()) {
+            // only what this signatory can still act on: link not expired, not decided, and (when the report names its approver) theirs
+            $live = array_values(array_filter(
+                $this->db()->table('tbl_dtr_report_approvals')->where('status', 'pending')->where('expires_at >', date('Y-m-d H:i:s'))->orderBy('id', 'DESC')->get(60)->getResultArray(),
+                static fn ($a) => empty($a['required_name']) || ReportPdf::nameMatches((string) $a['required_name'], (string) $sg['full_name']),
+            ));
+            $out['pending'] = count($live);
+            $out['waiting'] = array_map(static fn ($a) => ['text' => "{$a['lab_ref_no']} · {$a['application_no']} · {$a['requested_name']}", 'url' => site_url('approve/' . $a['token'])], array_slice($live, 0, 10));
             if ($after !== '') {
-                foreach ($this->db()->table('tbl_dtr_report_approvals')->where('status', 'pending')->where('updated_at >', $after)->orderBy('id')->get(20)->getResultArray() as $a) {
-                    $out['events'][] = ['kind' => 'pending', 'text' => "{$a['lab_ref_no']} ({$a['application_no']}) needs your approval", 'url' => site_url('approve/' . $a['token'])];
+                foreach (array_reverse($live) as $a) {
+                    if ((string) $a['updated_at'] > $after) {
+                        $out['events'][] = ['kind' => 'pending', 'text' => "{$a['lab_ref_no']} ({$a['application_no']}) needs your approval", 'url' => site_url('approve/' . $a['token'])];
+                    }
                 }
             }
         }
