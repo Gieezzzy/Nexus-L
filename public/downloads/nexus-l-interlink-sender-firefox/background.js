@@ -270,11 +270,24 @@ async function step(tabId) {
     if (r.state === 'error') { status(job, false, true, `${job.application_no}: ${r.message}`); endJob(job); return; }
     const problem = await approvalProblem(job);          // asked again: the approval may have been replaced since the job started
     if (problem) { status(job, false, true, `${job.application_no} was NOT saved: ${problem}`); endJob(job); return; }
-    status(job, true, false, `${r.filled} field(s) filled and ${job.pdf.name} attached. Saving…`);
+    status(job, true, false, `${r.filled} field(s) filled${r.missing && r.missing.length ? ' (not found: ' + r.missing.join(', ') + ')' : ''} and ${job.pdf.name} attached. Pressing Save…`);
     job.step = 'submitting';
     await setJob(job);
     const s = await inPage(tabId, pressCommit, []);
-    if (s && s.state === 'error') { status(job, false, true, `${job.application_no}: ${s.message}`); endJob(job); }
+    if (s && s.state === 'error') { status(job, false, true, `${job.application_no}: ${s.message}`); endJob(job); return; }
+    status(job, true, false, `Save pressed for ${job.application_no}${s && s.button ? ' (' + s.button + ')' : ''}. Waiting for InterLink to confirm…`);
+    // Save posts the page and "ready" fires again. If nothing happened after 9 s the click did not reach InterLink's own handler:
+    // press it once more through its postback
+    setTimeout(async () => {
+      try {
+        const j = await getJob(tabId);
+        if (!j || j.step !== 'submitting' || j.retried) return;
+        j.retried = true; await setJob(j);
+        const t = await inPage(tabId, forceSave, []);
+        if (t && t.state === 'error') { status(j, false, true, `${j.application_no}: ${t.message}`); endJob(j); }
+        else status(j, true, false, `Save sent again for ${j.application_no}…`);
+      } catch (e) { /* the tab is gone or already moved on */ }
+    }, 9000);
     // a successful Save posts back; checkSubmitted runs on the next "ready"
   } catch (e) {
     status(job, false, true, `${job.application_no}: ${e.message}`);
@@ -459,11 +472,26 @@ async function pressCommit() {
   const commit = byLabel('submit') || byLabel('save');
   if (!commit) return { state: 'error', message: 'neither a Submit nor a Save button was found on the InterLink form.' };
   commit.click();
+  window.__nxSaveBtn = commit.name || commit.id;
   for (let i = 0; i < 10; i++) {                                     // confirm boxes ("Are you sure?") when InterLink shows one
     await sleep(500);
     const byId = ['UF1_ButtonBar1_pcConfirmOkCancel_ASPxConfirmOk', 'UF1_PopupYesNoCancel1_pcYesNoCancel_btnPopupYNCYes'].map((id) => document.getElementById(id)).find(visible);
     const byText = [...document.querySelectorAll('input[type=submit],input[type=button],a')].find((b) => visible(b) && /^(ok|yes)$/i.test((b.value || b.textContent || '').trim()));
     const ok = byId || byText;
+    if (ok) { ok.click(); break; }
+  }
+  return { state: 'posting', button: commit.value };
+}
+
+/** Second attempt at Save: InterLink's own postback for the Save button (also confirms a "yes / ok" box if one shows). */
+async function forceSave() {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const btn = document.getElementById('UF1_ButtonBar1_ASPxButton_1') || [...document.querySelectorAll('input[type=submit],input[type=button]')].find((b) => /^save$/i.test((b.value || '').trim()));
+  if (!btn) return { state: 'error', message: 'the Save button could not be found to press it again.' };
+  try { if (typeof __doPostBack === 'function' && btn.name) __doPostBack(btn.name, ''); else btn.click(); } catch (e) { btn.click(); }
+  for (let i = 0; i < 6; i++) {
+    await sleep(500);
+    const ok = [...document.querySelectorAll('input[type=submit],input[type=button],a')].find((b) => b.offsetParent !== null && /^(ok|yes)$/i.test((b.value || b.textContent || '').trim()));
     if (ok) { ok.click(); break; }
   }
   return { state: 'posting' };
