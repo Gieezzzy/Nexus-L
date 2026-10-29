@@ -431,7 +431,12 @@
   };
 
   const fetchLiveInterlinkPage = async (page = state.currentPage, pageSize = state.pageSize, forceRefresh = false, silent = false) => {
-    if (state.isFetchingPage) return;
+    if (state.isFetchingPage) {
+      // another read is still running (for example the 15-second auto-refresh): do not drop this request, run it right after.
+      // Dropping it left the page numbers missing after a search was cleared until the page was refreshed.
+      if (!state.queuedFetch || (state.queuedFetch.silent && !silent)) state.queuedFetch = { page, pageSize, forceRefresh, silent };
+      return;
+    }
     state.isFetchingPage = true;
 
     const liveDot = $('#itk-live-dot');
@@ -505,6 +510,12 @@
     } finally {
       state.isFetchingPage = false;
       if (!silent) endLoading();
+      if (!state.searchMode) renderPager();                // the page numbers are always shown for a live page, whatever happened above
+      if (state.queuedFetch) {
+        const q = state.queuedFetch;
+        state.queuedFetch = null;
+        if (!(q.silent && state.searchMode)) fetchLiveInterlinkPage(q.page, q.pageSize, q.forceRefresh, q.silent);
+      }
     }
   };
 
@@ -1483,6 +1494,8 @@
     if (!Object.keys(f).length) {
       if (state.searchMode) {                      // filters cleared: back to the live page the person was on
         state.searchMode = false;
+        state.currentPage = state.liveReturnPage || state.currentPage || 1;
+        renderSearchGrid();                          // the page numbers come back at once, before the page is read again
         await fetchLiveInterlinkPage(state.liveReturnPage || 1, state.pageSize, false, false);
       } else renderSearchGrid();
       return;
@@ -1570,7 +1583,7 @@
     const toggle = $('#itk-autosync-toggle');
     if (toggle && toggle.checked) {
       state.autoSyncTimer = setInterval(() => {
-        if (state.currentView === 'search' && !document.hidden) {
+        if (state.currentView === 'search' && !document.hidden && !state.searchMode) {   // never over a search's results
           fetchLiveInterlinkPage(state.currentPage, state.pageSize, false, true);
         }
       }, 15000);
