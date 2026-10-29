@@ -1968,12 +1968,6 @@
     $('#dtr-print-modal-title').textContent = `Whole Shoe Bonding Test Report — ${labRef} (${side})`;
     $('#dtr-print-sheet-container').innerHTML = html;
 
-    // Show/Update Access PDF download button
-    const pdfBtn = $('#btn-dtr-download-access-pdf');
-    if (pdfBtn) {
-      pdfBtn.classList.add('hidden');   // Access is no longer used: the report is the VF sheet itself
-    }
-
     $('#dtr-print-modal-backdrop')?.classList.remove('hidden');
   };
 
@@ -2018,7 +2012,7 @@
       const res = await fetch(BASE_URL + 'dtr/sheet-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name="X-CSRF-TOKEN"]')?.content || '' },
-        body: JSON.stringify({ access_id: parseInt(($('#btn-dtr-download-access-pdf')?.href || '').match(/[?&]id=(\d+)/)?.[1] || 0, 10) && !$('#btn-dtr-download-access-pdf').classList.contains('hidden') ? parseInt($('#btn-dtr-download-access-pdf').href.match(/[?&]id=(\d+)/)[1], 10) : 0, side: (($('#btn-dtr-download-access-pdf')?.href || '').match(/side=(\w+)/) || [])[1] || 'Left', scale: fitOnePageScale(src.innerHTML), html: src.innerHTML, name: ($('#dtr-print-modal-title')?.textContent || 'Report').replace(/[^A-Za-z0-9._ -]+/g, '_') }),
+        body: JSON.stringify({ scale: fitOnePageScale(src.innerHTML), html: src.innerHTML, name: ($('#dtr-print-modal-title')?.textContent || 'Report').replace(/[^A-Za-z0-9._ -]+/g, '_') }),
       });
       if (!res.ok) throw new Error((await res.text()).slice(0, 200) || 'PDF failed');
       const blob = await res.blob();
@@ -2119,12 +2113,10 @@
           await new Promise((r) => setTimeout(r, 800));
           const src = $('#dtr-print-sheet-container');
           if (!src || !src.innerHTML.trim()) throw new Error('The report sheet could not be prepared.');
-          const acc = $('#btn-dtr-download-access-pdf');
-          const accId = acc && !acc.classList.contains('hidden') ? parseInt(((acc.href || '').match(/[?&]id=(\d+)/) || [])[1] || 0, 10) : 0;
           const res = await fetch(BASE_URL + 'dtr/sheet-pdf', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name="X-CSRF-TOKEN"]')?.content || '' },
-            body: JSON.stringify({ access_id: accId, side: ((acc?.href || '').match(/side=(\w+)/) || [])[1] || 'Left', scale: fitOnePageScale(src.innerHTML), html: src.innerHTML, name: 'Report' }),
+            body: JSON.stringify({ scale: fitOnePageScale(src.innerHTML), html: src.innerHTML, name: 'Report' }),
           });
           if (!res.ok) throw new Error((await res.text()).slice(0, 200) || 'PDF failed');
           const buf = new Uint8Array(await res.arrayBuffer());

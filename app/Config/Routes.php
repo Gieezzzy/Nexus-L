@@ -83,7 +83,6 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->get('dtr/lookup', 'DtrController::lookup');
     $routes->post('dtr/load-machine', 'DtrController::loadMachine');
     $routes->post('dtr/save', 'DtrController::save');
-    $routes->get('dtr/bonding-access-pdf', 'DtrController::bondingAccessPdf');
     $routes->post('dtr/sheet-pdf', 'DtrController::sheetPdf');
     // report sign-off before InterLink (QR approval by a registered Manager / Supervisor)
     $routes->get('dtr/report-pdf', 'ApprovalController::reportPdf');

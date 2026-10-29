@@ -1098,9 +1098,6 @@
         </div>
         <div class="dtr-modal-footer">
             <button type="button" id="btn-dtr-cancel-print" class="dtr-btn dtr-btn-outline">Close</button>
-            <a id="btn-dtr-download-access-pdf" href="#" target="_blank" class="dtr-btn dtr-btn-outline hidden" style="border-color:#16a34a;color:#16a34a;text-decoration:none">
-                <svg class="ic" aria-hidden="true"><use href="#i-download"/></svg> Download Official PDF
-            </a>
             <button type="button" id="btn-dtr-download-pdf" class="dtr-btn dtr-btn-outline" style="border-color:#2563eb;color:#2563eb">
                 <svg class="ic" aria-hidden="true"><use href="#i-file"/></svg> Download PDF
             </button>

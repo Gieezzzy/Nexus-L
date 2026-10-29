@@ -917,51 +917,6 @@ class DtrController extends BaseController
     }
 
     /**
-     * GET /dtr/bonding-access-pdf?id=1099&side=Left
-     * Invokes Microsoft Access COM to generate the official Report - LEFT / Report - RIGHT PDF directly
-     * and streams it to the user.
-     */
-    public function bondingAccessPdf()
-    {
-        $id = (int) ($this->request->getGet('id') ?? 0);
-        $side = ucfirst(strtolower(trim((string) ($this->request->getGet('side') ?? 'Left'))));
-        if (! in_array($side, ['Left', 'Right'], true)) {
-            $side = 'Left';
-        }
-
-        if ($id <= 0) {
-            return $this->response->setStatusCode(400)->setBody('Invalid or missing BondingTestID');
-        }
-
-        $cacheDir = WRITEPATH . 'cache/bonding_pdfs/';
-        if (! is_dir($cacheDir)) {
-            @mkdir($cacheDir, 0777, true);
-        }
-        $pdfPath = $cacheDir . "bonding_report_{$id}_{$side}.pdf";
-
-        // Access is no longer used: only a copy made earlier can still be served
-        if (file_exists($pdfPath) && filesize($pdfPath) > 0) {
-            return $this->response
-                ->setHeader('Content-Type', 'application/pdf')
-                ->setHeader('Content-Disposition', 'inline; filename="Bonding_Report_' . $id . '_' . $side . '.pdf"')
-                ->setBody(file_get_contents($pdfPath));
-        }
-
-        return $this->response->setStatusCode(404)->setBody('NEXUS-L no longer prints bonding reports through Access. Use "Print Report / Save as PDF" for report #' . (int) $id . '.');
-    }
-
-    /** Path of an Access-made machine result PDF for a BondingTestID made before Access was retired, or null (nothing is made through Access any more). */
-    private function ensureAccessPdf(int $id, string $side): ?string
-    {
-        $cacheDir = WRITEPATH . 'cache/bonding_pdfs/';
-        if (! is_dir($cacheDir)) {
-            @mkdir($cacheDir, 0777, true);
-        }
-        $pdfPath = $cacheDir . "bonding_report_{$id}_{$side}.pdf";
-        return is_file($pdfPath) && filesize($pdfPath) > 0 ? $pdfPath : null;
-    }
-
-    /**
      * POST /dtr/sheet-pdf {html, name}: renders the printable report sheet (the same one shown in the preview,
      * with the VF and SATRA logos) to a PDF with the installed Chrome / Edge in headless mode.
      */
@@ -1014,21 +969,6 @@ class DtrController extends BaseController
             @unlink($pdfFile);
 
             return $this->response->setStatusCode(500)->setBody('The PDF could not be created on the server.');
-        }
-        // page 2 of the attachment: the machine test result (Access report), joined to the sheet when it can be made
-        $accessId = (int) ($p['access_id'] ?? 0);
-        if ($accessId > 0) {
-            $side   = ucfirst(strtolower((string) ($p['side'] ?? 'Left'))) === 'Right' ? 'Right' : 'Left';
-            $access = $this->ensureAccessPdf($accessId, $side);
-            $node   = is_file('C:\\Program Files\\nodejs\\node.exe') ? 'C:\\Program Files\\nodejs\\node.exe' : 'node';
-            $merged = $dir . $id . '_m.pdf';
-            if ($access !== null) {
-                @shell_exec('"' . $node . '" "' . ROOTPATH . 'tools\\build\\merge-pdf.js" "' . $merged . '" "' . $pdfFile . '" "' . $access . '" 2>&1');
-                if (is_file($merged) && filesize($merged) > 500) {
-                    @unlink($pdfFile);
-                    $pdfFile = $merged;
-                }
-            }
         }
         $pdf = (string) file_get_contents($pdfFile);
         @unlink($pdfFile);
