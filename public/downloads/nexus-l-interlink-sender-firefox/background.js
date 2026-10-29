@@ -254,14 +254,10 @@ chrome.tabs.onCreated.addListener(async (tab) => {
   await adoptPopup(job, tab.id);
 });
 
-const queuedReady = new Set();
 async function step(tabId) {
-  if (running.has(tabId)) { queuedReady.add(tabId); return; }    // pinged while a step is still running: run again right after it
+  if (running.has(tabId)) return;                       // the same tab pinged twice: one run at a time (a ping that is lost this way is caught by the 12 s check below)
   running.add(tabId);
-  try { await stepOnce(tabId); } finally {
-    running.delete(tabId);
-    if (queuedReady.delete(tabId)) setTimeout(() => step(tabId), 400);
-  }
+  try { await stepOnce(tabId); } finally { running.delete(tabId); }
 }
 async function stepOnce(tabId) {
   const job = await getJob(tabId);
