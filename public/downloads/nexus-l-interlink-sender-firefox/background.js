@@ -225,7 +225,22 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 
 // Catches the popup InterLink opens when the grid's Upload icon is clicked: Chrome reports its opener tab id, which is
 // the grid tab we were just searching in (job.tabId at that point, before this reassigns it to the popup).
+// Tabs that were just created: Firefox opens the popup and finishes loading it BEFORE the grid script has even reported its click,
+// so a popup can arrive before its job is marked "awaiting-popup". It is remembered here and adopted as soon as the job is marked.
+const recentTabs = [];
+const running = new Set();
+async function adoptPopup(job, tabId) {
+  await endJob(job);                                   // drop the entry keyed by the grid tab
+  job.tabId = tabId;
+  job.step = 'open';
+  job.loads = 0;
+  await setJob(job);                                    // re-keyed to the popup tab
+  status(job, true, false, `InterLink opened the Upload Form for ${job.application_no}. Filling it in…`);
+  setTimeout(() => step(tabId), 1500);                 // the popup may already have loaded and pinged "ready" before it was ours
+}
 chrome.tabs.onCreated.addListener(async (tab) => {
+  recentTabs.push({ id: tab.id, at: Date.now() });
+  while (recentTabs.length > 10) recentTabs.shift();
   let job = tab.openerTabId != null ? await getJob(tab.openerTabId) : null;
   if (!job || job.step !== 'awaiting-popup') {
     // Firefox does not report the opener of a popup window: the one job that has just clicked the Upload icon is the owner
@@ -234,15 +249,15 @@ chrome.tabs.onCreated.addListener(async (tab) => {
     job = waiting.length === 1 ? waiting[0] : null;
   }
   if (!job) return;
-  await endJob(job);                                   // drop the entry keyed by the grid tab
-  job.tabId = tab.id;
-  job.step = 'open';
-  job.loads = 0;
-  await setJob(job);                                    // re-keyed to the popup tab; its own "ready" ping drives it on
-  status(job, true, false, `InterLink opened the Upload Form for ${job.application_no}. Filling it in…`);
+  await adoptPopup(job, tab.id);
 });
 
 async function step(tabId) {
+  if (running.has(tabId)) return;                       // the same tab pinged twice: one run at a time
+  running.add(tabId);
+  try { await stepOnce(tabId); } finally { running.delete(tabId); }
+}
+async function stepOnce(tabId) {
   const job = await getJob(tabId);
   if (!job) return;
   job.loads += 1;
@@ -266,6 +281,9 @@ async function step(tabId) {
       job.step = 'awaiting-popup';
       job.popupAt = Date.now();
       await setJob(job);
+      // the popup may have been created a moment ago (before this point): take it now
+      const early = recentTabs.filter((x) => x.id !== tabId && Date.now() - x.at < 15000).pop();
+      if (early) { recentTabs.length = 0; await adoptPopup(job, early.id); return; }
       status(job, true, false, `Found ${job.application_no} - opening its Upload Form…`);
       return;
     }
