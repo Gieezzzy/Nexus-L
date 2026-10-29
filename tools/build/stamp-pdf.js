@@ -43,7 +43,7 @@ const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
         const r = row && row.name_rect;
         if (!r) return;
         const nameW = r[2] - r[0], nameH = r[3] - r[1];
-        const w = Math.min(Math.max(nameW + 6, 34), 62), h = Math.max(nameH * 1.7, 14);     // small: about the size of the name
+        const w = Math.min(Math.max(nameW * 0.55, 24), 34), h = Math.max(nameH * 1.05, 9);     // small: smaller than the name itself, kept inside its line
         const k = Math.min(w / img.width, h / img.height);
         const iw = img.width * k, ih = img.height * k;
         const cx = (r[0] + r[2]) / 2, cy = (r[1] + r[3]) / 2;                            // centre of the name (top-origin y)
