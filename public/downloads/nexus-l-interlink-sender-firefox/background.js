@@ -542,13 +542,20 @@ async function fillAndAttach(job) {
             frameDoc = f && f.contentDocument; frameWin = f && f.contentWindow;
             const rows = frameDoc ? [...frameDoc.querySelectorAll('tr.dxgvDataRow')] : [];
             if (rows.length) {
-              row = rows.find((r) => r.innerText.toUpperCase().includes(`(${it.code})`));
+              // the list remembers the page it was on last time: always start from page 1
+              const cur = Number((frameDoc.body.innerText.match(/Page (\d+) of/) || [])[1] || 1);
+              if (cur !== 1) {
+                try { frameWin.ASPx.GVPagerOnClick('cgvLOVAppList', 'PN0'); } catch (e) { /* single page */ }
+                await sleep(1800);
+              }
+              const here = () => [...frameDoc.querySelectorAll('tr.dxgvDataRow')].find((r) => r.innerText.toUpperCase().includes(`(${it.code})`));
+              row = here();
               if (!row) {                                                 // the list has more pages: look on them too
                 const pages = (frameDoc.body.innerText.match(/Page \d+ of (\d+)/) || [])[1];
                 for (let pg = 1; pg < Number(pages || 1) && !row; pg++) {
                   try { frameWin.ASPx.GVPagerOnClick('cgvLOVAppList', 'PN' + pg); } catch (e) { break; }
                   await sleep(1800);
-                  row = [...frameDoc.querySelectorAll('tr.dxgvDataRow')].find((r) => r.innerText.toUpperCase().includes(`(${it.code})`));
+                  row = here();
                 }
                 break;
               }
@@ -557,8 +564,12 @@ async function fillAndAttach(job) {
         }
         if (!row) {
           notes.push(`${it.name} (${it.code}) is not in InterLink's list for this test package`);
-          try { document.body.click(); } catch (e) { /* closes the popup */ }
-          await sleep(600);
+          // close the popup without choosing anything: its own "Clear Selection" button, else a click outside
+          try {
+            const clr = [...document.querySelectorAll('input,button,a,span,div')].find((e) => e.children.length === 0 && /^clear selection$/i.test((e.value || e.textContent || '').trim()) && e.offsetParent !== null);
+            if (clr) clr.click(); else document.body.click();
+          } catch (e) { /* the popup stays; the next picker click reuses it */ }
+          await sleep(800);
           continue;
         }
         row.querySelector('td').dispatchEvent(new frameWin.MouseEvent('click', { bubbles: true, cancelable: true, view: frameWin }));
