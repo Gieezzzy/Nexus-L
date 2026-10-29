@@ -213,9 +213,14 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 // Catches the popup InterLink opens when the grid's Upload icon is clicked: Chrome reports its opener tab id, which is
 // the grid tab we were just searching in (job.tabId at that point, before this reassigns it to the popup).
 chrome.tabs.onCreated.addListener(async (tab) => {
-  if (tab.openerTabId == null) return;
-  const job = await getJob(tab.openerTabId);
-  if (!job || job.step !== 'awaiting-popup') return;
+  let job = tab.openerTabId != null ? await getJob(tab.openerTabId) : null;
+  if (!job || job.step !== 'awaiting-popup') {
+    // Firefox does not report the opener of a popup window: the one job that has just clicked the Upload icon is the owner
+    const all = await chrome.storage.session.get(null);
+    const waiting = Object.values(all).filter((j) => j && j.step === 'awaiting-popup' && Date.now() - (j.popupAt || 0) < 45000);
+    job = waiting.length === 1 ? waiting[0] : null;
+  }
+  if (!job) return;
   await endJob(job);                                   // drop the entry keyed by the grid tab
   job.tabId = tab.id;
   job.step = 'open';
@@ -246,6 +251,7 @@ async function step(tabId) {
       if (r.state === 'error') { status(job, false, true, `${job.application_no}: ${r.message}`); endJob(job); return; }
       // r.state === 'clicked': the popup opens separately and is picked up by chrome.tabs.onCreated above
       job.step = 'awaiting-popup';
+      job.popupAt = Date.now();
       await setJob(job);
       status(job, true, false, `Found ${job.application_no} - opening its Upload Form…`);
       return;

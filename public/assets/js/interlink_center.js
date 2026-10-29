@@ -53,7 +53,7 @@
   // PIC's own Chrome (their own InterLink sign-in) opens the form, fills it, attaches the PDF and saves it ---------------
   // 'none' = not installed, 'old' = installed but older than 1.3.1 (its Home -> grid navigation and reading do not work),
   // 'ok'. A page that was open before the extension was updated still carries the old version, so a reload fixes 'old'.
-  const MIN_SENDER = '1.4.2';   // 1.4.2 checks the approval through the NEXUS-L page (works in Firefox)
+  const MIN_SENDER = '1.4.3';   // 1.4.3 finds the Upload Form popup in Firefox too
   const senderState = () => {
     if (document.documentElement.dataset.nxlSender !== '1') return 'none';
     const a = String(document.documentElement.dataset.nxlSenderVersion || '0').split('.').map(Number);
