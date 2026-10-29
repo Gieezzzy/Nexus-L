@@ -125,4 +125,17 @@ class Session extends BaseConfig
      * seconds.
      */
     public int $lockMaxRetries = 300;
+
+    /**
+     * Sessions live on the SSD (C:) when it can be used: file sessions on a failing D: were zeroed by disk damage, which logged users
+     * out in the middle of an action (a report view or download redirected to the login page). Falls back to writable/session.
+     */
+    public function __construct()
+    {
+        parent::__construct();
+        $dir = 'C:/xampp/tmp/nexusl_sessions';
+        if (is_dir($dir) && is_writable($dir)) {
+            $this->savePath = $dir;
+        }
+    }
 }
