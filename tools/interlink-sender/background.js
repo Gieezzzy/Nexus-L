@@ -303,7 +303,7 @@ async function stepOnce(tabId) {
       return;
     }
     const r = await inPage(tabId, fillAndAttach, [job]);
-    if (!r) return;
+    if (!r) { status(job, true, false, `Step ${job.loads}: the InterLink page changed while it was being filled (waiting for it to finish loading)…`); return; }
     if (r.state === 'signin') { status(job, false, false, 'Sign in to InterLink in the opened tab; sending continues by itself afterwards.'); job.loads -= 1; await setJob(job); return; }
     if (r.patch) { Object.assign(job, r.patch); await setJob(job); }
     if (r.state === 'posting') {                           // Edit / a tab / a reading page was opened; the page reloads and calls "ready" again
@@ -393,6 +393,7 @@ async function searchAndOpenUpload(appNo) {
 }
 
 async function fillAndAttach(job) {
+ try { return await (async () => {      // any script error is reported instead of silently ending the send
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const visible = (el) => !!el && el.offsetParent !== null && el.getBoundingClientRect().width > 0;
   // the main button bar's ids start with UF1_ButtonBar1_ on the confirmed form; other variants may differ, so that
@@ -710,6 +711,7 @@ async function fillAndAttach(job) {
   }
   if (!shown()) return { state: 'error', message: `the attachment ${job.pdf.name} did not finish uploading. Please attach it in the InterLink tab.` };
   return { state: 'filled', filled, missing, notes: (job.notes || []).concat(notes) };
+ })(); } catch (e) { return { state: 'error', message: 'a script error stopped the form filling: ' + (e && e.message) }; }
 }
 
 /** Commits the form: a real "Submit" button if the page has one, else "Save" - confirmed to be the actual commit action
