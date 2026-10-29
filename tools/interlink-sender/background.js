@@ -263,7 +263,7 @@ async function stepOnce(tabId) {
   const job = await getJob(tabId);
   if (!job) return;
   job.loads += 1;
-  const giveUpAt = job.step === 'search' ? 5 : 8;        // Home, then the grid (a sign-in page in between adds none: it is not scripted)
+  const giveUpAt = job.step === 'search' ? 5 : 8 + 3 * (((job.tables && job.tables.items) || []).length);        // Home, then the grid (a sign-in page in between adds none: it is not scripted)
   if (job.loads > giveUpAt) {
     status(job, false, true, job.step === 'search'
       ? `Could not find ${job.application_no} in the InterLink grid. Please open its Upload Form yourself.`
@@ -301,11 +301,13 @@ async function stepOnce(tabId) {
     const r = await inPage(tabId, fillAndAttach, [job]);
     if (!r) return;
     if (r.state === 'signin') { status(job, false, false, 'Sign in to InterLink in the opened tab; sending continues by itself afterwards.'); job.loads -= 1; await setJob(job); return; }
-    if (r.state === 'posting') return;                     // Edit was pressed; the page reloads and calls "ready" again
+    if (r.patch) { Object.assign(job, r.patch); await setJob(job); }
+    if (r.state === 'posting') return;                     // Edit / a tab / a reading page was opened; the page reloads and calls "ready" again
     if (r.state === 'error') { status(job, false, true, `${job.application_no}: ${r.message}`); endJob(job); return; }
     const problem = await approvalProblem(job);          // asked again: the approval may have been replaced since the job started
     if (problem) { status(job, false, true, `${job.application_no} was NOT saved: ${problem}`); endJob(job); return; }
-    status(job, true, false, `${r.filled} field(s) filled${r.missing && r.missing.length ? ' (not found: ' + r.missing.join(', ') + ')' : ''} and ${job.pdf.name} attached. Pressing Save…`);
+    const noteText = r.notes && r.notes.length ? ` Not added to InterLink: ${r.notes.join('; ')}.` : '';
+    status(job, true, false, `${r.filled} field(s) filled${r.missing && r.missing.length ? ' (not found: ' + r.missing.join(', ') + ')' : ''} and ${job.pdf.name} attached.${noteText} Pressing Save…`);
     job.step = 'submitting';
     await setJob(job);
     const s = await inPage(tabId, pressCommit, []);
@@ -453,7 +455,54 @@ async function fillAndAttach(job) {
     }
     return done;
   };
+  // ---- Test Item Result rows and their readings (Product form [10072], Upload Result tab) --------------------------------------
+  // Each NEXUS-L test is matched to InterLink's own list by its method code (VF-E04 ...), picked from the list popup, added with
+  // its Sample ID and result, and then its one reading row (value, requirement, rating) is filled on the reading page.
+  const codeOf = (str) => ((String(str || '').match(/\b(VF-[A-Z]\d{2}|SATRA TM ?\d+)/i) || [])[1] || '').toUpperCase();
+  const T = job.tables || {};
+  const wanted = (T.items || []).map((it) => {
+    const code = codeOf(it.test_code || it.test_method);
+    const rd = (T.readings || []).filter((r) => String(r.test_item_name || '') === String(it.test_name || ''));
+    return {
+      code, name: it.test_name, sample: it.sample_id_code || 'S001', result: it.result_status || it.test_result || 'Pass',
+      value: it.actual_reading || it.actual_result_summary || (rd[0] && rd[0].reading_value_raw) || '',
+      requirement: (rd.find((r) => r.target_spec) || {}).target_spec || '', unit: (rd.find((r) => r.unit) || {}).unit || '',
+    };
+  }).filter((x) => x.code);
+  const ratingIdx = (v) => ({ pass: '1', fail: '2', data: '3' })[String(v || '').toLowerCase()] || '0';
+  const setNative = (el, v) => { el.value = v; ['input', 'change', 'blur'].forEach((t) => el.dispatchEvent(new Event(t, { bubbles: true }))); };
+  const onReading = !!document.querySelector('input[name$="butOk"][value*="Update and Go Back"]') && visible(document.querySelector('input[name$="butOk"][value*="Update and Go Back"]'));
+  const done = job.readDone || [];
+  const notes = [];
+  if (onReading) {
+    // the reading page of one test: its method code is in the first row
+    const m = document.querySelector('textarea[name$="JOB_DUMMY_013_REF_FLD27_TEST_ITEM_READING_INPUT_0"]');
+    const code = codeOf(m && m.value);
+    const it = wanted.find((x) => x.code === code);
+    const q = (f) => document.querySelector(`[name$="JOB_DUMMY_013_REF_${f}_TEST_ITEM_READING_INPUT_0"]`);
+    if (it) {
+      const ind = q('FLD20'); if (ind) setNative(ind, '3');                       // "="
+      const val = q('FLD47'); if (val) setNative(val, String(it.value));
+      const req = q('FLD04'); if (req && it.requirement) setNative(req, String(it.requirement));
+      const uom = q('FLD07'); if (uom && it.unit) setNative(uom, String(it.unit));
+      const rat = q('FLD23'); if (rat) setNative(rat, ratingIdx(it.result));
+    }
+    await sleep(500);
+    document.querySelector('input[name$="butOk"][value*="Update and Go Back"]').click();
+    return { state: 'posting', patch: { phase: 'readings', readDone: done.concat(code ? [code] : []) } };
+  }
   const onTab2 = !!document.querySelector('[name*="cbpTestReportUploader"]');
+  if (onTab2 && job.phase === 'readings') {
+    // back on the main page after a reading: next test's reading, or on to the attachment
+    const rows = [...document.querySelectorAll('input[name*="FLD07_TEST_ITEM_INP_"][name$="txtSingleValuePickerDisp"]')];
+    const next = rows.map((el, n) => ({ n: Number((el.name.match(/TEST_ITEM_INP_(\d+)_txtSingle/) || [])[1]), code: codeOf(el.value) }))
+      .find((r) => r.code && !done.includes(r.code) && wanted.some((x) => x.code === r.code));
+    if (next) {
+      const icon = document.querySelector(`input[name$="uc1_TEST_ITEM_INP_${next.n}$btnAddReading"]`);
+      if (icon) { icon.click(); return { state: 'posting', patch: { phase: 'readings' } }; }
+    }
+    // nothing left to read: carry on below (attachment), the rest of the page is already filled
+  }
   if (!onTab2) {
     // Product form [10072] opens on its first tab: Report No. there, then over to "Upload Result" (a postback; this script runs again)
     const rn = live([...document.querySelectorAll('input[name$="$DXEditor17"]')]);
@@ -472,6 +521,65 @@ async function fillAndAttach(job) {
     }
     const nSamples = await fillSamples((job.tables && job.tables.samples) || []);
     if (nSamples) filled += nSamples; else if (job.tables && job.tables.samples && job.tables.samples.length) missing.push('Sample Information');
+
+    // Test Item Result: pick each test from InterLink's list popup by its method code, then Add (a callback, the page stays)
+    if (job.phase !== 'readings' && wanted.length) {
+      const picker = (n) => document.querySelector(`input[name$="FLD07_TEST_ITEM_INP_${n}$btnPickSingleValuePicker"]`);
+      const dispOf = (n) => document.querySelector(`input[name*="FLD07_TEST_ITEM_INP_${n}_txtSingleValuePickerDisp"]`);
+      const addBtn = () => document.querySelector('input[name$="TpEdr_JOB_DUMMY_008$cbpTableInput$btAdd"]');
+      let added = 0;
+      for (const it of wanted) {
+        // the empty input row: the first row whose test name is still empty
+        let n = 0;
+        while (dispOf(n) && dispOf(n).value) n++;
+        if (!dispOf(n) || !picker(n)) { notes.push(`${it.name}: no free row`); break; }
+        picker(n).click();
+        let row = null, frameDoc = null, frameWin = null;
+        for (let k = 0; k < 40 && !row; k++) {                         // the list loads inside a frame: wait for its rows
+          await sleep(500);
+          try {
+            const f = document.getElementById('UF1_LOVRL1_ASPxLOVIFramePopup_CIF-1');
+            frameDoc = f && f.contentDocument; frameWin = f && f.contentWindow;
+            const rows = frameDoc ? [...frameDoc.querySelectorAll('tr.dxgvDataRow')] : [];
+            if (rows.length) {
+              row = rows.find((r) => r.innerText.toUpperCase().includes(`(${it.code})`));
+              if (!row) {                                                 // the list has more pages: look on them too
+                const pages = (frameDoc.body.innerText.match(/Page \d+ of (\d+)/) || [])[1];
+                for (let pg = 1; pg < Number(pages || 1) && !row; pg++) {
+                  try { frameWin.ASPx.GVPagerOnClick('cgvLOVAppList', 'PN' + pg); } catch (e) { break; }
+                  await sleep(1800);
+                  row = [...frameDoc.querySelectorAll('tr.dxgvDataRow')].find((r) => r.innerText.toUpperCase().includes(`(${it.code})`));
+                }
+                break;
+              }
+            }
+          } catch (e) { /* the frame is still loading */ }
+        }
+        if (!row) {
+          notes.push(`${it.name} (${it.code}) is not in InterLink's list for this test package`);
+          try { document.body.click(); } catch (e) { /* closes the popup */ }
+          await sleep(600);
+          continue;
+        }
+        row.querySelector('td').dispatchEvent(new frameWin.MouseEvent('click', { bubbles: true, cancelable: true, view: frameWin }));
+        await sleep(1800);
+        const sid = document.querySelector(`input[name$="JOB_DUMMY_008_REF_FLD03_TEST_ITEM_INP_${n}"]`);
+        if (sid) setNative(sid, it.sample);
+        const sel = document.querySelector(`select[name$="JOB_DUMMY_008_REF_FLD15_TEST_ITEM_INP_${n}"]`);
+        if (sel) setNative(sel, ratingIdx(it.result));
+        if (addBtn()) { addBtn().click(); added++; }
+        for (let k = 0; k < 24 && !dispOf(n + 1); k++) await sleep(400);   // the new empty row shows when the callback is done
+      }
+      if (added) filled += added;
+      // then each added test's reading is filled on its own page (see "readings" above)
+      const rowsNow = [...document.querySelectorAll('input[name*="FLD07_TEST_ITEM_INP_"][name$="txtSingleValuePickerDisp"]')].filter((el) => el.value);
+      if (added && rowsNow.length) {
+        const first = rowsNow[0];
+        const n0 = Number((first.name.match(/TEST_ITEM_INP_(\d+)_txtSingle/) || [])[1]);
+        const icon = document.querySelector(`input[name$="uc1_TEST_ITEM_INP_${n0}$btnAddReading"]`);
+        if (icon) { icon.click(); return { state: 'posting', patch: { phase: 'readings', notes } }; }
+      }
+    }
   }
 
   // The Report Attachment upload box: the real Upload Form's markup order does NOT match its visual layout (the file
@@ -519,7 +627,7 @@ async function fillAndAttach(job) {
     await sleep(500);
   }
   if (!shown()) return { state: 'error', message: `the attachment ${job.pdf.name} did not finish uploading. Please attach it in the InterLink tab.` };
-  return { state: 'filled', filled, missing };
+  return { state: 'filled', filled, missing, notes: (job.notes || []).concat(notes) };
 }
 
 /** Commits the form: a real "Submit" button if the page has one, else "Save" - confirmed to be the actual commit action
