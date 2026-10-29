@@ -25,12 +25,22 @@ const inPage = (tabId, func, args) => chrome.scripting.executeScript({ target: {
 // Nothing is saved in InterLink unless NEXUS-L confirms, right now, that this report is APPROVED by a Manager / Supervisor and
 // the file about to be attached is exactly the approved (signed) PDF. Anything else - no answer, not signed in to NEXUS-L, an old
 // page without the check, a different file - stops here. Returns '' when allowed, else the reason.
-async function approvalProblem(job) {
+// The check is made by the NEXUS-L page itself (its content script, same site and same sign-in), which works in every browser; a direct
+// request from this background script is only the fallback (Firefox needs the site permission granted for it).
+const askNexus = (tabId, url) => new Promise((resolve) => {
+  try { chrome.tabs.sendMessage(tabId, { type: 'verify', url }, (r) => resolve(chrome.runtime.lastError ? null : r)); } catch (e) { resolve(null); }
+});
+async function approvalProblem(job, nexusTab) {
   try {
     if (!job.verify || !job.verify.url || !job.pdf || !job.pdf.b64) return 'this page does not send the approval check. Reload NEXUS-L (Ctrl+F5) and try again.';
-    const r = await fetch(job.verify.url, { credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-    const j = await r.json();
-    if (!r.ok || !j.ok) return 'NEXUS-L could not confirm the approval. Sign in to NEXUS-L and try again.';
+    let viaPage = nexusTab || job.nexusTab ? await askNexus(nexusTab || job.nexusTab, job.verify.url) : null;
+    let ok, j;
+    if (viaPage && viaPage.j) { ok = viaPage.ok; j = viaPage.j; }
+    else {
+      const r = await fetch(job.verify.url, { credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+      j = await r.json(); ok = r.ok;
+    }
+    if (!ok || !j.ok) return 'NEXUS-L could not confirm the approval. Sign in to NEXUS-L and try again.';
     if (!j.approved) return 'this report is not approved yet. A Manager / Supervisor must approve it (QR) before it can be saved in InterLink.';
     const bin = atob(job.pdf.b64);
     const bytes = new Uint8Array(bin.length);
@@ -46,7 +56,7 @@ async function approvalProblem(job) {
 chrome.runtime.onMessage.addListener((m, sender) => {
   if (m.type === 'send' && sender.tab) {
     const gate = { nexusTab: sender.tab.id, application_no: m.job && m.job.application_no };
-    approvalProblem(m.job || {}).then((problem) => {
+    approvalProblem(m.job || {}, sender.tab.id).then((problem) => {
       if (problem) { status(gate, false, true, `${gate.application_no || 'The report'} was NOT sent: ${problem}`); return; }
       chrome.tabs.create({ url: PORTAL_HOME, active: true }, (t) => {
         const job = Object.assign({}, m.job, { nexusTab: sender.tab.id, tabId: t.id, step: 'search', loads: 0 });

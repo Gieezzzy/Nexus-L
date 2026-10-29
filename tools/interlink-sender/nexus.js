@@ -22,6 +22,17 @@ window.addEventListener('message', (e) => {
     } catch (err) { post({ type: 'NXL_GRID_STATUS', reqId: e.data.reqId, ok: false, message: STALE }); }
   }
 });
+// the extension asks this page (same site, same sign-in) whether a report is approved
+chrome.runtime.onMessage.addListener((m, _sender, sendResponse) => {
+  if (!m || m.type !== 'verify') return false;
+  let u;
+  try { u = new URL(m.url, location.href); } catch (e) { sendResponse({ error: 'bad address' }); return false; }
+  if (u.origin !== location.origin) { sendResponse({ error: 'not this site' }); return false; }
+  fetch(u.href, { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    .then((r) => r.json().then((j) => sendResponse({ ok: r.ok, j })))
+    .catch((e) => sendResponse({ error: e.message }));
+  return true;
+});
 chrome.runtime.onMessage.addListener((m) => {
   if (!m) return;
   if (m.type === 'status') post({ type: 'NXL_SEND_STATUS', ok: m.ok, done: m.done, message: m.message });
