@@ -948,6 +948,8 @@
 
     renderSearchGrid();
     updateNavButtons();
+    // coming back to the grid reads the live page at once (no need to press Live Refresh)
+    if (hasGridSender() && !state.searchMode) setTimeout(() => fetchLiveInterlinkPage(state.currentPage || 1, state.pageSize || 15, false, false), 150);
   };
 
   const updateNavButtons = () => {
@@ -2194,6 +2196,7 @@
 
   // Initial render + immediate live sync of Page 1 (15 rows out of 517 pages / 7,749 items) + start 15s auto-sync
   renderSearchGrid();
-  fetchLiveInterlinkPage(1, 15, false, true);
+  // opening the view reads the live page straight away when the sender is installed (the saved copy shows meanwhile / if it is not)
+  setTimeout(() => fetchLiveInterlinkPage(1, 15, false, !hasGridSender()), 500);
   startOrStopAutoSync();
 })();
