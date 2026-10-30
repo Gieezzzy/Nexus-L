@@ -1747,9 +1747,6 @@
     const rep = state.reports.find((r) => r.application_no === appNo) || {};
     const byTr = state.labrefs.find((l) => appNo && String(l.tr_no || '').trim() === appNo);
     const fromName = (($('#uf_attachment_name')?.value || '').match(/^(.+?)_TestReport\.pdf$/i) || [])[1];
-    // the report attached to this application is the one that was approved: its Lab Reference wins over a value left in the Lab Ref dialog
-    const att = window.nxAttachedPdf;
-    if (att && att.lab_ref_no && (!att.app || att.app === appNo)) return String(att.lab_ref_no).trim();
     return String($('#dlg-lr-labref')?.value || rep.lab_ref_no || byTr?.lab_ref_no || fromName || '').trim();
   };
 
