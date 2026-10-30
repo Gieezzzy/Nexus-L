@@ -8,6 +8,32 @@
 (() => {
   const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+  // ------------------------------------------- page behind an open dialog
+  // While any dialog is open the page behind it does not scroll (the dialog itself still does).
+  const DIALOGS = '.nx-modal-back, #nx-rv, #nx-ask, .il-modal-backdrop:not(.hidden), .dtr-modal-backdrop:not(.hidden), dialog[open]';
+  let locked = false;
+  let lockTimer = 0;
+  const syncScrollLock = () => {
+    lockTimer = 0;
+    const open = !!document.querySelector(DIALOGS);
+    if (open === locked) return;
+    locked = open;
+    const root = document.documentElement;
+    if (open) {
+      const bar = window.innerWidth - root.clientWidth;               // keeps the page from jumping sideways when the scrollbar goes
+      root.dataset.nxScrollLock = '1';
+      root.style.overflow = 'hidden';
+      if (bar > 0) root.style.paddingRight = bar + 'px';
+    } else {
+      delete root.dataset.nxScrollLock;
+      root.style.overflow = '';
+      root.style.paddingRight = '';
+    }
+  };
+  new MutationObserver(() => { if (!lockTimer) lockTimer = requestAnimationFrame(syncScrollLock); })
+    .observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'open'] });
+  syncScrollLock();
+
   // ------------------------------------------------------------------ toast
   let toastHost = null;
   window.nxToast = (message, type = 'info', ms = 4200) => {
