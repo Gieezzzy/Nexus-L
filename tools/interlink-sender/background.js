@@ -477,6 +477,40 @@ async function fillAndAttach(job) {
   }).filter((x) => x.code);
   const ratingIdx = (v) => ({ pass: '1', fail: '2', data: '3' })[String(v || '').toLowerCase()] || '0';
   const setNative = (el, v) => { el.value = v; ['input', 'change', 'blur'].forEach((t) => el.dispatchEvent(new Event(t, { bubbles: true }))); };
+  // Some tests (from the full list) first ask "Please select a test condition" in a dialog over the reading page. Pick the condition whose
+  // numbers (60℃ / 95% / 7 days, 70℃ ...) appear in the test's name, else the first one, and press OK. Done here, ONCE: a second click on
+  // the reading icon would open another dialog on top of this one.
+  const handleCondDialog = async () => {
+    const pf = document.getElementById('PopupIFrame');
+    let d = null;
+    try { d = pf && pf.offsetParent !== null ? pf.contentDocument : null; } catch (e) { d = null; }
+    if (!d || !d.getElementById('txtSelectTestCond')) return null;
+    const it = wanted.find((x) => !(job.readDone || []).includes(x.code)) || wanted[0];
+    const nums = (str) => (String(str || '').match(/\d+/g) || []);
+    const want = new Set(nums(it && it.name));
+    const box = d.getElementById('txtSelectTestCond');
+    if (!box.value) {
+      d.getElementById('btnTestCondition').click();
+      let rows = [], lw = null;
+      for (let k = 0; k < 40 && !rows.length; k++) {
+        await sleep(500);
+        try {
+          const lf = [...d.querySelectorAll('iframe')].find((i) => /ASPxLOVIFramePopup_CIF/.test(i.id));
+          const ld = lf && lf.contentDocument; lw = lf && lf.contentWindow;
+          rows = ld ? [...ld.querySelectorAll('tr.dxgvDataRow')] : [];
+        } catch (e) { rows = []; }
+      }
+      if (!rows.length) return { state: 'error', message: 'the list of test conditions did not load' };
+      let best = rows[0], bs = -1;
+      for (const r of rows) { const sc = nums(r.innerText).filter((x) => want.has(x)).length; if (sc > bs) { bs = sc; best = r; } }
+      best.querySelector('td').dispatchEvent(new lw.MouseEvent('click', { bubbles: true, cancelable: true, view: lw }));
+      await sleep(1500);
+    }
+    d.getElementById('butOk').click();
+    return { state: 'posting', patch: { phase: 'readings' } };
+  };
+  const condResult = await handleCondDialog();
+  if (condResult) return condResult;
   const onReading = !!document.querySelector('input[name$="butOk"][value*="Update and Go Back"]') && visible(document.querySelector('input[name$="butOk"][value*="Update and Go Back"]'));
   const done = job.readDone || [];
   const notes = [];

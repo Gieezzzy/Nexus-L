@@ -53,7 +53,7 @@
   // PIC's own Chrome (their own InterLink sign-in) opens the form, fills it, attaches the PDF and saves it ---------------
   // 'none' = not installed, 'old' = installed but older than 1.3.1 (its Home -> grid navigation and reading do not work),
   // 'ok'. A page that was open before the extension was updated still carries the old version, so a reload fixes 'old'.
-  const MIN_SENDER = '1.5.6';   // 1.5.6 back to one step at a time (the queued re-run of 1.5.4 broke the first page)
+  const MIN_SENDER = '1.5.7';   // 1.5.7 answers the Select a test condition dialog once instead of opening it again and again
   const senderState = () => {
     if (document.documentElement.dataset.nxlSender !== '1') return 'none';
     const a = String(document.documentElement.dataset.nxlSenderVersion || '0').split('.').map(Number);
