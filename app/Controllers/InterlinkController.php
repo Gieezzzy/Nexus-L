@@ -1821,7 +1821,19 @@ JS;
      */
     public function centerFill()
     {
-        $p      = $this->request->getJSON(true) ?? $this->request->getPost();
+        $r = $this->fillData($this->request->getJSON(true) ?? $this->request->getPost());
+
+        return $this->response->setStatusCode($r['code'])->setJSON($r['body'] + ['csrf' => csrf_hash()]);
+    }
+
+    /**
+     * The payload for one report: the InterLink form boxes to fill, the samples / test items / readings and the Lab Reference.
+     * Used by the browser extension (centerFill) and by the background service (InterlinkServiceController).
+     *
+     * @return array{code:int, body:array}
+     */
+    public function fillData(array $p): array
+    {
         $appNo  = trim((string) ($p['application_no'] ?? ''));
         $fields = is_array($p['fields'] ?? null) ? $p['fields'] : [];
         $ref    = trim((string) ($p['lab_ref_no'] ?? ''));
@@ -1831,7 +1843,7 @@ JS;
             $fields = $this->fieldsFromLabRef($lr, $appNo);
         }
         if (! preg_match('/^[A-Za-z0-9_-]{3,40}$/', $appNo) || ! $fields) {
-            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'error' => 'Choose an Application No. and the fields to fill.', 'csrf' => csrf_hash()]);
+            return ['code' => 422, 'body' => ['ok' => false, 'error' => 'Choose an Application No. and the fields to fill.']];
         }
         // a report goes to InterLink only after a registered Manager / Supervisor signed it (ApprovalController)
         // approvals belong to a Lab Reference AND an application: another application's request for the same Lab Reference must not count
@@ -1842,7 +1854,7 @@ JS;
             $apv = $q->orderBy('id', 'DESC')->get()->getRowArray();
         }
         if ($lr && ($apv['status'] ?? '') !== 'approved') {
-            return $this->response->setStatusCode(409)->setJSON(['ok' => false, 'error' => "The report {$lr['lab_ref_no']} is not approved yet. Generate it on the Upload Form and request approval (QR) first.", 'csrf' => csrf_hash()]);
+            return ['code' => 409, 'body' => ['ok' => false, 'error' => "The report {$lr['lab_ref_no']} is not approved yet. Generate it on the Upload Form and request approval (QR) first."]];
         }
         $existing = model(InterlinkReportModel::class)->findByAppNo($appNo);
         // `u_form_url` is a per-application link that dies with the session that made it, and is essentially never
@@ -1871,7 +1883,7 @@ JS;
             }
         }
         if (! $controls) {
-            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'error' => 'None of the chosen fields map to an InterLink form box.', 'csrf' => csrf_hash()]);
+            return ['code' => 422, 'body' => ['ok' => false, 'error' => 'None of the chosen fields map to an InterLink form box.']];
         }
 
         // the report's own Sample Information, Test Item Result and readings: what the Upload Result tab of InterLink asks for
@@ -1890,9 +1902,9 @@ JS;
             $tables = $this->gridOverlay($appNo, (string) $lr['lab_ref_no'], $tables);
         }
 
-        return $this->response->setJSON(['ok' => true, 'application_no' => $appNo, 'target_url' => $url, 'fields' => count($controls), 'controls' => $controls, 'tables' => $tables,
+        return ['code' => 200, 'body' => ['ok' => true, 'application_no' => $appNo, 'target_url' => $url, 'fields' => count($controls), 'controls' => $controls, 'tables' => $tables,
             // id is the record id of the DTR form (source_id): the DTR page opens records by it, not by the unified row id
-            'lab' => $lr ? ['slug' => (string) $lr['form_slug'], 'id' => (int) ($lr['source_id'] ?: $lr['id']), 'lab_ref_no' => (string) $lr['lab_ref_no']] : null, 'csrf' => csrf_hash()]);
+            'lab' => $lr ? ['slug' => (string) $lr['form_slug'], 'id' => (int) ($lr['source_id'] ?: $lr['id']), 'lab_ref_no' => (string) $lr['lab_ref_no']] : null]];
     }
 
     /** Pulls the next InterLink pages (100 rows each) into tbl_interlink_reports; loops forever so the copy stays complete. */

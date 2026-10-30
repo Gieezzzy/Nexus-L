@@ -12,7 +12,7 @@
 
   const api = (path, opts = {}) => fetch(BASE + path, opts).then((r) => r.json().then((j) => {
     if (csrfMeta && j.csrf) csrfMeta.content = j.csrf;
-    if (!r.ok || j.ok === false) throw new Error(j.error || 'Request failed');
+    if (!r.ok || j.ok === false) { const err = new Error(j.error || 'Request failed'); err.code = j.code; throw err; }
     return j;
   }));
   const post = (path, body) => api(path, {
@@ -141,7 +141,31 @@
     if (e.source !== window || !e.data || e.data.type !== 'NXL_SEND_STATUS') return;
     nxToast(e.data.message, e.data.ok ? 'success' : (e.data.done ? 'error' : 'info'), e.data.done ? 12000 : 5000);
   });
+  // The InterLink background service (a C# program on the server with an invisible browser) takes the report when it is set up:
+  // nothing opens on the user's computer; they are told by a toast here and a Synology message when it is submitted.
+  let serviceOn = null;
+  const useService = async () => {
+    if (serviceOn === null) {
+      try { serviceOn = !!(await api('interlink/service/status')).enabled; } catch (e) { serviceOn = false; }
+    }
+    return serviceOn;
+  };
   window.nxFillHelper = async (appNo, fields, labRef, mode) => {
+    if (await useService()) {
+      try {
+        nxToast(`Sending ${appNo} to InterLink in the background...`, 'info', 5000);
+        const j = await post('interlink/service/submit', {
+          application_no: appNo, lab_ref_no: labRef || '', fields: fields || undefined, mode: mode === 'add' ? 'add' : 'edit',
+          pdf_name: window.nxPdfName ? window.nxPdfName(appNo, labRef) : '',
+        });
+        if (window.nxSvcWatch) window.nxSvcWatch();
+        nxToast(`${appNo} is queued${j.waiting ? ` (${j.waiting} before it)` : ''}. You will be told here, and on Synology, when it is submitted.`, 'success', 8000);
+        return;
+      } catch (e) {
+        if (!(e.code === 'service_unreachable' && hasSender())) { nxToast(e.message, 'error', 10000); return; }
+        nxToast('The background service did not answer: using the browser extension instead.', 'info', 7000);
+      }
+    }
     if (!hasSender()) { installHelp(); return; }
     let data;
     try {

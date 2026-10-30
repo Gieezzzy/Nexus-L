@@ -24,6 +24,12 @@ $routes->group('', ['filter' => 'guest'], static function (RouteCollection $rout
 });
 
 // ---------------------------------------------------------------------
+// InterLink background service -> NEXUS-L (no login: protected by the shared service key in the X-Service-Key header)
+// ---------------------------------------------------------------------
+$routes->post('interlink/service/callback', 'InterlinkServiceController::callback');
+$routes->get('interlink/service/verify', 'InterlinkServiceController::verify');
+
+// ---------------------------------------------------------------------
 // Authenticated routes - nothing below is reachable without logging in
 // ---------------------------------------------------------------------
 $routes->group('', ['filter' => 'auth'], static function (RouteCollection $routes): void {
@@ -75,6 +81,9 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->post('interlink/proxy', 'InterlinkController::proxy');
     $routes->get('interlink/center/status', 'InterlinkController::centerStatus');
     $routes->post('interlink/center/fill', 'InterlinkController::centerFill');
+    $routes->get('interlink/service/status', 'InterlinkServiceController::status');
+    $routes->post('interlink/service/submit', 'InterlinkServiceController::submit');
+    $routes->get('interlink/service/feed', 'InterlinkServiceController::feed');
 
     // QC Lab Digital Test Reports (#Digital Test Report & Bonding LIS System)
     $routes->get('dtr', 'DtrController::index', ['as' => 'dtr']);

@@ -1,0 +1,33 @@
+using System.Text.Json.Nodes;
+
+namespace NexusInterlinkService;
+
+/// <summary>One report to submit. The payload is the one NEXUS-L prepares (the same fields the browser extension used to get).</summary>
+public sealed class JobRequest
+{
+    public string JobUid { get; set; } = "";
+    public string ApplicationNo { get; set; } = "";
+    public string LabRefNo { get; set; } = "";
+    public string ReportNo { get; set; } = "";
+    /// <summary>"add" = a new report, "edit" = the current report (InterLink's Add / Edit menu)</summary>
+    public string Mode { get; set; } = "edit";
+    public string UserName { get; set; } = "";
+    /// <summary>NEXUS-L's own approval check, asked again right before Save: no approval, no Save</summary>
+    public string VerifyUrl { get; set; } = "";
+    public string CallbackUrl { get; set; } = "";
+    /// <summary>the whole job as the page scripts expect it: controls, tables, pdf {name, b64}, mode ...</summary>
+    public JsonObject Job { get; set; } = new();
+}
+
+public sealed class JobStatus
+{
+    public string JobUid { get; set; } = "";
+    public string ApplicationNo { get; set; } = "";
+    public string LabRefNo { get; set; } = "";
+    public string ReportNo { get; set; } = "";
+    /// <summary>queued | running | done | failed | signin-required</summary>
+    public string State { get; set; } = "queued";
+    public string Message { get; set; } = "Waiting in the queue.";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? FinishedAt { get; set; }
+}

@@ -187,6 +187,33 @@
     if (document.querySelector('meta[name="base-url"]') && !/\/login\b/.test(location.pathname)) { tick(); setInterval(tick, 20000); }
   })();
 
+  // ---- InterLink background service: the toast for a finished submission, wherever the user is in NEXUS-L ----
+  (() => {
+    const base = (document.querySelector('meta[name="base-url"]')?.content || '').replace(/\/?$/, '/');
+    if (!base || /\/login\b/.test(location.pathname)) return;
+    let cursor = '';
+    let fastUntil = 0;                       // after a send: look every 3 s for a few minutes
+    const tick = () => {
+      if (document.hidden) return;
+      fetch(base + 'interlink/service/feed' + (cursor ? '?after=' + encodeURIComponent(cursor) : ''), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (!j || !j.ok) return;
+          (j.events || []).forEach((ev) => {
+            if (window.nxToast) window.nxToast(ev.text, ev.kind === 'success' ? 'success' : 'error', 12000);
+            window.dispatchEvent(new CustomEvent('nxl:interlink-service', { detail: ev }));
+          });
+          cursor = j.cursor;
+          if (!j.running && Date.now() > fastUntil) fastUntil = 0;
+        })
+        .catch(() => {});
+    };
+    window.nxSvcWatch = () => { fastUntil = Date.now() + 5 * 60 * 1000; tick(); };
+    tick();
+    setInterval(() => { if (fastUntil) tick(); }, 3000);
+    setInterval(() => { if (!fastUntil) tick(); }, 15000);
+  })();
+
   // ---- Auto-dismiss success alerts ----
   $$('[data-autodismiss]').forEach((el) => setTimeout(() => { el.style.transition = 'opacity .5s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 500); }, 6000));
 

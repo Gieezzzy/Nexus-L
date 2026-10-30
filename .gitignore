@@ -139,3 +139,9 @@ node_modules/
 
 # database backups made before data syncs
 writable/backups/
+
+# InterLink background service (C#)
+tools/interlink-service/bin/
+tools/interlink-service/obj/
+tools/interlink-service/data/
+tools/interlink-service/appsettings.Local.json

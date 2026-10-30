@@ -67,3 +67,7 @@
 #--------------------------------------------------------------------
 
 # logger.threshold = 4
+
+# InterLink background service (tools/interlink-service): leave empty to keep using the browser extension
+# interlinkService.url = 'http://127.0.0.1:5077'
+# interlinkService.key = ''

@@ -4,6 +4,11 @@
 
 ---
 
+## Phase 198 - InterLink Background Service (C#, invisible browser), Sender 1.7.0, Detail Page, Save (2026-10-30)
+- **`tools/interlink-service/`** (C# .NET 9 + Playwright, headless Chromium): NEXUS-L hands an approved report to it (`InterlinkServiceController`: `interlink/service/submit|status|feed`, key-protected `callback` / `verify`, table `tbl_interlink_service_jobs`); it does Add / Edit in InterLink in the background with a shared service account (session saved once with `--signin`, no password stored), asks NEXUS-L again before Save, and reports back. NEXUS-L shows a toast wherever the user is and sends the Synology message `Labreference / ReportNO / submitted to InterLink`. The browser extension stays as the fallback. The page logic is shared: `tools/build/build-service-scripts.js` cuts it out of the extension's `background.js`.
+- Extension 1.5.x-1.7.0: tests grouped as InterLink has them (Tensile Length + Width = one test), readings go to the rows named like them; no values are typed for any test (only Sample ID, Test Item Name, Test Method, Test Elements); the send tells InterLink's Add / Edit menu which one to use.
+- Upload Form: the arrow up of a sent report is a read-only view, U > Add / Edit open it in that mode; Save stores the boxes and the three grids per application and Lab Ref; Generate asks in page dialogs; the Report Detail Page shows Test Package, Sample, Test Item Review and the paged readings like InterLink's; the page behind an open dialog does not scroll.
+
 ## Phase 197 - No Save in InterLink Without Approval; Full Header Block on the Report View (2026-10-29)
 
 ### 1. Approval gate in the sender extension (v1.4.0)

@@ -26,6 +26,7 @@ NEXUS-L is the laboratory intelligence and execution system built on CodeIgniter
 | `app/Controllers/ApprovalController.php` | QR approval of reports by registered Managers / Supervisors: request, single-use links, sign, signed PDF, verify (`dtr/approval/verify`), signatories admin, per-user PDF name format. |
 | `app/Libraries/Brain.php` | Bot knowledge search: per-word, rarity-weighted matching and ranking (cached corpus), confidence. |
 | `tools/interlink-sender/` | Chrome extension (v1.4.0): fills and saves InterLink forms, reads the live grid, and refuses to save anything not approved. |
+| `tools/interlink-service/` | C# .NET 9 background service (Playwright, headless Chromium): submits approved reports to InterLink without a visible browser; see its README. NEXUS-L side: `InterlinkServiceController`. |
 | `tools/build/render-report.js`, `tools/access-report-*.ps1`, `tools/pdf_signoff.py`, `tools/build/stamp-pdf.js` | Report rendering, one-time Access form/layout extraction, sign-off finder, signature + stamp. |
 | `public/assets/js/interlink_center.js` | InterLink Sender hand-off (`nxFillHelper`): prepares the form values and attaches the generated/browsed report PDF. |
 | `public/assets/js/dtr.js` | 100% VBA computation port: `ApplyStandardValuesSmart`, directional averages, 6-point colorfastness, bonding spot rules, calculators, machine data parsing, and print preview rendering. |
