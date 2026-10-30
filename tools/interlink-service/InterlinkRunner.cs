@@ -50,7 +50,7 @@ public sealed class InterlinkRunner : IAsyncDisposable
     {
         _pw ??= await Playwright.CreateAsync();
         if (_browser is { IsConnected: true }) return _browser;
-        _browser = await _pw.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = _cfg.GetValue("Service:Headless", true) });
+        _browser = await BrowserLauncher.LaunchAsync(_pw, _cfg.GetValue("Service:Headless", true), _cfg);
         return _browser;
     }
 

@@ -10,8 +10,21 @@ public static class SignIn
 {
     public static async Task<int> RunAsync(IConfiguration cfg)
     {
+        try
+        {
+            return await SignInAsync(cfg);
+        }
+        catch (Exception e)
+        {
+            MessageBox.Show("The InterLink sign-in could not start:" + Environment.NewLine + Environment.NewLine + e.Message, "NEXUS-L InterLink service", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return 2;
+        }
+    }
+
+    private static async Task<int> SignInAsync(IConfiguration cfg)
+    {
         using var pw = await Playwright.CreateAsync();
-        await using var browser = await pw.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = false });
+        await using var browser = await BrowserLauncher.LaunchAsync(pw, false, cfg);
         var ctx = await browser.NewContextAsync(new BrowserNewContextOptions { ViewportSize = null });
         var page = await ctx.NewPageAsync();
         await page.GotoAsync("https://interlink2.intertek.com/");

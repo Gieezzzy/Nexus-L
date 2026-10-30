@@ -37,7 +37,7 @@ again. The window also shows the two lines to put in NEXUS-L's `.env` (**Copy th
 and whether the InterLink sign-in is saved. The log is `data\service.log` (tray menu > Open the log).
 
 ### First time on a computer
-1. Needs the .NET 9 (Desktop) runtime. Run `Install-Browser.cmd` once (downloads the invisible Chromium).
+1. Needs the .NET 9 (Desktop) runtime and Google Chrome or Microsoft Edge on the computer (the service drives that browser, with its own clean profile; your own Chrome profile and sign-ins are not touched). If neither is installed, run `Install-Browser.cmd` once to download Chromium instead.
 2. Start `NexusInterlinkService.exe`. Set the IP and port, check the NEXUS-L address, **Save and restart**.
 3. Copy the two lines into NEXUS-L's `.env` (`interlinkService.url` and `interlinkService.key`).
 4. **Sign in to InterLink...** (or `Sign-in-to-InterLink.cmd`) once, with the shared service account. InterLink uses Microsoft sign-in
