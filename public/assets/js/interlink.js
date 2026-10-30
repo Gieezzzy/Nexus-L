@@ -1498,9 +1498,72 @@
       <div class="itk-detail-sec"><b>Supplementary Attachment</b><table class="itk-grid"><thead><tr><th>File Name</th><th>Date Added</th></tr></thead><tbody><tr><td colspan="2" class="muted">Empty</td></tr></tbody></table></div>
       <div class="itk-detail-sec"><b>Report Review</b><div>Review Result: ${v('review_result')} &nbsp; Review Status Code: ${v('review_status')}</div>
         <table class="itk-grid"><thead><tr><th>Date/Time</th><th>Comment</th><th>By Whom</th><th>Company</th></tr></thead><tbody><tr><td colspan="4">${v('latest_review_comment') || '<span class="muted">No comments</span>'}</td></tr></tbody></table></div>
+      <div class="itk-detail-sec" id="itk-detail-tests"><b>Test Item &amp; Reading Summary</b><div class="muted">Loading the samples, test items and readings…</div></div>
       <div class="nx-modal-actions"><button type="button" class="nx-btn" data-a="close">Close</button></div></div>`;
     document.body.appendChild(back);
+    back.querySelector('.nx-modal').style.cssText += ';max-height:92vh;overflow:auto';
     back.addEventListener('click', (e) => { if (e.target === back || e.target.dataset.a === 'close') back.remove(); });
+    fillDetailTests(back, r);
+  };
+
+  // The second half of InterLink's Report Detail Page: Test Package, Sample, Test Item Review and the Test Reading Data Summary,
+  // from the report as it was prepared for InterLink (its saved corrections included). Readings are paged like InterLink's (50 a page).
+  const fillDetailTests = async (back, r) => {
+    const box = back.querySelector('#itk-detail-tests');
+    try {
+      const st = await apiFetch(`dtr/approval/status?lab_ref=&application_no=${encodeURIComponent(r.application_no)}`).catch(() => null);
+      const labRef = (st && st.approval && st.approval.lab_ref_no) || r.lab_ref_no || (state.labrefs.find((l) => String(l.tr_no || '').trim() === r.application_no || l.tr_no === r.report_no) || {}).lab_ref_no || '';
+      if (!labRef) { box.innerHTML = '<b>Test Item &amp; Reading Summary</b><div class="muted">No Lab Reference is linked to this application, so there are no test items to show.</div>'; return; }
+      const d = await apiFetch(`interlink/labref-detail?lab_ref_no=${encodeURIComponent(labRef)}&application_no=${encodeURIComponent(r.application_no)}`);
+      const samples = d.samples || [];
+      const code = (x) => ((String(x.test_code || x.test_method || '').match(/\b(VF-[A-Z]\d{2}|SATRA TM ?\d+)/i) || [])[1] || '').toUpperCase();
+      const dirOf = (n) => ((String(n || '').match(/-\s*(Length|Width)\s*\(\s*[LW]\s*\)\s*$/i) || [])[1] || '');
+      const baseOf = (n) => String(n || '').replace(/\s*-\s*(Length|Width)\s*\(\s*[LW]\s*\)\s*$/i, '').trim();
+      // only the tests that have an InterLink method code are sent to InterLink, so only those are listed (as in InterLink's own page)
+      const items = (d.items || []).filter((x) => code(x));
+      const sentNames = new Set(items.map((x) => x.test_name));
+      const readings = (d.readings || []).filter((x) => sentNames.has(x.test_item_name));
+      const shownName = (n, c) => `${baseOf(n)}${c ? ` (${c})` : ''}`;
+      const rank = (a, b) => (a === 'Fail' || b === 'Fail' ? 'Fail' : (a === 'Data' || b === 'Data' ? 'Data' : (a || b || 'Pass')));
+      const groups = [];
+      items.forEach((it) => {
+        const c = code(it), nm = shownName(it.test_name, c);
+        let g = groups.find((x) => x.nm === nm && x.sample === (it.sample_id_code || 'S001'));
+        if (!g) { g = { nm, sample: it.sample_id_code || 'S001', result: '' }; groups.push(g); }
+        g.result = rank(g.result, it.result_status || it.test_result || 'Pass');
+      });
+      const dirByName = {};
+      items.forEach((it) => { dirByName[it.test_name] = dirOf(it.test_name); });
+      const methodOf = (nm) => { const it = items.find((x) => x.test_name === nm); return it ? code(it) : ''; };
+      const rows = readings.map((rd) => {
+        const dir = dirByName[rd.test_item_name] || '';
+        const el = String(rd.test_element || '');
+        const label = dir ? (/^average$/i.test(el) ? dir : `${dir} ${el}`) : el;
+        const c = methodOf(rd.test_item_name);
+        return [rd.sample_id_code || 'S001', shownName(rd.test_item_name, c), c || String(rd.test_method || ''), 'General', rd.sample_component || '', '', label, rd.test_value_indicator || '=', rd.reading_value_raw || '', rd.unit || '', rd.target_spec || '', rd.reading_status || ''];
+      });
+      const head = ['Sample ID', 'Test Item Name', 'Test method', 'Test condition', 'Sample Component', 'Sample Component Description', 'Test element', 'Test value indicator', 'Test value', 'Unit of measure', 'Requirement', 'Test rating'];
+      const per = 50;
+      let page = 1;
+      const draw = () => {
+        const pages = Math.max(1, Math.ceil(rows.length / per));
+        page = Math.min(Math.max(1, page), pages);
+        const slice = rows.slice((page - 1) * per, page * per);
+        const pager = `<div style="margin:6px 0">Page ${page} of ${pages} (${rows.length} Records) &nbsp; <button type="button" class="nx-btn" data-pg="-1" ${page <= 1 ? 'disabled' : ''}>Previous</button> <button type="button" class="nx-btn" data-pg="1" ${page >= pages ? 'disabled' : ''}>Next</button></div>`;
+        box.innerHTML = `<b>Test Item &amp; Reading Summary</b>
+          <div>Test Package(s): ${escHtml(r.test_packages || '')}</div>
+          <div style="margin-top:8px"><b>Sample</b></div>
+          <table class="itk-grid"><thead><tr><th>Sample ID</th><th>Sample Description</th><th>Sample Color</th></tr></thead><tbody>${samples.length ? samples.map((x) => `<tr><td>${escHtml(x.sample_id_code || 'S001')}</td><td>${escHtml(x.sample_description || '')}</td><td>${escHtml(x.sample_color || '')}</td></tr>`).join('') : '<tr><td colspan="3" class="muted">Empty</td></tr>'}</tbody></table>
+          <div style="margin-top:8px"><b>Test Item Review</b></div>
+          <table class="itk-grid"><thead><tr><th>Sample ID</th><th>Test Item</th><th>Test Item Result</th><th>Item Review Comment</th></tr></thead><tbody>${groups.length ? groups.map((g) => `<tr><td>${escHtml(g.sample)}</td><td>${escHtml(g.nm)}</td><td>${escHtml(g.result)}</td><td></td></tr>`).join('') : '<tr><td colspan="4" class="muted">Empty</td></tr>'}</tbody></table>
+          <div style="margin-top:8px"><b>Test Reading Data Summary</b></div>${pager}
+          <div style="overflow-x:auto"><table class="itk-grid"><thead><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${slice.length ? slice.map((x) => `<tr>${x.map((c) => `<td>${escHtml(c)}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="12" class="muted">Empty</td></tr>`}</tbody></table></div>${pager}`;
+        box.querySelectorAll('[data-pg]').forEach((b) => b.addEventListener('click', () => { page += Number(b.dataset.pg); draw(); }));
+      };
+      draw();
+    } catch (e) {
+      box.innerHTML = `<b>Test Item &amp; Reading Summary</b><div class="muted">Could not load the test items: ${escHtml(e.message)}</div>`;
+    }
   };
 
   // =========================================================================
