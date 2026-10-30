@@ -14,6 +14,8 @@ class ReportTests
 {
     /** lower-case test key (prefix match) => [label, VF method, unit] */
     private const KNOWN = [
+        't'              => ['Gauge', 'VF-A03 (2014/04)', 'mm'],
+        'w'              => ['Weight', 'VF-A02 (2018/11)', 'g/m2'],
         'heataging'      => ['Heat Aging (72 hrs, 70°C)', 'VF-E04 (2022/09)', ''],
         'corrosion'      => ['Corrosion Resistance', 'VF-E09 (2014/12)', ''],
         'hydrolysis'     => ['Hydrolysis (7 days, 60°C, 95% RH)', 'VF-E19 (2024/12)', ''],
@@ -43,7 +45,7 @@ class ReportTests
     ];
 
     /** keys of a test that hold something other than readings */
-    private const ALIAS = ['corrosion' => ['CorrosionRes'], 'ctcdry' => ['CtCDry'], 'ctcwet' => ['CtCWet'], 'shrinkage12' => ['Shrinkageave12'], 'shrinkage34' => ['Shrinkageave34']];
+    private const ALIAS = ['t' => ['Thickness'], 'w' => ['Weight'], 'corrosion' => ['CorrosionRes'], 'ctcdry' => ['CtCDry'], 'ctcwet' => ['CtCWet'], 'shrinkage12' => ['Shrinkageave12'], 'shrinkage34' => ['Shrinkageave34']];
 
     public static function result(string $rating): string
     {
@@ -61,7 +63,9 @@ class ReportTests
         $best = null;
         foreach (self::KNOWN as $k => $v) {
             $k = strtolower($k);
-            if (str_starts_with($lb, $k) && ($best === null || strlen($k) > strlen($best[0]))) {
+            // the one-letter keys (T = Gauge, W = Weight) must match the whole key, or every test starting with t / w would be named after them
+            $hit = strlen($k) < 2 ? $lb === $k : str_starts_with($lb, $k);
+            if ($hit && ($best === null || strlen($k) > strlen($best[0]))) {
                 $best = [$k, $v];
             }
         }
@@ -139,7 +143,7 @@ class ReportTests
             $rating = trim((string) ($rec[$key] ?? ''));
             $base   = str_ireplace('txt', '', $m[1]);
             $lb     = strtolower($base);
-            if ($rating === '' || strlen($base) < 3 || isset($seen[$lb])) {
+            if ($rating === '' || (strlen($base) < 3 && ! in_array($lb, ['t', 'w', 'uv'], true)) || isset($seen[$lb])) {
                 continue;
             }
             $prefixes = array_merge([$base], self::ALIAS[$lb] ?? []);
