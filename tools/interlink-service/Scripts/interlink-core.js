@@ -396,7 +396,7 @@ async function fillAndAttach(job) {
         // full list. If that cannot be done, the package's own shorter list is used.
         await closePopup();
         const fullOn = await enableFullList();
-        if (fullOn && !job.fullNoted) { job.fullNoted = true; notes.push('"Enable Full Test Item List" was switched on first'); }
+        if (fullOn) job.fullNoted = true;                       // switched on first: nothing to report (the notes list only what was NOT added)
         await closePopup();
         let hit = await openAndFind(fullOn);
         if (!hit && fullOn) { await closePopup(); hit = await openAndFind(false); }
