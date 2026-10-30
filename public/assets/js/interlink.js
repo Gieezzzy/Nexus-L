@@ -572,6 +572,15 @@
     });
   };
 
+  // How the Upload Form was opened: 'view' (the arrow up of a sent report: read-only), 'add' (U > Add: a new report in InterLink) or
+  // 'edit' (U > Edit: the current report). The send tells InterLink's Add / Edit menu which one to use.
+  state.formMode = state.formMode || {};
+  const hasReportFor = (appNo) => {
+    const r = state.reports.find((x) => x.application_no === appNo);
+    return !!(r && (r.report_no || r.report_issue_date || r.job_status === 'In Progress' || r.job_status === 'Completed'));
+  };
+  const modeFor = (appNo) => state.formMode[appNo] || (hasReportFor(appNo) ? 'edit' : 'add');
+  let applyFormMode = () => {};
   const renderTab2SubGrids = (samples = [], items = [], readings = []) => {
     const sampleTbody = $('#uf-sample-items-tbody');
     if (sampleTbody) {
@@ -632,6 +641,7 @@
           `).join('')
         : `<tr><td colspan="10" class="muted" style="text-align:center">No readings.</td></tr>`;
     }
+    applyFormMode();
   };
 
   // Test grids of an application that has no saved ones yet: taken from its Lab Reference (the one linked by TR No.)
@@ -757,8 +767,9 @@
     });
   };
 
-  const navigateToUploadForm = async (appNo, pushHistory = true) => {
+  const navigateToUploadForm = async (appNo, pushHistory = true, mode = null) => {
     beginLoading(`Opening UploadForm for ${appNo}…`);
+    if (mode) state.formMode[appNo] = mode;
 
     let report = state.reports.find((r) => r.application_no === appNo) || { application_no: appNo };
     state.currentView = 'upload';
@@ -804,6 +815,7 @@
       if (bannerApp) bannerApp.textContent = appNo;
 
       updateNavButtons();
+      applyFormMode();
 
     };
     reveal();
@@ -1275,7 +1287,7 @@
       });
 
       // Sending is done by the person responsible, in their own browser: show the helper that fills the InterLink form
-      if (sendLive && window.nxFillHelper) window.nxFillHelper(appNo, fieldsToSync, currentLabRef());   // the Lab Reference chosen in the dialog: its samples and test items go with the send
+      if (sendLive && window.nxFillHelper) window.nxFillHelper(appNo, fieldsToSync, currentLabRef(), modeFor(appNo) === 'add' ? 'add' : 'edit');   // the Lab Reference chosen in the dialog: its samples and test items go with the send
 
       // Fill every selected field into UploadForm.aspx (Tab 1 + Tab 2) with visual highlight
       Object.keys(fieldsToSync).forEach((key) => {
@@ -1363,6 +1375,36 @@
   };
 
   // ---- Report Detail Page (read-only copy of what InterLink shows) and the U menu ---------------------------------
+  applyFormMode = () => {
+    const root = $('#il-view-upload');
+    if (!root || state.currentView !== 'upload') return;
+    const appNo = state.activeAppNo || $('#uf_application_no')?.value || '';
+    const mode = modeFor(appNo);
+    let banner = $('#uf-mode-banner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'uf-mode-banner';
+      banner.style.cssText = 'margin:8px 12px;padding:8px 12px;border-radius:8px;font-weight:600;font-size:13px';
+      root.prepend(banner);
+    }
+    const text = {
+      view: 'Read-only view of the report sent to InterLink. To change it use U, then Edit (the current report) or Add (a new report).',
+      edit: 'Editing the current report: sending updates the report InterLink already has for this application.',
+      add: 'Adding a new report: sending creates a new report in InterLink for this application.',
+    };
+    banner.textContent = text[mode];
+    banner.style.background = mode === 'view' ? '#e2e8f0' : (mode === 'edit' ? '#fef3c7' : '#dcfce7');
+    banner.style.color = '#0f172a';
+    const lockIds = ['uf-btn-save', 'uf-btn-generate-pdf', 'uf-btn-browse-pdf', 'uf-apv-request', 'uf-apv-new', 'uf-btn-new', 'uf-btn-add-email'];
+    const ro = mode === 'view';
+    const lock = (el) => {
+      if (ro) { if (!el.disabled) { el.disabled = true; el.dataset.modeLocked = '1'; } }
+      else if (el.dataset.modeLocked) { el.disabled = false; delete el.dataset.modeLocked; }
+    };
+    root.querySelectorAll('input, select, textarea').forEach((el) => { if (el.type !== 'hidden' && el.type !== 'file') lock(el); });
+    lockIds.forEach((id) => { const el = document.getElementById(id); if (el) lock(el); });
+    $('#il-upload-actions')?.classList.toggle('hidden', ro);          // Review & Sync / 1-Click Send are not offered on a read-only view
+  };
   const openUMenu = (btn, appNo) => {
     document.querySelectorAll('.itk-umenu').forEach((m) => m.remove());
     const m = document.createElement('div');
@@ -1373,7 +1415,7 @@
     document.body.appendChild(m);
     const off = (ev) => { if (!m.contains(ev.target)) { m.remove(); document.removeEventListener('mousedown', off); } };
     setTimeout(() => document.addEventListener('mousedown', off), 0);
-    m.addEventListener('click', (ev) => { if (!ev.target.dataset.a) return; m.remove(); navigateToUploadForm(appNo); });
+    m.addEventListener('click', (ev) => { if (!ev.target.dataset.a) return; m.remove(); navigateToUploadForm(appNo, true, ev.target.dataset.a); });
   };
   // paper clip: the attached report is the Lab Reference's report sheet (the DTR print preview), opened in its own tab
   // The paperclip (and the attachment name in the detail page): the PDF of the report made for that application, shown right here.
@@ -1474,7 +1516,9 @@
     const uploadTrigger = e.target.closest('[data-open-upload]');
     if (uploadTrigger) {
       const appNo = uploadTrigger.dataset.openUpload;
-      if (appNo) navigateToUploadForm(appNo);
+      // the arrow up of a report that was already sent (the paper clip is there) shows it read-only; the Application No. link opens it for editing
+      const sent = !!e.target.closest('tr')?.querySelector('[data-open-clip]');
+      if (appNo) navigateToUploadForm(appNo, true, uploadTrigger.tagName === 'BUTTON' ? (sent ? 'view' : 'add') : (sent ? 'edit' : 'add'));
       return;
     }
     const normalTrigger = e.target.closest('[data-open-normal]');

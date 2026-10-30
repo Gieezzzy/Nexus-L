@@ -276,12 +276,13 @@ async function stepOnce(tabId) {
   try { const tb = await chrome.tabs.get(tabId); status(job, true, false, `Step ${job.loads} (${job.step}): InterLink page ${String(new URL(tb.url).pathname).split('/').pop() || '/'}`); } catch (e) { /* tab info not available */ }
   try {
     if (job.step === 'search') {
-      const r = await inPage(tabId, searchAndOpenUpload, [job.application_no]);
+      const r = await inPage(tabId, searchAndOpenUpload, [job.application_no, job.mode]);
       if (!r) return;
       if (r.state === 'signin') { status(job, false, false, 'Sign in to InterLink in the opened tab; sending continues by itself afterwards.'); job.loads -= 1; await setJob(job); return; }
       if (r.state === 'navigating') { status(job, true, false, 'On the InterLink home page: going to the search grid…'); return; }   // "ready" fires again there
       if (r.state === 'error') { status(job, false, true, `${job.application_no}: ${r.message}`); endJob(job); return; }
       // r.state === 'clicked': the popup opens separately and is picked up by chrome.tabs.onCreated above
+      status(job, true, false, `InterLink: ${r.mode === 'Edit' ? 'editing the current report' : 'adding a new report'}${r.note ? ' (' + r.note + ')' : ''}…`);
       job.step = 'awaiting-popup';
       job.popupAt = Date.now();
       await setJob(job);
@@ -341,7 +342,7 @@ async function stepOnce(tabId) {
 /** Searches the live SearchFormWithHeader grid for an exact Application No. and clicks that row's Upload icon. The
  *  filter box is located by its live screen position under the "Application No." header, not a hardcoded column
  *  index, so this keeps working if InterLink ever reorders its columns. */
-async function searchAndOpenUpload(appNo) {
+async function searchAndOpenUpload(appNo, mode) {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const visible = (el) => !!el && el.offsetParent !== null && el.getBoundingClientRect().width > 0;
   if (/login|signin|sign-in/i.test(location.pathname)) return { state: 'signin' };
@@ -384,8 +385,29 @@ async function searchAndOpenUpload(appNo) {
     upload = row && row.querySelector('input[type=image][name*="imgBtnUForm" i]');
   }
   if (!upload) return { state: 'error', message: `${appNo} was not found in the InterLink search grid (check it exists and you have access to it).` };
-  upload.click();                                            // triggers InterLink's own OpenPopupForSearchDefault(...)
-  return { state: 'clicked' };
+  // A report already exists for this application: its Upload icon opens a small menu with Add (a new report) and Edit (the current
+  // one). The menu is opened and the entry chosen through InterLink's own menu control, so it is always the one the person asked for
+  // in NEXUS-L (U > Add / Edit); a plain script click on the icon does not open the menu.
+  const want = mode === 'add' ? 'Add' : 'Edit';
+  const row = upload.closest('tr');
+  const root = row && row.querySelector('[id*="pmUform"][id$="_DXME_"]');
+  if (root) {
+    const menuId = root.id.replace(/_DXME_$/, '');
+    const ctl = ASPxClientControl.GetControlCollection().GetByName(menuId);
+    if (!ctl || !ctl.ShowAtElement) return { state: 'error', message: `${appNo}: InterLink's Add / Edit menu could not be opened.` };
+    ctl.ShowAtElement(upload);
+    let li = null;
+    for (let i = 0; i < 12 && !li; i++) {
+      await sleep(250);
+      li = [...document.querySelectorAll(`[id^="${menuId}_DXI"][id$="_"]`)].find((e) => e.innerText.trim().toLowerCase() === want.toLowerCase());
+    }
+    if (!li) return { state: 'error', message: `${appNo}: InterLink's menu has no "${want}" entry.` };
+    const t = li.querySelector('.dxm-content') || li;
+    ['mousedown', 'mouseup', 'click'].forEach((n) => t.dispatchEvent(new MouseEvent(n, { bubbles: true, cancelable: true, view: window })));
+    return { state: 'clicked', mode: want };
+  }
+  upload.click();                                            // no report yet: the icon opens the form (Add) straight away; InterLink's own OpenPopupForSearchDefault(...)
+  return { state: 'clicked', mode: 'Add', note: mode === 'edit' ? 'there is no report to edit yet: a new one is added' : '' };
 }
 
 async function fillAndAttach(job) {
@@ -626,6 +648,8 @@ async function fillAndAttach(job) {
       const addBtn = () => document.querySelector('input[name$="TpEdr_JOB_DUMMY_008$cbpTableInput$btAdd"]');
       let added = 0;
       for (const it of wanted) {
+        // Edit: the report already holds this test (found by its method code and name): it is kept, not added a second time
+        if ([...document.querySelectorAll('input[name*="FLD07_TEST_ITEM_INP_"][name$="txtSingleValuePickerDisp"]')].some((el) => el.value && groupFor(codeOf(el.value), el.value) === it)) { notes.push(`${it.name} (${it.code}) is already in the report`); continue; }
         // the empty input row: the first row whose test name is still empty
         let n = 0;
         while (dispOf(n) && dispOf(n).value) n++;
@@ -721,7 +745,7 @@ async function fillAndAttach(job) {
       if (added) filled += added;
       // then each added test's reading is filled on its own page (see "readings" above)
       const rowsNow = [...document.querySelectorAll('input[name*="FLD07_TEST_ITEM_INP_"][name$="txtSingleValuePickerDisp"]')].filter((el) => el.value && (groupFor(codeOf(el.value), el.value) || {}).values);
-      if (added && rowsNow.length) {
+      if ((added || job.mode === 'edit') && rowsNow.length) {
         const first = rowsNow[0];
         const n0 = Number((first.name.match(/TEST_ITEM_INP_(\d+)_txtSingle/) || [])[1]);
         const icon = document.querySelector(`input[name$="uc1_TEST_ITEM_INP_${n0}$btnAddReading"]`);

@@ -53,7 +53,7 @@
   // PIC's own Chrome (their own InterLink sign-in) opens the form, fills it, attaches the PDF and saves it ---------------
   // 'none' = not installed, 'old' = installed but older than 1.3.1 (its Home -> grid navigation and reading do not work),
   // 'ok'. A page that was open before the extension was updated still carries the old version, so a reload fixes 'old'.
-  const MIN_SENDER = '1.6.3';   // 1.6.3: no values typed in for any test; only Sample ID, Test Item Name, Test Method and Test Elements
+  const MIN_SENDER = '1.7.0';   // 1.7.0: the send tells InterLink's Add / Edit menu which one to use
   const senderState = () => {
     if (document.documentElement.dataset.nxlSender !== '1') return 'none';
     const a = String(document.documentElement.dataset.nxlSenderVersion || '0').split('.').map(Number);
@@ -141,7 +141,7 @@
     if (e.source !== window || !e.data || e.data.type !== 'NXL_SEND_STATUS') return;
     nxToast(e.data.message, e.data.ok ? 'success' : (e.data.done ? 'error' : 'info'), e.data.done ? 12000 : 5000);
   });
-  window.nxFillHelper = async (appNo, fields, labRef) => {
+  window.nxFillHelper = async (appNo, fields, labRef, mode) => {
     if (!hasSender()) { installHelp(); return; }
     let data;
     try {
@@ -170,6 +170,7 @@
     }
     window.postMessage({ type: 'NXL_SEND', job: {
       application_no: data.application_no, target_url: data.target_url, controls: data.controls,
+      mode: mode === 'add' ? 'add' : 'edit',        // InterLink's Add / Edit menu: a new report or the current one
       pdf: { name: att.name || `${appNo}.pdf`, b64: att.b64 },
       tables: data.tables || { samples: [], items: [], readings: [] },
       // the extension asks NEXUS-L again before it opens InterLink and before it presses Save: no approval, no Save
