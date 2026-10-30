@@ -57,3 +57,13 @@ public sealed class HistoryLine
     public DateTime? StartedAt { get; set; }
     public DateTime? FinishedAt { get; set; }
 }
+
+/// <summary>one thing the service did or is doing (shown in the Activity window)</summary>
+public sealed class ActivityEntry
+{
+    public DateTime Time { get; set; } = DateTime.Now;
+    public string JobUid { get; set; } = "";
+    public string ApplicationNo { get; set; } = "";
+    public string User { get; set; } = "";
+    public string Text { get; set; } = "";
+}

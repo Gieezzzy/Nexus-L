@@ -21,6 +21,9 @@ public sealed class JobQueue : BackgroundService
     private readonly Notifier _notifier;
     private readonly ILogger<JobQueue> _log;
     private readonly List<(JobRequest Job, JobStatus Status)> _interrupted = new();
+    private readonly List<ActivityEntry> _activity = new();                 // the last steps, newest at the end (the Activity window)
+    private string _step = "";
+    private DateTime _stepSince = DateTime.Now;
 
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = false };
 
@@ -77,6 +80,23 @@ public sealed class JobQueue : BackgroundService
 
     public int Waiting { get { lock (_gate) return _waiting.Count + (_running != null ? 1 : 0); } }
 
+    private void Note(JobRequest j, string text)
+    {
+        lock (_gate)
+        {
+            _activity.Add(new ActivityEntry { JobUid = j.JobUid, ApplicationNo = j.ApplicationNo, User = j.UserName, Text = text });
+            if (_activity.Count > 200) _activity.RemoveRange(0, _activity.Count - 200);
+            if (_running?.JobUid == j.JobUid) { _step = text; _stepSince = DateTime.Now; }
+        }
+    }
+
+    /// <summary>what the service is doing right now (null job = idle) and the latest steps, newest first</summary>
+    public (JobRequest? Job, string Step, DateTime Since, int WaitingBehind, List<ActivityEntry> Recent) Snapshot(int count)
+    {
+        lock (_gate)
+            return (_running, _step, _stepSince, _waiting.Count, _activity.AsEnumerable().Reverse().Take(count).ToList());
+    }
+
     /// <summary>
     /// Takes a job in at the back of the line. When the same application is already waiting or running, that job is returned instead
     /// (Duplicate = true): two clicks, or two people, do not make two submissions of one application.
@@ -89,6 +109,7 @@ public sealed class JobQueue : BackgroundService
             if (existing != null) return (WithPosition(existing), true);
             job.Seq = ++_seq;
             job.ReceivedAt = DateTime.UtcNow;
+            Note(job, $"Received {job.ApplicationNo} from {(job.UserName == "" ? "a user" : job.UserName)} ({job.Mode}); {_waiting.Count + (_running != null ? 1 : 0)} ahead of it.");
             File.WriteAllText(FileFor(job), JsonSerializer.Serialize(job, Json));
             var st = NewStatus(job);
             _status[job.JobUid] = st;
@@ -183,6 +204,7 @@ public sealed class JobQueue : BackgroundService
                 st.StartedAt = DateTime.UtcNow;
                 st.Message = "Working in InterLink...";
                 job.Attempts++;
+                Note(job, $"Started {job.ApplicationNo} ({job.UserName}).");
                 try { File.WriteAllText(FileFor(job), JsonSerializer.Serialize(job, Json)); } catch { /* the job still runs */ }
             }
             _ = _notifier.ProgressAsync(job, st);                // the user is told it has started
@@ -192,6 +214,7 @@ public sealed class JobQueue : BackgroundService
                 await _runner.RunAsync(job, msg =>
                 {
                     st.Message = msg;
+                    Note(job, msg);
                     _log.LogInformation("[{Job}] {App} ({User}): {Msg}", job.JobUid.Length > 8 ? job.JobUid[..8] : job.JobUid, job.ApplicationNo, job.UserName, msg);
                 }, stop);
                 st.State = "done";
@@ -221,6 +244,8 @@ public sealed class JobQueue : BackgroundService
             }
             _log.LogInformation("Job {Job} ({App}, {User}) {State}: {Msg}", job.JobUid, job.ApplicationNo, job.UserName, st.State, st.Message);
             WriteHistory(job, st);
+            Note(job, st.State == "done" ? $"Finished {job.ApplicationNo}: submitted." : $"Stopped {job.ApplicationNo}: {st.Message}");
+            lock (_gate) { _step = ""; }
             await _notifier.ReportAsync(job, st);                // the user is told how it ended
 
             lock (_gate)

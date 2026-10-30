@@ -10,6 +10,8 @@ public sealed class TrayContext : ApplicationContext
     private readonly string[] _args;
     private SettingsForm? _form;
     private LogForm? _logForm;
+    private ActivityForm? _activityForm;
+    private ToolStripMenuItem? _activityItem;
 
     public TrayContext(string[] args)
     {
@@ -17,6 +19,8 @@ public sealed class TrayContext : ApplicationContext
         var menu = new ContextMenuStrip();
         menu.Items.Add("Settings...", null, (_, _) => ShowSettings());
         menu.Items.Add("Sign in to InterLink...", null, (_, _) => SignInToInterlink());
+        _activityItem = new ToolStripMenuItem("Show what it is doing", null, (_, _) => ToggleActivity());
+        menu.Items.Add(_activityItem);
         menu.Items.Add("Log...", null, (_, _) => ShowLog());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, async (_, _) => await ExitAsync());
@@ -46,7 +50,7 @@ public sealed class TrayContext : ApplicationContext
     private void ShowSettings()
     {
         if (_form is { IsDisposed: false }) { _form.Activate(); return; }
-        _form = new SettingsForm(_host, async () => { await StartAsync(false); return _host.Running; }, SignInToInterlink, ShowLog);
+        _form = new SettingsForm(_host, async () => { await StartAsync(false); return _host.Running; }, SignInToInterlink, ShowLog, ToggleActivity);
         _form.Show();
     }
 
@@ -54,6 +58,18 @@ public sealed class TrayContext : ApplicationContext
     {
         try { Process.Start(new ProcessStartInfo(Environment.ProcessPath!, "--signin") { UseShellExecute = true }); }
         catch (Exception e) { MessageBox.Show("Could not start the sign-in: " + e.Message, "NEXUS-L InterLink service"); }
+    }
+
+    /// <summary>show the live background-task window, or hide it again</summary>
+    private void ToggleActivity()
+    {
+        if (_activityForm == null || _activityForm.IsDisposed)
+        {
+            _activityForm = new ActivityForm(_host);
+            _activityForm.VisibleChanged += (_, _) => { if (_activityItem != null) _activityItem.Text = _activityForm.Visible ? "Hide what it is doing" : "Show what it is doing"; };
+        }
+        if (_activityForm.Visible) _activityForm.Hide();
+        else { _activityForm.Show(); _activityForm.BringToFront(); }
     }
 
     private void ShowLog()
