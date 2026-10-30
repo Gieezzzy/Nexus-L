@@ -184,7 +184,17 @@ public sealed class InterlinkRunner : IAsyncDisposable
                 await SettleAsync(form, () => navCount, navBefore, 15000, ct);
             }
 
-            // 6. InterLink's answer on the form
+            // 6. InterLink's answer on the form: the pop-up bubbles it shows after Save ("A report with the entered report number has already
+            // exists!") are read, logged, and given as the reason if the report was not kept
+            var notices = new List<string>();
+            for (var look = 0; look < 2 && !form.IsClosed; look++)
+            {
+                var found = await EvalAsync(form, "readNotices");
+                if (found is { ValueKind: JsonValueKind.Array } arr)
+                    foreach (var n in arr.EnumerateArray())
+                        if (n.GetString() is { Length: > 0 } text && !notices.Contains(text)) { notices.Add(text); say($"InterLink shows: {text}"); }
+                if (look == 0) await Task.Delay(1500, ct);
+            }
             await ShotAsync(form, req, "after-save");
             if (!form.IsClosed)
             {
@@ -213,8 +223,10 @@ public sealed class InterlinkRunner : IAsyncDisposable
             {
                 await ShotAsync(proof, req, "not-kept");
                 string said;
-                lock (dialogs) said = dialogs.Count > 0 ? " InterLink said: " + string.Join(" | ", dialogs) : "";
-                throw new InvalidOperationException($"InterLink did not keep the report: its grid still shows no Report No. for {req.ApplicationNo} (status \"{Str(rowInfo, "status")}\").{said} A picture is in the service's data\\shots folder.");
+                lock (dialogs) said = dialogs.Count > 0 ? " InterLink asked: " + string.Join(" | ", dialogs) + "." : "";
+                // the reason InterLink gave comes first: that is what the person has to act on
+                var reason = notices.Count > 0 ? $"InterLink refused it: {string.Join(" | ", notices)}" : "InterLink did not keep the report";
+                throw new InvalidOperationException($"{reason} (the grid still shows no Report No. for {req.ApplicationNo}, status \"{Str(rowInfo, "status")}\").{said} A picture is in the service's data\\shots folder.");
             }
             say($"InterLink now shows Report No. {seenReportNo} for {req.ApplicationNo}.");
             var notes = "";

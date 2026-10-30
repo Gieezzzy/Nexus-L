@@ -134,6 +134,16 @@ class InterlinkServiceController extends BaseController
         $pdfName  = preg_replace('/[\\\\\/:*?"<>|\x00-\x1f]+/', '_', trim((string) ($p['pdf_name'] ?? ''))) ?: $appNo . '.pdf';
         $reportNo = trim((string) ($fields['report_no'] ?? '')) ?: (string) ($this->db()->table('tbl_dtr_unified_labrefs')->select('tr_no')->where('lab_ref_no', $labRef)->get()->getRowArray()['tr_no'] ?? '');
 
+        // InterLink does not accept one Report No. twice ("A report with the entered report number has already exists!"): say so before queueing
+        if ($reportNo !== '') {
+            $this->table();
+            $used = $this->db()->table('tbl_interlink_reports')->select('application_no')->where('report_no', $reportNo)->where('application_no !=', $appNo)->get()->getRowArray();
+            $used = $used['application_no'] ?? ($this->db()->table('tbl_interlink_service_jobs')->select('application_no')->where('report_no', $reportNo)->where('status', 'done')->where('application_no !=', $appNo)->get()->getRowArray()['application_no'] ?? '');
+            if ($used !== '') {
+                return $this->json(['ok' => false, 'code' => 'report_no_taken', 'error' => "Report No. {$reportNo} is already used in InterLink by {$used}, and InterLink does not accept the same Report No. twice. Change the Report No. on the Upload Form (then Save) before sending {$appNo}."], 409);
+            }
+        }
+
         $me  = (array) service('auth')->user();
         $uid = bin2hex(random_bytes(12));
         $this->table();

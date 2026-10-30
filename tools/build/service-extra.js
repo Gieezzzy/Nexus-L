@@ -34,3 +34,23 @@ async function readGridRow(appNo) {
   };
   return { state: 'ok', found: true, reportNo: at('Report No.'), issueDate: at('Report Issue Date'), status: at('Job Status'), result: at('Overall Result') };
 }
+
+/** The messages InterLink shows in a pop-up bubble (a "toast") after Save, e.g. "A report with the entered report number has already exists!". */
+function readNotices() {
+  const visible = (el) => !!el && el.offsetParent !== null && el.getBoundingClientRect().width > 0;
+  const word = /(already exist|has already|duplicate|invalid|cannot|can not|unable|error|failed|not allowed|is required|must be)/i;
+  const out = [];
+  for (const el of document.querySelectorAll('body *')) {
+    if (el.children.length > 2 || !visible(el)) continue;
+    const t = (el.innerText || '').replace(/\s+/g, ' ').trim();
+    if (t.length < 12 || t.length > 220 || !word.test(t)) continue;
+    // a bubble floats over the page: it, or something around it, is fixed or absolutely placed
+    let p = el, floating = false;
+    for (let i = 0; i < 6 && p && !floating; i++, p = p.parentElement) {
+      const pos = getComputedStyle(p).position;
+      floating = (pos === 'fixed' || pos === 'absolute') && p.getBoundingClientRect().width < 700;
+    }
+    if (floating && !out.includes(t)) out.push(t);
+  }
+  return out.slice(0, 5);
+}
