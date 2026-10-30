@@ -53,7 +53,7 @@
   // PIC's own Chrome (their own InterLink sign-in) opens the form, fills it, attaches the PDF and saves it ---------------
   // 'none' = not installed, 'old' = installed but older than 1.3.1 (its Home -> grid navigation and reading do not work),
   // 'ok'. A page that was open before the extension was updated still carries the old version, so a reload fixes 'old'.
-  const MIN_SENDER = '1.5.8';   // 1.5.8 adds a further copy of a test for each reading InterLink has no row for (a second Corrosion reading)
+  const MIN_SENDER = '1.5.9';   // 1.5.9 names the Corrosion copies Specimen 1 / Specimen 2 like the report
   const senderState = () => {
     if (document.documentElement.dataset.nxlSender !== '1') return 'none';
     const a = String(document.documentElement.dataset.nxlSenderVersion || '0').split('.').map(Number);

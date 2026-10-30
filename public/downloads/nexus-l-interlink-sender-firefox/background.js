@@ -544,7 +544,9 @@ async function fillAndAttach(job) {
         // a further copy of the test, added for one reading the first copy had no row for
         const rd = ex.reading;
         const own = idxs.find((i) => rd.element && rd.element.toLowerCase() === elementOf(i));
-        fillRow(own !== undefined ? own : idxs[0], rd.value, rd.requirement || it.requirement, rd.unit || it.unit, rd.rating);
+        const at = own !== undefined ? own : idxs[0];
+        fillRow(at, rd.value, rd.requirement || it.requirement, rd.unit || it.unit, rd.rating);
+        const el1 = cell(at, 'FLD03'); if (el1 && rd.element) setNative(el1, rd.element);
       } else if (used) {
         it.readings.filter((r) => r.element && !taken.has(r)).forEach(extra);
       } else if (!used) {
@@ -561,6 +563,7 @@ async function fillAndAttach(job) {
           // one row for a test that has several readings: the first goes in it, the others on further copies of the test
           const f = it.readings[0];
           fillRow(bestIdx, f.value, f.requirement || it.requirement, f.unit || it.unit, f.rating);
+          const el0 = cell(bestIdx, 'FLD03'); if (el0 && f.element) setNative(el0, f.element);     // the element name is editable: "Specimen 1" as in the report
           it.readings.slice(1).forEach(extra);
         } else fillRow(bestIdx, it.value, it.requirement, it.unit, it.result);
       }
