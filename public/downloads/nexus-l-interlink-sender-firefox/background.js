@@ -468,6 +468,9 @@ async function fillAndAttach(job) {
   const dirOf = (n) => ((String(n || '').match(/-\s*(Length|Width)\s*\(\s*[LW]\s*\)\s*$/i) || [])[1] || '');
   const baseOf = (n) => String(n || '').replace(/\s*-\s*(Length|Width)\s*\(\s*[LW]\s*\)\s*$/i, '').trim();
   const worst = (a, b) => ([a, b].includes('Fail') ? 'Fail' : [a, b].includes('Data') ? 'Data' : (a || b || 'Pass'));
+  // Only these tests get their readings (values, requirement, rating) typed in; every other test is added with its Sample ID, Test Item
+  // Name, Test Method and the Test Elements InterLink lists for it, and its reading page is left alone
+  const VALUE_CODES = ['VF-E04', 'VF-E09', 'VF-E19'];
   const wanted = [];
   for (const it of T.items || []) {
     const code = codeOf(it.test_code || it.test_method);
@@ -477,7 +480,7 @@ async function fillAndAttach(job) {
     const name = baseOf(it.test_name);
     let g = wanted.find((x) => x.code === code && x.name === name);
     if (!g) {
-      g = { code, name, sample: it.sample_id_code || 'S001', result: '', parts: [], readings: [], value: '', requirement: '', unit: '' };
+      g = { code, values: VALUE_CODES.includes(code), name, sample: it.sample_id_code || 'S001', result: '', parts: [], readings: [], value: '', requirement: '', unit: '' };
       wanted.push(g);
     }
     g.result = worst(g.result, it.result_status || it.test_result || 'Pass');
@@ -597,7 +600,7 @@ async function fillAndAttach(job) {
     // back on the main page after a reading: next test's reading, or on to the attachment
     const rows = [...document.querySelectorAll('input[name*="FLD07_TEST_ITEM_INP_"][name$="txtSingleValuePickerDisp"]')];
     const next = rows.map((el, n) => ({ n: Number((el.name.match(/TEST_ITEM_INP_(\d+)_txtSingle/) || [])[1]), code: codeOf(el.value), shown: el.value }))
-      .find((r) => r.code && !(job.readN || []).includes(r.n) && groupFor(r.code, r.shown));
+      .find((r) => r.code && !(job.readN || []).includes(r.n) && (groupFor(r.code, r.shown) || {}).values);
     if (next) {
       const icon = document.querySelector(`input[name$="uc1_TEST_ITEM_INP_${next.n}$btnAddReading"]`);
       if (icon) { icon.click(); return { state: 'posting', patch: { phase: 'readings', curN: next.n } }; }
@@ -724,7 +727,7 @@ async function fillAndAttach(job) {
       }
       if (added) filled += added;
       // then each added test's reading is filled on its own page (see "readings" above)
-      const rowsNow = [...document.querySelectorAll('input[name*="FLD07_TEST_ITEM_INP_"][name$="txtSingleValuePickerDisp"]')].filter((el) => el.value);
+      const rowsNow = [...document.querySelectorAll('input[name*="FLD07_TEST_ITEM_INP_"][name$="txtSingleValuePickerDisp"]')].filter((el) => el.value && (groupFor(codeOf(el.value), el.value) || {}).values);
       if (added && rowsNow.length) {
         const first = rowsNow[0];
         const n0 = Number((first.name.match(/TEST_ITEM_INP_(\d+)_txtSingle/) || [])[1]);
