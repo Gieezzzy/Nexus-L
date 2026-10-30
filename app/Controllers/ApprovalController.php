@@ -239,7 +239,8 @@ class ApprovalController extends BaseController
             $a = null;
         }
         $token   = bin2hex(random_bytes(20));
-        $expires = date('Y-m-d H:i:s', time() + self::LINK_MINUTES * 60);
+        $linkMinutes = max(1, (int) \App\Libraries\SystemSettings::get('approval.link_minutes', self::LINK_MINUTES));
+        $expires     = date('Y-m-d H:i:s', time() + $linkMinutes * 60);
         if ($a && $a['status'] === 'pending') {
             // asked again (new file, or the link expired): the old link dies, a different one is made
             $key = $a['file_key'] ?: $a['token'];
@@ -263,7 +264,7 @@ class ApprovalController extends BaseController
         }
         $signers = array_column($signRows, 'user_id');
         $this->synology($signers, "NEXUS-L: report {$lr['lab_ref_no']} (" . ($app ?: $lr['tr_no']) . ", {$lr['overall_result']}) from "
-            . ($me['name'] ?? 'the lab') . " is waiting for your approval before it goes to InterLink.\nThis link works once and expires in " . self::LINK_MINUTES . " minutes:\n" . site_url('approve/' . $token));
+            . ($me['name'] ?? 'the lab') . " is waiting for your approval before it goes to InterLink.\nThis link works once and expires in " . $linkMinutes . " minutes:\n" . site_url('approve/' . $token));
 
         return $this->json(['ok' => true, 'approval' => $this->publicRow($this->latest($lr['lab_ref_no']))]);
     }

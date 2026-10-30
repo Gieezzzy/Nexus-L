@@ -1,0 +1,19 @@
+.st{max-width:980px;display:flex;flex-direction:column;gap:14px}
+.st h3{margin:0 0 4px}
+.st code{background:rgba(148,163,184,.18);border-radius:4px;padding:0 4px;font-size:12px}
+.st-row{display:flex;flex-direction:column;gap:3px;margin:8px 0;font-size:13px}
+.st-row input[type=text],.st-row input[type=password],.st-row input[type=number]{padding:7px 9px;border:1px solid var(--line,#cbd5e1);border-radius:8px;background:#fff;font-size:13px;width:100%;box-sizing:border-box}
+.st-label{font-weight:600}
+.st-check{flex-direction:row;align-items:center;flex-wrap:wrap;gap:8px}
+.st-check small{flex-basis:100%}
+.st-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:2px 14px}
+.st-grid-2{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.st-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}
+.st-msg{font-size:13px}
+.st-ok{color:#15803d;font-weight:600}
+.st-bad{color:#b91c1c;font-weight:600}
+.st-now{font-size:13px;line-height:1.6;margin:6px 0}
+.st-progress{margin-top:12px}
+.st-bar{height:10px;border-radius:6px;background:rgba(148,163,184,.25);overflow:hidden}
+.st-fill{height:100%;width:0;background:#2563eb;transition:width .4s}
+.st-log{max-height:220px;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:8px;padding:8px 10px;font-size:12px;margin:8px 0 0;white-space:pre-wrap}

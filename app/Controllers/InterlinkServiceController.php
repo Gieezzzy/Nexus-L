@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Libraries\SynologyChat;
+use App\Libraries\SystemSettings;
 
 /**
  * Hands a report to the NEXUS-L InterLink background service (tools/interlink-service, a C# program with an invisible browser) and
@@ -20,17 +21,17 @@ class InterlinkServiceController extends BaseController
 
     private function baseUrl(): string
     {
-        return rtrim((string) env('interlinkService.url', ''), '/');
+        return rtrim((string) SystemSettings::get('interlink.service.url', ''), '/');
     }
 
     private function key(): string
     {
-        return (string) env('interlinkService.key', '');
+        return (string) SystemSettings::get('interlink.service.key', '');
     }
 
     private function enabled(): bool
     {
-        return $this->baseUrl() !== '' && strlen($this->key()) >= 16;
+        return SystemSettings::bool('interlink.service.enabled', true) && $this->baseUrl() !== '' && strlen($this->key()) >= 16;
     }
 
     private function json(array $data, int $code = 200)

@@ -4,6 +4,13 @@
 
 ---
 
+## Phase 199 - Settings Page (Admin only) (2026-10-30)
+- New sidebar item **Settings**, visible and reachable only for Role = Admin (`SettingsController`, routes in the `auth:admin` group, checked again in every method). Values live in the new table `tbl_system_settings` (`App\Libraries\SystemSettings`; unsaved settings fall back to their old defaults / .env values, so nothing changes until saved).
+- **InterLink service:** address (IP + port that receives the payload), shared key, on/off, with a Test. `InterlinkServiceController` reads them from the settings.
+- **Database:** shows the connection in use, tests another one, and **Use this database** writes `database.default.*` into `.env` (the place the code reads; a copy of the old file goes to `writable/env-backups`; the password is never sent back to the browser).
+- **Transfer to another database:** `php spark settings:transfer <job>` (started from the page, runs in the background, progress polled): copies every table (structure + rows) into another database; tables that already hold rows are skipped unless overwrite is chosen; the target password is removed from the job file at the end.
+- More settings: the values a new InterLink report starts with (service provider, lab location, company, vendor, factory, brand, season, ...: they were fixed in `saveReport`), the approval link time (was a constant), Synology Chat address / token / prefix (override `.env`).
+
 ## Phase 198 - InterLink Background Service (C#, invisible browser), Sender 1.7.0, Detail Page, Save (2026-10-30)
 - **`tools/interlink-service/`** (C# .NET 9 + Playwright, headless Chromium): NEXUS-L hands an approved report to it (`InterlinkServiceController`: `interlink/service/submit|status|feed`, key-protected `callback` / `verify`, table `tbl_interlink_service_jobs`); it does Add / Edit in InterLink in the background with a shared service account (session saved once with `--signin`, no password stored), asks NEXUS-L again before Save, and reports back. NEXUS-L shows a toast wherever the user is and sends the Synology message `Labreference / ReportNO / submitted to InterLink`. The browser extension stays as the fallback. The page logic is shared: `tools/build/build-service-scripts.js` cuts it out of the extension's `background.js`.
 - Extension 1.5.x-1.7.0: tests grouped as InterLink has them (Tensile Length + Width = one test), readings go to the rows named like them; no values are typed for any test (only Sample ID, Test Item Name, Test Method, Test Elements); the send tells InterLink's Add / Edit menu which one to use.

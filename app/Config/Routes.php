@@ -122,6 +122,14 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
 
 // Report Designer: admins only.
 $routes->group('', ['filter' => 'auth:admin'], static function (RouteCollection $routes): void {
+    // Settings (Admin only): InterLink service address and key, the database in use and a transfer to another one, report defaults
+    $routes->get('settings', 'SettingsController::index', ['as' => 'settings']);
+    $routes->post('settings/save', 'SettingsController::save');
+    $routes->post('settings/service/test', 'SettingsController::testService');
+    $routes->post('settings/db/test', 'SettingsController::dbTest');
+    $routes->post('settings/db/switch', 'SettingsController::dbSwitch');
+    $routes->post('settings/transfer/start', 'SettingsController::transferStart');
+    $routes->get('settings/transfer/status', 'SettingsController::transferStatus');
     $routes->get('designer', 'DesignerController::index', ['as' => 'designer']);
     $routes->post('designer/save', 'DesignerController::save');
     $routes->post('designer/reset', 'DesignerController::reset');

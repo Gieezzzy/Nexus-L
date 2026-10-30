@@ -16,6 +16,20 @@ class SynologyChat
     public function __construct(?Synology $config = null)
     {
         $this->config = $config ?? config(Synology::class);
+        // the Settings page (Admin) can override the address, token and prefix of the .env file
+        try {
+            if ($v = SystemSettings::get('synology.base_url')) {
+                $this->config->baseUrl = (string) $v;
+            }
+            if ($v = SystemSettings::get('synology.bot_token')) {
+                $this->config->botToken = (string) $v;
+            }
+            if ($v = SystemSettings::get('synology.bot_prefix')) {
+                $this->config->botPrefix = (string) $v;
+            }
+        } catch (\Throwable $e) {
+            // settings not readable: the .env values stay
+        }
     }
 
     public function lastError(): ?string
