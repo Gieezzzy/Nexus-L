@@ -35,6 +35,9 @@ class ReportTests
         'peelstrength'   => ['Peel Strength', 'VF-B03 (2019/05)', 'kgf/cm'],
         'shearstrength'  => ['Shear Strength', 'VF-B03 (2019/05)', 'kgf/cm2'],
         'mullen'         => ['Mullen Burst', 'VF-B02 (2019/05)', 'kgf/cm2'],
+        'baumanntear'    => ['Baumann Tear', 'VF-B09 (2019/05)', 'kgf'],
+        'bally'          => ['Bally Flex', 'VF-D01 (2019/06)', 'cycles'],
+        'martindale'     => ['Martindale', 'VF-C04 (2024/12)', 'cycles'],
         'laceTipRet'     => ['Lace Tip Retention', '', 'kgf'],
         'knotslip'       => ['Knot Slip', '', 'kgf'],
         'laceabrasion'   => ['Lace Abrasion', '', 'cycles'],
@@ -45,7 +48,7 @@ class ReportTests
     ];
 
     /** keys of a test that hold something other than readings */
-    private const ALIAS = ['t' => ['Thickness'], 'w' => ['Weight'], 'trousertearl' => ['Trouser TearL'], 'trousertearw' => ['Trouser TearW'], 'corrosion' => ['CorrosionRes'], 'ctcdry' => ['CtCDry'], 'ctcwet' => ['CtCWet'], 'shrinkage12' => ['Shrinkageave12'], 'shrinkage34' => ['Shrinkageave34']];
+    private const ALIAS = ['t' => ['Thickness'], 'w' => ['Weight'], 'trousertearl' => ['Trouser TearL'], 'trousertearw' => ['Trouser TearW'], 'ctwb' => ['CtWBackSide'], 'ctp' => ['CtPTopSide'], 'ctpb' => ['CtPBackSide'], 'corrosion' => ['CorrosionRes'], 'ctcdry' => ['CtCDry'], 'ctcwet' => ['CtCWet'], 'shrinkage12' => ['Shrinkageave12'], 'shrinkage34' => ['Shrinkageave34']];
 
     public static function result(string $rating): string
     {
@@ -77,7 +80,15 @@ class ReportTests
     {
         $lb = strtolower($base);
         [$name] = self::known($lb);
-        if ($name !== '' && preg_match('/^(tensile|tensileaa|elongation|trousertear|stitchtear)([lw])$/i', $base, $m)) {
+        if (preg_match('/^bally(dry|wet|ah)([lw])$/i', $base, $m)) {
+            $cond = ['dry' => 'Dry', 'wet' => 'Wet', 'ah' => 'After Hydrolysis'][strtolower($m[1])];
+
+            return "Bally Flex ({$cond}) - " . (strtolower($m[2]) === 'l' ? 'Length (L)' : 'Width (W)');
+        }
+        if (preg_match('/^martindale([dw])(\d)$/i', $base, $m)) {
+            return 'Martindale (' . (strtolower($m[1]) === 'd' ? 'Dry' : 'Wet') . ' ' . $m[2] . ')';
+        }
+        if ($name !== '' && preg_match('/^(tensile|tensileaa|elongation|trousertear|stitchtear|baumanntear)([lw])$/i', $base, $m)) {
             return $name . ' - ' . (strtolower($m[2]) === 'l' ? 'Length (L)' : 'Width (W)');
         }
         if ($name !== '') {
@@ -154,7 +165,7 @@ class ReportTests
                     continue;
                 }
                 foreach ($prefixes as $pf) {
-                    if (preg_match('/^' . preg_quote($pf, '/') . '(?:txt)?(\d*|_?ave)$/i', $k, $mm)) {
+                    if (preg_match('/^' . preg_quote($pf, '/') . '(?:txt)?(\d*|_?ave|wool|acrylic|polyester|nylon|cotton|acetate)$/i', $k, $mm)) {
                         $v = trim((string) ($rec[$k] ?? ''));
                         if ($v !== '' && ! preg_match('/^0(\.0+)?$/', $v)) {
                             $found[$k] = [$v, strtolower($mm[1])];
@@ -164,6 +175,12 @@ class ReportTests
                 }
             }
             if (! $found) {
+                // rated (PASS / FAIL) with no readings stored: still a test of this report, listed with its result
+                [, $m0, $u0] = self::known($lb);
+                if ($m0 !== '') {
+                    $seen[$lb] = true;
+                    $items[]   = self::item(strtok($m0, ' '), self::label($base), $m0, '', '', $rating, $rating);
+                }
                 continue;
             }
             $seen[$lb] = true;
@@ -190,7 +207,7 @@ class ReportTests
             $n = 0;
             foreach ($values as $f) {
                 $n++;
-                $reads[] = self::reading($name, $method, '', 'Specimen ' . ($f[1] !== '' ? $f[1] : $n), $f[0], $unit, $std, $rating);
+                $reads[] = self::reading($name, $method, '', ctype_alpha($f[1]) && $f[1] !== '' ? ucfirst($f[1]) : 'Specimen ' . ($f[1] !== '' ? $f[1] : $n), $f[0], $unit, $std, $rating);
             }
             if ($ave !== '') {
                 $reads[] = self::reading($name, $method, '', 'Average', $ave, $unit, $std, $rating);

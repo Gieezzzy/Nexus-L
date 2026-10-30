@@ -1518,7 +1518,7 @@
       const samples = d.samples || [];
       const code = (x) => ((String(x.test_code || x.test_method || '').match(/\b(VF-[A-Z]\d{2}|SATRA TM ?\d+)/i) || [])[1] || '').toUpperCase();
       const dirOf = (n) => ((String(n || '').match(/-\s*(Length|Width)\s*\(\s*[LW]\s*\)\s*$/i) || [])[1] || '');
-      const baseOf = (n) => String(n || '').replace(/\s*-\s*(Length|Width)\s*\(\s*[LW]\s*\)\s*$/i, '').trim();
+      const baseOf = (n) => String(n || '').replace(/\s*-\s*(Length|Width)\s*\(\s*[LW]\s*\)\s*$/i, '').replace(/\s*\(.*$/, '').trim() || String(n || '').trim();   // Bally Flex (Dry) - Length (L) ... are one test, as in InterLink
       // only the tests that have an InterLink method code are sent to InterLink, so only those are listed (as in InterLink's own page)
       const items = (d.items || []).filter((x) => code(x));
       const sentNames = new Set(items.map((x) => x.test_name));

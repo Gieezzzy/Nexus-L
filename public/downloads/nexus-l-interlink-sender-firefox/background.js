@@ -488,7 +488,9 @@ async function fillAndAttach(job) {
   const codeOf = (str) => ((String(str || '').match(/\b(VF-[A-Z]\d{2}|SATRA TM ?\d+)/i) || [])[1] || '').toUpperCase();
   const T = job.tables || {};
   const dirOf = (n) => ((String(n || '').match(/-\s*(Length|Width)\s*\(\s*[LW]\s*\)\s*$/i) || [])[1] || '');
-  const baseOf = (n) => String(n || '').replace(/\s*-\s*(Length|Width)\s*\(\s*[LW]\s*\)\s*$/i, '').trim();
+  const noDir = (n) => String(n || '').replace(/\s*-\s*(Length|Width)\s*\(\s*[LW]\s*\)\s*$/i, '').trim();
+  // the report's "Bally Flex (Dry) - Length (L)", "Bally Flex (Wet) - Width (W)" ... are ONE test in InterLink (Bally Flex): the name before the first bracket
+  const baseOf = (n) => noDir(n).replace(/\s*\(.*$/, '').trim() || noDir(n);
   const worst = (a, b) => ([a, b].includes('Fail') ? 'Fail' : [a, b].includes('Data') ? 'Data' : (a || b || 'Pass'));
   // No test gets values typed in: a test is added with its Sample ID, Test Item Name, Test Method and its Test Elements. InterLink lists
   // the elements itself; only these tests have theirs set from the report (Heat Aging's Color Change emptied, Corrosion's rows named
@@ -503,7 +505,7 @@ async function fillAndAttach(job) {
     const name = baseOf(it.test_name);
     let g = wanted.find((x) => x.code === code && x.name === name);
     if (!g) {
-      g = { code, values: VALUE_CODES.includes(code), name, sample: it.sample_id_code || 'S001', result: '', parts: [], readings: [], value: '', requirement: '', unit: '' };
+      g = { code, values: VALUE_CODES.includes(code), name, full: noDir(it.test_name), sample: it.sample_id_code || 'S001', result: '', parts: [], readings: [], value: '', requirement: '', unit: '' };
       wanted.push(g);
     }
     g.result = worst(g.result, it.result_status || it.test_result || 'Pass');
@@ -533,7 +535,7 @@ async function fillAndAttach(job) {
     const rowName = (document.querySelector(`input[name*="FLD07_TEST_ITEM_INP_${job.curN}_txtSingleValuePickerDisp"]`) || {}).value || '';
     const it = groupFor(codeOf(rowName), rowName) || wanted[0];
     const nums = (str) => (String(str || '').match(/\d+/g) || []);
-    const want = new Set(nums(it && it.name));
+    const want = new Set(nums(it && (it.full || it.name)));
     const box = d.getElementById('txtSelectTestCond');
     if (!box.value) {
       d.getElementById('btnTestCondition').click();
@@ -591,7 +593,7 @@ async function fillAndAttach(job) {
         // otherwise ONE row stands for the whole test: the row whose condition numbers (60℃ / 95% / 7 days) appear in the test's name,
         // else the first row
         const nums = (str) => (String(str).match(/\d+/g) || []);
-        const want = new Set(nums(it.name));
+        const want = new Set(nums(it.full || it.name));
         let bestIdx = idxs[0], bestScore = -1;
         for (const i of idxs) {
           const sc = nums(elementOf(i)).filter((x) => want.has(x)).length;
