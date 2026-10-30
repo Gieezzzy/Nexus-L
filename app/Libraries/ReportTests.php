@@ -45,7 +45,7 @@ class ReportTests
     ];
 
     /** keys of a test that hold something other than readings */
-    private const ALIAS = ['t' => ['Thickness'], 'w' => ['Weight'], 'corrosion' => ['CorrosionRes'], 'ctcdry' => ['CtCDry'], 'ctcwet' => ['CtCWet'], 'shrinkage12' => ['Shrinkageave12'], 'shrinkage34' => ['Shrinkageave34']];
+    private const ALIAS = ['t' => ['Thickness'], 'w' => ['Weight'], 'trousertearl' => ['Trouser TearL'], 'trousertearw' => ['Trouser TearW'], 'corrosion' => ['CorrosionRes'], 'ctcdry' => ['CtCDry'], 'ctcwet' => ['CtCWet'], 'shrinkage12' => ['Shrinkageave12'], 'shrinkage34' => ['Shrinkageave34']];
 
     public static function result(string $rating): string
     {
