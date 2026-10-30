@@ -492,10 +492,9 @@ async function fillAndAttach(job) {
   // the report's "Bally Flex (Dry) - Length (L)", "Bally Flex (Wet) - Width (W)" ... are ONE test in InterLink (Bally Flex): the name before the first bracket
   const baseOf = (n) => noDir(n).replace(/\s*\(.*$/, '').trim() || noDir(n);
   const worst = (a, b) => ([a, b].includes('Fail') ? 'Fail' : [a, b].includes('Data') ? 'Data' : (a || b || 'Pass'));
-  // No test gets values typed in: a test is added with its Sample ID, Test Item Name, Test Method and its Test Elements. InterLink lists
-  // the elements itself; only these tests have theirs set from the report (Heat Aging's Color Change emptied, Corrosion's rows named
-  // like the report's specimens), so only their reading pages are opened
-  const VALUE_CODES = ['VF-E04', 'VF-E09', 'VF-E19'];
+  // No test gets values typed in: a test is added with its Sample ID, Test Item Name, Test Method and its Test Elements. InterLink only creates
+  // the reading rows of a test (its Test Elements) when the test's reading page is opened and left with "Update and Go Back", so the reading
+  // page of EVERY test is opened (nothing is typed there, except the element names of Heat Aging's Color Change and Corrosion).
   const wanted = [];
   for (const it of T.items || []) {
     const code = codeOf(it.test_code || it.test_method);
@@ -505,7 +504,7 @@ async function fillAndAttach(job) {
     const name = baseOf(it.test_name);
     let g = wanted.find((x) => x.code === code && x.name === name);
     if (!g) {
-      g = { code, values: VALUE_CODES.includes(code), name, full: noDir(it.test_name), sample: it.sample_id_code || 'S001', result: '', parts: [], readings: [], value: '', requirement: '', unit: '' };
+      g = { code, values: true, name, full: noDir(it.test_name), sample: it.sample_id_code || 'S001', result: '', parts: [], readings: [], value: '', requirement: '', unit: '' };
       wanted.push(g);
     }
     g.result = worst(g.result, it.result_status || it.test_result || 'Pass');
