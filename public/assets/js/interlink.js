@@ -1807,12 +1807,33 @@
 
   // Lab Reference of the open application: the one picked in the sync dialog, the one saved on the report, or the
   // Lab Reference whose TR No. is this application
+  // Questions are asked in the page itself: the browser's own prompt() / confirm() are silently refused once a page has asked a few
+  const askDialog = (message, { input = null, ok = 'OK', cancel = 'Cancel' } = {}) => new Promise((resolve) => {
+    document.getElementById('nx-ask')?.remove();
+    const m = document.createElement('div');
+    m.id = 'nx-ask';
+    m.style.cssText = 'position:fixed;inset:0;z-index:10100;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+    m.innerHTML = `<div style="background:#fff;border-radius:10px;max-width:520px;width:100%;padding:18px;box-shadow:0 20px 50px rgba(0,0,0,.35)">
+      <div style="white-space:pre-line;margin-bottom:12px">${escHtml(message)}</div>
+      ${input === null ? '' : `<input type="text" data-ask="in" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:12px" value="${escHtml(input)}">`}
+      <div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" class="uf-action-btn" data-ask="no">${escHtml(cancel)}</button><button type="button" class="uf-action-btn uf-btn-gen" data-ask="yes">${escHtml(ok)}</button></div></div>`;
+    const done = (v) => { m.remove(); resolve(v); };
+    m.addEventListener('click', (e) => {
+      const a = e.target.dataset && e.target.dataset.ask;
+      if (a === 'yes') done(input === null ? true : (m.querySelector('[data-ask="in"]').value || '').trim());
+      else if (a === 'no' || e.target === m) done(input === null ? false : null);
+    });
+    m.addEventListener('keydown', (e) => { if (e.key === 'Enter' && input !== null) { e.preventDefault(); m.querySelector('[data-ask="yes"]').click(); } if (e.key === 'Escape') done(input === null ? false : null); });
+    document.body.appendChild(m);
+    (m.querySelector('[data-ask="in"]') || m.querySelector('[data-ask="yes"]')).focus();
+  });
+  state.appLabRef = state.appLabRef || {};                                  // the Lab Ref chosen for an application in this session
   const currentLabRef = () => {
     const appNo = state.activeAppNo || $('#uf_application_no')?.value || '';
     const rep = state.reports.find((r) => r.application_no === appNo) || {};
     const byTr = state.labrefs.find((l) => appNo && String(l.tr_no || '').trim() === appNo);
     const fromName = (($('#uf_attachment_name')?.value || '').match(/^(.+?)_TestReport\.pdf$/i) || [])[1];
-    return String($('#dlg-lr-labref')?.value || rep.lab_ref_no || byTr?.lab_ref_no || fromName || '').trim();
+    return String($('#dlg-lr-labref')?.value || rep.lab_ref_no || byTr?.lab_ref_no || state.appLabRef[appNo] || fromName || '').trim();
   };
 
   // Report view (like Print Preview): the finished report sheet is read on screen before any file is downloaded
@@ -2058,8 +2079,9 @@
     const btn = $('#uf-btn-generate-pdf');
     let labRef = currentLabRef();
     if (!labRef) {
-      labRef = (prompt('No Lab Reference is linked to this application yet. Enter the Lab Ref. No. to build the report from:', '') || '').trim();
+      labRef = String(await askDialog('No Lab Reference is linked to this application yet.\nEnter the Lab Ref. No. to build the report from:', { input: '', ok: 'Generate' }) || '').trim();
       if (!labRef) return;
+      state.appLabRef[state.activeAppNo || $('#uf_application_no')?.value || ''] = labRef;
     }
     // a report already exists for this Lab Reference: show it and let the user choose to make a new version
     let regenerate = false;
@@ -2067,10 +2089,10 @@
       const st = await apiFetch(`dtr/approval/status?lab_ref=${encodeURIComponent(labRef)}`);
       const ex = st.approval;
       if (ex && ex.status === 'approved') {
-        if (!confirm(`A report for ${labRef} is already approved (by ${ex.decided_name}, ${ex.decided_at}).\n\nGenerate it again? Use this only when the report itself was changed or the sign-off names were wrong. To change just the file name, edit the name box or use Change; no new report is needed.\nThe new version needs approval again; the approved one stays valid until then.`)) return;
+        if (!await askDialog(`A report for ${labRef} is already approved (by ${ex.decided_name}, ${ex.decided_at}).\n\nGenerate it again? Use this only when the report itself was changed or the sign-off names were wrong. To change just the file name, edit the name box or use Change; no new report is needed.\nThe new version needs approval again; the approved one stays valid until then.`, { ok: 'Generate again' })) return;
         regenerate = true;
       } else if (ex && ex.status === 'pending' && !ex.expired) {
-        if (!confirm(`A report for ${labRef} is waiting for approval.\n\nGenerate it again? The waiting link is replaced by a new one for the new report.`)) return;
+        if (!await askDialog(`A report for ${labRef} is waiting for approval.\n\nGenerate it again? The waiting link is replaced by a new one for the new report.`, { ok: 'Generate again' })) return;
       }
     } catch (e) { /* no status: generate as usual */ }
     const label = btn.textContent;
