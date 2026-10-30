@@ -54,6 +54,12 @@ Everything submitted goes into InterLink under the one shared account.
 (run `node tools/build/build-service-scripts.js` first if the extension's page functions changed). The publish does not touch
 `appsettings.Local.json` or `data\`.
 
+## Is it really saved? (proof and pictures)
+
+* After pressing Save the service does **not** take "no error on the form" for success. It opens InterLink's search grid again and checks that the application's row now shows a **Report No.**; if not, the job fails with that reason, and the user is told on Synology.
+* InterLink's own message boxes (alert / confirm) are read, written to the log ("InterLink says: ...") and accepted, instead of being dismissed unseen.
+* Pictures of the Upload Form after Save, and of the page where a job stopped, are kept in `data\shots` (the last 40).
+
 ## Several users at once: the queue (first in, first out)
 
 * Everybody's reports go into one line and are done **one at a time, in the order they arrived** (all of them use the one InterLink session of the shared account).

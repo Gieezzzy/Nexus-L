@@ -89,33 +89,23 @@ public sealed class InterlinkRunner : IAsyncDisposable
         var browser = await BrowserAsync();
         await using var ctx = await browser.NewContextAsync(new BrowserNewContextOptions { StorageStatePath = sessionFile, ViewportSize = new ViewportSize { Width = 1500, Height = 950 } });
         await ctx.AddInitScriptAsync(_core);   // window.__nx exists in every InterLink document, the Upload Form popup included
+        // InterLink's own message boxes (alert / confirm): an invisible browser would dismiss them unseen. They are read, logged, and accepted.
+        var dialogs = new List<string>();
+        ctx.Dialog += async (_, d) =>
+        {
+            var text = (d.Message ?? "").Replace("\r", " ").Replace("\n", " ").Trim();
+            lock (dialogs) dialogs.Add(text);
+            say($"InterLink says: {text}");
+            try { await d.AcceptAsync(); } catch (PlaywrightException) { /* already closed */ }
+        };
         var grid = await ctx.NewPageAsync();
         var signedIn = false;
+        IPage? current = null;                   // the page a picture is taken of when something goes wrong
         try
         {
             // 1. home, then the search grid
             say("Opening InterLink...");
-            await grid.GotoAsync(PortalHome, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 60000 });
-            var navigatedAt = DateTime.MinValue;
-            var onGrid = false;
-            for (var i = 0; i < 120 && !onGrid; i++)
-            {
-                ct.ThrowIfCancellationRequested();
-                if (OnSignIn(grid.Url)) throw new SignInRequiredException(SignInAgain);
-                var probe = await EvalAsync(grid, "gridProbe");
-                if (probe is { ValueKind: JsonValueKind.Object } p)
-                {
-                    if (p.TryGetProperty("grid", out var g) && g.ValueKind == JsonValueKind.True) onGrid = true;
-                    else if (p.TryGetProperty("home", out var h) && h.ValueKind == JsonValueKind.True && DateTime.UtcNow - navigatedAt > TimeSpan.FromSeconds(10))
-                    {
-                        say("Going to InterLink's search page...");
-                        await EvalAsync(grid, "goToGridFromHome");
-                        navigatedAt = DateTime.UtcNow;
-                    }
-                }
-                if (!onGrid) await Task.Delay(500, ct);
-            }
-            if (!onGrid) throw new InvalidOperationException("InterLink did not open its search grid in time.");
+            await ReachGridAsync(grid, say, ct);
             signedIn = true;
 
             // 2. the application's row: its Add / Edit menu opens the Upload Form in a popup
@@ -138,6 +128,7 @@ public sealed class InterlinkRunner : IAsyncDisposable
             ctx.Page -= OnPage;
             if (first != popupSource.Task) throw new InvalidOperationException("InterLink did not open the Upload Form.");
             var form = popupSource.Task.Result;
+            current = form;
 
             // 3. fill the Upload Form: several page loads (tabs, reading pages) until it reports "filled"
             var navCount = 0;
@@ -193,17 +184,48 @@ public sealed class InterlinkRunner : IAsyncDisposable
                 await SettleAsync(form, () => navCount, navBefore, 15000, ct);
             }
 
-            // 6. InterLink's answer
+            // 6. InterLink's answer on the form
+            await ShotAsync(form, req, "after-save");
             if (!form.IsClosed)
             {
                 var check = await EvalAsync(form, "checkSubmitted");
                 if (check is { ValueKind: JsonValueKind.Object } c && c.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.False)
                     throw new InvalidOperationException($"InterLink did not accept {req.ApplicationNo}: {Str(check, "message")}");
             }
+
+            // 7. proof: InterLink's own search grid must now show the report (a Report No. on the application's row). "No error on the form"
+            // is not proof that InterLink kept anything.
+            say("Checking in InterLink that the report was kept...");
+            var proof = await ctx.NewPageAsync();
+            current = proof;
+            await ReachGridAsync(proof, say, ct);
+            JsonElement? rowInfo = null;
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                rowInfo = await EvalAsync(proof, "readGridRow", req.ApplicationNo);
+                if (Str(rowInfo, "state") == "ok" && !string.IsNullOrWhiteSpace(Str(rowInfo, "reportNo"))) break;
+                await Task.Delay(3000, ct);
+                await proof.ReloadAsync(new PageReloadOptions { WaitUntil = WaitUntilState.DOMContentLoaded });
+                await ReachGridAsync(proof, say, ct);
+            }
+            var seenReportNo = Str(rowInfo, "reportNo");
+            if (string.IsNullOrWhiteSpace(seenReportNo))
+            {
+                await ShotAsync(proof, req, "not-kept");
+                string said;
+                lock (dialogs) said = dialogs.Count > 0 ? " InterLink said: " + string.Join(" | ", dialogs) : "";
+                throw new InvalidOperationException($"InterLink did not keep the report: its grid still shows no Report No. for {req.ApplicationNo} (status \"{Str(rowInfo, "status")}\").{said} A picture is in the service's data\\shots folder.");
+            }
+            say($"InterLink now shows Report No. {seenReportNo} for {req.ApplicationNo}.");
             var notes = "";
             if (filled is { ValueKind: JsonValueKind.Object } f2 && f2.TryGetProperty("notes", out var nn) && nn.ValueKind == JsonValueKind.Array && nn.GetArrayLength() > 0)
                 notes = " Not added: " + string.Join("; ", nn.EnumerateArray().Select(x => x.GetString())) + ".";
             say($"{req.ApplicationNo} was saved to InterLink.{notes}");
+        }
+        catch (Exception) when (current != null && !current.IsClosed)
+        {
+            await ShotAsync(current, req, "failed");   // the picture of where it stopped
+            throw;
         }
         finally
         {
@@ -212,6 +234,49 @@ public sealed class InterlinkRunner : IAsyncDisposable
                 try { await ctx.StorageStateAsync(new BrowserContextStorageStateOptions { Path = sessionFile }); }   // keeps the session fresh for the next job
                 catch (Exception e) { _log.LogWarning("Could not refresh the saved session: {Msg}", e.Message); }
             }
+        }
+    }
+
+    /// <summary>InterLink's home page, then its search grid (through the portal's own link)</summary>
+    private async Task ReachGridAsync(IPage page, Action<string> say, CancellationToken ct)
+    {
+        say("Opening InterLink...");
+        await page.GotoAsync(PortalHome, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 60000 });
+        var navigatedAt = DateTime.MinValue;
+        for (var i = 0; i < 120; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (OnSignIn(page.Url)) throw new SignInRequiredException(SignInAgain);
+            var probe = await EvalAsync(page, "gridProbe");
+            if (probe is { ValueKind: JsonValueKind.Object } p)
+            {
+                if (p.TryGetProperty("grid", out var g) && g.ValueKind == JsonValueKind.True) return;
+                if (p.TryGetProperty("home", out var h) && h.ValueKind == JsonValueKind.True && DateTime.UtcNow - navigatedAt > TimeSpan.FromSeconds(10))
+                {
+                    say("Going to InterLink's search page...");
+                    await EvalAsync(page, "goToGridFromHome");
+                    navigatedAt = DateTime.UtcNow;
+                }
+            }
+            await Task.Delay(500, ct);
+        }
+        throw new InvalidOperationException("InterLink did not open its search grid in time.");
+    }
+
+    /// <summary>a picture of a page, kept in data/shots (the last 40 are kept)</summary>
+    private async Task ShotAsync(IPage page, JobRequest req, string name)
+    {
+        try
+        {
+            var dir = Path.Combine(DataDir(_cfg), "shots");
+            Directory.CreateDirectory(dir);
+            var file = Path.Combine(dir, $"{DateTime.Now:yyyyMMdd-HHmmss}-{req.ApplicationNo}-{name}.png");
+            await page.ScreenshotAsync(new PageScreenshotOptions { Path = file, FullPage = true });
+            foreach (var old in new DirectoryInfo(dir).GetFiles("*.png").OrderByDescending(f => f.CreationTimeUtc).Skip(40)) old.Delete();
+        }
+        catch (Exception e)
+        {
+            _log.LogWarning("Could not take a picture ({Name}): {Msg}", name, e.Message);
         }
     }
 
