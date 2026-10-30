@@ -59,10 +59,14 @@ class InterlinkServiceController extends BaseController
             status VARCHAR(20) NOT NULL DEFAULT "queued",
             message VARCHAR(500) NOT NULL DEFAULT "",
             created_at DATETIME NOT NULL,
+            started_at DATETIME NULL,
             finished_at DATETIME NULL,
             UNIQUE KEY uq_job (job_uid),
             KEY ix_user (user_id, finished_at)
         ) DEFAULT CHARSET=utf8mb4');
+        if (! $this->db()->fieldExists('started_at', 'tbl_interlink_service_jobs')) {
+            $this->db()->query('ALTER TABLE tbl_interlink_service_jobs ADD COLUMN started_at DATETIME NULL AFTER created_at');
+        }
     }
 
     /** the Synology Chat message goes to one person at a time (Synology rejects a list of several recipients) */
@@ -132,6 +136,11 @@ class InterlinkServiceController extends BaseController
         $me  = (array) service('auth')->user();
         $uid = bin2hex(random_bytes(12));
         $this->table();
+        // one application is submitted once at a time: a second click, or a colleague, does not queue it again
+        $busy = $this->db()->table('tbl_interlink_service_jobs')->where('application_no', $appNo)->whereIn('status', ['queued', 'running'])->where('created_at >', date('Y-m-d H:i:s', time() - 1800))->orderBy('id')->get()->getRowArray();
+        if ($busy) {
+            return $this->json(['ok' => false, 'code' => 'already_queued', 'error' => "{$appNo} is already " . ($busy['status'] === 'running' ? 'being submitted' : 'waiting in the queue') . ($busy['user_name'] !== '' ? " (sent by {$busy['user_name']})" : '') . '.'], 409);
+        }
         $this->db()->table('tbl_interlink_service_jobs')->insert([
             'job_uid' => $uid, 'application_no' => $appNo, 'lab_ref_no' => $labRef, 'report_no' => $reportNo, 'mode' => $mode,
             'user_id' => (int) ($me['id'] ?? 0), 'user_name' => (string) ($me['name'] ?? $me['username'] ?? ''), 'status' => 'queued', 'created_at' => date('Y-m-d H:i:s'),
@@ -154,6 +163,11 @@ class InterlinkServiceController extends BaseController
                 'http_errors' => false,
             ]);
             $body = json_decode((string) $res->getBody(), true) ?: [];
+            if ($res->getStatusCode() === 409 && ($body['code'] ?? '') === 'already_queued') {
+                $this->db()->table('tbl_interlink_service_jobs')->where('job_uid', $uid)->delete();
+
+                return $this->json(['ok' => false, 'code' => 'already_queued', 'error' => (string) ($body['error'] ?? "{$appNo} is already in the queue.")], 409);
+            }
             if ($res->getStatusCode() !== 200 || empty($body['ok'])) {
                 throw new \RuntimeException((string) ($body['error'] ?? 'the service answered ' . $res->getStatusCode()));
             }
@@ -163,7 +177,7 @@ class InterlinkServiceController extends BaseController
             return $this->json(['ok' => false, 'code' => 'service_unreachable', 'error' => 'The InterLink background service could not take the report: ' . $e->getMessage()], 502);
         }
 
-        return $this->json(['ok' => true, 'job_uid' => $uid, 'waiting' => (int) ($body['waiting'] ?? 0), 'lab_ref_no' => $labRef, 'report_no' => $reportNo]);
+        return $this->json(['ok' => true, 'job_uid' => $uid, 'ahead' => (int) ($body['ahead'] ?? 0), 'waiting' => (int) ($body['waiting'] ?? 0), 'lab_ref_no' => $labRef, 'report_no' => $reportNo]);
     }
 
     /** POST interlink/service/callback (service key): the result of a job. The user gets a Synology message; the web feed shows the toast. */
@@ -179,8 +193,14 @@ class InterlinkServiceController extends BaseController
         if (! $job) {
             return $this->json(['ok' => false, 'error' => 'Unknown job.'], 404);
         }
-        $state = in_array($p['state'] ?? '', ['done', 'failed', 'signin-required'], true) ? $p['state'] : 'failed';
+        $state = in_array($p['state'] ?? '', ['running', 'done', 'failed', 'signin-required'], true) ? $p['state'] : 'failed';
         $msg   = mb_substr((string) ($p['message'] ?? ''), 0, 480);
+        if ($state === 'running') {
+            // the service took this report up: the user is told it has started (no Synology message for that)
+            $this->db()->table('tbl_interlink_service_jobs')->where('id', $job['id'])->where('finished_at IS NULL')->update(['status' => 'running', 'started_at' => date('Y-m-d H:i:s')]);
+
+            return $this->json(['ok' => true]);
+        }
         $this->db()->table('tbl_interlink_service_jobs')->where('id', $job['id'])->update(['status' => $state, 'message' => $msg, 'finished_at' => date('Y-m-d H:i:s')]);
 
         $lab = $job['lab_ref_no'];
@@ -221,6 +241,9 @@ class InterlinkServiceController extends BaseController
         $this->table();
         $out['running'] = $this->db()->table('tbl_interlink_service_jobs')->where('user_id', $uid)->whereIn('status', ['queued', 'running'])->where('created_at >', date('Y-m-d H:i:s', time() - 900))->countAllResults();
         if ($after !== '') {
+            foreach ($this->db()->table('tbl_interlink_service_jobs')->where('user_id', $uid)->where('started_at >', $after)->orderBy('id')->get(20)->getResultArray() as $j) {
+                $out['events'][] = ['kind' => 'info', 'text' => "{$j['application_no']} ({$j['lab_ref_no']}) is now being submitted to InterLink...", 'application_no' => $j['application_no']];
+            }
             foreach ($this->db()->table('tbl_interlink_service_jobs')->where('user_id', $uid)->where('finished_at >', $after)->orderBy('id')->get(20)->getResultArray() as $j) {
                 $out['events'][] = $j['status'] === 'done'
                     ? ['kind' => 'success', 'text' => "Labreference: {$j['lab_ref_no']} · ReportNO: {$j['report_no']} · submitted to InterLink", 'application_no' => $j['application_no']]

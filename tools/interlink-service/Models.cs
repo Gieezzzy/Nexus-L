@@ -17,6 +17,12 @@ public sealed class JobRequest
     public string CallbackUrl { get; set; } = "";
     /// <summary>the whole job as the page scripts expect it: controls, tables, pdf {name, b64}, mode ...</summary>
     public JsonObject Job { get; set; } = new();
+
+    /// <summary>arrival number: the queue is first in, first out by this number (kept on disk, so a restart keeps the order)</summary>
+    public long Seq { get; set; }
+    public DateTime ReceivedAt { get; set; } = DateTime.UtcNow;
+    /// <summary>how many times a start was made (a start that never ended, because the program stopped, is tried once more)</summary>
+    public int Attempts { get; set; }
 }
 
 public sealed class JobStatus
@@ -25,9 +31,13 @@ public sealed class JobStatus
     public string ApplicationNo { get; set; } = "";
     public string LabRefNo { get; set; } = "";
     public string ReportNo { get; set; } = "";
+    public string UserName { get; set; } = "";
     /// <summary>queued | running | done | failed | signin-required</summary>
     public string State { get; set; } = "queued";
     public string Message { get; set; } = "Waiting in the queue.";
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? StartedAt { get; set; }
     public DateTime? FinishedAt { get; set; }
+    /// <summary>how many reports are ahead of this one (the one being done now included); 0 = it is the next one / being done</summary>
+    public int Position { get; set; }
 }

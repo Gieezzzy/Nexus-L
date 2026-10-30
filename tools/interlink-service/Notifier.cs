@@ -36,6 +36,25 @@ public sealed class Notifier
         }
     }
 
+    /// <summary>"started": the user is told their report is now being submitted (one try; the final answer is the one that matters)</summary>
+    public async Task ProgressAsync(JobRequest job, JobStatus st)
+    {
+        if (string.IsNullOrWhiteSpace(job.CallbackUrl)) return;
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Post, job.CallbackUrl)
+            {
+                Content = JsonContent.Create(new { job_uid = job.JobUid, ok = true, state = "running", message = st.Message, application_no = job.ApplicationNo, lab_ref_no = job.LabRefNo, report_no = job.ReportNo }),
+            };
+            req.Headers.Add("X-Service-Key", _key);
+            using var res = await _http.SendAsync(req);
+        }
+        catch (Exception e)
+        {
+            _log.LogWarning("NEXUS-L progress call failed for {Job}: {Msg}", job.JobUid, e.Message);
+        }
+    }
+
     public async Task ReportAsync(JobRequest job, JobStatus st)
     {
         if (string.IsNullOrWhiteSpace(job.CallbackUrl)) return;

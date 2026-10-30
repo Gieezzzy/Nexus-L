@@ -54,13 +54,22 @@ Everything submitted goes into InterLink under the one shared account.
 (run `node tools/build/build-service-scripts.js` first if the extension's page functions changed). The publish does not touch
 `appsettings.Local.json` or `data\`.
 
+## Several users at once: the queue (first in, first out)
+
+* Everybody's reports go into one line and are done **one at a time, in the order they arrived** (all of them use the one InterLink session of the shared account).
+* Each job is kept on disk (`data\queue`) until it is done, so closing the program or restarting the computer loses nothing and keeps the order. A job that was being done when the program stopped is tried once more; stopped twice, it is reported as failed.
+* Every user gets their **own replies**, wherever they are in NEXUS-L: *queued* (with how many reports are ahead of it), *started*, and *finished* (a toast, plus a Synology message with `Labreference / ReportNO / submitted to InterLink`, or the reason it was not).
+* An application that is already waiting or being submitted is not queued again (two clicks, or two colleagues): the second user is told it is already in the queue.
+* `GET /queue` lists who is waiting, in order.
+
 ## Endpoints (header `X-Service-Key`)
 
 | | |
 |---|---|
 | `GET /health` | no key; `{ ok, waiting, signedIn, version }` |
 | `POST /jobs` | NEXUS-L's job: `{ job_uid, application_no, lab_ref_no, report_no, mode: add or edit, verify_url, callback_url, job: { controls, tables, pdf } }` |
-| `GET /jobs/{uid}` | state: queued, running, done, failed, signin-required |
+| `GET /jobs/{uid}` | state: queued, running, done, failed, signin-required, and how many are ahead of it |
+| `GET /queue` | who is waiting or running, in order |
 
 NEXUS-L side: `InterlinkServiceController` (`interlink/service/status|submit|feed`, and the key-protected `callback` and `verify`),
 table `tbl_interlink_service_jobs` (created on first use).

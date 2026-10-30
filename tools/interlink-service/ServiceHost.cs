@@ -75,7 +75,7 @@ public sealed class ServiceHost
         app.MapGet("/health", (JobQueue q) => Results.Ok(new
         {
             ok = true,
-            waiting = q.Waiting,
+            waiting = q.Waiting,                 // waiting + the one running
             signedIn = File.Exists(InterlinkRunner.SessionFile(app.Configuration)),
             version = typeof(ServiceHost).Assembly.GetName().Version?.ToString(3),
         }));
@@ -101,9 +101,16 @@ public sealed class ServiceHost
                 Job = job,
             };
             if (req.JobUid.Length < 8 || req.ApplicationNo.Length < 3) return Results.BadRequest(new { ok = false, error = "job_uid and application_no are required." });
-            var st = q.Enqueue(req);
-            return Results.Ok(new { ok = true, job_uid = st.JobUid, state = st.State, waiting = q.Waiting });
+            var (st, duplicate) = q.Enqueue(req);
+            if (duplicate)
+                return Results.Json(new { ok = false, code = "already_queued", error = $"{req.ApplicationNo} is already {(st.State == "running" ? "being submitted" : "waiting in the queue")}.", job_uid = st.JobUid, state = st.State, ahead = st.Position }, statusCode: 409);
+            return Results.Ok(new { ok = true, job_uid = st.JobUid, state = st.State, ahead = st.Position, waiting = q.Waiting });
         });
+
+        // who is waiting, in order (NEXUS-L's overview)
+        app.MapGet("/queue", (HttpRequest http, JobQueue q) =>
+            !KeyOk(http) ? Results.Json(new { ok = false, error = "Wrong or missing service key." }, statusCode: 401)
+                : Results.Ok(new { ok = true, jobs = q.Overview().Select(j => new { job_uid = j.JobUid, application_no = j.ApplicationNo, lab_ref_no = j.LabRefNo, user = j.UserName, state = j.State, ahead = j.Position, since = j.CreatedAt }) }));
 
         app.MapGet("/jobs/{uid}", (string uid, HttpRequest http, JobQueue q) =>
         {

@@ -159,7 +159,7 @@
           pdf_name: window.nxPdfName ? window.nxPdfName(appNo, labRef) : '',
         });
         if (window.nxSvcWatch) window.nxSvcWatch();
-        nxToast(`${appNo} is queued${j.waiting ? ` (${j.waiting} before it)` : ''}. You will be told here, and on Synology, when it is submitted.`, 'success', 8000);
+        nxToast(`${appNo} is in the queue${j.ahead ? `: ${j.ahead} report${j.ahead > 1 ? 's' : ''} before it` : ' and is next'}. You will be told here, and on Synology, when it is submitted.`, 'success', 8000);
         return;
       } catch (e) {
         if (!(e.code === 'service_unreachable' && hasSender())) { nxToast(e.message, 'error', 10000); return; }

@@ -200,7 +200,7 @@
         .then((j) => {
           if (!j || !j.ok) return;
           (j.events || []).forEach((ev) => {
-            if (window.nxToast) window.nxToast(ev.text, ev.kind === 'success' ? 'success' : 'error', 12000);
+            if (window.nxToast) window.nxToast(ev.text, ev.kind === 'success' ? 'success' : (ev.kind === 'info' ? 'info' : 'error'), ev.kind === 'info' ? 6000 : 12000);
             window.dispatchEvent(new CustomEvent('nxl:interlink-service', { detail: ev }));
           });
           cursor = j.cursor;
