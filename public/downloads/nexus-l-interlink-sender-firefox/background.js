@@ -485,7 +485,7 @@ async function fillAndAttach(job) {
     let d = null;
     try { d = pf && pf.offsetParent !== null ? pf.contentDocument : null; } catch (e) { d = null; }
     if (!d || !d.getElementById('txtSelectTestCond')) return null;
-    const it = wanted.find((x) => !(job.readDone || []).includes(x.code)) || wanted[0];
+    const it = (job.extras || []).find((e) => e.n === job.curN) || wanted.find((x) => !(job.readDone || []).includes(x.code)) || wanted[0];
     const nums = (str) => (String(str || '').match(/\d+/g) || []);
     const want = new Set(nums(it && it.name));
     const box = d.getElementById('txtSelectTestCond');
@@ -519,6 +519,8 @@ async function fillAndAttach(job) {
     const m = document.querySelector('textarea[name$="JOB_DUMMY_013_REF_FLD27_TEST_ITEM_READING_INPUT_0"]');
     const code = codeOf(m && m.value);
     const it = wanted.find((x) => x.code === code);
+    const ex = (job.extras || []).find((e) => e.n === job.curN);
+    const newExtras = [];                                      // readings of this test that InterLink has no row for: they go on a further copy of the test
     if (it) {
       const idxs = [...document.querySelectorAll('textarea[name*="JOB_DUMMY_013_REF_FLD27_TEST_ITEM_READING_INPUT_"]')].map((t) => t.name.match(/INPUT_(\d+)$/)[1]);
       const cell = (i, f) => document.querySelector(`[name$="JOB_DUMMY_013_REF_${f}_TEST_ITEM_READING_INPUT_${i}"]`);
@@ -532,11 +534,20 @@ async function fillAndAttach(job) {
       const elementOf = (i) => String((cell(i, 'FLD03') || {}).value || '').trim().toLowerCase();
       // 1) rows whose element is named like one of the report's readings ("Specimen 1", "Specimen 2"): each gets its own reading
       let used = 0;
-      for (const i of idxs) {
+      const taken = new Set();
+      for (const i of ex ? [] : idxs) {
         const rd = it.readings.find((x) => x.element && x.element.toLowerCase() === elementOf(i));
-        if (rd) { fillRow(i, rd.value, rd.requirement, rd.unit, rd.rating); used++; }
+        if (rd) { fillRow(i, rd.value, rd.requirement, rd.unit, rd.rating); used++; taken.add(rd); }
       }
-      if (!used) {
+      const extra = (r) => newExtras.push({ code, name: it.name, sample: it.sample, result: it.result, reading: r });
+      if (ex) {
+        // a further copy of the test, added for one reading the first copy had no row for
+        const rd = ex.reading;
+        const own = idxs.find((i) => rd.element && rd.element.toLowerCase() === elementOf(i));
+        fillRow(own !== undefined ? own : idxs[0], rd.value, rd.requirement || it.requirement, rd.unit || it.unit, rd.rating);
+      } else if (used) {
+        it.readings.filter((r) => r.element && !taken.has(r)).forEach(extra);
+      } else if (!used) {
         // 2) otherwise ONE row holds the whole test: the row whose condition numbers (60℃ / 95% / 7 days) appear in the test's name,
         // else the first row
         const nums = (str) => (String(str).match(/\d+/g) || []);
@@ -546,22 +557,27 @@ async function fillAndAttach(job) {
           const sc = nums(elementOf(i)).filter((x) => want.has(x)).length;
           if (sc > bestScore) { bestScore = sc; bestIdx = i; }
         }
-        fillRow(bestIdx, it.value, it.requirement, it.unit, it.result);
+        if (it.readings.length > 1) {
+          // one row for a test that has several readings: the first goes in it, the others on further copies of the test
+          const f = it.readings[0];
+          fillRow(bestIdx, f.value, f.requirement || it.requirement, f.unit || it.unit, f.rating);
+          it.readings.slice(1).forEach(extra);
+        } else fillRow(bestIdx, it.value, it.requirement, it.unit, it.result);
       }
     }
     await sleep(500);
     document.querySelector('input[name$="butOk"][value*="Update and Go Back"]').click();
-    return { state: 'posting', patch: { phase: 'readings', readDone: done.concat(code ? [code] : []) } };
+    return { state: 'posting', patch: { phase: 'readings', readDone: done.concat(code ? [code] : []), readN: (job.readN || []).concat(job.curN === undefined ? [] : [job.curN]), extras: (job.extras || []).concat(newExtras.slice(0, 6)) } };
   }
   const onTab2 = !!document.querySelector('[name*="cbpTestReportUploader"]');
   if (onTab2 && job.phase === 'readings') {
     // back on the main page after a reading: next test's reading, or on to the attachment
     const rows = [...document.querySelectorAll('input[name*="FLD07_TEST_ITEM_INP_"][name$="txtSingleValuePickerDisp"]')];
     const next = rows.map((el, n) => ({ n: Number((el.name.match(/TEST_ITEM_INP_(\d+)_txtSingle/) || [])[1]), code: codeOf(el.value) }))
-      .find((r) => r.code && !done.includes(r.code) && wanted.some((x) => x.code === r.code));
+      .find((r) => r.code && !(job.readN || []).includes(r.n) && wanted.some((x) => x.code === r.code));
     if (next) {
       const icon = document.querySelector(`input[name$="uc1_TEST_ITEM_INP_${next.n}$btnAddReading"]`);
-      if (icon) { icon.click(); return { state: 'posting', patch: { phase: 'readings' } }; }
+      if (icon) { icon.click(); return { state: 'posting', patch: { phase: 'readings', curN: next.n } }; }
     }
     // nothing left to read: carry on below (attachment), the rest of the page is already filled
   }
@@ -585,12 +601,14 @@ async function fillAndAttach(job) {
     if (nSamples) filled += nSamples; else if (job.tables && job.tables.samples && job.tables.samples.length) missing.push('Sample Information');
 
     // Test Item Result: pick each test from InterLink's list popup by its method code, then Add (a callback, the page stays)
-    if (job.phase !== 'readings' && wanted.length) {
+    // (back from the readings: the extra copies of a test, one per reading InterLink had no row for, are added the same way)
+    const toAdd = job.phase === 'readings' ? (job.extras || []).filter((e) => e.n === undefined) : wanted;
+    if (toAdd.length) {
       const picker = (n) => document.querySelector(`input[name$="FLD07_TEST_ITEM_INP_${n}$btnPickSingleValuePicker"]`);
       const dispOf = (n) => document.querySelector(`input[name*="FLD07_TEST_ITEM_INP_${n}_txtSingleValuePickerDisp"]`);
       const addBtn = () => document.querySelector('input[name$="TpEdr_JOB_DUMMY_008$cbpTableInput$btAdd"]');
       let added = 0;
-      for (const it of wanted) {
+      for (const it of toAdd) {
         // the empty input row: the first row whose test name is still empty
         let n = 0;
         while (dispOf(n) && dispOf(n).value) n++;
@@ -671,6 +689,7 @@ async function fillAndAttach(job) {
         if (!hit && fullOn) { await closePopup(); hit = await openAndFind(false); }
         if (!hit) {
           notes.push(`${it.name} (${it.code}) was not found in InterLink's test list`);
+          if (job.phase === 'readings') it.n = -1;
           await closePopup();
           continue;
         }
@@ -680,17 +699,23 @@ async function fillAndAttach(job) {
         if (sid) setNative(sid, it.sample);
         const sel = document.querySelector(`select[name$="JOB_DUMMY_008_REF_FLD15_TEST_ITEM_INP_${n}"]`);
         if (sel) setNative(sel, ratingIdx(it.result));
-        if (addBtn()) { addBtn().click(); added++; }
+        if (addBtn()) { addBtn().click(); added++; if (job.phase === 'readings') it.n = n; }
         for (let k = 0; k < 24 && !dispOf(n + 1); k++) await sleep(400);   // the new empty row shows when the callback is done
       }
       if (added) filled += added;
       // then each added test's reading is filled on its own page (see "readings" above)
+      if (job.phase === 'readings') {
+        // the copies are in the list: set each one's reading (curN is the row being read; the main page goes on to the others)
+        const firstNew = toAdd.find((e) => e.n >= 0);
+        const icon = firstNew && document.querySelector(`input[name$="uc1_TEST_ITEM_INP_${firstNew.n}$btnAddReading"]`);
+        if (icon) { icon.click(); return { state: 'posting', patch: { phase: 'readings', extras: job.extras, curN: firstNew.n, notes } }; }
+      }
       const rowsNow = [...document.querySelectorAll('input[name*="FLD07_TEST_ITEM_INP_"][name$="txtSingleValuePickerDisp"]')].filter((el) => el.value);
       if (added && rowsNow.length) {
         const first = rowsNow[0];
         const n0 = Number((first.name.match(/TEST_ITEM_INP_(\d+)_txtSingle/) || [])[1]);
         const icon = document.querySelector(`input[name$="uc1_TEST_ITEM_INP_${n0}$btnAddReading"]`);
-        if (icon) { icon.click(); return { state: 'posting', patch: { phase: 'readings', notes } }; }
+        if (icon) { icon.click(); return { state: 'posting', patch: { phase: 'readings', curN: n0, notes } }; }
       }
     }
   }
