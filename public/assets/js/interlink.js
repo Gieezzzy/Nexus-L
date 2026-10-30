@@ -118,7 +118,7 @@
   const escHtml = (str) => {
     const d = document.createElement('div');
     d.textContent = str ?? '';
-    return d.innerHTML;
+    return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');   // also safe inside value="..." (a value like 44" Mesh was cut at the quote)
   };
 
   const showToast = (msg, isError = false) => {
