@@ -1759,7 +1759,13 @@ JS;
             return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'error' => 'Choose an Application No. and the fields to fill.', 'csrf' => csrf_hash()]);
         }
         // a report goes to InterLink only after a registered Manager / Supervisor signed it (ApprovalController)
-        $apv = $lr ? $this->il()->table('tbl_dtr_report_approvals')->where('lab_ref_no', $lr['lab_ref_no'])->orderBy('id', 'DESC')->get()->getRowArray() : null;
+        // approvals belong to a Lab Reference AND an application: another application's request for the same Lab Reference must not count
+        $apv = null;
+        if ($lr) {
+            $q = $this->il()->table('tbl_dtr_report_approvals')->where('lab_ref_no', $lr['lab_ref_no'])->where('status !=', 'superseded');
+            $q->groupStart()->where('application_no', $appNo)->orWhere('application_no', '')->orWhere('application_no IS NULL')->groupEnd();
+            $apv = $q->orderBy('id', 'DESC')->get()->getRowArray();
+        }
         if ($lr && ($apv['status'] ?? '') !== 'approved') {
             return $this->response->setStatusCode(409)->setJSON(['ok' => false, 'error' => "The report {$lr['lab_ref_no']} is not approved yet. Generate it on the Upload Form and request approval (QR) first.", 'csrf' => csrf_hash()]);
         }
