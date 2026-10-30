@@ -1843,7 +1843,7 @@
   $('#uf_attachment_name')?.addEventListener('change', (e) => {
     const v = cleanPdfName(e.target.value);
     e.target.value = v;
-    if (window.nxAttachedPdf) { window.nxAttachedPdf.name = v; showToast(`File name for InterLink: ${v}`); }
+    if (window.nxAttachedPdf) { window.nxAttachedPdf.name = v; window.nxAttachedPdf.nameByHand = true; showToast(`File name for InterLink: ${v}`); }
   });
 
   let apvTimer = null;
@@ -2002,7 +2002,7 @@
       const st = await apiFetch(`dtr/approval/status?lab_ref=${encodeURIComponent(labRef)}`);
       const ex = st.approval;
       if (ex && ex.status === 'approved') {
-        if (!confirm(`A report for ${labRef} is already approved (by ${ex.decided_name}, ${ex.decided_at}).\n\nGenerate it again? Use this when the report was changed or the sign-off names were wrong.\nThe new version needs approval again; the approved one stays valid until then.`)) return;
+        if (!confirm(`A report for ${labRef} is already approved (by ${ex.decided_name}, ${ex.decided_at}).\n\nGenerate it again? Use this only when the report itself was changed or the sign-off names were wrong. To change just the file name, edit the name box or use Change; no new report is needed.\nThe new version needs approval again; the approved one stays valid until then.`)) return;
         regenerate = true;
       } else if (ex && ex.status === 'pending' && !ex.expired) {
         if (!confirm(`A report for ${labRef} is waiting for approval.\n\nGenerate it again? The waiting link is replaced by a new one for the new report.`)) return;
@@ -2021,7 +2021,10 @@
       const b64 = lr.form_slug === 'bonding'
         ? await window.nxReportPdf({ slug: lr.form_slug, id: lr.source_id || lr.id })
         : await pdfAsB64(`dtr/report-pdf?lab_ref=${encodeURIComponent(lr.lab_ref_no)}&app=${encodeURIComponent(app)}`);
-      setAttachedPdf({ app, lab_ref_no: lr.lab_ref_no, name: fileNameFor(app, lr), b64, source: 'generated', regenerate });
+      // a name typed by hand for this report is kept when it is generated again
+      const prev = window.nxAttachedPdf;
+      const keep = prev && prev.nameByHand && prev.lab_ref_no === lr.lab_ref_no ? prev.name : '';
+      setAttachedPdf({ app, lab_ref_no: lr.lab_ref_no, name: keep || fileNameFor(app, lr), nameByHand: !!keep, b64, source: 'generated', regenerate });
       showToast(`Report ready: ${app}.pdf. Check the report view, then request approval.`);
       try { showReportView(await sheetFor(window.nxAttachedPdf), lr.lab_ref_no); } catch (e) { showToast('The report view could not be prepared: ' + e.message, true); }
     } catch (e) {
