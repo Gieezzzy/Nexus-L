@@ -29,10 +29,12 @@ public static class SignIn
                 var file = InterlinkRunner.SessionFile(cfg);
                 await ctx.StorageStateAsync(new BrowserContextStorageStateOptions { Path = file });
                 Console.WriteLine("Signed in. Session saved to " + file);
+                MessageBox.Show("Signed in to InterLink. The session is saved; the service can now work in the background.", "NEXUS-L InterLink service");
                 return 0;
             }
         }
         Console.WriteLine("The sign-in was not finished in 10 minutes. Run --signin again.");
+        MessageBox.Show("The sign-in was not finished in 10 minutes. Press \"Sign in to InterLink\" again.", "NEXUS-L InterLink service");
         return 1;
     }
 }
