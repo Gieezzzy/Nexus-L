@@ -165,6 +165,19 @@ class SystemSettings
         self::$cache = null;
     }
 
+    /** the values a new InterLink report starts with, by field name (service_provider => ...): for the InterLink page and its script */
+    public static function interlinkDefaults(): array
+    {
+        $out = [];
+        foreach (self::definitions() as $key => $d) {
+            if ($d['cat'] === 'defaults') {
+                $out[substr($key, strlen('interlink.'))] = (string) self::get($key, '');
+            }
+        }
+
+        return $out;
+    }
+
     /** what the page shows: every definition with its saved state (a password is never sent back) */
     public static function forPage(): array
     {

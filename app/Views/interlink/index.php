@@ -426,11 +426,11 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                 <div class="uf-grid-3">
                     <div class="uf-field" data-field-wrap="service_provider">
                         <label><span class="uf-req">*</span> Service Provider <span class="uf-sync-tag hidden">✓ Synced</span></label>
-                        <input type="text" id="uf_service_provider" data-uf-field="service_provider" value="DATIAN SUBIC SHOES INC." readonly>
+                        <input type="text" id="uf_service_provider" data-uf-field="service_provider" value="<?= esc($defaults['service_provider'] ?? 'DATIAN SUBIC SHOES INC.', 'attr') ?>" readonly>
                     </div>
                     <div class="uf-field" data-field-wrap="lab_location">
                         <label><span class="uf-req">*</span> Lab Location <span class="uf-sync-tag hidden">✓ Synced</span></label>
-                        <input type="text" id="uf_lab_location" data-uf-field="lab_location" value="PHILIPPINES" readonly>
+                        <input type="text" id="uf_lab_location" data-uf-field="lab_location" value="<?= esc($defaults['lab_location'] ?? 'PHILIPPINES', 'attr') ?>" readonly>
                     </div>
                     <div class="uf-field" data-field-wrap="application_no">
                         <label>Application No. <span class="uf-sync-tag hidden">✓ Synced</span></label>
@@ -443,11 +443,11 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                     </div>
                     <div class="uf-field" data-field-wrap="test_stage">
                         <label><span class="uf-req">*</span> Test Stage <span class="uf-sync-tag hidden">✓ Synced</span></label>
-                        <input type="text" id="uf_test_stage" data-uf-field="test_stage" value="Production" readonly>
+                        <input type="text" id="uf_test_stage" data-uf-field="test_stage" value="<?= esc($defaults['test_stage'] ?? 'Production', 'attr') ?>" readonly>
                     </div>
                     <div class="uf-field" data-field-wrap="service_required">
                         <label><span class="uf-req">*</span> Service Required <span class="uf-sync-tag hidden">✓ Synced</span></label>
-                        <input type="text" id="uf_service_required" data-uf-field="service_required" value="Regular" readonly>
+                        <input type="text" id="uf_service_required" data-uf-field="service_required" value="<?= esc($defaults['service_required'] ?? 'Regular', 'attr') ?>" readonly>
                     </div>
 
                     <div class="uf-field" data-field-wrap="report_no">
@@ -478,7 +478,7 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                     <div class="uf-field" data-field-wrap="email_recipients">
                         <label>Email Notification Recipient(s) <span class="uf-sync-tag hidden">✓ Synced</span></label>
                         <div class="uf-email-wrap">
-                            <input type="text" id="uf_email_recipients" data-uf-field="email_recipients" value="dtp_qcasst@dtshoes.com">
+                            <input type="text" id="uf_email_recipients" data-uf-field="email_recipients" value="<?= esc($defaults['email_recipients'] ?? 'dtp_qcasst@dtshoes.com', 'attr') ?>">
                             <button type="button" class="uf-email-add" id="uf-btn-add-email" title="Add Recipient">+</button>
                         </div>
                     </div>
@@ -499,29 +499,29 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                         <div class="uf-grid-2">
                             <div class="uf-field" data-field-wrap="company_name">
                                 <label><span class="uf-req">*</span> Company Name <span class="uf-sync-tag hidden">✓ Synced</span></label>
-                                <input type="text" id="uf_company_name" data-uf-field="company_name" value="KEY TRADE CO., LTD">
+                                <input type="text" id="uf_company_name" data-uf-field="company_name" value="<?= esc($defaults['company_name'] ?? 'KEY TRADE CO., LTD', 'attr') ?>">
                             </div>
                             <div class="uf-field" data-field-wrap="interlink_code">
                                 <label><span class="uf-req">*</span> Interlink Code <span class="uf-sync-tag hidden">✓ Synced</span></label>
-                                <input type="text" id="uf_interlink_code" data-uf-field="interlink_code" value="E126863">
+                                <input type="text" id="uf_interlink_code" data-uf-field="interlink_code" value="<?= esc($defaults['interlink_code'] ?? 'E126863', 'attr') ?>">
                             </div>
 
                             <div class="uf-field" data-field-wrap="vendor_name">
                                 <label><span class="uf-req">*</span> Vendor Name <span class="uf-sync-tag hidden">✓ Synced</span></label>
-                                <input type="text" id="uf_vendor_name" data-uf-field="vendor_name" value="KEY TRADE CO., LTD">
+                                <input type="text" id="uf_vendor_name" data-uf-field="vendor_name" value="<?= esc($defaults['vendor_name'] ?? 'KEY TRADE CO., LTD', 'attr') ?>">
                             </div>
                             <div class="uf-field" data-field-wrap="vendor_id">
                                 <label><span class="uf-req">*</span> Vendor ID <span class="uf-sync-tag hidden">✓ Synced</span></label>
-                                <input type="text" id="uf_vendor_id" data-uf-field="vendor_id" value="0000507450">
+                                <input type="text" id="uf_vendor_id" data-uf-field="vendor_id" value="<?= esc($defaults['vendor_id'] ?? '0000507450', 'attr') ?>">
                             </div>
 
                             <div class="uf-field" data-field-wrap="factory_name">
                                 <label><span class="uf-req">*</span> Factory Name <span class="uf-sync-tag hidden">✓ Synced</span></label>
-                                <input type="text" id="uf_factory_name" data-uf-field="factory_name" value="DATIAN SUBIC SHOES INC.">
+                                <input type="text" id="uf_factory_name" data-uf-field="factory_name" value="<?= esc($defaults['factory_name'] ?? 'DATIAN SUBIC SHOES INC.', 'attr') ?>">
                             </div>
                             <div class="uf-field" data-field-wrap="factory_id">
                                 <label><span class="uf-req">*</span> Factory ID <span class="uf-sync-tag hidden">✓ Synced</span></label>
-                                <input type="text" id="uf_factory_id" data-uf-field="factory_id" value="0000507452">
+                                <input type="text" id="uf_factory_id" data-uf-field="factory_id" value="<?= esc($defaults['factory_id'] ?? '0000507452', 'attr') ?>">
                             </div>
 
                             <div class="uf-field" data-field-wrap="supplier_name">
@@ -573,7 +573,7 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                             </div>
                             <div class="uf-field" data-field-wrap="buyer_brand">
                                 <label><span class="uf-req">*</span> Brand Name <span class="uf-sync-tag hidden">✓ Synced</span></label>
-                                <input type="text" id="uf_buyer_brand" data-uf-field="buyer_brand" value="Vans">
+                                <input type="text" id="uf_buyer_brand" data-uf-field="buyer_brand" value="<?= esc($defaults['buyer_brand'] ?? 'Vans', 'attr') ?>">
                             </div>
                             <div class="uf-field" data-field-wrap="color_code">
                                 <label>Color Code <span class="uf-sync-tag hidden">✓ Synced</span></label>
@@ -586,20 +586,20 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                             </div>
                             <div class="uf-field" data-field-wrap="product_export_to">
                                 <label><span class="uf-req">*</span> Product Export To <span class="uf-sync-tag hidden">✓ Synced</span></label>
-                                <input type="text" id="uf_product_export_to" data-uf-field="product_export_to" value="APAC - Non China">
+                                <input type="text" id="uf_product_export_to" data-uf-field="product_export_to" value="<?= esc($defaults['product_export_to'] ?? 'APAC - Non China', 'attr') ?>">
                             </div>
                             <div class="uf-field" data-field-wrap="country_of_origin">
                                 <label><span class="uf-req">*</span> Country of Origin <span class="uf-sync-tag hidden">✓ Synced</span></label>
-                                <input type="text" id="uf_country_of_origin" data-uf-field="country_of_origin" value="Philippines">
+                                <input type="text" id="uf_country_of_origin" data-uf-field="country_of_origin" value="<?= esc($defaults['country_of_origin'] ?? 'Philippines', 'attr') ?>">
                             </div>
 
                             <div class="uf-field" data-field-wrap="season">
                                 <label><span class="uf-req">*</span> Season <span class="uf-sync-tag hidden">✓ Synced</span></label>
-                                <input type="text" id="uf_season" data-uf-field="season" value="S27">
+                                <input type="text" id="uf_season" data-uf-field="season" value="<?= esc($defaults['season'] ?? 'S27', 'attr') ?>">
                             </div>
                             <div class="uf-field" data-field-wrap="sourcing_office">
                                 <label><span class="uf-req">*</span> Sourcing Office <span class="uf-sync-tag hidden">✓ Synced</span></label>
-                                <input type="text" id="uf_sourcing_office" data-uf-field="sourcing_office" value="ASO">
+                                <input type="text" id="uf_sourcing_office" data-uf-field="sourcing_office" value="<?= esc($defaults['sourcing_office'] ?? 'ASO', 'attr') ?>">
                             </div>
                             <div class="uf-field" data-field-wrap="size_category">
                                 <label><span class="uf-req">*</span> Size Category <span class="uf-sync-tag hidden">✓ Synced</span></label>
@@ -616,12 +616,12 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                             </div>
                             <div class="uf-field" data-field-wrap="product_category">
                                 <label><span class="uf-req">*</span> Product Category <span class="uf-sync-tag hidden">✓ Synced</span></label>
-                                <input type="text" id="uf_product_category" data-uf-field="product_category" value="Footwear">
+                                <input type="text" id="uf_product_category" data-uf-field="product_category" value="<?= esc($defaults['product_category'] ?? 'Footwear', 'attr') ?>">
                             </div>
 
                             <div class="uf-field" data-field-wrap="test_packages">
                                 <label><span class="uf-req">*</span> Test Package(s) <span class="uf-sync-tag hidden">✓ Synced</span></label>
-                                <input type="text" id="uf_test_packages" data-uf-field="test_packages" value="VANS Pull Strength">
+                                <input type="text" id="uf_test_packages" data-uf-field="test_packages" value="<?= esc($defaults['test_packages'] ?? 'VANS Pull Strength', 'attr') ?>">
                             </div>
                             <div class="uf-field" data-field-wrap="care_instruction">
                                 <label>Care Instruction <small class="muted">(DXEditor46)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
@@ -695,20 +695,20 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
 
                             <div class="uf-field" data-field-wrap="factory_address">
                                 <label>Factory Address <small class="muted">(DXEditor55)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
-                                <input type="text" id="uf_factory_address" data-uf-field="factory_address" value="Lot 1P7-A,Phase 2,Subic Bay GatewayPark, Subic Bay Freeport Zone">
+                                <input type="text" id="uf_factory_address" data-uf-field="factory_address" value="<?= esc($defaults['factory_address'] ?? 'Lot 1P7-A,Phase 2,Subic Bay GatewayPark, Subic Bay Freeport Zone', 'attr') ?>">
                             </div>
                             <div class="uf-field" data-field-wrap="factory_country">
                                 <label>Factory Country <small class="muted">(DXEditor56)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
-                                <input type="text" id="uf_factory_country" data-uf-field="factory_country" value="Philippines">
+                                <input type="text" id="uf_factory_country" data-uf-field="factory_country" value="<?= esc($defaults['factory_country'] ?? 'Philippines', 'attr') ?>">
                             </div>
                             <div class="uf-field" data-field-wrap="factory_city">
                                 <label>Factory City <small class="muted">(DXEditor58)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
-                                <input type="text" id="uf_factory_city" data-uf-field="factory_city" value="Subic Bay">
+                                <input type="text" id="uf_factory_city" data-uf-field="factory_city" value="<?= esc($defaults['factory_city'] ?? 'Subic Bay', 'attr') ?>">
                             </div>
 
                             <div class="uf-field" data-field-wrap="factory_state_province">
                                 <label>Factory State/Province <small class="muted">(DXEditor59)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
-                                <input type="text" id="uf_factory_state_province" data-uf-field="factory_state_province" value="03">
+                                <input type="text" id="uf_factory_state_province" data-uf-field="factory_state_province" value="<?= esc($defaults['factory_state_province'] ?? '03', 'attr') ?>">
                             </div>
                             <div class="uf-field" data-field-wrap="factory_zip_postal">
                                 <label>Factory Zip/Postal Code <small class="muted">(DXEditor60)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
@@ -1143,15 +1143,15 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                     </div>
                     <div class="uf-field">
                         <label>Test Package(s)</label>
-                        <input type="text" name="test_packages" id="cr_test_packages" value="VANS Pull Strength">
+                        <input type="text" name="test_packages" id="cr_test_packages" value="<?= esc($defaults['test_packages'] ?? 'VANS Pull Strength', 'attr') ?>">
                     </div>
                     <div class="uf-field">
                         <label>Season</label>
-                        <input type="text" name="season" id="cr_season" value="S27">
+                        <input type="text" name="season" id="cr_season" value="<?= esc($defaults['season'] ?? 'S27', 'attr') ?>">
                     </div>
                     <div class="uf-field">
                         <label>Sourcing Office</label>
-                        <input type="text" name="sourcing_office" id="cr_sourcing_office" value="ASO">
+                        <input type="text" name="sourcing_office" id="cr_sourcing_office" value="<?= esc($defaults['sourcing_office'] ?? 'ASO', 'attr') ?>">
                     </div>
                     <div class="uf-field">
                         <label>Cargo Receive Date</label>
@@ -1167,23 +1167,23 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                     </div>
                     <div class="uf-field">
                         <label>Email Notification Recipient(s)</label>
-                        <input type="text" name="email_recipients" id="cr_email_recipients" value="dtp_qcasst@dtshoes.com">
+                        <input type="text" name="email_recipients" id="cr_email_recipients" value="<?= esc($defaults['email_recipients'] ?? 'dtp_qcasst@dtshoes.com', 'attr') ?>">
                     </div>
                     <div class="uf-field">
                         <label>Company Name</label>
-                        <input type="text" name="company_name" id="cr_company_name" value="KEY TRADE CO., LTD">
+                        <input type="text" name="company_name" id="cr_company_name" value="<?= esc($defaults['company_name'] ?? 'KEY TRADE CO., LTD', 'attr') ?>">
                     </div>
                     <div class="uf-field">
                         <label>Vendor ID</label>
-                        <input type="text" name="vendor_id" id="cr_vendor_id" value="0000507450">
+                        <input type="text" name="vendor_id" id="cr_vendor_id" value="<?= esc($defaults['vendor_id'] ?? '0000507450', 'attr') ?>">
                     </div>
                     <div class="uf-field">
                         <label>Factory Name</label>
-                        <input type="text" name="factory_name" id="cr_factory_name" value="DATIAN SUBIC SHOES INC.">
+                        <input type="text" name="factory_name" id="cr_factory_name" value="<?= esc($defaults['factory_name'] ?? 'DATIAN SUBIC SHOES INC.', 'attr') ?>">
                     </div>
                     <div class="uf-field">
                         <label>Factory ID</label>
-                        <input type="text" name="factory_id" id="cr_factory_id" value="0000507452">
+                        <input type="text" name="factory_id" id="cr_factory_id" value="<?= esc($defaults['factory_id'] ?? '0000507452', 'attr') ?>">
                     </div>
                     <div class="uf-field">
                         <label>Overall Result (Tab 2)</label>
@@ -1261,3 +1261,4 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
     'totalLabRefs' => $totalLabRefs ?? 0,
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>
 </script>
+<script>window.NXL_DEFAULTS = <?= json_encode($defaults ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>;</script>

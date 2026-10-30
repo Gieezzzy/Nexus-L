@@ -115,6 +115,9 @@
     { key: 'attachment_name', label: '* Report Attachment PDF', section: 'Tab 2 · Upload Result' },
   ];
 
+  // what a new report starts with: the Admin's Settings page (window.NXL_DEFAULTS), else the built-in value
+  const DEF = (field, fallback) => (window.NXL_DEFAULTS && window.NXL_DEFAULTS[field]) || fallback;
+
   const escHtml = (str) => {
     const d = document.createElement('div');
     d.textContent = str ?? '';
@@ -355,21 +358,21 @@
           <td>${escHtml(r.factory_name || '')}</td>
           <td>${escHtml(r.supplier_id || '')}</td>
           <td>${escHtml(r.supplier_name || '')}</td>
-          <td>${escHtml(r.buyer_brand || 'Vans')}</td>
-          <td>${escHtml(r.test_stage || 'Production')}</td>
+          <td>${escHtml(r.buyer_brand || DEF('buyer_brand', 'Vans'))}</td>
+          <td>${escHtml(r.test_stage || DEF('test_stage', 'Production'))}</td>
           <td>${escHtml(r.product_export_to || '')}</td>
-          <td>${escHtml(r.service_test_type || 'In-House Lab Testing')}</td>
-          <td>${escHtml(r.service_provider || 'DATIAN SUBIC SHOES INC.')}</td>
+          <td>${escHtml(r.service_test_type || DEF('service_test_type', 'In-House Lab Testing'))}</td>
+          <td>${escHtml(r.service_provider || DEF('service_provider', 'DATIAN SUBIC SHOES INC.'))}</td>
           <td>${escHtml(r.gcc_cpc_required || 'No')}</td>
           <td><b>${escHtml(r.style_no || '')}</b></td>
           <td><b>${escHtml(r.material_code || '')}</b></td>
           <td><span class="mono">${escHtml(r.style_color_no || '')}</span></td>
-          <td>${escHtml(r.season || 'S27')}</td>
-          <td>${escHtml(r.sourcing_office || 'ASO')}</td>
+          <td>${escHtml(r.season || DEF('season', 'S27'))}</td>
+          <td>${escHtml(r.sourcing_office || DEF('sourcing_office', 'ASO'))}</td>
           <td>${escHtml(r.test_packages || '')}</td>
           <td>${escHtml(r.color_code || '')}</td>
           <td>${escHtml(r.colorway_name || '')}</td>
-          <td>${escHtml(r.lab_location || 'PHILIPPINES')}</td>
+          <td>${escHtml(r.lab_location || DEF('lab_location', 'PHILIPPINES'))}</td>
           <td>${escHtml(r.review_result || '')}</td>
           <td>${escHtml(r.review_status || '')}</td>
           <td>${escHtml(r.related_trf_no || '')}</td>
@@ -686,22 +689,22 @@
     }
 
     const initialMap = {
-      service_provider: report.service_provider || 'DATIAN SUBIC SHOES INC.',
-      lab_location: report.lab_location || 'PHILIPPINES',
+      service_provider: report.service_provider || DEF('service_provider', 'DATIAN SUBIC SHOES INC.'),
+      lab_location: report.lab_location || DEF('lab_location', 'PHILIPPINES'),
       application_no: report.application_no || '',
-      service_test_type: report.service_test_type || 'In-House Lab Testing',
-      test_stage: report.test_stage || 'Production',
-      service_required: report.service_required || 'Regular',
+      service_test_type: report.service_test_type || DEF('service_test_type', 'In-House Lab Testing'),
+      test_stage: report.test_stage || DEF('test_stage', 'Production'),
+      service_required: report.service_required || DEF('service_required', 'Regular'),
       report_no: isAlreadySynced ? (report.report_no || '') : '',
       previous_report_no: isAlreadySynced ? (report.previous_report_no || '') : '',
       related_trf_no: report.related_trf_no || '',
-      email_recipients: report.email_recipients || 'dtp_qcasst@dtshoes.com',
-      company_name: report.company_name || 'KEY TRADE CO., LTD',
-      interlink_code: report.interlink_code || 'E126863',
-      vendor_name: report.vendor_name || 'KEY TRADE CO., LTD',
-      vendor_id: report.vendor_id || '0000507450',
-      factory_name: report.factory_name || 'DATIAN SUBIC SHOES INC.',
-      factory_id: report.factory_id || '0000507452',
+      email_recipients: report.email_recipients || DEF('email_recipients', 'dtp_qcasst@dtshoes.com'),
+      company_name: report.company_name || DEF('company_name', 'KEY TRADE CO., LTD'),
+      interlink_code: report.interlink_code || DEF('interlink_code', 'E126863'),
+      vendor_name: report.vendor_name || DEF('vendor_name', 'KEY TRADE CO., LTD'),
+      vendor_id: report.vendor_id || DEF('vendor_id', '0000507450'),
+      factory_name: report.factory_name || DEF('factory_name', 'DATIAN SUBIC SHOES INC.'),
+      factory_id: report.factory_id || DEF('factory_id', '0000507452'),
       supplier_name: report.supplier_name || '',
       supplier_id: report.supplier_id || '',
       facility_name: report.facility_name || '',
@@ -710,18 +713,18 @@
       style_no: report.style_no || '',
       style_color_no: report.style_color_no || '',
       product_name: report.product_name || '',
-      buyer_brand: report.buyer_brand || 'Vans',
+      buyer_brand: report.buyer_brand || DEF('buyer_brand', 'Vans'),
       color_code: report.color_code || '',
       colorway_name: report.colorway_name || '',
-      product_export_to: report.product_export_to || 'APAC - Non China',
-      country_of_origin: report.country_of_origin || 'Philippines',
-      season: report.season || 'S27',
-      sourcing_office: report.sourcing_office || 'ASO',
+      product_export_to: report.product_export_to || DEF('product_export_to', 'APAC - Non China'),
+      country_of_origin: report.country_of_origin || DEF('country_of_origin', 'Philippines'),
+      season: report.season || DEF('season', 'S27'),
+      sourcing_office: report.sourcing_office || DEF('sourcing_office', 'ASO'),
       size_category: report.size_category || 'UNISEX',
       age_group: report.age_group || 'Adult',
       cargo_receive_date: report.cargo_receive_date || '06 Nov 2026',
-      product_category: report.product_category || 'Footwear',
-      test_packages: report.test_packages || 'VANS Pull Strength',
+      product_category: report.product_category || DEF('product_category', 'Footwear'),
+      test_packages: report.test_packages || DEF('test_packages', 'VANS Pull Strength'),
       care_instruction: report.care_instruction || '',
       fiber_composition: report.fiber_composition || '',
       material_code: report.material_code || '',
@@ -734,10 +737,10 @@
       gcc_cpc_required: report.gcc_cpc_required || 'No',
       product_id: report.product_id || report.style_no || '',
       manufacture_date: report.manufacture_date || '10/2026',
-      factory_address: report.factory_address || 'Lot 1P7-A,Phase 2,Subic Bay GatewayPark, Subic Bay Freeport Zone',
-      factory_country: report.factory_country || 'Philippines',
-      factory_city: report.factory_city || 'Subic Bay',
-      factory_state_province: report.factory_state_province || '03',
+      factory_address: report.factory_address || DEF('factory_address', 'Lot 1P7-A,Phase 2,Subic Bay GatewayPark, Subic Bay Freeport Zone'),
+      factory_country: report.factory_country || DEF('factory_country', 'Philippines'),
+      factory_city: report.factory_city || DEF('factory_city', 'Subic Bay'),
+      factory_state_province: report.factory_state_province || DEF('factory_state_province', '03'),
       factory_zip_postal: report.factory_zip_postal || '2222',
       factory_email: report.factory_email || 'dtp_qcasst@dtshoes.com',
       report_issue_date: isAlreadySynced ? (report.report_issue_date || '') : '',
@@ -873,14 +876,14 @@
     const reveal = () => {
       $('#nf-banner-appno').textContent = appNo;
       $('#nf_application_no').value = report.application_no || appNo;
-      $('#nf_company_name').value = report.company_name || 'KEY TRADE CO., LTD';
-      $('#nf_interlink_code').value = report.interlink_code || 'E126863';
+      $('#nf_company_name').value = report.company_name || DEF('company_name', 'KEY TRADE CO., LTD');
+      $('#nf_interlink_code').value = report.interlink_code || DEF('interlink_code', 'E126863');
       $('#nf_applicant_address').value = report.applicant_address || 'Lot 1P7-A,Phase 2,Subic Bay GatewayPark, Subic Bay Freeport Zone';
       $('#nf_contact_person').value = report.contact_person || 'Danica Agbuya';
       $('#nf_contact_email').value = `${report.contact_email || 'dtp_qcasst@dtshoes.com'} | ${report.contact_phone || '(047) 252-2899'}`;
-      $('#nf_service_provider').value = report.service_provider || 'DATIAN SUBIC SHOES INC.';
-      $('#nf_service_test_type').value = report.service_test_type || 'In-House Lab Testing';
-      $('#nf_test_packages').value = report.test_packages || 'VANS Pull Strength';
+      $('#nf_service_provider').value = report.service_provider || DEF('service_provider', 'DATIAN SUBIC SHOES INC.');
+      $('#nf_service_test_type').value = report.service_test_type || DEF('service_test_type', 'In-House Lab Testing');
+      $('#nf_test_packages').value = report.test_packages || DEF('test_packages', 'VANS Pull Strength');
       $('#nf_style_sku').value = `${report.style_no || report.material_code || ''} / ${report.style_color_no || ''}`;
       $('#nf_product_name').value = report.product_name || report.material_name || '';
       $('#nf_colorway_name').value = report.colorway_name || '';
