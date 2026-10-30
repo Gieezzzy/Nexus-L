@@ -9,6 +9,7 @@ public sealed class TrayContext : ApplicationContext
     private readonly ServiceHost _host = new();
     private readonly string[] _args;
     private SettingsForm? _form;
+    private LogForm? _logForm;
 
     public TrayContext(string[] args)
     {
@@ -16,11 +17,12 @@ public sealed class TrayContext : ApplicationContext
         var menu = new ContextMenuStrip();
         menu.Items.Add("Settings...", null, (_, _) => ShowSettings());
         menu.Items.Add("Sign in to InterLink...", null, (_, _) => SignInToInterlink());
-        menu.Items.Add("Open the log", null, (_, _) => OpenLog());
+        menu.Items.Add("Log...", null, (_, _) => ShowLog());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, async (_, _) => await ExitAsync());
         _icon = new NotifyIcon { Icon = System.Drawing.SystemIcons.Application, Text = "NEXUS-L InterLink service", Visible = true, ContextMenuStrip = menu };
         _icon.DoubleClick += (_, _) => ShowSettings();
+        _icon.BalloonTipClicked += (_, _) => ShowLog();
 
         var s = AppSettings.Load();
         var firstRun = s.ApiKey.Length < 16;
@@ -44,7 +46,7 @@ public sealed class TrayContext : ApplicationContext
     private void ShowSettings()
     {
         if (_form is { IsDisposed: false }) { _form.Activate(); return; }
-        _form = new SettingsForm(_host, async () => { await StartAsync(false); return _host.Running; }, SignInToInterlink);
+        _form = new SettingsForm(_host, async () => { await StartAsync(false); return _host.Running; }, SignInToInterlink, ShowLog);
         _form.Show();
     }
 
@@ -54,11 +56,11 @@ public sealed class TrayContext : ApplicationContext
         catch (Exception e) { MessageBox.Show("Could not start the sign-in: " + e.Message, "NEXUS-L InterLink service"); }
     }
 
-    private static void OpenLog()
+    private void ShowLog()
     {
-        var log = Path.Combine(InterlinkRunner.DataDir(new ConfigurationBuilder().AddJsonFile(AppSettings.FilePath, optional: true).Build()), "service.log");
-        if (File.Exists(log)) Process.Start(new ProcessStartInfo(log) { UseShellExecute = true });
-        else MessageBox.Show("Nothing has been logged yet.", "NEXUS-L InterLink service");
+        if (_logForm is { IsDisposed: false }) { _logForm.Activate(); return; }
+        _logForm = new LogForm(_host);
+        _logForm.Show();
     }
 
     private async Task ExitAsync()

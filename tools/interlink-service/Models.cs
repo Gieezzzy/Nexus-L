@@ -41,3 +41,19 @@ public sealed class JobStatus
     /// <summary>how many reports are ahead of this one (the one being done now included); 0 = it is the next one / being done</summary>
     public int Position { get; set; }
 }
+
+/// <summary>one line of the job list (data/history.jsonl): what was submitted, for whom, and how it ended</summary>
+public sealed class HistoryLine
+{
+    public string JobUid { get; set; } = "";
+    public string ApplicationNo { get; set; } = "";
+    public string LabRefNo { get; set; } = "";
+    public string ReportNo { get; set; } = "";
+    public string User { get; set; } = "";
+    public string Mode { get; set; } = "";
+    public string State { get; set; } = "";
+    public string Message { get; set; } = "";
+    public DateTime ReceivedAt { get; set; }
+    public DateTime? StartedAt { get; set; }
+    public DateTime? FinishedAt { get; set; }
+}

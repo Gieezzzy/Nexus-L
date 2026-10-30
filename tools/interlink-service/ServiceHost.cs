@@ -10,6 +10,7 @@ public sealed class ServiceHost
     private WebApplication? _app;
     public string? LastError { get; private set; }
     public bool Running => _app != null;
+    public JobQueue? Queue => _app?.Services.GetService<JobQueue>();
 
     public WebApplication Build(string[] args)
     {

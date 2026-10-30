@@ -16,6 +16,7 @@ public sealed class JobQueue : BackgroundService
     private JobRequest? _running;
     private long _seq;
     private readonly string _dir;
+    private readonly string _history;
     private readonly InterlinkRunner _runner;
     private readonly Notifier _notifier;
     private readonly ILogger<JobQueue> _log;
@@ -29,6 +30,7 @@ public sealed class JobQueue : BackgroundService
         _notifier = notifier;
         _log = log;
         _dir = Path.Combine(InterlinkRunner.DataDir(cfg), "queue");
+        _history = Path.Combine(InterlinkRunner.DataDir(cfg), "history.jsonl");
         Directory.CreateDirectory(_dir);
         Reload();
     }
@@ -113,6 +115,39 @@ public sealed class JobQueue : BackgroundService
         lock (_gate) return _status.TryGetValue(uid, out var s) ? WithPosition(s) : null;
     }
 
+    private void WriteHistory(JobRequest job, JobStatus st)
+    {
+        try
+        {
+            var line = JsonSerializer.Serialize(new HistoryLine
+            {
+                JobUid = job.JobUid, ApplicationNo = job.ApplicationNo, LabRefNo = job.LabRefNo, ReportNo = job.ReportNo, User = job.UserName, Mode = job.Mode,
+                State = st.State, Message = st.Message, ReceivedAt = job.ReceivedAt, StartedAt = st.StartedAt, FinishedAt = st.FinishedAt,
+            }, Json);
+            lock (_gate) File.AppendAllText(_history, line + Environment.NewLine);
+        }
+        catch { /* the history is only a list for people to read */ }
+    }
+
+    /// <summary>the jobs waiting or running now, then the finished ones, newest first (the Log window and the log list)</summary>
+    public List<HistoryLine> Recent(int count)
+    {
+        var list = new List<HistoryLine>();
+        lock (_gate)
+        {
+            foreach (var s in Overview())
+                list.Add(new HistoryLine { JobUid = s.JobUid, ApplicationNo = s.ApplicationNo, LabRefNo = s.LabRefNo, ReportNo = s.ReportNo, User = s.UserName, State = s.State == "queued" ? $"waiting ({s.Position} ahead)" : s.State, Message = s.Message, ReceivedAt = s.CreatedAt, StartedAt = s.StartedAt });
+        }
+        try
+        {
+            if (File.Exists(_history))
+                foreach (var l in File.ReadLines(_history).Reverse().Take(count))
+                    if (JsonSerializer.Deserialize<HistoryLine>(l, Json) is { } h) list.Add(h);
+        }
+        catch { /* a half written line */ }
+        return list;
+    }
+
     /// <summary>everything waiting or running, in order: for NEXUS-L's overview</summary>
     public List<JobStatus> Overview()
     {
@@ -154,7 +189,11 @@ public sealed class JobQueue : BackgroundService
 
             try
             {
-                await _runner.RunAsync(job, msg => st.Message = msg, stop);
+                await _runner.RunAsync(job, msg =>
+                {
+                    st.Message = msg;
+                    _log.LogInformation("[{Job}] {App} ({User}): {Msg}", job.JobUid.Length > 8 ? job.JobUid[..8] : job.JobUid, job.ApplicationNo, job.UserName, msg);
+                }, stop);
                 st.State = "done";
             }
             catch (OperationCanceledException) when (stop.IsCancellationRequested)
@@ -181,6 +220,7 @@ public sealed class JobQueue : BackgroundService
                 try { File.Delete(FileFor(job)); } catch { /* left over file: removed at the next start */ }
             }
             _log.LogInformation("Job {Job} ({App}, {User}) {State}: {Msg}", job.JobUid, job.ApplicationNo, job.UserName, st.State, st.Message);
+            WriteHistory(job, st);
             await _notifier.ReportAsync(job, st);                // the user is told how it ended
 
             lock (_gate)

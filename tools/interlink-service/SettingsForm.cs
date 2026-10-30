@@ -10,6 +10,7 @@ public sealed class SettingsForm : Form
     private readonly ServiceHost _host;
     private readonly Func<Task<bool>> _restart;
     private readonly Action _signIn;
+    private readonly Action _showLog;
     private readonly ComboBox _ip = new() { DropDownStyle = ComboBoxStyle.DropDown, Width = 260 };
     private readonly NumericUpDown _port = new() { Minimum = 1024, Maximum = 65535, Width = 90 };
     private readonly TextBox _key = new() { Width = 360, UseSystemPasswordChar = true };
@@ -19,16 +20,17 @@ public sealed class SettingsForm : Form
     private readonly TextBox _envLines = new() { Multiline = true, ReadOnly = true, Width = 460, Height = 52, BackColor = Color.White, Font = new Font("Consolas", 9f) };
     private readonly Label _status = new() { AutoSize = false, Width = 470, Height = 40, ForeColor = Color.DimGray };
 
-    public SettingsForm(ServiceHost host, Func<Task<bool>> restart, Action signIn)
+    public SettingsForm(ServiceHost host, Func<Task<bool>> restart, Action signIn, Action showLog)
     {
         _host = host;
+        _showLog = showLog;
         _restart = restart;
         _signIn = signIn;
         Text = "NEXUS-L InterLink service - settings";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(500, 520);
+        ClientSize = new Size(500, 560);
         Font = new Font("Segoe UI", 9f);
 
         var y = 14;
@@ -61,7 +63,9 @@ public sealed class SettingsForm : Form
         var save = new Button { Text = "Save and restart", Width = 130, Height = 30 }; save.Click += async (_, _) => await SaveAsync();
         var signin = new Button { Text = "Sign in to InterLink...", Width = 150, Height = 30 }; signin.Click += (_, _) => _signIn();
         var check = new Button { Text = "Check", Width = 80, Height = 30 }; check.Click += async (_, _) => await CheckAsync();
-        Put(save, y); Put(signin, y, 156); Put(check, y, 312); y += 40;
+        Put(save, y); Put(signin, y, 156); Put(check, y, 312); y += 36;
+        var log = new Button { Text = "Log...", Width = 80, Height = 30 }; log.Click += (_, _) => _showLog();
+        Put(log, y); y += 40;
         Put(_status, y);
 
         var s = AppSettings.Load();

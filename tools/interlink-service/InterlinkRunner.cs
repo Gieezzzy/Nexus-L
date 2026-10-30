@@ -62,8 +62,9 @@ public sealed class InterlinkRunner : IAsyncDisposable
     {
         try
         {
-            var plain = args.Select(a => a is JsonNode n ? (object?)JsonSerializer.Deserialize<JsonElement>(n.ToJsonString()) : a).ToArray();
-            return await page.EvaluateAsync<JsonElement>("async ([n, a]) => await window.__nx[n](...a)", new object?[] { name, plain });
+            // the arguments travel as JSON text (Playwright cannot serialize JsonElement / JsonNode objects itself) and are parsed in the page
+            var json = JsonSerializer.Serialize(args);
+            return await page.EvaluateAsync<JsonElement>("async ([n, j]) => await window.__nx[n](...JSON.parse(j))", new object?[] { name, json });
         }
         catch (PlaywrightException e) when (e.Message.Contains("context was destroyed") || e.Message.Contains("Target closed") || e.Message.Contains("navigat") || e.Message.Contains("closed"))
         {
