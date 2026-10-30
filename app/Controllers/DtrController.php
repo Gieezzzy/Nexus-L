@@ -109,6 +109,14 @@ class DtrController extends BaseController
             'sample_type' => 'Finished Product',
             'mat_types'   => ['ADULT', 'CHILDREN', 'KIDS', 'TODDLER'],
         ],
+        'pull' => [
+            'table'       => 'tbl_dtr_pull_results',
+            'pk'          => 'ID',
+            'label'       => 'Pull Footwear Test Report (Lab VF 003)',
+            'code'        => 'PULL',
+            'sample_type' => 'Finished Product',
+            'mat_types'   => [],
+        ],
     ];
 
     public function index(): string
@@ -215,6 +223,21 @@ class DtrController extends BaseController
     }
 
     /**
+     * GET /dtr/bonding-labrefs
+     * Distinct Lab Ref Nos of tbl_dtr_bonding_points, newest first (feeds the Lab Ref.No dropdown of the bonding form).
+     */
+    public function bondingLabRefs()
+    {
+        $rows = \Config\Database::connect()->table('tbl_dtr_bonding_points')
+            ->select('LabRefNo, MAX(BondingPointstID) AS last_id', false)
+            ->where('LabRefNo IS NOT NULL', null, false)->where('LabRefNo !=', '')
+            ->groupBy('LabRefNo')->orderBy('last_id', 'DESC')
+            ->get()->getResultArray();
+
+        return $this->response->setJSON(['ok' => true, 'labRefs' => array_column($rows, 'LabRefNo')]);
+    }
+
+    /**
      * GET /dtr/record
      * Fetches the complete record from its native table (e.g. tbl_dtr_fabric_results or tbl_dtr_bonding_info + tbl_dtr_bonding_points).
      */
@@ -236,7 +259,15 @@ class DtrController extends BaseController
         if ($sourceId > 0) {
             $record = $db->table($table)->where($pk, $sourceId)->get()->getRowArray();
         } elseif ($labRef !== '') {
-            $record = $db->table($table)->where('LabRefNo', $labRef)->orderBy($pk, 'DESC')->get()->getRowArray();
+            $record = null;
+            if ($slug === 'bonding') {
+                // Prefer the report that owns the saved spot readings of this Lab Ref No.
+                $bp = $db->table('tbl_dtr_bonding_points')->select('BondingTestID')->where('LabRefNo', $labRef)->orderBy('BondingPointstID', 'DESC')->get(1)->getRowArray();
+                if ($bp) {
+                    $record = $db->table($table)->where($pk, $bp['BondingTestID'])->get()->getRowArray();
+                }
+            }
+            $record = $record ?: $db->table($table)->where('LabRefNo', $labRef)->orderBy($pk, 'DESC')->get()->getRowArray();
         } else {
             $record = $db->table($table)->orderBy($pk, 'DESC')->get(1)->getRowArray();
         }

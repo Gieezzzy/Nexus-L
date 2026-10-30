@@ -50,21 +50,61 @@
     </div>
 </div>
 
-<!-- Main Navigation Tabs -->
+<!-- Toolbar of the open panel (the sidebar switches panels) -->
 <div class="card glass dtr-nav-bar">
-    <div class="dtr-tabs" role="tablist">
-        <button type="button" class="dtr-tab-btn <?= $activeTab === 'tracker' ? 'active' : '' ?>" data-dtr-tab="tracker">
-            <svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg> Lab Tracker (<span id="dtr-tab-cnt"><?= number_format((int) $totalReports) ?></span>)
+    <div class="dtr-nav-actions" data-dtr-for="tracker" <?= $activeTab === 'tracker' ? '' : 'hidden' ?>>
+        <select id="dtr-tracker-cat" class="dtr-tracker-cat" aria-label="Report category">
+            <option value="all">All Reports (<?= number_format((int) $totalReports) ?>)</option>
+            <?php foreach ($catRows as $cr): ?>
+                <option value="<?= esc($cr['form_slug']) ?>"><?= esc($cr['form_category']) ?> (<?= number_format((int) $cr['cnt']) ?>)</option>
+            <?php endforeach ?>
+        </select>
+        <div class="dtr-search-box">
+            <input type="text" id="dtr-tracker-search" placeholder="Search LabRefNo, TR No, Material Code, Style, Supplier, MTL...">
+            <button type="button" id="dtr-tracker-btn-search" class="dtr-btn dtr-btn-primary">Search</button>
+        </div>
+    </div>
+    <div class="dtr-nav-actions dtr-form-actions" data-dtr-for="material" <?= $activeTab === 'material' ? '' : 'hidden' ?>>
+        <button type="button" id="btn-dtr-new" class="dtr-btn dtr-btn-outline">+ New Record</button>
+        <button type="button" id="btn-dtr-load-machine" class="dtr-btn dtr-btn-amber" title="Reads the machine result file (.xlsx / .csv) for this Lab Ref No. The source file is never modified.">
+            <svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> Load Machine Results
         </button>
-        <button type="button" class="dtr-tab-btn <?= $activeTab === 'material' ? 'active' : '' ?>" data-dtr-tab="material">
-            <svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg> Material Tests
+        <button type="button" id="btn-dtr-refresh-calc" class="dtr-btn dtr-btn-outline" title="Runs ApplyStandardValuesSmart + Thickness + Directional Averages + 6-Point Colorfastness + EvaluateRatings">
+            <svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg> Refresh &amp; Apply Smart Standards
         </button>
-        <button type="button" class="dtr-tab-btn <?= $activeTab === 'bonding' ? 'active' : '' ?>" data-dtr-tab="bonding">
-            <svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg> Shoe Bonding (U60)
+        <button type="button" id="btn-dtr-print-preview" class="dtr-btn dtr-btn-purple" title="View, print or save the official test report sheet">
+            <svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg> Print / Preview Report
         </button>
-        <button type="button" class="dtr-tab-btn <?= $activeTab === 'calculators' ? 'active' : '' ?>" data-dtr-tab="calculators">
-            <svg class="ic" aria-hidden="true"><use href="#i-calc"/></svg> Calculators &amp; Standards
+        <button type="button" id="btn-dtr-save" class="dtr-btn dtr-btn-primary">
+            <svg class="ic" aria-hidden="true"><use href="#i-save"/></svg> Save Report to NEXUS-L
         </button>
+    </div>
+    <div class="dtr-nav-actions dtr-form-actions" data-dtr-for="bonding" <?= $activeTab === 'bonding' ? '' : 'hidden' ?>>
+        <select id="dtr-report-kind" class="dtr-tracker-cat" aria-label="Report type">
+            <option value="bonding">+ Bonding Report</option>
+            <option value="pull">+ Pull Test Report</option>
+        </select>
+        <button type="button" id="btn-bond-recalc" class="dtr-btn dtr-btn-outline">
+            <svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg> <span id="btn-bond-recalc-txt">Recalculate Spots &amp; Result</span>
+        </button>
+        <button type="button" id="btn-bond-print-preview" class="dtr-btn dtr-btn-purple" title="View, print or save the official report sheet">
+            <svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg> Print / Preview Report
+        </button>
+        <?php if (! empty($dtrIsAdmin)): ?>
+        <a id="btn-bond-designer" class="dtr-btn dtr-btn-outline dtr-only-bonding" href="<?= site_url('designer') ?>?tab=diagram" title="Admin only: place the points on the shoe, hide or add fields">
+            <svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg> Adjust shoe points / layout (admin)
+        </a>
+        <?php endif ?>
+        <button type="button" id="btn-bond-save" class="dtr-btn dtr-btn-primary">
+            <svg class="ic" aria-hidden="true"><use href="#i-save"/></svg> Save Report
+        </button>
+    </div>
+    <div class="dtr-nav-actions dtr-form-actions" data-dtr-for="calculators" <?= $activeTab === 'calculators' ? '' : 'hidden' ?>>
+        <?php if (! empty($dtrIsAdmin)): ?>
+        <a class="dtr-btn dtr-btn-purple" href="<?= site_url('designer') ?>?tab=diagram" title="Admin: match the shoe lines and results">Shoe diagram &amp; points</a>
+        <a class="dtr-btn dtr-btn-outline" href="<?= site_url('designer') ?>?tab=form" title="Admin: rearrange or hide inputs, add fields">Form fields</a>
+        <a class="dtr-btn dtr-btn-amber" href="<?= site_url('designer') ?>?tab=excel" title="Admin: change which Excel cells are read per report type">Excel readers</a>
+        <?php endif ?>
     </div>
     <div class="dtr-nav-right">
         <a href="<?= site_url('interlink') ?>" class="dtr-btn dtr-btn-outline">
@@ -82,23 +122,8 @@
         <div class="dtr-card-head">
             <div>
                 <h3>Digital Test Report Master Tracker (All 11 Lab Report Types)</h3>
-                <p class="muted sm">Click any category pill to filter or click <b>Open in Form</b> to view/edit full test readings and automatic calculations.</p>
+                <p class="muted sm">Pick a category above to filter or click <b>Open in Form</b> to view/edit full test readings and automatic calculations.</p>
             </div>
-            <div class="dtr-search-box">
-                <input type="text" id="dtr-tracker-search" placeholder="Search LabRefNo, TR No, Material Code, Style, Supplier, MTL...">
-                <button type="button" id="dtr-tracker-btn-search" class="dtr-btn dtr-btn-primary">Search</button>
-            </div>
-        </div>
-
-        <div class="dtr-cat-pills" id="dtr-tracker-pills">
-            <button type="button" class="dtr-pill active" data-slug="all">
-                All Reports <b><?= number_format((int) $totalReports) ?></b>
-            </button>
-            <?php foreach ($catRows as $cr): ?>
-                <button type="button" class="dtr-pill" data-slug="<?= esc($cr['form_slug']) ?>">
-                    <?= esc($cr['form_category']) ?> <b><?= number_format((int) $cr['cnt']) ?></b>
-                </button>
-            <?php endforeach ?>
         </div>
 
         <div class="dtr-table-wrap">
@@ -245,7 +270,7 @@
                     <label>1. Select Material Test Form (10 report types)</label>
                     <select id="dtr-mat-form-slug" class="dtr-select-lg">
                         <?php foreach ($formConfig as $slug => $cfg): ?>
-                            <?php if ($slug === 'bonding') continue; ?>
+                            <?php if ($slug === 'bonding' || $slug === 'pull') continue; ?>
                             <option value="<?= esc($slug) ?>"><?= esc($cfg['label']) ?></option>
                         <?php endforeach ?>
                     </select>
@@ -254,22 +279,6 @@
                     <label>2. Load Existing LabRefNo Record from NEXUS-L</label>
                     <select id="dtr-mat-record-select" class="dtr-select-lg"></select>
                 </div>
-            </div>
-
-            <div class="dtr-form-actions">
-                <button type="button" id="btn-dtr-new" class="dtr-btn dtr-btn-outline">+ New Record</button>
-                <button type="button" id="btn-dtr-load-machine" class="dtr-btn dtr-btn-amber" title="Reads the machine result file (.xlsx / .csv) for this Lab Ref No. The source file is never modified.">
-                    <svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> Load Machine Results
-                </button>
-                <button type="button" id="btn-dtr-refresh-calc" class="dtr-btn dtr-btn-outline" title="Runs ApplyStandardValuesSmart + Thickness + Directional Averages + 6-Point Colorfastness + EvaluateRatings">
-                    <svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg> Refresh &amp; Apply Smart Standards
-                </button>
-                <button type="button" id="btn-dtr-print-preview" class="dtr-btn dtr-btn-purple" title="View, print or save the official test report sheet">
-                    <svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg> Print / Preview Report
-                </button>
-                <button type="button" id="btn-dtr-save" class="dtr-btn dtr-btn-primary">
-                    <svg class="ic" aria-hidden="true"><use href="#i-save"/></svg> Save Report to NEXUS-L
-                </button>
             </div>
         </div>
 
@@ -761,32 +770,10 @@
      ======================================================================= -->
 <section id="dtr-panel-bonding" class="dtr-panel <?= $activeTab === 'bonding' ? '' : 'hidden' ?>">
     <div class="card glass dtr-section-card">
-        <div class="dtr-form-toolbar">
-            <div class="dtr-form-pickers">
-                <div class="dtr-field">
-                    <label>Select Whole Shoe Bonding Record (1,091 Reports)</label>
-                    <select id="dtr-bonding-record-select" class="dtr-select-lg"></select>
-                </div>
-            </div>
-            <div class="dtr-form-actions">
-                <button type="button" id="btn-bond-new" class="dtr-btn dtr-btn-outline">+ New Bonding Report</button>
-                <button type="button" id="btn-bond-load-u60" class="dtr-btn dtr-btn-amber" title="Reads the U60 machine result file for this Lab Ref No. The source file is never modified.">
-                    <svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> Load U60 Machine File
-                </button>
-                <button type="button" id="btn-bond-recalc" class="dtr-btn dtr-btn-outline">
-                    <svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg> Recalculate Spots &amp; Result
-                </button>
-                <button type="button" id="btn-bond-print-preview" class="dtr-btn dtr-btn-purple" title="View, print or save the official left / right report sheet">
-                    <svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg> Print / Preview Bonding Report
-                </button>
-                <?php if (! empty($dtrIsAdmin)): ?>
-                <a id="btn-bond-designer" class="dtr-btn dtr-btn-outline" href="<?= site_url('designer') ?>?tab=diagram" title="Admin only: place the points on the shoe, hide or add fields">
-                    <svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg> Adjust shoe points / layout (admin)
-                </a>
-                <?php endif ?>
-                <button type="button" id="btn-bond-save" class="dtr-btn dtr-btn-primary">
-                    <svg class="ic" aria-hidden="true"><use href="#i-save"/></svg> Save Bonding Report
-                </button>
+        <div class="dtr-form-pickers" hidden>
+            <div class="dtr-field">
+                <label>Select Whole Shoe Bonding Record (1,091 Reports)</label>
+                <select id="dtr-bonding-record-select" class="dtr-select-lg"></select>
             </div>
         </div>
 
@@ -795,89 +782,272 @@
 
             <div class="dtr-subcard">
                 <div class="dtr-subcard-head">
-                    <h4>Bonding Test Info &amp; Age Category Spot Rules (<code>TODDLER</code>: 14 spots · <code>KIDS</code>: 16 spots · <code>CHILDREN</code>: 24 spots · <code>ADULT</code>: 35 spots)</h4>
-                    <span class="badge b-ok" id="bf-overall-badge">PASS</span>
-                </div>
-                <div class="dtr-grid-6">
-                    <div class="dtr-field"><label>* LabRefNo</label><input type="text" name="LabRefNo" id="bf_LabRefNo" class="mono bold"></div>
-                    <div class="dtr-field"><label>ETRF No.</label><input type="text" name="ETRFNo" id="bf_ETRFNo" class="mono"></div>
-                    <div class="dtr-field">
-                        <label>* Age Category (Spot Count Rule)</label>
-                        <select name="AgeCategory" id="bf_AgeCategory">
-                            <option value="ADULT">ADULT (35 Spots)</option>
-                            <option value="CHILDREN">CHILDREN (24 Spots)</option>
-                            <option value="KIDS">KIDS (16 Spots)</option>
-                            <option value="TODDLER">TODDLER (14 Spots)</option>
-                        </select>
-                    </div>
-                    <div class="dtr-field">
-                        <label>* Standard Spec (kg/cm)</label>
-                        <select name="STD" id="bf_STD">
-                            <option value="2.5">2.5 kg/cm (Standard)</option>
-                            <option value="2.0">2.0 kg/cm (Kids/Toddler)</option>
-                        </select>
-                    </div>
-                    <div class="dtr-field">
-                        <label>Shoe Side</label>
-                        <select name="Side" id="bf_Side">
-                            <option value="Left">Left</option>
-                            <option value="Right">Right</option>
-                        </select>
-                    </div>
-                    <div class="dtr-field"><label>* Overall Result</label><input type="text" name="Result" id="bf_Result" class="bold mono dtr-rate-inp" readonly></div>
+                    <h4>Bonding Test Info &amp; Age Category Spot Rules (<code>TODDLER</code>: 14 spots · <code>KIDS</code>: 16 spots · <code>CHILDREN</code>: 24 spots · <code>ADULT</code>: 35 spots)</h4>                </div>
 
-                    <div class="dtr-field"><label>Factory</label><input type="text" name="Factory" id="bf_Factory"></div>
-                    <div class="dtr-field"><label>Adhesive Supplier</label><input type="text" name="AdhesiveSupplier" id="bf_AdhesiveSupplier"></div>
-                    <div class="dtr-field"><label>Model / Style</label><input type="text" name="ModelStyle" id="bf_ModelStyle"></div>
-                    <div class="dtr-field"><label>Color</label><input type="text" name="Color" id="bf_Color"></div>
-                    <div class="dtr-field"><label>PO / Lot No.</label><input type="text" name="POLotNO" id="bf_POLotNO" class="mono"></div>
-                    <div class="dtr-field"><label>PO Quantity</label><input type="text" name="POQuantity" id="bf_POQuantity"></div>
+                <!-- VF-F01 "paper sheet" layout — mirrors the official PRODUCTION bonding template.xlsx -->
+                <div class="vf-sheet">
+                    <div class="vf-tpl-head">
+                        <img class="vf-tpl-logo" src="<?= base_url('assets/images/vf-logo.webp') ?>" alt="VF">
+                        <div class="vf-tpl-title">
+                            <div class="vf-tpl-title-en">Bonding Test Results</div>
+                            <div class="vf-tpl-title-cn">胶着力测试</div>
+                        </div>
+                        <img class="vf-tpl-satra" src="<?= base_url('assets/images/satra-accredited.png') ?>" alt="SATRA Accredited Laboratory">
+                    </div>
 
-                    <div class="dtr-field"><label>Received Date</label><input type="text" name="ReceivedDate" id="bf_ReceivedDate"></div>
-                    <div class="dtr-field"><label>Tested Date</label><input type="text" name="TestedDate" id="bf_TestedDate"></div>
-                    <div class="dtr-field"><label>Finished Date</label><input type="text" name="FinishedDate" id="bf_FinishedDate"></div>
-                    <div class="dtr-field"><label>Technician</label><input type="text" name="Technician" id="bf_Technician"></div>
-                    <div class="dtr-field"><label>Reviewed By</label><input type="text" name="ReviewedBy" id="bf_ReviewedBy"></div>
-                    <div class="dtr-field"><label>Mode of Failure</label><input type="text" name="ModeOfFailure" id="bf_ModeOfFailure"></div>
+                    <div class="vf-tpl-ids">
+                        <div class="vf-tpl-box vf-tpl-formno">Form # : Lab VF 001</div>
+                        <div class="vf-tpl-box"><label for="bf_ETRFNo">ETRF No:</label><input type="text" name="ETRFNo" id="bf_ETRFNo" class="mono"></div>
+                        <div class="vf-tpl-box"><label for="bf_LabRefNo">* Lab Ref.No:</label><input type="text" name="LabRefNo" id="bf_LabRefNo" class="mono bold" list="bf_LabRefNo_list" autocomplete="off" placeholder="Select Lab Ref.No"><datalist id="bf_LabRefNo_list"></datalist></div>
+                    </div>
+
+                    <div class="vf-tpl-body">
+                        <div class="vf-tpl-col">
+                            <div class="vf-tpl-line"><label for="bf_Factory">Factory (工厂):</label><input type="text" name="Factory" id="bf_Factory"></div>
+                            <div class="vf-tpl-line"><label for="bf_AdhesiveSupplier">Adhesive supplier 胶水供应商:</label><input type="text" name="AdhesiveSupplier" id="bf_AdhesiveSupplier"></div>
+                            <div class="vf-tpl-line"><label for="bf_ShippedDate">Shipped Date (出货日期):</label><input type="text" name="ShippedDate" id="bf_ShippedDate"></div>
+                            <div class="vf-tpl-line"><label for="bf_ModelStyle">Model/Style/PGSC (英文鞋型):</label><input type="text" name="ModelStyle" id="bf_ModelStyle"></div>
+                            <div class="vf-tpl-line"><label for="bf_Color">Color (颜色):</label><input type="text" name="Color" id="bf_Color"></div>
+                            <div class="vf-tpl-line"><label for="bf_ProductionDate">Production Date (生产日期):</label><input type="text" name="ProductionDate" id="bf_ProductionDate"></div>
+                            <div class="vf-tpl-line"><label for="bf_POLotNO">PO/Lot No (订单号码):</label><input type="text" name="POLotNO" id="bf_POLotNO" class="mono"></div>
+                            <div class="vf-tpl-line"><label for="bf_POQuantity">PO Quantity (订单数量):</label><input type="text" name="POQuantity" id="bf_POQuantity"></div>
+                            <div class="vf-tpl-line"><label for="bf_Sendby">Send by (送达):</label><input type="text" name="Sendby" id="bf_Sendby"></div>
+                        </div>
+
+                        <div class="vf-tpl-col">
+                            <select name="MaterialSource" id="bf_MaterialSource" class="vf-tpl-hidden" tabindex="-1" aria-hidden="true">
+                                <option value="Prod. Material">Prod. Material (量产)</option>
+                                <option value="Pro. Shoes">Pro. Shoes (量产鞋)</option>
+                                <option value="Pro. Re-test">Pro. Re-test (量产重测)</option>
+                                <option value="NewDevelopment">New / Development (开发)</option>
+                                <option value="Sales Sample">Sales Sample (销样)</option>
+                                <option value="Trial experiment">Trial experiment (试胶试验)</option>
+                            </select>
+                            <div class="vf-tpl-radios" id="bf_MaterialSource_radios" role="radiogroup" aria-label="Test Type">
+                                <label><input type="radio" name="bf_ms_radio" value="Prod. Material"> Prod. Material 量产</label>
+                                <label><input type="radio" name="bf_ms_radio" value="Pro. Shoes"> Pro. Shoes 量产鞋</label>
+                                <label><input type="radio" name="bf_ms_radio" value="Pro. Re-test"> Pro. Re-test 量产重测</label>
+                                <label><input type="radio" name="bf_ms_radio" value="NewDevelopment"> New/Development 开发</label>
+                                <label><input type="radio" name="bf_ms_radio" value="Sales Sample"> Sales Sample 销样</label>
+                                <label><input type="radio" name="bf_ms_radio" value="Trial experiment"> Trial experiment 试胶试验</label>
+                            </div>
+                            <div class="vf-tpl-line"><label for="bf_ReceivedDate">Received Date 收到日期:</label><input type="text" name="ReceivedDate" id="bf_ReceivedDate"></div>
+                            <div class="vf-tpl-line"><label for="bf_TestedDate">Tested Date 测试日期:</label><input type="text" name="TestedDate" id="bf_TestedDate"></div>
+                            <div class="vf-tpl-line"><label for="bf_FinishedDate">Finished Date 完成日期:</label><input type="text" name="FinishedDate" id="bf_FinishedDate"></div>
+                            <div class="vf-tpl-line"><label for="bf_Technician">Technician 技术员:</label><input type="text" name="Technician" id="bf_Technician"></div>
+                        </div>
+                    </div>
+
+                    <div class="vf-sheet-grid vf-sheet-grid--extra">
+                        <div class="vf-sheet-cell"><label>* Age Category <span class="cn">年龄分类</span></label>
+                            <select name="AgeCategory" id="bf_AgeCategory">
+                                <option value="ADULT">ADULT (35 Spots)</option>
+                                <option value="CHILDREN">CHILDREN (24 Spots)</option>
+                                <option value="KIDS">KIDS (16 Spots)</option>
+                                <option value="TODDLER">TODDLER (14 Spots)</option>
+                            </select>
+                        </div>
+                        <div class="vf-sheet-cell"><label>* Standard Spec (kgf/cm)</label>
+                            <select name="STD" id="bf_STD">
+                                <option value="3.0">3.0 kgf/cm (Adult / VF-F01)</option>
+                                <option value="2.5">2.5 kgf/cm (Children)</option>
+                                <option value="2.0">2.0 kgf/cm (Kids/Toddler)</option>
+                            </select>
+                        </div>
+                        <div class="vf-sheet-cell"><label>Shoe Side</label>
+                            <select name="Side" id="bf_Side">
+                                <option value="Left">Left</option>
+                                <option value="Right">Right</option>
+                            </select>
+                        </div>
+                        <div class="vf-sheet-cell"><label>* Overall Result</label><input type="text" name="Result" id="bf_Result" class="bold mono dtr-rate-inp" readonly></div>
+                        <div class="vf-sheet-cell"><label>Mode of Failure(s) <span class="cn">失败的方式</span></label><input type="text" name="ModeOfFailure" id="bf_ModeOfFailure"></div>
+                        <div class="vf-sheet-cell"><label>Possible Cause(s) <span class="cn">可能的原因</span></label><input type="text" name="PossibleCause" id="bf_PossibleCause"></div>
+                    </div>
+                    <script>
+                    (function () {
+                        var sel = document.getElementById('bf_MaterialSource');
+                        var wrap = document.getElementById('bf_MaterialSource_radios');
+                        if (!sel || !wrap) return;
+                        var radios = wrap.querySelectorAll('input[type=radio]');
+                        function sync() { radios.forEach(function (r) { r.checked = (r.value === sel.value); }); }
+                        var d = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+                        Object.defineProperty(sel, 'value', {
+                            configurable: true,
+                            get: function () { return d.get.call(this); },
+                            set: function (v) { d.set.call(this, v); sync(); }
+                        });
+                        radios.forEach(function (r) {
+                            r.addEventListener('change', function () {
+                                if (!r.checked) return;
+                                d.set.call(sel, r.value);
+                                sel.dispatchEvent(new Event('change', { bubbles: true }));
+                            });
+                        });
+                        sync();
+                    })();
+                    </script>
                 </div>
             </div>
 
-            <!-- Summary Computed Row for UTF, FTO, FiTO -->
-            <div class="dtr-grid-3" style="margin-bottom:12px">
-                <div class="dtr-subcard">
-                    <h4>Upper to Foxing (UTF 1..35)</h4>
-                    <div class="dtr-grid-4">
-                        <div class="dtr-field"><label>Min</label><input type="text" id="bp_UTFMin" readonly class="dtr-ro"></div>
-                        <div class="dtr-field"><label>Max</label><input type="text" id="bp_UTFMax" readonly class="dtr-ro"></div>
-                        <div class="dtr-field"><label><b>Average</b></label><input type="text" id="bp_UTFAverage" readonly class="dtr-ro bold"></div>
-                        <div class="dtr-field"><label>Result</label><input type="text" id="bp_UTF_Result" readonly class="dtr-rate-inp"></div>
+            <!-- Results table / shoe diagram / sign-off — mirrors the VF-F01 template body -->
+            <div class="vf-sheet vf-body" id="vf-body">
+                <table class="vf-res">
+                    <thead>
+                        <tr>
+                            <th rowspan="2" class="vf-res-part">Shoe Part</th>
+                            <th rowspan="2" class="vf-res-w1">VF Test<br>Method</th>
+                            <th rowspan="2" class="vf-res-w2">STD<br>kgf/cm</th>
+                            <th colspan="3">Test Result<br>kgf/cm</th>
+                            <th colspan="2">Status</th>
+                            <th rowspan="2" class="vf-res-mode">Mode of Failure(s)<br><span class="cn">失败的方式</span></th>
+                            <th rowspan="2" class="vf-res-cause">Possible Cause(s)<br><span class="cn">可能的原因</span></th>
+                        </tr>
+                        <tr>
+                            <th class="vf-res-n">Min</th><th class="vf-res-n">Max</th><th class="vf-res-n">Avg</th>
+                            <th class="vf-res-s">Pass</th><th class="vf-res-s">Fail</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="vf-res-part-cell">UPPER TO FOXING</td>
+                            <td class="vf-res-c">VF-F01<br>(2019/05)</td>
+                            <td class="vf-res-c vf-res-std"><b class="vf-std-disp">3.00</b></td>
+                            <td><input type="text" id="bp_UTFMin" readonly class="vf-res-inp"></td>
+                            <td><input type="text" id="bp_UTFMax" readonly class="vf-res-inp"></td>
+                            <td><input type="text" id="bp_UTFAverage" readonly class="vf-res-inp bold"></td>
+                            <td class="vf-res-mark" data-for="bp_UTF_Result" data-side="pass"></td>
+                            <td class="vf-res-mark" data-for="bp_UTF_Result" data-side="fail"></td>
+                            <td rowspan="8" class="vf-res-legend">
+                                <p><b>AF=</b> Failure at the adhesive/substrate interface or the adhesive/primer interface</p>
+                                <p><b>CF=</b> Cohesive Failure of the adhesive (failure within the adhesive or between the two layers of adhesive).</p>
+                                <p><b>PF=</b> Failure at the primer/substrate interface</p>
+                                <p><b>SF=</b> Failure of the substrate, including the location of the failure within the substrate</p>
+                            </td>
+                            <td rowspan="8" class="vf-res-legend vf-res-causes">
+                                <p>(a) Poor Priming <span class="cn">药水不良</span></p>
+                                <p>(b) Poor cementing <span class="cn">胶水不良</span></p>
+                                <p>(c) Over-dried cement <span class="cn">积胶</span></p>
+                                <p>(d) Wet primer <span class="cn">湿的药水</span></p>
+                                <p>(e) Wet cement <span class="cn">湿的胶水</span></p>
+                                <p>(f) Poor pressing <span class="cn">压机不良</span></p>
+                                <p>(g) Poor Roughing <span class="cn">打粗不良</span></p>
+                                <p>(h) Upper material - weak <span class="cn">鞋面材料不良</span></p>
+                                <p>(i) EVA-Weak <span class="cn">EVA 不良</span></p>
+                                <p>(j) Dusty component <span class="cn">粉沫</span></p>
+                                <p>(k) Splitting of foxing tape <span class="cn">围条分层</span></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="vf-res-part-cell">FOXING TO OUTSOLE</td>
+                            <td class="vf-res-c">VF-F01<br>(2019/05)</td>
+                            <td class="vf-res-c vf-res-std"><b class="vf-std-disp">3.00</b></td>
+                            <td><input type="text" id="bp_FTOMin" readonly class="vf-res-inp"></td>
+                            <td><input type="text" id="bp_FTOMax" readonly class="vf-res-inp"></td>
+                            <td><input type="text" id="bp_FTOAverage" readonly class="vf-res-inp bold"></td>
+                            <td class="vf-res-mark" data-for="bp_FTO_Result" data-side="pass"></td>
+                            <td class="vf-res-mark" data-for="bp_FTO_Result" data-side="fail"></td>
+                        </tr>
+                        <tr>
+                            <td class="vf-res-part-cell">FILLER TO OUTSOLE <span class="vf-res-sub">(1..13)</span></td>
+                            <td class="vf-res-c">VF-F01<br>(2019/05)</td>
+                            <td class="vf-res-c vf-res-std"><b>1.90</b></td>
+                            <td><input type="text" id="bp_FiTOMin" readonly class="vf-res-inp"></td>
+                            <td><input type="text" id="bp_FiTOMax" readonly class="vf-res-inp"></td>
+                            <td><input type="text" id="bp_FiTOAverage" readonly class="vf-res-inp bold"></td>
+                            <td class="vf-res-mark" data-for="bp_FiTO_Result" data-side="pass"></td>
+                            <td class="vf-res-mark" data-for="bp_FiTO_Result" data-side="fail"></td>
+                        </tr>
+                        <tr class="vf-res-blank"><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                        <tr class="vf-res-blank"><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                        <tr class="vf-res-blank"><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                        <tr class="vf-res-blank"><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                        <tr class="vf-res-blank"><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                    </tbody>
+                </table>
+
+                <!-- hidden originals kept so dtr.js can read / write the per-part result -->
+                <div class="vf-tpl-hidden" aria-hidden="true">
+                    <input type="text" id="bp_UTF_Result" readonly class="dtr-rate-inp" tabindex="-1">
+                    <input type="text" id="bp_FTO_Result" readonly class="dtr-rate-inp" tabindex="-1">
+                    <input type="text" id="bp_FiTO_Result" readonly class="dtr-rate-inp" tabindex="-1">
+                </div>
+
+                <div class="vf-diag">
+                    <div class="vf-diag-notes">
+                        <div class="vf-diag-note-l">1.Outside Value: Fabric / PU / EVA (Left)kgf/cm<br>2.Inside Value:</div>
+                        <div class="vf-diag-note-c">Center: Fabric / PU / EVA kgf/cm</div>
+                        <div class="vf-diag-note-r">1.Outside Value:Fabric / PU / EVA kgf/cm<br>2.Inside Value:</div>
+                    </div>
+                    <div class="vf-diag-row">
+                        <div id="vf-diag-left" class="vf-shoe-card vf-diag-card"><img src="<?= base_url('assets/images/bonding_sketches/blank.png') ?>" class="vf-shoe-img" style="left:12%;top:8%;width:76%;height:84%" alt="Left shoe"></div>
+                        <div class="vf-diag-strips">
+                            <div><span>Left</span><div class="vf-diag-strip"></div></div>
+                            <div><span>Right</span><div class="vf-diag-strip"></div></div>
+                        </div>
+                        <div id="vf-diag-right" class="vf-shoe-card vf-diag-card"><img src="<?= base_url('assets/images/bonding_sketches/blank.png') ?>" class="vf-shoe-img" style="left:12%;top:8%;width:76%;height:84%" alt="Right shoe"></div>
                     </div>
                 </div>
-                <div class="dtr-subcard">
-                    <h4>Foxing to Outsole (FTO 1..35)</h4>
-                    <div class="dtr-grid-4">
-                        <div class="dtr-field"><label>Min</label><input type="text" id="bp_FTOMin" readonly class="dtr-ro"></div>
-                        <div class="dtr-field"><label>Max</label><input type="text" id="bp_FTOMax" readonly class="dtr-ro"></div>
-                        <div class="dtr-field"><label><b>Average</b></label><input type="text" id="bp_FTOAverage" readonly class="dtr-ro bold"></div>
-                        <div class="dtr-field"><label>Result</label><input type="text" id="bp_FTO_Result" readonly class="dtr-rate-inp"></div>
+
+                <div class="vf-foot">
+                    <div class="vf-foot-comments"><label for="bf_Remarks">Comments <span class="cn">备注:</span></label><input type="text" name="Remarks" id="bf_Remarks"></div>
+                    <div class="vf-foot-signs">
+                        <div class="vf-foot-sign"><label for="bf_ReviewedBy">Reviewed by <span class="cn">审查:</span></label><input type="text" name="ReviewedBy" id="bf_ReviewedBy"></div>
+                        <div class="vf-foot-sign"><label for="vf_ApprovedBy">Approved by <span class="cn">核准:</span></label><input type="text" id="vf_ApprovedBy" value="QA Laboratory Head" readonly tabindex="-1" title="Set by the approval signatory (Report Designer → Signatories); not saved with the report"></div>
                     </div>
                 </div>
-                <div class="dtr-subcard">
-                    <h4>Filler to Outsole (FiTO 1..13 · Std 1.9)</h4>
-                    <div class="dtr-grid-4">
-                        <div class="dtr-field"><label>Min</label><input type="text" id="bp_FiTOMin" readonly class="dtr-ro"></div>
-                        <div class="dtr-field"><label>Max</label><input type="text" id="bp_FiTOMax" readonly class="dtr-ro"></div>
-                        <div class="dtr-field"><label><b>Average</b></label><input type="text" id="bp_FiTOAverage" readonly class="dtr-ro bold"></div>
-                        <div class="dtr-field"><label>Result</label><input type="text" id="bp_FiTO_Result" readonly class="dtr-rate-inp"></div>
-                    </div>
-                </div>
+
+                <script>
+                (function () {
+                    var d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+                    function paint(id) {
+                        var el = document.getElementById(id);
+                        var v = String((el && d.get.call(el)) || '').toUpperCase();
+                        document.querySelectorAll('.vf-res-mark[data-for="' + id + '"]').forEach(function (td) {
+                            var pass = td.getAttribute('data-side') === 'pass';
+                            td.className = 'vf-res-mark';
+                            td.textContent = '';
+                            if (v === 'PASS' && pass) { td.textContent = '✓'; td.classList.add('is-pass'); }
+                            else if (v.indexOf('TOL') === 0 && pass) { td.textContent = 'TOL'; td.classList.add('is-tol'); }
+                            else if (v === 'FAIL' && !pass) { td.textContent = '✗'; td.classList.add('is-fail'); }
+                        });
+                    }
+                    ['bp_UTF_Result', 'bp_FTO_Result', 'bp_FiTO_Result'].forEach(function (id) {
+                        var el = document.getElementById(id);
+                        if (!el) return;
+                        Object.defineProperty(el, 'value', {
+                            configurable: true,
+                            get: function () { return d.get.call(this); },
+                            set: function (v) { d.set.call(this, v); paint(id); }
+                        });
+                        paint(id);
+                    });
+
+                    var std = document.getElementById('bf_STD');
+                    function showStd() {
+                        var n = parseFloat(std && std.value);
+                        var txt = isNaN(n) ? '' : n.toFixed(2);
+                        document.querySelectorAll('.vf-std-disp').forEach(function (b) { b.textContent = txt; });
+                    }
+                    if (std) {
+                        var sd = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+                        Object.defineProperty(std, 'value', {
+                            configurable: true,
+                            get: function () { return sd.get.call(this); },
+                            set: function (v) { sd.set.call(this, v); showStd(); }
+                        });
+                        std.addEventListener('change', showStd);
+                        showStd();
+                    }
+                })();
+                </script>
             </div>
 
             <!-- 35-Spot Interactive Grid -->
-            <div class="dtr-subcard">
+            <div class="dtr-subcard" id="dtr-bonding-spots-card" hidden>
                 <div class="dtr-subcard-head">
                     <h4>Bonding Spot Readings (Points 1 to 35)</h4>
-                    <span class="muted sm">Tolerance Rule: For Std 2.5, values 2.0..2.49 are <code>TOLERABLE</code> (yellow), &lt;2.0 is <code>FAIL</code> (red). For Std 2.0, values 1.8..1.99 are <code>TOLERABLE</code>, &lt;1.8 is <code>FAIL</code>.</span>
+                    <span class="muted sm">Tolerance Rule (80% of Std, per VF-F01): Std 3.0 (Adult) &rarr; TOLERABLE 2.4..2.99, FAIL &lt;2.4. Std 2.5 (Children) &rarr; TOLERABLE 2.0..2.49, FAIL &lt;2.0. Std 2.0 (Kids/Toddler) &rarr; TOLERABLE 1.6..1.99, FAIL &lt;1.6.</span>
                 </div>
                 <div class="dtr-table-wrap" style="max-height:420px">
                     <table class="dtr-table dtr-mech-table">
@@ -909,6 +1079,143 @@
                 </div>
             </div>
         </form>
+
+        <!-- ===== Pull Footwear Test Results (Form # Lab VF 003), shown when "Pull Test Report" is picked ===== -->
+        <?php
+            $pullItems = [
+                ['Eyelet claw strength', ''],
+                ['Hook&amp;eyelet attachment metal', ''],
+                ['Hook&amp;eyelet attachment carted metal', ''],
+                ['Hook&amp;eyelet attachment - plastic', ''],
+                ['Webbing loop holder', ''],
+                ['Webbing Heel Pull Tab', '35'],
+            ];
+            $pullSketch = static function (string $side): string {
+                $eyelets = '';
+                foreach ([[44, 70], [40, 108], [38, 146], [38, 184], [40, 222]] as $p) {
+                    $eyelets .= '<circle cx="' . $p[0] . '" cy="' . $p[1] . '" r="4"/><circle cx="' . (200 - $p[0]) . '" cy="' . $p[1] . '" r="4"/>';
+                }
+
+                return '<svg viewBox="0 0 200 300" class="pf-shoe" role="img" aria-label="' . $side . ' shoe"><text x="100" y="18" text-anchor="middle" class="pf-shoe-t">' . $side . '</text>'
+                    . '<path d="M34 270 C26 200 28 120 52 64 C70 28 130 28 148 64 C172 120 174 200 166 270 Z" fill="#fff" stroke="#111" stroke-width="1.5"/>'
+                    . '<path d="M60 250 C56 190 58 130 74 90 C84 66 116 66 126 90 C142 130 144 190 140 250" fill="none" stroke="#111" stroke-width="1"/>'
+                    . '<g fill="#fff" stroke="#111" stroke-width="1.2">' . $eyelets . '</g></svg>';
+            };
+        ?>
+        <form id="dtr-pull-form" onsubmit="return false;" hidden>
+            <input type="hidden" name="ID" id="pf_ID" value="">
+            <div class="vf-sheet pf-sheet">
+                <div class="vf-tpl-head">
+                    <img class="vf-tpl-logo" src="<?= base_url('assets/images/vf-logo.webp') ?>" alt="VF">
+                    <div class="vf-tpl-title">
+                        <div class="vf-tpl-title-en">Pull Footwear Test Results</div>
+                        <div class="vf-tpl-title-cn">整鞋部件拉力测试</div>
+                    </div>
+                    <img class="vf-tpl-satra" src="<?= base_url('assets/images/satra-accredited.png') ?>" alt="SATRA Accredited Laboratory">
+                </div>
+
+                <div class="vf-tpl-ids">
+                    <div class="vf-tpl-box vf-tpl-formno">Form # : Lab VF 003</div>
+                    <div class="vf-tpl-box"><label for="pf_ETRFNo">ETRF No:</label><input type="text" name="ETRFNo" id="pf_ETRFNo" class="mono"></div>
+                    <div class="vf-tpl-box"><label for="pf_LabRefNo">* Lab Ref.No:</label><input type="text" name="LabRefNo" id="pf_LabRefNo" class="mono bold"></div>
+                </div>
+
+                <div class="vf-tpl-body">
+                    <div class="vf-tpl-col">
+                        <div class="vf-tpl-line"><label for="pf_Supplier">Supplier/Factory (厂商):</label><input type="text" name="Supplier" id="pf_Supplier"></div>
+                        <div class="vf-tpl-line"><label for="pf_SupplierCountry">Supplier's country (国家):</label><input type="text" name="SupplierCountry" id="pf_SupplierCountry"></div>
+                        <div class="vf-tpl-line"><label for="pf_MaterialDescription">Material Description (材料):</label><input type="text" name="MaterialDescription" id="pf_MaterialDescription"></div>
+                        <div class="vf-tpl-line"><label for="pf_ModelNoStyle">Model No./Style (鞋体):</label><input type="text" name="ModelNoStyle" id="pf_ModelNoStyle"></div>
+                        <div class="vf-tpl-line"><label for="pf_Color">Color (颜色):</label><input type="text" name="Color" id="pf_Color"></div>
+                        <div class="vf-tpl-line"><label for="pf_POLotNo">P.O/Lot No (订单号码):</label><input type="text" name="POLotNo" id="pf_POLotNo" class="mono"></div>
+                        <div class="vf-tpl-line"><label for="pf_POQuantity">PO Quantity (订单数量):</label><input type="text" name="POQuantity" id="pf_POQuantity"></div>
+                        <div class="vf-tpl-line"><label for="pf_SendBy">Send by (送达方):</label><input type="text" name="SendBy" id="pf_SendBy"></div>
+                    </div>
+                    <div class="vf-tpl-col">
+                        <input type="hidden" name="MaterialSource" id="pf_MaterialSource">
+                        <div class="vf-tpl-radios" id="pf_MaterialSource_radios" role="radiogroup" aria-label="Test Type">
+                            <label><input type="radio" name="pf_ms_radio" value="Prod. Material"> Prod. Material 量产材料</label>
+                            <label><input type="radio" name="pf_ms_radio" value="Prod. Re-test"> Prod. Re-test 量产重测</label>
+                            <label><input type="radio" name="pf_ms_radio" value="New/Development"> New/Development 开发新材料</label>
+                            <label><input type="radio" name="pf_ms_radio" value="Trial Test"> Trial Test 试胶测试</label>
+                            <label><input type="radio" name="pf_ms_radio" value="Sales Sample"> Sales Sample 销售样品</label>
+                        </div>
+                        <input type="hidden" name="TechSlot" id="pf_TechSlot">
+                        <div class="vf-tpl-radios pf-techs" id="pf_TechSlot_radios" role="radiogroup" aria-label="Technician slot">
+                            <?php for ($t = 1; $t <= 4; $t++): ?>
+                                <label><input type="radio" name="pf_tech_radio" value="Tech <?= $t ?>"> Tech <?= $t ?></label>
+                            <?php endfor ?>
+                        </div>
+                        <div class="vf-tpl-line"><label for="pf_ReceivedDate">Received Date 收到日期:</label><input type="text" name="ReceivedDate" id="pf_ReceivedDate"></div>
+                        <div class="vf-tpl-line"><label for="pf_TestedDate">Tested Date 测试日期:</label><input type="text" name="TestedDate" id="pf_TestedDate"></div>
+                        <div class="vf-tpl-line"><label for="pf_FinishedDate">Finished Date 完成日期:</label><input type="text" name="FinishedDate" id="pf_FinishedDate"></div>
+                        <div class="vf-tpl-line"><label for="pf_Technician">Technician 技术员:</label><input type="text" name="Technician" id="pf_Technician"></div>
+                        <div class="vf-tpl-line pf-result"><label for="pf_Result">* Overall Result:</label><input type="text" name="Result" id="pf_Result" class="bold mono dtr-rate-inp" readonly></div>
+                    </div>
+                </div>
+
+                <div class="pf-section">Closures - Eyelet , D-ring , Hook , Webbing Pull Strength</div>
+                <div class="pf-wrap">
+                <table class="vf-res pf-res">
+                    <thead>
+                        <tr>
+                            <th rowspan="2" class="pf-c-item">Test Items<br><span class="cn">测试项目</span></th>
+                            <th rowspan="2" class="pf-c-m">VF Test Method<br><span class="cn">测试方法</span></th>
+                            <th rowspan="2" class="pf-c-u">Units<br><span class="cn">单位</span></th>
+                            <th rowspan="2" class="pf-c-sk">Test Sketch<br><span class="cn">测试部位</span></th>
+                            <th colspan="2">Test Results<br><span class="cn">测试结果</span></th>
+                            <th rowspan="2" class="pf-c-n">Maximum</th>
+                            <th rowspan="2" class="pf-c-n">Standard<br><span class="cn">标准</span></th>
+                            <th rowspan="2" class="pf-c-n">Tolerance<br><span class="cn">容许度</span></th>
+                            <th rowspan="2" class="pf-c-n">Rating<br><span class="cn">等级</span></th>
+                        </tr>
+                        <tr><th class="pf-c-r">Lateral side:</th><th class="pf-c-r">Medial side:</th></tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach (['left' => 'Left', 'right' => 'Right'] as $sk => $sideLabel): ?>
+                            <?php foreach ($pullItems as $i => $it): ?>
+                                <tr>
+                                    <td class="vf-res-part-cell"><?= $it[0] ?></td>
+                                    <td class="vf-res-c">VF-B04<br>(2019/05)</td>
+                                    <td class="vf-res-c">kgf</td>
+                                    <?php if ($i === 0): ?><td rowspan="<?= count($pullItems) ?>" class="pf-sketch"><?= $pullSketch($sideLabel) ?></td><?php endif ?>
+                                    <td><input type="number" step="any" class="vf-res-inp" data-pull="<?= $sk ?>.<?= $i ?>.lat"></td>
+                                    <td><input type="number" step="any" class="vf-res-inp" data-pull="<?= $sk ?>.<?= $i ?>.med"></td>
+                                    <td><input type="text" readonly class="vf-res-inp bold" data-pull="<?= $sk ?>.<?= $i ?>.max"></td>
+                                    <td><input type="text" class="vf-res-inp pf-std" data-pull="<?= $sk ?>.<?= $i ?>.std" value="<?= $it[1] ?>"></td>
+                                    <td><input type="text" class="vf-res-inp pf-tol" data-pull="<?= $sk ?>.<?= $i ?>.tol" value="<?= $it[1] !== '' ? 'minimum' : '' ?>"></td>
+                                    <td><input type="text" readonly class="vf-res-inp bold dtr-rate-inp" data-pull="<?= $sk ?>.<?= $i ?>.rating"></td>
+                                </tr>
+                            <?php endforeach ?>
+                        <?php endforeach ?>
+                        <tr><td colspan="10" class="pf-other-head">Other Types of Pull Test</td></tr>
+                        <?php for ($o = 0; $o < 4; $o++): ?>
+                            <tr>
+                                <td><input type="text" class="vf-res-inp" data-pull="other.<?= $o ?>.item"></td>
+                                <td><input type="text" class="vf-res-inp" data-pull="other.<?= $o ?>.method"></td>
+                                <td><input type="text" class="vf-res-inp" data-pull="other.<?= $o ?>.unit"></td>
+                                <td></td>
+                                <td><input type="number" step="any" class="vf-res-inp" data-pull="other.<?= $o ?>.lat"></td>
+                                <td><input type="number" step="any" class="vf-res-inp" data-pull="other.<?= $o ?>.med"></td>
+                                <td><input type="text" readonly class="vf-res-inp bold" data-pull="other.<?= $o ?>.max"></td>
+                                <td><input type="text" class="vf-res-inp pf-std" data-pull="other.<?= $o ?>.std"></td>
+                                <td><input type="text" class="vf-res-inp pf-tol" data-pull="other.<?= $o ?>.tol"></td>
+                                <td><input type="text" readonly class="vf-res-inp bold dtr-rate-inp" data-pull="other.<?= $o ?>.rating"></td>
+                            </tr>
+                        <?php endfor ?>
+                    </tbody>
+                </table>
+                </div>
+
+                <div class="pf-foot">
+                    <div class="pf-comments"><label for="pf_Comments">Comments 备注 :</label><textarea name="Comments" id="pf_Comments" rows="2"></textarea></div>
+                    <div class="pf-sign">
+                        <div class="vf-tpl-line"><label for="pf_ReviewedBy">Reviewed by 检查:</label><input type="text" name="ReviewedBy" id="pf_ReviewedBy"></div>
+                        <div class="vf-tpl-line"><label for="pf_ApprovedBy">Approved by 核准:</label><input type="text" name="ApprovedBy" id="pf_ApprovedBy"></div>
+                    </div>
+                </div>
+            </div>
+        </form>
     </div>
 </section>
 
@@ -916,19 +1223,6 @@
      TAB 4: BUILT-IN LAB CALCULATORS & STANDARDS / DSR LOOKUP EXPLORER
      ======================================================================= -->
 <section id="dtr-panel-calculators" class="dtr-panel <?= $activeTab === 'calculators' ? '' : 'hidden' ?>">
-    <?php if (! empty($dtrIsAdmin)): ?>
-    <div class="card glass dtr-section-card" style="margin-bottom:14px">
-        <div class="dtr-card-head"><div>
-            <h3><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg> Admin: customize reports</h3>
-            <p class="muted sm">Match the shoe lines and results, rearrange or hide inputs, add fields, and change which Excel cells are read per report type.</p>
-        </div></div>
-        <div class="dtr-form-actions">
-            <a class="dtr-btn dtr-btn-purple" href="<?= site_url('designer') ?>?tab=diagram">Shoe diagram &amp; points</a>
-            <a class="dtr-btn dtr-btn-outline" href="<?= site_url('designer') ?>?tab=form">Form fields</a>
-            <a class="dtr-btn dtr-btn-amber" href="<?= site_url('designer') ?>?tab=excel">Excel readers</a>
-        </div>
-    </div>
-    <?php endif ?>
     <div class="dtr-grid-3">
         <!-- 1. Weight Calculator -->
         <div class="card glass dtr-section-card" id="calc-card-weight">

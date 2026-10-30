@@ -66,17 +66,13 @@
   // 1. TAB SWITCHING
   // =========================================================================
   const switchTab = (tabName) => {
-    $$('[data-dtr-tab]').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.dtrTab === tabName);
+    $$('[data-dtr-for]').forEach((bar) => {
+      bar.hidden = bar.dataset.dtrFor !== tabName;
     });
     ['tracker', 'material', 'bonding', 'calculators'].forEach((t) => {
       $(`#dtr-panel-${t}`)?.classList.toggle('hidden', t !== tabName);
     });
   };
-
-  $$('[data-dtr-tab]').forEach((btn) => {
-    btn.addEventListener('click', () => switchTab(btn.dataset.dtrTab));
-  });
 
   $$('[data-goto-calc]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -133,21 +129,14 @@
     }
   };
 
-  $('#dtr-tracker-pills')?.addEventListener('click', (e) => {
-    const pill = e.target.closest('[data-slug]');
-    if (!pill) return;
-    $$('#dtr-tracker-pills .dtr-pill').forEach((p) => p.classList.remove('active'));
-    pill.classList.add('active');
-    const q = $('#dtr-tracker-search')?.value.trim() || '';
-    loadTrackerRows(pill.dataset.slug, q);
-  });
-
-  $('#dtr-tracker-btn-search')?.addEventListener('click', () => {
-    const activePill = $('#dtr-tracker-pills .dtr-pill.active');
-    const slug = activePill ? activePill.dataset.slug : 'all';
+  const runTrackerSearch = () => {
+    const slug = $('#dtr-tracker-cat')?.value || 'all';
     const q = $('#dtr-tracker-search')?.value.trim() || '';
     loadTrackerRows(slug, q);
-  });
+  };
+
+  $('#dtr-tracker-cat')?.addEventListener('change', runTrackerSearch);
+  $('#dtr-tracker-btn-search')?.addEventListener('click', runTrackerSearch);
 
   $('#dtr-tracker-search')?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
@@ -162,8 +151,13 @@
     if (!btn) return;
     const slug = btn.dataset.openRecord;
     const sourceId = btn.dataset.sourceId;
-    if (slug === 'bonding') {
+    if (slug === 'pull') {
       switchTab('bonding');
+      setReportKind('pull');
+      await loadPullRecord(sourceId);
+    } else if (slug === 'bonding') {
+      switchTab('bonding');
+      setReportKind('bonding');
       await loadBondingRecordList(sourceId);
       await loadSingleBondingRecord(sourceId);
     } else {
@@ -439,7 +433,7 @@
       const res = await apiFetch(`dtr/records?slug=${encodeURIComponent(slug)}`);
       if (!sel || !res.rows) return;
       if (!res.rows.length) { sel.innerHTML = '<option value="">No records yet - press “+ New Record”</option>'; return; }
-      sel.innerHTML = res.rows.map((r) => `
+      sel.innerHTML = '<option value="">- New report (not saved yet) -</option>' + res.rows.map((r) => `
         <option value="${escHtml(r.source_id)}" ${String(r.source_id) === String(selectedId) ? 'selected' : ''}>
           ${escHtml(r.lab_ref_no)} · ${escHtml(r.material_type || r.form_category)} · ${escHtml(r.model_style || r.material_code || '')} [${escHtml(r.overall_result || 'Pass')}]
         </option>
@@ -654,8 +648,8 @@
   // Switch Material Form Slug
   $('#dtr-mat-form-slug')?.addEventListener('change', async (e) => {
     activeSlug = e.target.value;
+    newMaterialRecord(false);
     await loadMaterialRecordList(activeSlug);
-    await loadSingleMaterialRecord(activeSlug, 0);
   });
 
   // Switch Record inside Material Form
@@ -664,21 +658,20 @@
     if (id) await loadSingleMaterialRecord(activeSlug, id);
   });
 
-  // + New Record
-  $('#btn-dtr-new')?.addEventListener('click', () => {
+  // + New Record: a blank form, only the Lab Ref No. is suggested
+  const newMaterialRecord = (notify = true) => {
     const today = new Date().toISOString().slice(0, 10);
     populateMaterialForm({
       ID: '',
       LabRefNo: `DTP${today.replace(/-/g, '')}${activeSlug.toUpperCase().slice(0, 3)}-1`,
-      TR: `TR${today.replace(/-/g, '')}001`,
-      ReceivedDate: today,
-      TestedDate: today,
-      FinishedDate: today,
-      Status: 'Complete',
-      Remarks: 'PASS',
-    });
-    showToast('Initialized new blank test report record.');
-  });
+    }, { label: $('#dtr-mat-form-slug')?.selectedOptions[0]?.textContent.trim() || '' });
+    $$('#dtr-material-form textarea').forEach((t) => { t.value = ''; });
+    $$('#dtr-material-form input[type=radio], #dtr-material-form input[type=checkbox]').forEach((c) => { c.checked = false; });
+    const sel = $('#dtr-mat-record-select');
+    if (sel) sel.value = '';
+    if (notify) showToast('Initialized new blank test report record.');
+  };
+  $('#btn-dtr-new')?.addEventListener('click', () => newMaterialRecord());
 
   // Stamp Reviewed
   $('#btn-dtr-review')?.addEventListener('click', () => {
@@ -772,6 +765,14 @@
     ADULT: 35,
   };
 
+  // VF-F01 standard spec per age category (matches deriveBondingFields() on the PHP side).
+  const AGE_STD_DEFAULTS = {
+    TODDLER: '2.0',
+    KIDS: '2.0',
+    CHILDREN: '2.5',
+    ADULT: '3.0',
+  };
+
   // Access rules (BondingReportV2 "Test Log - Bonding": UpdateBondingResult / UpdateFillerResult): PASS >= STD,
   // TOLERABLE >= 80% of STD, else FAIL. UTF/FTO: Adult 3.0 / 2.4, Children 2.5 / 2.0; Center IS/OS (FiTO): 1.0 / 0.8
   const FITO_STD = 1.0;
@@ -845,20 +846,15 @@
     if ($('#bp_FiTOAverage')) $('#bp_FiTOAverage').value = fito.ave;
     if ($('#bp_FiTO_Result')) { $('#bp_FiTO_Result').value = fito.res; styleRatingInput($('#bp_FiTO_Result')); }
 
+    // no spot readings -> keep what the report already has (blank on a new report)
     const allRes = [utf.res, fto.res, fito.res].filter(Boolean);
-    let overall = 'PASS';
-    if (allRes.includes('FAIL')) overall = 'FAIL';
-    else if (allRes.includes('TOLERABLE')) overall = 'TOLERABLE';
-
     if ($('#bf_Result')) {
-      $('#bf_Result').value = overall;
+      if (allRes.length) {
+        $('#bf_Result').value = allRes.includes('FAIL') ? 'FAIL' : (allRes.includes('TOLERABLE') ? 'TOLERABLE' : 'PASS');
+      }
       styleRatingInput($('#bf_Result'));
     }
-    const badge = $('#bf-overall-badge');
-    if (badge) {
-      badge.textContent = overall;
-      badge.className = 'badge ' + (overall === 'FAIL' ? 'b-err' : (overall === 'TOLERABLE' ? 'b-warn' : 'b-ok'));
-    }
+    scheduleFormSketch();
   };
 
   const loadBondingRecordList = async (selectedId = null) => {
@@ -868,7 +864,7 @@
       const res = await apiFetch('dtr/records?slug=bonding');
       if (!sel || !res.rows) return;
       if (!res.rows.length) { sel.innerHTML = '<option value="">No bonding reports yet</option>'; return; }
-      sel.innerHTML = res.rows.map((r) => `
+      sel.innerHTML = '<option value="">- New report (not saved yet) -</option>' + res.rows.map((r) => `
         <option value="${escHtml(r.source_id)}" ${String(r.source_id) === String(selectedId) ? 'selected' : ''}>
           ${escHtml(r.lab_ref_no)} · ${escHtml(r.model_style || '')} · ${escHtml(r.color || '')} [${escHtml(r.overall_result || 'Pass')}]
         </option>
@@ -880,10 +876,12 @@
     }
   };
 
-  const loadSingleBondingRecord = async (sourceId = 0) => {
+  const loadSingleBondingRecord = async (sourceId = 0, labRefNo = '') => {
     try {
-      const res = await apiFetch(`dtr/record?slug=bonding&source_id=${encodeURIComponent(sourceId)}`);
+      const query = labRefNo ? `lab_ref_no=${encodeURIComponent(labRefNo)}` : `source_id=${encodeURIComponent(sourceId)}`;
+      const res = await apiFetch(`dtr/record?slug=bonding&${query}`);
       if (!res || !res.ok) return;
+      if (labRefNo && !Object.keys(res.record || {}).length) return;
       const rec = res.record || {};
       const bp = res.bondingPoints || {};
       activeBondingPoints = bp;
@@ -909,51 +907,71 @@
   $('#dtr-bonding-record-select')?.addEventListener('change', (e) => {
     if (e.target.value) loadSingleBondingRecord(e.target.value);
   });
-  $('#bf_AgeCategory')?.addEventListener('change', computeBondingPoints);
+  // Lab Ref.No dropdown: the Lab Ref Nos saved in tbl_dtr_bonding_points; picking one loads its report
+  let bondingLabRefs = [];
+  const loadBondingLabRefs = async () => {
+    try {
+      const res = await apiFetch('dtr/bonding-labrefs');
+      bondingLabRefs = (res && res.labRefs) || [];
+      const dl = $('#bf_LabRefNo_list');
+      if (dl) dl.innerHTML = bondingLabRefs.map((v) => `<option value="${escHtml(v)}"></option>`).join('');
+    } catch (err) {
+      console.error(err);
+    }
+  };
+  $('#bf_LabRefNo')?.addEventListener('change', (e) => {
+    const v = e.target.value.trim();
+    if (v && bondingLabRefs.includes(v)) loadSingleBondingRecord(0, v);
+  });
+  // The browser filters the list by the current text: empty the suggested Lab Ref No. while the list is open
+  // so every saved Lab Ref No. shows, and put it back if nothing was picked or typed.
+  $('#bf_LabRefNo')?.addEventListener('focus', (e) => {
+    e.target.dataset.keep = e.target.value;
+    e.target.value = '';
+  });
+  $('#bf_LabRefNo')?.addEventListener('blur', (e) => {
+    if (!e.target.value) e.target.value = e.target.dataset.keep || '';
+  });
+  loadBondingLabRefs();
+  $('#bf_AgeCategory')?.addEventListener('change', scheduleFormSketch);
+  $('#bf_AgeCategory')?.addEventListener('change', (e) => {
+    const std = AGE_STD_DEFAULTS[(e.target.value || '').toUpperCase()];
+    if (std && $('#bf_STD')) $('#bf_STD').value = std;
+    computeBondingPoints();
+  });
   $('#bf_STD')?.addEventListener('change', computeBondingPoints);
+  $('#bf_Side')?.addEventListener('change', scheduleFormSketch);
+  scheduleFormSketch();
   $$('#dtr-bonding-points-tbody .dtr-bp-inp').forEach((inp) => {
     inp.addEventListener('input', computeBondingPoints);
   });
   $('#btn-bond-recalc')?.addEventListener('click', () => {
+    if (isPull()) {
+      computePull();
+      showToast('✓ Recalculated Maximum and Rating of every pull test row.');
+      return;
+    }
     computeBondingPoints();
     showToast('✓ Recalculated UTF, FTO, and FiTO Min/Max/Ave & Spot Tolerances.');
   });
 
-  $('#btn-bond-new')?.addEventListener('click', () => {
+  // + New Bonding Report: a blank form, only the Lab Ref No. is suggested
+  const newBondingRecord = (notify = true) => {
     const today = new Date().toISOString().slice(0, 10);
-    $$('#dtr-bonding-form input').forEach((i) => { i.value = ''; });
+    $$('#dtr-bonding-form input, #dtr-bonding-form select, #dtr-bonding-form textarea').forEach((el) => {
+      if (el.type === 'radio' || el.type === 'checkbox') el.checked = false;
+      else el.value = '';
+    });
+    activeBondingPoints = {};
     if ($('#bf_LabRefNo')) $('#bf_LabRefNo').value = `DTP${today.replace(/-/g, '')}SHB01-R`;
-    if ($('#bf_AgeCategory')) $('#bf_AgeCategory').value = 'ADULT';
-    if ($('#bf_STD')) $('#bf_STD').value = '2.5';
-    if ($('#bf_ReceivedDate')) $('#bf_ReceivedDate').value = today;
-    if ($('#bf_TestedDate')) $('#bf_TestedDate').value = today;
-    if ($('#bf_FinishedDate')) $('#bf_FinishedDate').value = today;
+    const sel = $('#dtr-bonding-record-select');
+    if (sel) sel.value = '';
     computeBondingPoints();
-    showToast('Initialized new Whole Shoe Bonding Test Report.');
-  });
-
-  $('#btn-bond-load-u60')?.addEventListener('click', async () => {
-    const labRefNo = $('#bf_LabRefNo')?.value.trim() || 'DTP20261024SHB11-R';
-    try {
-      const res = await apiFetch('dtr/load-machine', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slug: 'bonding', lab_ref_no: labRefNo }),
-      });
-      if (res && res.loadedFields) {
-        Object.keys(res.loadedFields).forEach((k) => {
-          const el = $(`#bp_${k}`);
-          if (el) el.value = res.loadedFields[k];
-        });
-        computeBondingPoints();
-        showToast(`${res.message}`);
-      }
-    } catch (err) {
-      showToast('Failed to load U60 machine file.', true);
-    }
-  });
+    if (notify) showToast('Initialized new Whole Shoe Bonding Test Report.');
+  };
 
   $('#btn-bond-save')?.addEventListener('click', async () => {
+    if (isPull()) return savePull();
     const fields = {};
     $$('#dtr-bonding-form [name]').forEach((inp) => {
       if (inp.name) fields[inp.name] = inp.value;
@@ -971,7 +989,7 @@
       FiTOMax: $('#bp_FiTOMax')?.value || null,
       FiTOAverage: $('#bp_FiTOAverage')?.value || null,
       FiTO_Result: $('#bp_FiTO_Result')?.value || null,
-      Result: $('#bf_Result')?.value || 'PASS',
+      Result: $('#bf_Result')?.value || null,
     };
     $$('#dtr-bonding-points-tbody [data-bp-col]').forEach((inp) => {
       bondingPoints[inp.dataset.bpCol] = inp.value;
@@ -991,6 +1009,245 @@
     } catch (err) {
       showToast('Error saving Bonding Report.', true);
     }
+  });
+
+  // =========================================================================
+  // 5b. PULL FOOTWEAR TEST REPORT (Lab VF 003) - shares the Shoe Bonding toolbar
+  // =========================================================================
+  const PULL_GROUPS = { left: 6, right: 6, other: 4 };
+  const isPull = () => ($('#dtr-report-kind')?.value || 'bonding') === 'pull';
+  const pullInputs = () => $$('#dtr-pull-form [data-pull]');
+  const pullInput = (g, i, k) => $(`#dtr-pull-form [data-pull="${g}.${i}.${k}"]`);
+
+  const syncPullRadios = () => {
+    [['pf_MaterialSource', 'pf_ms_radio'], ['pf_TechSlot', 'pf_tech_radio']].forEach(([hid, name]) => {
+      const val = $(`#${hid}`)?.value || '';
+      $$(`#dtr-pull-form input[name="${name}"]`).forEach((r) => { r.checked = !!val && r.value === val; });
+    });
+  };
+  $('#dtr-pull-form')?.addEventListener('change', (e) => {
+    const r = e.target;
+    if (r.type !== 'radio') return;
+    const hid = r.name === 'pf_ms_radio' ? $('#pf_MaterialSource') : (r.name === 'pf_tech_radio' ? $('#pf_TechSlot') : null);
+    if (hid) hid.value = r.value;
+  });
+
+  // Maximum + Rating per row. Standard is a minimum unless Tolerance says "maximum".
+  const computePull = () => {
+    let rated = 0;
+    let failed = 0;
+    Object.keys(PULL_GROUPS).forEach((g) => {
+      for (let i = 0; i < PULL_GROUPS[g]; i++) {
+        const vals = [pullInput(g, i, 'lat'), pullInput(g, i, 'med')]
+          .map((el) => parseFloat(el?.value ?? '')).filter(Number.isFinite);
+        pullInput(g, i, 'max').value = vals.length ? roundTo(Math.max(...vals), 2) : '';
+        const std = parseFloat(pullInput(g, i, 'std').value);
+        const isMax = /max/i.test(pullInput(g, i, 'tol').value);
+        let rating = '';
+        if (vals.length && Number.isFinite(std)) {
+          const ok = isMax ? Math.max(...vals) <= std : Math.min(...vals) >= std;
+          rating = ok ? 'PASS' : 'FAIL';
+          rated++;
+          if (!ok) failed++;
+        }
+        const out = pullInput(g, i, 'rating');
+        out.value = rating;
+        styleRatingInput(out);
+      }
+    });
+    const res = $('#pf_Result');
+    if (res) {
+      if (rated) res.value = failed ? 'FAIL' : 'PASS';
+      styleRatingInput(res);
+    }
+  };
+  $('#dtr-pull-form')?.addEventListener('input', (e) => {
+    if (e.target.matches('[data-pull]')) computePull();
+  });
+
+  const resetPullForm = () => {
+    $$('#dtr-pull-form [name]').forEach((el) => {
+      if (el.type === 'radio') el.checked = false;
+      else el.value = '';
+    });
+    pullInputs().forEach((el) => { el.value = el.defaultValue; });
+    syncPullRadios();
+  };
+
+  const newPullRecord = (notify = true) => {
+    const today = new Date().toISOString().slice(0, 10);
+    resetPullForm();
+    $('#pf_LabRefNo').value = `DTP${today.replace(/-/g, '')}PL01-R`;
+    computePull();
+    if (notify) showToast('Initialized new Pull Footwear Test Report.');
+  };
+
+  const loadPullRecord = async (sourceId) => {
+    try {
+      const res = await apiFetch(`dtr/record?slug=pull&source_id=${encodeURIComponent(sourceId)}`);
+      if (!res || !res.ok) return;
+      const rec = res.record || {};
+      resetPullForm();
+      Object.keys(rec).forEach((k) => {
+        const el = $(`#pf_${k}`);
+        if (el) el.value = rec[k] ?? '';
+      });
+      let data = null;
+      try { data = JSON.parse(rec.PullData || 'null'); } catch (e) { data = null; }
+      pullInputs().forEach((el) => {
+        const [g, i, k] = el.dataset.pull.split('.');
+        const v = data?.[g]?.[i]?.[k];
+        el.value = v !== undefined && v !== null ? v : el.defaultValue;
+      });
+      syncPullRadios();
+      computePull();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const savePull = async () => {
+    const fields = {};
+    $$('#dtr-pull-form [name]').forEach((el) => {
+      if (el.type !== 'radio') fields[el.name] = el.value;
+    });
+    const data = { left: [], right: [], other: [] };
+    pullInputs().forEach((el) => {
+      const [g, i, k] = el.dataset.pull.split('.');
+      (data[g][i] = data[g][i] || {})[k] = el.value;
+    });
+    fields.PullData = JSON.stringify(data);
+    try {
+      const res = await apiFetch('dtr/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: 'pull', fields }),
+      });
+      if (res && res.ok) {
+        $('#pf_ID').value = res.recordId;
+        showToast(`✓ ${res.message}`);
+      } else {
+        showToast((res && res.error) || 'Save failed.', true);
+      }
+    } catch (err) {
+      showToast('Error saving Pull Test Report.', true);
+    }
+  };
+
+  const openPullPrintPreview = () => {
+    const f = (n) => escHtml($(`#pf_${n}`)?.value || '');
+    const c = (g, i, k) => escHtml(pullInput(g, i, k)?.value || '');
+    const names = $$('#dtr-pull-form tbody tr td.vf-res-part-cell').map((td) => td.innerHTML);
+    const sketches = $$('#dtr-pull-form .pf-sketch').map((td) => td.innerHTML);
+    const ms = $('#pf_MaterialSource')?.value || '';
+    const tech = $('#pf_TechSlot')?.value || '';
+    const radio = (val, label, cur) => `<div>${cur === val ? '&#9673;' : '&#9675;'} ${label}</div>`;
+    const group = (g, n, sketch) => {
+      let rows = '';
+      for (let i = 0; i < n; i++) {
+        const name = g === 'other' ? c(g, i, 'item') : (names[(g === 'right' ? 6 : 0) + i] || '');
+        const method = g === 'other' ? c(g, i, 'method') : 'VF-B04<br>(2019/05)';
+        const unit = g === 'other' ? c(g, i, 'unit') : 'kgf';
+        const rating = c(g, i, 'rating');
+        rows += `<tr>
+          <td class="pf-p-l">${name}</td><td class="pf-p-c">${method}</td><td class="pf-p-c">${unit}</td>
+          ${i === 0 ? `<td rowspan="${n}" class="pf-p-sk">${sketch}</td>` : ''}
+          <td class="pf-p-c">${c(g, i, 'lat')}</td><td class="pf-p-c">${c(g, i, 'med')}</td><td class="pf-p-c">${c(g, i, 'max')}</td>
+          <td class="pf-p-c pf-p-blue">${c(g, i, 'std')}</td><td class="pf-p-c pf-p-blue">${c(g, i, 'tol')}</td>
+          <td class="pf-p-c"><b class="${rating === 'FAIL' ? 'pf-p-fail' : ''}">${rating}</b></td></tr>`;
+      }
+      return rows;
+    };
+    let otherRows = '';
+    for (let i = 0; i < PULL_GROUPS.other; i++) {
+      otherRows += `<tr>
+        <td class="pf-p-l">${c('other', i, 'item')}</td><td class="pf-p-c">${c('other', i, 'method')}</td><td class="pf-p-c">${c('other', i, 'unit')}</td><td></td>
+        <td class="pf-p-c">${c('other', i, 'lat')}</td><td class="pf-p-c">${c('other', i, 'med')}</td><td class="pf-p-c">${c('other', i, 'max')}</td>
+        <td class="pf-p-c pf-p-blue">${c('other', i, 'std')}</td><td class="pf-p-c pf-p-blue">${c('other', i, 'tol')}</td><td class="pf-p-c"><b>${c('other', i, 'rating')}</b></td></tr>`;
+    }
+    const labRef = $('#pf_LabRefNo')?.value || 'Pull Test';
+
+    const html = `
+      <div class="vf-report-sheet pf-print">
+        <div class="pf-p-top">
+          <img class="rpt-logo-vf" src="${BASE_URL}assets/images/vf-logo.webp" alt="VF">
+          <div class="pf-p-title"><h1>Pull Footwear Test Results</h1><h2>整鞋部件拉力测试</h2></div>
+          <img class="rpt-logo-satra" src="${BASE_URL}assets/images/satra-accredited.png" alt="SATRA Accredited Laboratory">
+        </div>
+        <div class="pf-p-ids">
+          <div>Form # : Lab VF 003</div>
+          <div>ETRF.No: <b>${f('ETRFNo')}</b></div>
+          <div>Lab Ref.No: <b>${f('LabRefNo')}</b></div>
+        </div>
+        <div class="pf-p-head">
+          <div>
+            <div>Supplier/Factory(厂商) : <b>${f('Supplier')}</b></div>
+            <div>Supplier's country(国家): <b>${f('SupplierCountry')}</b></div>
+            <div>Material Description(材料):<b> ${f('MaterialDescription')}</b></div>
+            <div>Model No./Style(鞋体): <b>${f('ModelNoStyle')}</b></div>
+            <div>Color(颜色): <b>${f('Color')}</b></div>
+            <div>P.O/Lot No(订单号码): <b>${f('POLotNo')}</b></div>
+            <div>PO Quantity(订单数量): <b>${f('POQuantity')}</b></div>
+            <div>Send by (提供方): <b>${f('SendBy')}</b></div>
+          </div>
+          <div>
+            <div class="pf-p-radios">
+              ${radio('Prod. Material', 'Prod.Material (量产材料)', ms)}${radio('Prod. Re-test', 'Prod.Re-test 量产重测', ms)}
+              ${radio('New/Development', 'New/Development 开发新材料', ms)}${radio('Trial Test', 'Trial Test 试胶测试', ms)}
+              ${radio('Sales Sample', 'Sales Sample (销售样品)', ms)}
+            </div>
+            <div class="pf-p-radios pf-p-techs">${['Tech 1', 'Tech 2', 'Tech 3', 'Tech 4'].map((t) => radio(t, t, tech)).join('')}</div>
+            <div>Received Date(收到日期): <b>${f('ReceivedDate')}</b></div>
+            <div>Tested Date(测试日期): <b>${f('TestedDate')}</b></div>
+            <div>Finished Date(完成日期): <b>${f('FinishedDate')}</b></div>
+            <div>Technician(技术员): <b>${f('Technician')}</b></div>
+          </div>
+        </div>
+        <div class="pf-p-sec">Closures - Eyelet , D-ring , Hook , Webbing Pull Strength</div>
+        <table class="pf-p-tbl">
+          <thead>
+            <tr><th rowspan="2">Test Items<br>测试项目</th><th rowspan="2">VF Test Method<br>测试方法</th><th rowspan="2">Units<br>单位</th><th rowspan="2">Test Sketch<br>测试部位</th><th colspan="2">Test Results<br>测试结果</th><th rowspan="2">Maximum</th><th rowspan="2">Standard<br>标准</th><th rowspan="2">Tolerance<br>容许度</th><th rowspan="2">Rating<br>等级</th></tr>
+            <tr><th>Lateral side:</th><th>Medial side:</th></tr>
+          </thead>
+          <tbody>
+            ${group('left', 6, sketches[0] || '')}
+            ${group('right', 6, sketches[1] || '')}
+            <tr><td colspan="10" class="pf-p-oth">Other Types of Pull Test</td></tr>
+            ${otherRows}
+          </tbody>
+        </table>
+        <div class="pf-p-foot">
+          <div>Comments 备注 : ${f('Comments')}</div>
+          <div>
+            <div>Reviewed by 检查: <b>${f('ReviewedBy')}</b></div>
+            <div>Approved by 核准: <b>${f('ApprovedBy')}</b></div>
+            <div>Overall Result: <b>${f('Result')}</b></div>
+          </div>
+        </div>
+      </div>
+    `;
+    $('#dtr-print-modal-title').textContent = `Pull Footwear Test Report — ${labRef}`;
+    $('#dtr-print-sheet-container').innerHTML = html;
+    $('#dtr-print-modal-backdrop')?.classList.remove('hidden');
+  };
+
+  // Report type picker (Bonding Report / Pull Test Report) in the Shoe Bonding toolbar
+  const setReportKind = (kind) => {
+    const pull = kind === 'pull';
+    const sel = $('#dtr-report-kind');
+    if (sel && sel.value !== kind) sel.value = kind;
+    const bf = $('#dtr-bonding-form');
+    const pf = $('#dtr-pull-form');
+    if (bf) bf.hidden = pull;
+    if (pf) pf.hidden = !pull;
+    $$('.dtr-only-bonding').forEach((el) => { el.hidden = pull; });
+    const t = $('#btn-bond-recalc-txt');
+    if (t) t.textContent = pull ? 'Recalculate Results' : 'Recalculate Spots & Result';
+  };
+  $('#dtr-report-kind')?.addEventListener('change', (e) => {
+    setReportKind(e.target.value);
+    if (e.target.value === 'pull') newPullRecord();
+    else newBondingRecord();
   });
 
   // =========================================================================
@@ -1478,6 +1735,160 @@
     return null;
   };
 
+  // Live shoe sketch inside the form (same layout the report preview uses: contour, spot boxes, leader lines, START)
+  var formSketchTimer = null;
+  var formSketchSeq = 0;
+  function scheduleFormSketch() {
+    clearTimeout(formSketchTimer);
+    formSketchTimer = setTimeout(renderFormSketch, 120);
+  }
+  async function renderFormSketch() {
+    const leftEl = $('#vf-diag-left');
+    const rightEl = $('#vf-diag-right');
+    if (!leftEl || !rightEl) return;
+    const seq = ++formSketchSeq;
+    const isLeft = (($('#bf_Side')?.value || 'Left').toLowerCase() === 'left');
+    const std = parseFloat($('#bf_STD')?.value || '2.5') || 2.5;
+    const IMG = BASE_URL + 'assets/images/bonding_sketches/';
+
+    const utfVals = {}; const ftoVals = {};
+    let highest = 0;
+    for (let i = 1; i <= 35; i++) {
+      utfVals[i] = $('#bp_UTFpoint' + i)?.value || '';
+      ftoVals[i] = $('#bp_FTOpoint' + i)?.value || '';
+      if (parseFloat(utfVals[i]) > 0 || parseFloat(ftoVals[i]) > 0) highest = i;
+    }
+
+    const blank = `<img src="${IMG}blank.png" class="vf-shoe-img" style="left:12%;top:8%;width:76%;height:84%;opacity:.85" alt="Shoe contour">`;
+    let active = '';
+    const configs = await loadSketchConfigs();
+    // Spot count follows the Age Category (Adult 35 / Children 24 / Kids 16 / Toddler 14)
+    const ageKey = ($('#bf_AgeCategory')?.value || 'ADULT').toUpperCase();
+    const spotCount = AGE_SPOT_LIMITS[ageKey] || 35;
+    let numPts = spotCount;
+    if (configs && !configs[numPts]) {
+      const available = [26, 27, 28, 29, 30, 31, 32, 33, 34];
+      numPts = available.reduce((p, c) => Math.abs(c - numPts) < Math.abs(p - numPts) ? c : p, 27);
+    }
+    let cfg = configs ? configs[numPts] : null;
+    let vec = null;
+    if (cfg) {
+      try {
+        const lj = await apiFetch('dtr/layout?slug=bonding&variant=' + encodeURIComponent(numPts));
+        const L = lj && lj.layout;
+        if (L) {
+          cfg = JSON.parse(JSON.stringify(cfg));
+          if (L.image) Object.assign(cfg.image, L.image);
+          ['utf', 'fto'].forEach((k) => {
+            Object.keys(L[k] || {}).forEach((i) => {
+              if (L[k][i].hidden) delete cfg[k][i];
+              else cfg[k][i] = L[k][i];
+            });
+          });
+          if (L.vector || L.start) vec = L;
+          if (L.vector) cfg.image.file = L.imageFile || 'blank.png';
+        }
+      } catch (e) { /* default layout */ }
+    }
+    if (seq !== formSketchSeq) return;
+
+    // Re-space the spots around the contour so exactly `spotCount` are drawn (needs the vector layout)
+    if (cfg && vec && vec.vector && spotCount !== cfg.pointsCount) {
+      const resample = (k) => {
+        const idx = Object.keys(vec.dots[k] || {}).map(Number).filter((i) => cfg[k][i]).sort((a, b) => a - b);
+        if (idx.length < 3) return null;
+        const pts = idx.map((i) => ({ x: vec.dots[k][i].x, y: vec.dots[k][i].y, i }));
+        const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+        const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+        // signed offset of the value box from its dot, along the outward direction
+        let off = 0;
+        pts.forEach((p) => {
+          const b = cfg[k][p.i];
+          const dx = p.x - cx; const dy = p.y - cy; const len = Math.hypot(dx, dy) || 1;
+          off += ((b.pctLeft + b.pctWidth / 2 - p.x) * dx + (b.pctTop + b.pctHeight / 2 - p.y) * dy) / len;
+        });
+        off /= pts.length;
+        const b0 = cfg[k][pts[0].i];
+        const ring = pts.concat([pts[0]]);
+        const seg = []; let total = 0;
+        for (let j = 0; j < ring.length - 1; j++) {
+          const d = Math.hypot(ring[j + 1].x - ring[j].x, ring[j + 1].y - ring[j].y);
+          seg.push(d); total += d;
+        }
+        const boxes = {}; const dots = {};
+        for (let n = 0; n < spotCount; n++) {
+          let s = (n * total) / spotCount; let j = 0;
+          while (j < seg.length - 1 && s > seg[j]) { s -= seg[j]; j++; }
+          const t = seg[j] ? s / seg[j] : 0;
+          const x = ring[j].x + (ring[j + 1].x - ring[j].x) * t;
+          const y = ring[j].y + (ring[j + 1].y - ring[j].y) * t;
+          const dx = x - cx; const dy = y - cy; const len = Math.hypot(dx, dy) || 1;
+          const bx = x + (dx / len) * off; const by = y + (dy / len) * off;
+          boxes[n + 1] = {
+            pctLeft: Math.min(100 - b0.pctWidth, Math.max(0, bx - b0.pctWidth / 2)),
+            pctTop: Math.min(100 - b0.pctHeight, Math.max(0, by - b0.pctHeight / 2)),
+            pctWidth: b0.pctWidth, pctHeight: b0.pctHeight,
+          };
+          dots[n + 1] = { x, y };
+        }
+        return { boxes, dots };
+      };
+      const u = resample('utf'); const f = resample('fto');
+      if (u && f) {
+        cfg.utf = u.boxes; cfg.fto = f.boxes;
+        vec.dots = { utf: u.dots, fto: f.dots };
+        cfg.pointsCount = spotCount;
+      }
+    }
+
+    const colour = (val) => {
+      const v = evaluateSpotVerdict(parseFloat(val), std);
+      if (!v) return 'color:#94a3b8';
+      if (v === 'FAIL') return 'color:#dc2626;font-weight:800;';
+      if (v === 'TOLERABLE') return 'color:#d97706;font-weight:800;';
+      return 'color:#1d4ed8;font-weight:800;';
+    };
+
+    if (cfg) {
+      const im = cfg.image;
+      active += `<img src="${IMG}${im.file}" class="vf-shoe-img" style="left:${im.pctLeft}%;top:${im.pctTop}%;width:${im.pctWidth}%;height:${im.pctHeight}%" alt="Shoe sketch">`;
+      const box = (cls, c, val, label, i) => {
+        const n = parseFloat(val);
+        const has = Number.isFinite(n) && n > 0;
+        return `<div class="vf-point-box ${cls}" style="left:${c.pctLeft}%;top:${c.pctTop}%;width:${c.pctWidth}%;height:${c.pctHeight}%;${colour(val)}" title="${label} Point ${i}: ${has ? n.toFixed(2) : '-'}">${has ? n.toFixed(2) : ''}</div>`;
+      };
+      for (let i = 1; i <= cfg.pointsCount; i++) {
+        if (cfg.utf[i]) active += box('vf-point-utf', cfg.utf[i], utfVals[i], 'UTF', i);
+        if (cfg.fto[i]) active += box('vf-point-fto', cfg.fto[i], ftoVals[i], 'FTO', i);
+      }
+      if (vec) {
+        let svg = '<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none">';
+        let dots = '';
+        if (vec.vector) {
+          ['utf', 'fto'].forEach((k) => Object.keys(cfg[k]).forEach((i) => {
+            const b = cfg[k][i]; const d = ((vec.dots || {})[k] || {})[i];
+            if (!d) return;
+            const r = b.pctLeft + b.pctWidth; const cy = b.pctTop + b.pctHeight / 2;
+            const x = d.x < b.pctLeft ? b.pctLeft : d.x > r ? r : b.pctLeft + b.pctWidth / 2;
+            const y = (x === b.pctLeft || x === r) ? cy : (d.y < b.pctTop ? b.pctTop : b.pctTop + b.pctHeight);
+            const col = k === 'utf' ? '#2563eb' : '#7c3aed';
+            svg += `<line x1="${x}" y1="${y}" x2="${d.x}" y2="${d.y}" stroke="${col}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`;
+            dots += `<div style="position:absolute;left:${d.x}%;top:${d.y}%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border-radius:50%;background:${col}"></div>`;
+          }));
+        }
+        if (vec.start) {
+          const st = vec.start;
+          dots += `<div style="position:absolute;left:${st.x}%;top:${st.y}%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:3px;white-space:nowrap;color:#b91c1c;font:800 9px sans-serif"><i style="display:block;width:9px;height:9px;background:#dc2626;transform:rotate(45deg)"></i>${escHtml(st.label || 'START')}</div>`;
+        }
+        active += svg + '</svg>' + dots;
+      }
+    } else {
+      active = '<div style="padding:20px;text-align:center;color:#64748b">Shoe sketch unavailable</div>';
+    }
+
+    leftEl.innerHTML = isLeft ? active : blank;
+    rightEl.innerHTML = !isLeft ? active : blank;
+  }
   const openBondingPrintPreview = async () => {
     const bondingTestId = parseInt($('#bf_BondingTestID')?.value || activeBondingPoints?.BondingTestID || 0) || 0;
     const labRef = $('#bf_LabRefNo')?.value || 'DTP-BOND-PREVIEW';
@@ -1504,9 +1915,9 @@
     const finishedDate = $('#bf_FinishedDate')?.value || testedDate;
     const tech = $('#bf_Technician')?.value || 'L. Aquidado';
     const reviewer = $('#bf_ReviewedBy')?.value || 'QA Lead';
-    const overall = ($('#bf_Result')?.value || 'PASS').toUpperCase();
+    const overall = ($('#bf_Result')?.value || '').toUpperCase();
 
-    const stampCls = overall === 'PASS' ? '' : (overall === 'TOLERABLE' ? 'stamp-tol' : 'stamp-fail');
+    const stampCls = (overall === 'PASS' || !overall) ? '' : (overall === 'TOLERABLE' ? 'stamp-tol' : 'stamp-fail');
 
     // Section Statistics (UTF, FTO, FiTO)
     const utfMin = $('#bp_UTFMin')?.value || activeBondingPoints?.UTFMin || '-';
@@ -1687,10 +2098,14 @@
       `;
     }
 
+    // Empty write-in lines (black) for a center box that has no FiTO readings
+    const centerLinesHtml = '<div class="vf-center-line"></div>'.repeat(6);
+    const anyFito = Array.from({ length: 13 }, (_, k) => parseFloat(fitoVals[k + 1])).some((n) => Number.isFinite(n) && n > 0);
+
     const leftShoeCardHtml = isLeft ? activeShoePointsHtml : blankShoeHtml;
     const rightShoeCardHtml = !isLeft ? activeShoePointsHtml : blankShoeHtml;
-    const leftCenterHtml = isLeft ? fitoItemsHtml : '';
-    const rightCenterHtml = !isLeft ? fitoItemsHtml : '';
+    const leftCenterHtml = isLeft && anyFito ? fitoItemsHtml : centerLinesHtml;
+    const rightCenterHtml = !isLeft && anyFito ? fitoItemsHtml : centerLinesHtml;
 
     // Status evaluation helpers
     const getEvalStatus = (res) => {
@@ -1746,7 +2161,7 @@
             </div>
             <div class="vf-test-categories">
               <div>
-                <span class="vf-radio ${materialSource === 'Prod. Shoes' || !materialSource ? 'checked' : ''}"></span> Pro. Shoes 量产鞋
+                <span class="vf-radio ${materialSource === 'Prod. Shoes' || materialSource === 'Prod. Material' || !materialSource ? 'checked' : ''}"></span> Pro. Shoes 量产鞋
                 <span style="display:inline-block;width:8px"></span>
                 <span class="vf-radio ${materialSource === 'Pro. Re-test' ? 'checked' : ''}"></span> Pro. Re-test 量产重测
               </div>
@@ -1995,7 +2410,7 @@
   };
 
   $('#btn-dtr-print-preview')?.addEventListener('click', openMaterialPrintPreview);
-  $('#btn-bond-print-preview')?.addEventListener('click', openBondingPrintPreview);
+  $('#btn-bond-print-preview')?.addEventListener('click', () => (isPull() ? openPullPrintPreview() : openBondingPrintPreview()));
   $('#btn-dtr-close-print-modal')?.addEventListener('click', () => {
     $('#dtr-print-modal-backdrop')?.classList.add('hidden');
   });
@@ -2087,9 +2502,12 @@
   // 8. INITIALIZE ON PAGE LOAD
   // =========================================================================
   updateCalculators();
+  // both forms open as a blank new report; the record lists stay available to load one
+  newMaterialRecord(false);
+  newPullRecord(false);
+  setReportKind('bonding');
   loadMaterialRecordList('fabric');
-  loadSingleMaterialRecord('fabric', 0);
-  applyBondingFormLayout().then(() => { loadBondingRecordList(); loadSingleBondingRecord(0); });
+  const bondingReady = applyBondingFormLayout().then(() => { newBondingRecord(false); loadBondingRecordList(); });
   runStandardsExplorer();
 
   // deep link from the assistant: ?open=<slug>:<id>  (+ &preview=1 opens the print preview)
@@ -2098,13 +2516,14 @@
     const [slug, id] = String(q.get('open') || '').split(':');
     if (!slug || !/^[a-z]+$/.test(slug) || !/^\d+$/.test(id || '')) return;
     setTimeout(async () => {
+      await bondingReady; // the blank form must not overwrite the linked report
       const host = $('#dtr-tracker-tbody') || document.body;
       const b = document.createElement('button');
       b.type = 'button'; b.hidden = true; b.dataset.openRecord = slug; b.dataset.sourceId = id;
       host.appendChild(b); b.click(); b.remove();
       if (q.get('preview') === '1') {
         await new Promise((r) => setTimeout(r, 2200));
-        (slug === 'bonding' ? $('#btn-bond-print-preview') : $('#btn-dtr-print-preview'))?.click();
+        (slug === 'bonding' || slug === 'pull' ? $('#btn-bond-print-preview') : $('#btn-dtr-print-preview'))?.click();
       }
       // &export=1 inside the InterLink sender's hidden frame: hand the finished report PDF (as base64) to the parent page
       if (q.get('export') === '1' && window.parent !== window) {

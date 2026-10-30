@@ -89,6 +89,7 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->get('dtr', 'DtrController::index', ['as' => 'dtr']);
     $routes->get('dtr/records', 'DtrController::records');
     $routes->get('dtr/record', 'DtrController::record');
+    $routes->get('dtr/bonding-labrefs', 'DtrController::bondingLabRefs');
     $routes->get('dtr/standards', 'DtrController::standards');
     $routes->get('dtr/lookup', 'DtrController::lookup');
     $routes->post('dtr/load-machine', 'DtrController::loadMachine');

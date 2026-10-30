@@ -1,0 +1,735 @@
+
+      <div class="vf-report-sheet">
+        <!-- Row 1: VF logo | test method name | SATRA logo, all on one line -->
+        <div class="rpt-top">
+          <img class="rpt-logo-vf" src="http://192.168.32.43/NEXUS-L/assets/images/vf-logo.webp" alt="VF">
+          <div class="rpt-top-title">
+            <h1 class="vf-title-en">Bonding Test Results</h1>
+            <h2 class="vf-title-cn">胶着力测试</h2>
+          </div>
+          <img class="rpt-logo-satra" src="http://192.168.32.43/NEXUS-L/assets/images/satra-accredited.png" alt="SATRA Accredited Laboratory No. 08A03">
+        </div>
+
+        <!-- Row 2: form no / ETRF / lab ref + sample category (left), result + dates (right) -->
+        <div class="rpt-sub">
+          <div class="rpt-sub-left">
+            <div class="vf-form-no rpt-formno">Form # : Lab VF 001</div>
+            <div class="vf-etrf-row">
+              <span>ETRF No:</span>
+              <span class="vf-val-underlined">A005489060</span>
+            </div>
+            <div class="vf-labref-row">
+              <span>Lab Ref.No:</span>
+              <span class="vf-labref-val">DTP20260612SHB11-L</span>
+            </div>
+            <div class="vf-test-categories">
+              <div>
+                <span class="vf-radio checked"></span> Pro. Shoes 量产鞋
+                <span style="display:inline-block;width:8px"></span>
+                <span class="vf-radio "></span> Pro. Re-test 量产重测
+              </div>
+              <div style="margin-top:2px">
+                <span class="vf-radio "></span> NewDevelopment 开发
+              </div>
+              <div class="vf-tech-subradios">
+                <span>○ Tech 1</span> <span>○ Tech 2</span> <span>○ Tech 3</span> <span>○ Tech 4</span>
+              </div>
+              <div style="margin-top:2px">
+                <span class="vf-radio "></span> Sales Sample 销样
+                <span style="display:inline-block;width:8px"></span>
+                <span class="vf-radio "></span> 试胶试验
+              </div>
+            </div>
+          </div>
+
+          <div class="rpt-sub-right">
+            <div class="vf-stamp-area">
+              <span class="vf-stamp ">PASS</span>
+            </div>
+            <table class="vf-dates-table">
+              <tbody><tr><td>Received Date 收到日期:</td><td class="vf-date-val">2026-06-12</td></tr>
+              <tr><td>Tested Date 测试日期:</td><td class="vf-date-val">2026-06-13</td></tr>
+              <tr><td>Finished Date 完成日期:</td><td class="vf-date-val">2026-06-13</td></tr>
+              <tr><td>Technician 技术员:</td><td class="vf-date-val">L. Tuddao</td></tr>
+            </tbody></table>
+          </div>
+        </div>
+
+        <!-- Factory & Spec Details Grid -->
+        <table class="vf-meta-grid">
+          <tbody><tr>
+            <td class="vf-lbl">Factory (工厂):</td>
+            <td class="vf-val" colspan="3">DATIAN SUBIC SHOES INC. (DTP)</td>
+          </tr>
+          <tr>
+            <td class="vf-lbl">Adhesive supplier 胶水供应商:</td>
+            <td class="vf-val">NANPAO</td>
+            <td class="vf-lbl">Shipped Date (出货日期):</td>
+            <td class="vf-val">-</td>
+          </tr>
+          <tr>
+            <td class="vf-lbl">Model/Style/PGSC (英文鞋型):</td>
+            <td class="vf-val">UA KNU SKOOL</td>
+            <td class="vf-lbl">Color (颜色):</td>
+            <td class="vf-val">BLACK/TRUE WHITE</td>
+          </tr>
+          <tr>
+            <td class="vf-lbl">Production Date (生产日期):</td>
+            <td class="vf-val">2026-06-13</td>
+            <td class="vf-lbl">PO/Lot No (订单号码):</td>
+            <td class="vf-val">5200652846</td>
+          </tr>
+          <tr>
+            <td class="vf-lbl">PO Quantity (订单数量):</td>
+            <td class="vf-val">1386</td>
+            <td class="vf-lbl">Send by (送达):</td>
+            <td class="vf-val">-</td>
+          </tr>
+        </tbody></table>
+
+        <!-- 3-Part Evaluation Table with Mode of Failure & Possible Causes -->
+        <table class="vf-eval-table">
+          <thead>
+            <tr>
+              <th rowspan="2" style="width:20%">Shoe Part</th>
+              <th rowspan="2" style="width:11%">VF Test<br>Method</th>
+              <th rowspan="2" style="width:8%">STD<br>kgf/cm<br><span style="font-size:8.5px;font-weight:600">(Tolerable)</span></th>
+              <th colspan="2" style="width:16%">Test Result<br>kgf/cm</th>
+              <th colspan="2" style="width:12%">Status</th>
+              <th rowspan="2" style="width:17%">Mode of Failure(s)<br>失败的方式</th>
+              <th rowspan="2" style="width:16%">Possible Cause(s)<br>可能的原因</th>
+            </tr>
+            <tr>
+              <th style="width:8%">Min</th>
+              <th style="width:8%">Max</th>
+              <th style="width:6%">Pass</th>
+              <th style="width:6%">Fail</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="text-left font-bold">Upper/Foxing Tape<br>(鞋面/围条)</td>
+              <td>VF-F01<br><span style="font-size:9.5px">(2019/05)</span></td>
+              <td class="font-bold text-blue">2.5<br><span class="vf-tol">(≥ 2)</span></td>
+              <td class="font-bold text-blue">3.45</td>
+              <td class="font-bold text-blue">6.29</td>
+              <td><span class="vf-rate-pass">PASS</span></td>
+              <td><span class=""></span></td>
+              <td rowspan="3" class="text-left vf-mode-cell">
+                <b>AF</b>= Failure at the adhesive/substrate interface or the adhesive/primer interface<br>
+                <b>CF</b>= Cohesive Failure of the adhesive (failure within the adhesive or between the two layers of adhesive)<br>
+                <b>PF</b>= Failure at the primer/substrate interface<br>
+                <b>SF</b>= Failure of the substrate, including the location of the failure within the substrate
+              </td>
+              <td rowspan="3" class="text-left vf-cause-cell">
+                (a) Poor Priming 药水不良<br>
+                (b) Poor cementing 胶水不良<br>
+                (c) Over-dried cement<br>
+                (d) Wet primer 湿的药水<br>
+                (e) Wet cement 湿的胶水<br>
+                (f) Poor pressing 压机不良<br>
+                (g) Poor Roughing 打粗不良<br>
+                (h) Upper material - weak 鞋面材料不良<br>
+                (i) EVA-Weak EVA不良<br>
+                (j) Dusty component 粉沫<br>
+                (k) Splitting of foxing tape 围条分层
+              </td>
+            </tr>
+            <tr>
+              <td class="text-left font-bold">Foxing Tape / OS<br>(围条/橡胶大底)</td>
+              <td>VF-F01<br><span style="font-size:9.5px">(2019/05)</span></td>
+              <td class="font-bold text-blue">2.5<br><span class="vf-tol">(≥ 2)</span></td>
+              <td class="font-bold text-blue">3.49</td>
+              <td class="font-bold text-blue">5.33</td>
+              <td><span class="vf-rate-pass">PASS</span></td>
+              <td><span class=""></span></td>
+            </tr>
+            <tr>
+              <td class="text-left font-bold">Center : IS/OS<br>(中插 / 大底)</td>
+              <td>VF-F01<br><span style="font-size:9.5px">(2019/05)</span></td>
+              <td class="font-bold text-blue">1<br><span class="vf-tol">(≥ 0.8)</span></td>
+              <td class="font-bold text-blue">1.54</td>
+              <td class="font-bold text-blue">1.80</td>
+              <td><span class="vf-rate-pass">PASS</span></td>
+              <td><span class=""></span></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- Shoe Sketch Section -->
+        <div class="vf-sketch-header-row">
+          <div class="vf-sketch-header-col">
+            <div>1. Outside Value: Fabric / PU / EVA kgf/cm</div>
+            <div>2. Inside Value:</div>
+          </div>
+          <div class="vf-sketch-header-center">
+            <div>Center: Fabric / PU / EVA kgf/cm</div>
+            <div class="vf-sketch-sublabel-row">
+              <span style="color:#1d4ed8;font-weight:800">Left</span>
+              <span style="">Right</span>
+            </div>
+          </div>
+          <div class="vf-sketch-header-col" style="text-align:right">
+            <div>1. Outside Value: Fabric / PU / EVA kgf/cm</div>
+            <div>2. Inside Value:</div>
+          </div>
+        </div>
+
+        <div class="vf-sketch-body-row">
+          <!-- Left Shoe Card -->
+          <div class="vf-shoe-card">
+            
+        <img src="http://192.168.32.43/NEXUS-L/assets/images/bonding_sketches/29_points.png" class="vf-shoe-img" style="left:13.23%; top:8.35%; width:75.29%; height:88.17%;" alt="Left Shoe Sketch">
+      
+            <div class="vf-point-box vf-point-utf" style="left:2.2%; top:75.68%; width:11.02%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 1: 6.29">
+              6.29
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:35.27%; top:73.73%; width:11.76%; height:3.17%; color:#1d4ed8;font-weight:800;" title="FTO Point 1: 4.59">
+              4.59
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:2.2%; top:69.28%; width:11.02%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 2: 3.69">
+              3.69
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:35.64%; top:69.56%; width:9.92%; height:3.17%; color:#1d4ed8;font-weight:800;" title="FTO Point 2: 3.95">
+              3.95
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:2.2%; top:64%; width:11.02%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 3: 4.39">
+              4.39
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:36.37%; top:64.83%; width:11.02%; height:3.45%; color:#1d4ed8;font-weight:800;" title="FTO Point 3: 3.64">
+              3.64
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:2.2%; top:58.71%; width:11.02%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 4: 3.67">
+              3.67
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:36.37%; top:59.54%; width:9.55%; height:3.17%; color:#1d4ed8;font-weight:800;" title="FTO Point 4: 4.44">
+              4.44
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:2.2%; top:52.31%; width:11.02%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 5: 3.45">
+              3.45
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:34.53%; top:51.47%; width:11.02%; height:4.01%; color:#1d4ed8;font-weight:800;" title="FTO Point 5: 3.81">
+              3.81
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:2.2%; top:45.91%; width:11.02%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 6: 3.86">
+              3.86
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:31.23%; top:45.35%; width:11.02%; height:4.01%; color:#1d4ed8;font-weight:800;" title="FTO Point 6: 5.33">
+              5.33
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:2.2%; top:39.51%; width:11.02%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 7: 3.49">
+              3.49
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:30.49%; top:39.51%; width:11.02%; height:4.01%; color:#1d4ed8;font-weight:800;" title="FTO Point 7: 4.32">
+              4.32
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:2.57%; top:33.39%; width:11.02%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 8: 3.47">
+              3.47
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:30.86%; top:35.61%; width:11.02%; height:3.17%; color:#1d4ed8;font-weight:800;" title="FTO Point 8: 4.18">
+              4.18
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:2.57%; top:28.1%; width:11.02%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 9: 4.25">
+              4.25
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:31.59%; top:31.16%; width:11.02%; height:3.45%; color:#1d4ed8;font-weight:800;" title="FTO Point 9: 4.29">
+              4.29
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:2.94%; top:21.98%; width:11.02%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 10: 4.56">
+              4.56
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:33.43%; top:27.55%; width:11.02%; height:3.06%; color:#1d4ed8;font-weight:800;" title="FTO Point 10: 4.24">
+              4.24
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:7.35%; top:16.14%; width:11.02%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 11: 4.17">
+              4.17
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:36.37%; top:23.65%; width:11.02%; height:2.78%; color:#1d4ed8;font-weight:800;" title="FTO Point 11: 4.37">
+              4.37
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:16.9%; top:9.18%; width:11.02%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 12: 3.87">
+              3.87
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:39.68%; top:20.59%; width:9.55%; height:2.78%; color:#1d4ed8;font-weight:800;" title="FTO Point 12: 3.76">
+              3.76
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:42.62%; top:5.56%; width:14.33%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 13: 3.88">
+              3.88
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:45.19%; top:18.36%; width:9.55%; height:3.06%; color:#1d4ed8;font-weight:800;" title="FTO Point 13: 3.76">
+              3.76
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:75.68%; top:10.02%; width:15.87%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 14: 4.60">
+              4.60
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:51.43%; top:20.31%; width:8.82%; height:3.06%; color:#1d4ed8;font-weight:800;" title="FTO Point 14: 3.81">
+              3.81
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:84.13%; top:16.69%; width:12.56%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 15: 4.79">
+              4.79
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:54%; top:23.37%; width:9.92%; height:3.06%; color:#1d4ed8;font-weight:800;" title="FTO Point 15: 4.13">
+              4.13
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:86.33%; top:23.37%; width:12.56%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 16: 4.73">
+              4.73
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:55.84%; top:27.55%; width:11.39%; height:3.34%; color:#1d4ed8;font-weight:800;" title="FTO Point 16: 3.81">
+              3.81
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:87.07%; top:29.49%; width:12.56%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 17: 4.81">
+              4.81
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:59.52%; top:32%; width:9.18%; height:3.06%; color:#1d4ed8;font-weight:800;" title="FTO Point 17: 3.68">
+              3.68
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:87.07%; top:36.45%; width:12.56%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 18: 4.14">
+              4.14
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:60.25%; top:38.68%; width:9.18%; height:3.06%; color:#1d4ed8;font-weight:800;" title="FTO Point 18: 4.31">
+              4.31
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:86.7%; top:43.96%; width:12.56%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 19: 4.05">
+              4.05
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:59.88%; top:44.24%; width:10.29%; height:4.28%; color:#1d4ed8;font-weight:800;" title="FTO Point 19: 4.05">
+              4.05
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:87.07%; top:51.2%; width:12.56%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 20: 4.07">
+              4.07
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:56.58%; top:51.47%; width:10.29%; height:3.17%; color:#1d4ed8;font-weight:800;" title="FTO Point 20: 4.41">
+              4.41
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:86.33%; top:58.15%; width:13.3%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 21: 4.11">
+              4.11
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:53.64%; top:57.32%; width:10.65%; height:3.62%; color:#1d4ed8;font-weight:800;" title="FTO Point 21: 4.57">
+              4.57
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:86.33%; top:64.27%; width:13.3%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 22: 4.07">
+              4.07
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:54.74%; top:63.44%; width:9.55%; height:3.34%; color:#1d4ed8;font-weight:800;" title="FTO Point 22: 3.79">
+              3.79
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:86.7%; top:71.51%; width:13.3%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 23: 4.45">
+              4.45
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:54%; top:69.56%; width:11.39%; height:3.06%; color:#1d4ed8;font-weight:800;" title="FTO Point 23: 3.49">
+              3.49
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:86.7%; top:78.46%; width:13.3%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 24: 4.58">
+              4.58
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:54%; top:74.29%; width:11.76%; height:3.62%; color:#1d4ed8;font-weight:800;" title="FTO Point 24: 4.01">
+              4.01
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:80.09%; top:85.42%; width:13.3%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 25: 4.93">
+              4.93
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:52.9%; top:78.46%; width:11.02%; height:3.34%; color:#1d4ed8;font-weight:800;" title="FTO Point 25: 4.62">
+              4.62
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:70.9%; top:90.15%; width:13.3%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 26: 6.07">
+              6.07
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:52.53%; top:82.08%; width:11.02%; height:3.34%; color:#1d4ed8;font-weight:800;" title="FTO Point 26: 3.76">
+              3.76
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:43.35%; top:95.99%; width:13.3%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 27: 4.09">
+              4.09
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:45.55%; top:83.19%; width:9.92%; height:3.34%; color:#1d4ed8;font-weight:800;" title="FTO Point 27: 3.96">
+              3.96
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:12.86%; top:89.59%; width:15.87%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 28: 4.65">
+              4.65
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:39.31%; top:81.8%; width:8.82%; height:2.78%; color:#1d4ed8;font-weight:800;" title="FTO Point 28: 3.90">
+              3.90
+            </div>
+          
+            <div class="vf-point-box vf-point-utf" style="left:2.94%; top:83.75%; width:15.87%; height:4.01%; color:#1d4ed8;font-weight:800;" title="UTF Point 29: 5.58">
+              5.58
+            </div>
+          
+            <div class="vf-point-box vf-point-fto" style="left:36%; top:77.91%; width:9.18%; height:3.34%; color:#1d4ed8;font-weight:800;" title="FTO Point 29: 4.39">
+              4.39
+            </div>
+          
+          </div>
+
+          <!-- Center Boxes -->
+          <div class="vf-center-card">
+            <div class="vf-center-cols">
+              <div class="vf-center-box" style="border-color:#1d4ed8;background:#f8fafc">
+                
+        <div class="vf-center-item" style="color:#1d4ed8;font-weight:800;">
+          1.73
+        </div>
+      
+        <div class="vf-center-item" style="color:#1d4ed8;font-weight:800;">
+          1.54
+        </div>
+      
+        <div class="vf-center-item" style="color:#1d4ed8;font-weight:800;">
+          1.80
+        </div>
+      
+        <div class="vf-center-item" style="color:#1d4ed8;font-weight:800;">
+          1.56
+        </div>
+      
+        <div class="vf-center-item" style="color:#1d4ed8;font-weight:800;">
+          1.58
+        </div>
+      
+        <div class="vf-center-item" style="color:#1d4ed8;font-weight:800;">
+          1.55
+        </div>
+      
+        <div class="vf-center-item" style="color:#94a3b8">
+          &nbsp;
+        </div>
+      
+        <div class="vf-center-item" style="color:#94a3b8">
+          &nbsp;
+        </div>
+      
+        <div class="vf-center-item" style="color:#94a3b8">
+          &nbsp;
+        </div>
+      
+        <div class="vf-center-item" style="color:#94a3b8">
+          &nbsp;
+        </div>
+      
+        <div class="vf-center-item" style="color:#94a3b8">
+          &nbsp;
+        </div>
+      
+        <div class="vf-center-item" style="color:#94a3b8">
+          &nbsp;
+        </div>
+      
+        <div class="vf-center-item" style="color:#94a3b8">
+          &nbsp;
+        </div>
+      
+              </div>
+              <div class="vf-center-box" style="border-color:#cbd5e1">
+                
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Shoe Card -->
+          <div class="vf-shoe-card">
+            
+      <img src="http://192.168.32.43/NEXUS-L/assets/images/bonding_sketches/blank.png" class="vf-shoe-img" style="left:12%; top:8%; width:76%; height:84%; opacity:0.85;" alt="Unmeasured Shoe Contour">
+    
+          </div>
+        </div>
+
+        <!-- Optional Collapsible Data Table -->
+        <details class="no-print" style="margin-top:8px;font-size:11px;border:1px solid #cbd5e1;border-radius:4px;padding:6px 10px;background:#f8fafc">
+          <summary style="cursor:pointer;font-weight:700;color:#334155">
+            <svg class="ic" aria-hidden="true"><use href="#i-chart"></use></svg> View Tabular Spot Values (29 Points)
+          </summary>
+          <table class="dtr-sheet-results-table" style="margin-top:8px;margin-bottom:0">
+            <thead>
+              <tr>
+                <th style="width:20%">Bonding Spot</th>
+                <th style="width:28%">Upper To Foxing (UTF)</th>
+                <th style="width:28%">Foxing To Outsole (FTO)</th>
+                <th style="width:24%">Filler to Outsole (FiTO)</th>
+              </tr>
+            </thead>
+            <tbody>
+              
+        <tr>
+          <td><b>Point 1</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">6.29</td>
+          <td style="color:#1d4ed8;font-weight:800;">4.59</td>
+          <td style="color:#1d4ed8;font-weight:800;">1.73</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 2</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">3.69</td>
+          <td style="color:#1d4ed8;font-weight:800;">3.95</td>
+          <td style="color:#1d4ed8;font-weight:800;">1.54</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 3</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">4.39</td>
+          <td style="color:#1d4ed8;font-weight:800;">3.64</td>
+          <td style="color:#1d4ed8;font-weight:800;">1.80</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 4</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">3.67</td>
+          <td style="color:#1d4ed8;font-weight:800;">4.44</td>
+          <td style="color:#1d4ed8;font-weight:800;">1.56</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 5</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">3.45</td>
+          <td style="color:#1d4ed8;font-weight:800;">3.81</td>
+          <td style="color:#1d4ed8;font-weight:800;">1.58</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 6</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">3.86</td>
+          <td style="color:#1d4ed8;font-weight:800;">5.33</td>
+          <td style="color:#1d4ed8;font-weight:800;">1.55</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 7</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">3.49</td>
+          <td style="color:#1d4ed8;font-weight:800;">4.32</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 8</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">3.47</td>
+          <td style="color:#1d4ed8;font-weight:800;">4.18</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 9</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">4.25</td>
+          <td style="color:#1d4ed8;font-weight:800;">4.29</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 10</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">4.56</td>
+          <td style="color:#1d4ed8;font-weight:800;">4.24</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 11</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">4.17</td>
+          <td style="color:#1d4ed8;font-weight:800;">4.37</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 12</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">3.87</td>
+          <td style="color:#1d4ed8;font-weight:800;">3.76</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 13</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">3.88</td>
+          <td style="color:#1d4ed8;font-weight:800;">3.76</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 14</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">4.60</td>
+          <td style="color:#1d4ed8;font-weight:800;">3.81</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 15</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">4.79</td>
+          <td style="color:#1d4ed8;font-weight:800;">4.13</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 16</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">4.73</td>
+          <td style="color:#1d4ed8;font-weight:800;">3.81</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 17</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">4.81</td>
+          <td style="color:#1d4ed8;font-weight:800;">3.68</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 18</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">4.14</td>
+          <td style="color:#1d4ed8;font-weight:800;">4.31</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 19</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">4.05</td>
+          <td style="color:#1d4ed8;font-weight:800;">4.05</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 20</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">4.07</td>
+          <td style="color:#1d4ed8;font-weight:800;">4.41</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 21</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">4.11</td>
+          <td style="color:#1d4ed8;font-weight:800;">4.57</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 22</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">4.07</td>
+          <td style="color:#1d4ed8;font-weight:800;">3.79</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 23</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">4.45</td>
+          <td style="color:#1d4ed8;font-weight:800;">3.49</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 24</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">4.58</td>
+          <td style="color:#1d4ed8;font-weight:800;">4.01</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 25</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">4.93</td>
+          <td style="color:#1d4ed8;font-weight:800;">4.62</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 26</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">6.07</td>
+          <td style="color:#1d4ed8;font-weight:800;">3.76</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 27</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">4.09</td>
+          <td style="color:#1d4ed8;font-weight:800;">3.96</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 28</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">4.65</td>
+          <td style="color:#1d4ed8;font-weight:800;">3.90</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+        <tr>
+          <td><b>Point 29</b></td>
+          <td style="color:#1d4ed8;font-weight:800;">5.58</td>
+          <td style="color:#1d4ed8;font-weight:800;">4.39</td>
+          <td style="color:#94a3b8">-</td>
+        </tr>
+      
+            </tbody>
+          </table>
+        </details>
+
+        <!-- Signatures & Notes Footer -->
+        <div class="vf-footer-grid">
+          <div>
+            Comments 备注:
+            <div style="font-weight:normal;color:#334155;margin-top:4px;font-size:10.5px">
+              Tested in accordance with VF Laboratory Standards.
+            </div>
+          </div>
+          <div>
+            Reviewed by 审查:
+            <div class="vf-sign-line">
+              <span>KATE G.</span>
+            </div>
+          </div>
+          <div>
+            Approved by 核准:
+            <div class="vf-sign-line">
+              <span>QA Laboratory Head</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    
