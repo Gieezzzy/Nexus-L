@@ -184,7 +184,10 @@ class ApprovalController extends BaseController
             $a = $this->db()->table('tbl_dtr_report_approvals')->where(['lab_ref_no' => $lab, 'application_no' => $app])->where('status !=', 'superseded')->orderBy('id', 'DESC')->get()->getRowArray();
         }
         $a = $a ?: $this->latest($lab);
-        if (! $a && $app !== '') {
+        if ($a && $app !== '' && (string) $a['application_no'] !== '' && (string) $a['application_no'] !== $app) {
+            $a = null;                                    // that Lab Reference was approved for another application
+        }
+        if (! $a && $app !== '' && $lab === '') {
             // the Lab Reference is not known yet (the form just opened): find the report already made for this Application No.
             $a = $this->db()->table('tbl_dtr_report_approvals')->where('application_no', $app)->where('status !=', 'superseded')->orderBy('id', 'DESC')->get()->getRowArray();
         }
