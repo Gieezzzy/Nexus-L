@@ -468,8 +468,9 @@ async function fillAndAttach(job) {
   const dirOf = (n) => ((String(n || '').match(/-\s*(Length|Width)\s*\(\s*[LW]\s*\)\s*$/i) || [])[1] || '');
   const baseOf = (n) => String(n || '').replace(/\s*-\s*(Length|Width)\s*\(\s*[LW]\s*\)\s*$/i, '').trim();
   const worst = (a, b) => ([a, b].includes('Fail') ? 'Fail' : [a, b].includes('Data') ? 'Data' : (a || b || 'Pass'));
-  // Only these tests get their readings (values, requirement, rating) typed in; every other test is added with its Sample ID, Test Item
-  // Name, Test Method and the Test Elements InterLink lists for it, and its reading page is left alone
+  // No test gets values typed in: a test is added with its Sample ID, Test Item Name, Test Method and its Test Elements. InterLink lists
+  // the elements itself; only these tests have theirs set from the report (Heat Aging's Color Change emptied, Corrosion's rows named
+  // like the report's specimens), so only their reading pages are opened
   const VALUE_CODES = ['VF-E04', 'VF-E09', 'VF-E19'];
   const wanted = [];
   for (const it of T.items || []) {
@@ -545,13 +546,6 @@ async function fillAndAttach(job) {
     if (it) {
       const idxs = [...document.querySelectorAll('textarea[name*="JOB_DUMMY_013_REF_FLD27_TEST_ITEM_READING_INPUT_"]')].map((t) => t.name.match(/INPUT_(\d+)$/)[1]);
       const cell = (i, f) => document.querySelector(`[name$="JOB_DUMMY_013_REF_${f}_TEST_ITEM_READING_INPUT_${i}"]`);
-      const fillRow = (i, v, requirement, unit, rating) => {
-        const ind = cell(i, 'FLD20'); if (ind) setNative(ind, '3');                    // "="
-        const val = cell(i, 'FLD47'); if (val) setNative(val, String(v));
-        const req = cell(i, 'FLD04'); if (req && requirement) setNative(req, String(requirement));
-        const uom = cell(i, 'FLD07'); if (uom && unit) setNative(uom, String(unit));
-        const rat = cell(i, 'FLD23'); if (rat) setNative(rat, ratingIdx(rating));
-      };
       const norm = (t) => String(t || '').toLowerCase().replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
       const elementOf = (i) => norm((cell(i, 'FLD03') || {}).value);
       // InterLink names its rows by direction and specimen ("Length Specimen 1", "Width Specimen 2", a "Length" row for the average, or
@@ -568,11 +562,11 @@ async function fillAndAttach(job) {
         for (const rd of part.readings) {
           const labs = labelsFor(part.dir, rd.element);
           const i = labs.map((l) => idxs.find((k) => !taken.has(k) && elementOf(k) === l)).find((k) => k !== undefined);
-          if (i !== undefined) { fillRow(i, rd.value, rd.requirement || it.requirement, rd.unit || it.unit, rd.rating); taken.add(i); used++; }
+          if (i !== undefined) { taken.add(i); used++; }
         }
       }
       if (!used) {
-        // otherwise ONE row holds the whole test: the row whose condition numbers (60℃ / 95% / 7 days) appear in the test's name,
+        // otherwise ONE row stands for the whole test: the row whose condition numbers (60℃ / 95% / 7 days) appear in the test's name,
         // else the first row
         const nums = (str) => (String(str).match(/\d+/g) || []);
         const want = new Set(nums(it.name));
@@ -581,7 +575,6 @@ async function fillAndAttach(job) {
           const sc = nums(elementOf(i)).filter((x) => want.has(x)).length;
           if (sc > bestScore) { bestScore = sc; bestIdx = i; }
         }
-        fillRow(bestIdx, it.value, it.requirement, it.unit, it.result);
         // the row's Test element is editable: it names the report's specimens, joined when there are several ("Specimen 1, Specimen 2")
         const names = it.readings.map((r) => r.element).filter(Boolean);
         const el = cell(bestIdx, 'FLD03'); if (el && names.length) setNative(el, names.join(', '));

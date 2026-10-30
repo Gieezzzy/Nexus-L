@@ -53,7 +53,7 @@
   // PIC's own Chrome (their own InterLink sign-in) opens the form, fills it, attaches the PDF and saves it ---------------
   // 'none' = not installed, 'old' = installed but older than 1.3.1 (its Home -> grid navigation and reading do not work),
   // 'ok'. A page that was open before the extension was updated still carries the old version, so a reload fixes 'old'.
-  const MIN_SENDER = '1.6.2';   // 1.6.2: readings only for Heat Aging, Corrosion, Hydrolysis; other tests keep InterLink's own rows
+  const MIN_SENDER = '1.6.3';   // 1.6.3: no values typed in for any test; only Sample ID, Test Item Name, Test Method and Test Elements
   const senderState = () => {
     if (document.documentElement.dataset.nxlSender !== '1') return 'none';
     const a = String(document.documentElement.dataset.nxlSenderVersion || '0').split('.').map(Number);
