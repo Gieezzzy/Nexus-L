@@ -410,6 +410,71 @@ class InterlinkController extends BaseController
         ]);
     }
 
+    /** Edits made in the Upload Form's grids (Sample Information, Test Item Result, readings), kept per application and Lab Reference. */
+    private function gridTable(): void
+    {
+        $this->il()->query('CREATE TABLE IF NOT EXISTS tbl_interlink_grid_edits (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            application_no VARCHAR(30) NOT NULL,
+            lab_ref_no VARCHAR(60) NOT NULL,
+            grids_json LONGTEXT NOT NULL,
+            saved_by VARCHAR(80) NULL,
+            saved_at DATETIME NOT NULL,
+            UNIQUE KEY uq_app_lab (application_no, lab_ref_no)
+        ) DEFAULT CHARSET=utf8mb4');
+    }
+
+    private function gridSaved(string $appNo, string $labRef): array
+    {
+        if ($appNo === '' || $labRef === '') {
+            return [];
+        }
+        try {
+            $this->gridTable();
+            $row = $this->il()->table('tbl_interlink_grid_edits')->where('application_no', $appNo)->where('lab_ref_no', $labRef)->get()->getRowArray();
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        return $row ? (json_decode((string) $row['grids_json'], true) ?: []) : [];
+    }
+
+    /** The saved edits replace the grids generated from the report's record: what the person corrected is what is synced and sent. */
+    private function gridOverlay(string $appNo, string $labRef, array $tables): array
+    {
+        $saved = $this->gridSaved($appNo, $labRef);
+        foreach (['samples', 'items', 'readings'] as $k) {
+            if (isset($saved[$k]) && is_array($saved[$k])) {
+                $tables[$k] = $saved[$k];
+            }
+        }
+
+        return $tables;
+    }
+
+    /** POST interlink/report/grids {application_no, lab_ref_no, samples[], items[], readings[]} */
+    public function saveGrids()
+    {
+        $p      = $this->request->getJSON(true) ?? $this->request->getPost();
+        $appNo  = trim((string) ($p['application_no'] ?? ''));
+        $labRef = trim((string) ($p['lab_ref_no'] ?? ''));
+        if ($appNo === '' || $labRef === '') {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'error' => 'Application No. and Lab Ref. No. are required.', 'csrf' => csrf_hash()]);
+        }
+        $grids = [];
+        foreach (['samples', 'items', 'readings'] as $k) {
+            $grids[$k] = is_array($p[$k] ?? null) ? array_values($p[$k]) : [];
+        }
+        $grids['form'] = is_array($p['form'] ?? null) ? $p['form'] : [];     // Report No., Issue Date, Overall Result as corrected
+        $user = $this->auth->user();
+        $this->gridTable();
+        $this->il()->query('INSERT INTO tbl_interlink_grid_edits (application_no, lab_ref_no, grids_json, saved_by, saved_at) VALUES (?,?,?,?,NOW())
+            ON DUPLICATE KEY UPDATE grids_json = VALUES(grids_json), saved_by = VALUES(saved_by), saved_at = VALUES(saved_at)',
+            [$appNo, $labRef, json_encode($grids, JSON_UNESCAPED_UNICODE), (string) ($user['name'] ?? $user['username'] ?? '')]);
+
+        return $this->response->setJSON(['ok' => true, 'csrf' => csrf_hash()] + $grids);
+    }
+
     /**
      * POST /interlink/report/save
      * Creates or updates a company side NEXUS-L lab report record.
@@ -1481,6 +1546,15 @@ JS;
             }
         }
 
+        // corrections saved from the Upload Form for this application win over the generated grids
+        $appNoQ = trim((string) ($this->request->getGet('application_no') ?? ''));
+        if ($appNoQ !== '') {
+            $ov = $this->gridOverlay($appNoQ, (string) $row['lab_ref_no'], ['samples' => $samples, 'items' => $items, 'readings' => $readings]);
+            $samples = $ov['samples'];
+            $items = $ov['items'];
+            $readings = $ov['readings'];
+        }
+
         // Enrich from tbl_dtr_dsr if mtl_no is present
         $dsrInfo = null;
         if (! empty($row['mtl_no'])) {
@@ -1505,6 +1579,7 @@ JS;
             'items'    => $items,
             'readings' => $readings,
             'samples'  => $samples,
+            'saved_form' => $appNoQ !== '' ? ($this->gridSaved($appNoQ, (string) $row['lab_ref_no'])['form'] ?? null) : null,
             'dsr'      => $dsrInfo,
             'material' => $matInfo,
             'csrf'     => csrf_hash(),
@@ -1809,6 +1884,10 @@ JS;
                 $genT = \App\Libraries\ReportTests::build((string) $lr['form_slug'], $recT, $ptsT);
                 $tables = ['samples' => $genT['samples'], 'items' => $genT['items'], 'readings' => $genT['readings']];
             }
+        }
+
+        if ($lr) {
+            $tables = $this->gridOverlay($appNo, (string) $lr['lab_ref_no'], $tables);
         }
 
         return $this->response->setJSON(['ok' => true, 'application_no' => $appNo, 'target_url' => $url, 'fields' => count($controls), 'controls' => $controls, 'tables' => $tables,

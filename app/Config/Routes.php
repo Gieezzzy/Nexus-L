@@ -62,6 +62,7 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->get('interlink/reports', 'InterlinkController::reports');
     $routes->get('interlink/report/(:segment)', 'InterlinkController::report/$1');
     $routes->post('interlink/report/save', 'InterlinkController::saveReport');
+    $routes->post('interlink/report/grids', 'InterlinkController::saveGrids');
     $routes->post('interlink/sync', 'InterlinkController::sync');
     $routes->post('interlink/submit', 'InterlinkController::submitToInterlink');
     $routes->post('interlink/fetch-live-page', 'InterlinkController::fetchLivePage');

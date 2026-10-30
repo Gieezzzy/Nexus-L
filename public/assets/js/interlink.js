@@ -640,7 +640,7 @@
     const labRef = currentLabRef();
     if (!labRef) return;
     try {
-      const res = await apiFetch(`interlink/labref-detail?lab_ref_no=${encodeURIComponent(labRef)}`);
+      const res = await apiFetch(`interlink/labref-detail?lab_ref_no=${encodeURIComponent(labRef)}&application_no=${encodeURIComponent(state.activeAppNo || '')}`);
       if (!res || !res.labref) return;
       state.activeSamples = res.samples || [];
       state.activeItems = res.items || [];
@@ -1059,7 +1059,7 @@
   const applyLabRefToSyncDialog = async (labRefId) => {
     if (!labRefId) return;
     try {
-      const res = await apiFetch(`interlink/labref-detail?id=${encodeURIComponent(labRefId)}`);
+      const res = await apiFetch(`interlink/labref-detail?id=${encodeURIComponent(labRefId)}&application_no=${encodeURIComponent(state.activeAppNo || '')}`);
       if (!res || !res.labref) return;
       const lr = res.labref;
       const dsr = res.dsr || {};
@@ -1074,10 +1074,11 @@
         title.textContent = `${lr.lab_ref_no} — ${lr.material_description || dsr.Material || mat.MaterialName || lr.material_type || 'Lab Test Report'} (${lr.overall_result || 'Pass'})`;
       }
 
-      const reportNoVal = lr.tr_no || lr.lab_ref_no || '';
-      const overallVal = (lr.overall_result === 'Fail' || lr.overall_result === 'FAIL')
+      const sf = res.saved_form || {};                                  // what was corrected and saved on the Upload Form for this application
+      const reportNoVal = sf.report_no || lr.tr_no || lr.lab_ref_no || '';
+      const overallVal = sf.overall_result || ((lr.overall_result === 'Fail' || lr.overall_result === 'FAIL')
         ? 'Fail'
-        : (lr.overall_result === 'Tolerable' ? 'Data' : 'Pass');
+        : (lr.overall_result === 'Tolerable' ? 'Data' : 'Pass'));
       const matCodeVal = lr.material_code || dsr.VFMaterialCode || mat.MaterialCode || '';
       const matDescVal = lr.material_description || dsr.Material || mat.MaterialName || lr.material_type || '';
       const supplierVal = lr.supplier || dsr.Supplier || mat.Supplier || '';
@@ -1116,7 +1117,7 @@
         application_no: appNo,
         report_no: reportNoVal,
         overall_result: overallVal,
-        report_issue_date: lr.finished_date || baseReport.report_issue_date || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        report_issue_date: sf.report_issue_date || lr.finished_date || baseReport.report_issue_date || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
         attachment_name: fileNameFor(appNo, lr),
       });
       if (supplierVal) merged.supplier_name = supplierVal;
@@ -1655,13 +1656,77 @@
     $('[data-uf-tab="product"]')?.click();
   });
 
-  $('#uf-btn-save')?.addEventListener('click', () => {
+  // Save: what was changed on the form (the boxes and the three grids) is stored in NEXUS-L for this application and Lab Reference,
+  // and the form is read back from it, so the next sync and the send use the corrected data
+  $('#uf-btn-save')?.addEventListener('click', async () => {
+    const btn = $('#uf-btn-save');
+    const appNo = state.activeAppNo || $('#uf_application_no')?.value || '';
     const repNo = $('#uf_report_no')?.value.trim();
     if (!repNo) {
       showToast('Please click "Sync NEXUS-L Data" first to fill Report No. and required fields.', true);
       return;
     }
-    showToast(`✓ InterLink UploadForm.aspx saved for Application ${state.activeAppNo || ''} (Report: ${repNo}).`);
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    try {
+      // 1) the boxes: the stored record of this application with the changed values on top
+      const payload = Object.assign({}, state.reports.find((r) => r.application_no === appNo) || {}, { application_no: appNo });
+      $$('[data-uf-field]').forEach((el) => { if (el.type !== 'radio') payload[el.dataset.ufField] = el.value; });
+      const retest = $$('input[name="uf_is_retest"]').find((r) => r.checked);
+      if (retest) payload.is_retest = retest.value;
+      const res = await apiFetch('interlink/report/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (res.report) {
+        const idx = state.reports.findIndex((r) => r.application_no === res.report.application_no);
+        if (idx >= 0) state.reports[idx] = res.report; else state.reports.unshift(res.report);
+      }
+      // 2) the grids: only the cells that were changed override the report's own rows (the other keys of a row are kept)
+      const labRef = currentLabRef();
+      let gridNote = '';
+      if (labRef) {
+        const patch = (rows, cols, tbodySel) => [...document.querySelectorAll(`${tbodySel} tr`)].map((tr, i) => {
+          const row = Object.assign({}, (rows || [])[i] || {});
+          const cells = [...tr.querySelectorAll('input,select')];
+          if (cells.length !== cols.length) return rows && rows[i] ? row : null;
+          cols.forEach(([keys, shown], c) => {
+            if (cells[c].value === shown(rows[i] || {})) return;                 // unchanged
+            keys.forEach((k) => { row[k] = cells[c].value; });
+          });
+          return row;
+        }).filter(Boolean);
+        const code = (v) => ((String(v).match(/\b(VF-[A-Z]\d{2}|SATRA TM ?\d+)/i) || [])[1] || '').toUpperCase();
+        const samples = patch(state.activeSamples, [
+          [['sample_id_code'], (r) => r.sample_id_code || 'S001'], [['sample_description'], (r) => r.sample_description || ''], [['sample_color'], (r) => r.sample_color || ''],
+        ], '#uf-sample-items-tbody');
+        const items = patch(state.activeItems, [
+          [['sample_id_code'], (r) => r.sample_id_code || 'S001'], [['test_name'], (r) => r.test_name || ''],
+          [['test_method_standard', 'test_method'], (r) => r.test_method_standard || ''],
+          [['actual_result_summary', 'actual_reading'], (r) => r.actual_result_summary || ''],
+          [['test_result', 'result_status'], (r) => (['Pass', 'Fail', 'Data'].includes(r.test_result) ? r.test_result : 'Pass')],
+        ], '#uf-test-items-tbody');
+        items.forEach((it) => { if (code(it.test_method_standard)) it.test_code = code(it.test_method_standard); });
+        const readings = patch(state.activeReadings, [
+          [['sample_id_code'], (r) => r.sample_id_code || 'S001'], [['test_item_name'], (r) => r.test_item_name || ''], [['test_method'], (r) => r.test_method || ''],
+          [['sample_component'], (r) => r.sample_component || ''], [['test_element'], (r) => r.test_element || ''], [['test_value_indicator'], (r) => r.test_value_indicator || '='],
+          [['reading_value_raw'], (r) => r.reading_value_raw || ''], [['unit'], (r) => r.unit || ''], [['target_spec'], (r) => r.target_spec || ''], [['reading_status'], (r) => (['Pass', 'Fail', 'Data'].includes(r.reading_status) ? r.reading_status : 'Pass')],
+        ], '#uf-test-readings-tbody');
+        const g = await apiFetch('interlink/report/grids', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ application_no: appNo, lab_ref_no: labRef, samples, items, readings, form: { report_no: payload.report_no, overall_result: payload.overall_result, report_issue_date: payload.report_issue_date } }),
+        });
+        state.activeSamples = g.samples || samples;
+        state.activeItems = g.items || items;
+        state.activeReadings = g.readings || readings;
+        renderTab2SubGrids(state.activeSamples, state.activeItems, state.activeReadings);          // read back from the saved data
+        gridNote = ` and its tables for ${labRef}`;
+      }
+      renderSearchGrid();
+      showToast(`✓ Saved ${appNo}${gridNote} in NEXUS-L. Sync and Send now use these values.`);
+    } catch (err) {
+      showToast('Could not save: ' + (err.message || err), true);
+    }
+    btn.disabled = false;
+    btn.textContent = label;
   });
 
   $('#uf-btn-new')?.addEventListener('click', () => {
