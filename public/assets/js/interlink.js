@@ -1501,7 +1501,7 @@
       <div class="itk-detail-sec" id="itk-detail-tests"><b>Test Item &amp; Reading Summary</b><div class="muted">Loading the samples, test items and readings…</div></div>
       <div class="nx-modal-actions"><button type="button" class="nx-btn" data-a="close">Close</button></div></div>`;
     document.body.appendChild(back);
-    back.querySelector('.nx-modal').style.cssText += ';max-height:92vh;overflow:auto';
+    back.querySelector('.nx-modal').style.cssText += ';max-height:92vh;overflow:auto;width:96vw;max-width:1500px';   // as wide as the view: the 12-column reading table must not be cut off
     back.addEventListener('click', (e) => { if (e.target === back || e.target.dataset.a === 'close') back.remove(); });
     fillDetailTests(back, r);
   };
@@ -1546,18 +1546,19 @@
       const per = 50;
       let page = 1;
       const draw = () => {
+        box.dataset.fit = '1';
         const pages = Math.max(1, Math.ceil(rows.length / per));
         page = Math.min(Math.max(1, page), pages);
         const slice = rows.slice((page - 1) * per, page * per);
         const pager = `<div style="margin:6px 0">Page ${page} of ${pages} (${rows.length} Records) &nbsp; <button type="button" class="nx-btn" data-pg="-1" ${page <= 1 ? 'disabled' : ''}>Previous</button> <button type="button" class="nx-btn" data-pg="1" ${page >= pages ? 'disabled' : ''}>Next</button></div>`;
-        box.innerHTML = `<b>Test Item &amp; Reading Summary</b>
+        box.innerHTML = `<style>#itk-detail-tests td, #itk-detail-tests th { white-space: normal; word-break: break-word; padding: 3px 5px; min-width: 0 } #itk-detail-tests .itk-grid { min-width: 0 !important; width: 100% !important }</style><b>Test Item &amp; Reading Summary</b>
           <div>Test Package(s): ${escHtml(r.test_packages || '')}</div>
           <div style="margin-top:8px"><b>Sample</b></div>
           <table class="itk-grid"><thead><tr><th>Sample ID</th><th>Sample Description</th><th>Sample Color</th></tr></thead><tbody>${samples.length ? samples.map((x) => `<tr><td>${escHtml(x.sample_id_code || 'S001')}</td><td>${escHtml(x.sample_description || '')}</td><td>${escHtml(x.sample_color || '')}</td></tr>`).join('') : '<tr><td colspan="3" class="muted">Empty</td></tr>'}</tbody></table>
           <div style="margin-top:8px"><b>Test Item Review</b></div>
           <table class="itk-grid"><thead><tr><th>Sample ID</th><th>Test Item</th><th>Test Item Result</th><th>Item Review Comment</th></tr></thead><tbody>${groups.length ? groups.map((g) => `<tr><td>${escHtml(g.sample)}</td><td>${escHtml(g.nm)}</td><td>${escHtml(g.result)}</td><td></td></tr>`).join('') : '<tr><td colspan="4" class="muted">Empty</td></tr>'}</tbody></table>
           <div style="margin-top:8px"><b>Test Reading Data Summary</b></div>${pager}
-          <div style="overflow-x:auto"><table class="itk-grid"><thead><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${slice.length ? slice.map((x) => `<tr>${x.map((c) => `<td>${escHtml(c)}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="12" class="muted">Empty</td></tr>`}</tbody></table></div>${pager}`;
+          <div style="overflow-x:auto"><table class="itk-grid" style="width:100%;font-size:12px;table-layout:fixed"><colgroup>${[5, 14, 7, 7, 7, 8, 15, 5, 10, 6, 8, 8].map((w) => `<col style="width:${w}%">`).join('')}</colgroup><thead><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${slice.length ? slice.map((x) => `<tr>${x.map((c) => `<td>${escHtml(c)}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="12" class="muted">Empty</td></tr>`}</tbody></table></div>${pager}`;
         box.querySelectorAll('[data-pg]').forEach((b) => b.addEventListener('click', () => { page += Number(b.dataset.pg); draw(); }));
       };
       draw();
