@@ -8,7 +8,8 @@
 - **Unified Training Pipeline (`App\Commands\BrainTrain`):**
   - Added one-command CLI pipeline `php spark brain:train` that executes the full training, indexing, and backup workflow across all AI and Brain layers.
   - **Playbook Knowledge:** Refreshed and validated 1,014 built-in playbooks and Q&A procedures across 8 knowledge seeders (`BrainSeed1` through `BrainSeed8`).
-  - **200 QC Problem Knowledge:** Synchronized 200 real-world QC Lab & testing problem scenarios with step-by-step diagnostic actions into `tbl_bot_knowledge`.
+  - **510+ QC Problem Scenarios:** Created `ProblemKnowledgeSeeder2.php` expanding the problem corpus from 200 to **510 comprehensive laboratory failure and diagnostic cases** covering SATRA/ISO physical test deviations, rubber/EVA/PU polymer defects, upper leather/mesh failures, RSL toxicological chemicals (Cr VI, Formaldehyde, Phthalates, DMFu), cementing/priming skips, and ISO 17025 instrument calibration drifts.
+  - **Expanded Knowledge Base:** Total approved answers in `tbl_bot_knowledge` expanded to **1,498 answers** (1,014 core playbooks + 510 QC problems), mirrored to 1,498 Markdown playbooks and re-indexed into the vector store.
   - **Learning & Weight Optimization:** Ran `BrainLearn::refresh()` to recalculate question term weights and update learning suggestions based on user interaction signals.
   - **Backup & Markdown Sync:** Flushed updated knowledge to `knowledge.back` and exported 1,188 human-readable Markdown playbooks for Obsidian integration.
   - **Dataset & Vector Store Re-indexing:** Exported 1,188 approved answers and 25 review questions to `C:\NexusAI\knowledge.jsonl` and successfully triggered vector store re-indexing (`/admin/train/start` and `/admin/index`).

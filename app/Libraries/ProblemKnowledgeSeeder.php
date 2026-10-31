@@ -1569,6 +1569,10 @@ class ProblemKnowledgeSeeder
             'actions'  => $settingsAct, 'page_match' => 'settings', 'role_min' => 'admin',
         ];
 
+        if (class_exists(ProblemKnowledgeSeeder2::class)) {
+            $p = array_merge($p, ProblemKnowledgeSeeder2::problems());
+        }
+
         return $p;
     }
 }
