@@ -120,6 +120,86 @@ class SettingsController extends BaseController
         return $this->json($out);
     }
 
+    /** POST settings/ai/test {url?, key?}: is the local Python AI service reachable? */
+    public function testAi()
+    {
+        if (! $this->isAdmin()) {
+            return $this->deny();
+        }
+        $p   = $this->request->getJSON(true) ?? [];
+        $url = rtrim(trim((string) ($p['url'] ?? '')) ?: (string) SystemSettings::get('ai.url', 'http://127.0.0.1:8765'), '/');
+        $key = trim((string) ($p['key'] ?? '')) ?: (string) SystemSettings::get('ai.key', '');
+        if ($url === '') {
+            return $this->json(['ok' => false, 'error' => 'Enter the AI service address first (e.g. http://127.0.0.1:8765).'], 422);
+        }
+        $out   = ['ok' => true, 'reachable' => false, 'status' => '', 'latency_ms' => 0, 'service' => ''];
+        $start = microtime(true);
+        try {
+            $headers = ['Accept' => 'application/json'];
+            if ($key !== '') {
+                $headers['X-AI-Key'] = $key;
+            }
+            $res = service('curlrequest')->get($url . '/health', [
+                'timeout'     => 4,
+                'http_errors' => false,
+                'headers'     => $headers,
+            ]);
+            $latency = (int) round((microtime(true) - $start) * 1000);
+            $out['latency_ms'] = $latency;
+            $code = $res->getStatusCode();
+            if ($code === 200) {
+                $body = json_decode((string) $res->getBody(), true) ?: [];
+                $out['reachable']   = true;
+                $out['status']      = ! empty($body['ok']) ? 'healthy' : 'degraded';
+                $out['service']     = (string) ($body['service'] ?? 'nexus-ai-service');
+                $out['docs']        = (int) ($body['docs'] ?? 0);
+                $out['corrections'] = (int) ($body['corrections'] ?? 0);
+                $out['threshold']   = $body['threshold'] ?? null;
+                $out['llm_mode']    = (string) ($body['mode'] ?? 'extractive');
+                $out['rasa']        = ! empty($body['rasa']);
+            } else {
+                $out['error'] = 'HTTP ' . $code . ': ' . substr(strip_tags((string) $res->getBody()), 0, 150);
+            }
+        } catch (\Throwable $e) {
+            $out['latency_ms'] = (int) round((microtime(true) - $start) * 1000);
+            $out['error']      = $e->getMessage();
+        }
+
+        return $this->json($out);
+    }
+
+    /** POST settings/ai/seed: seeds 200 problem questions into tbl_bot_knowledge, exports knowledge.jsonl and reindexes vector store */
+    public function seedAiKnowledge()
+    {
+        if (! $this->isAdmin()) {
+            return $this->deny();
+        }
+        try {
+            $res = \App\Libraries\ProblemKnowledgeSeeder::run();
+
+            return $this->json(['ok' => true, 'result' => $res]);
+        } catch (\Throwable $e) {
+            return $this->json(['ok' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /** POST settings/git/sync: stages, commits, and pushes all codebase changes to origin/main */
+    public function gitSync()
+    {
+        if (! $this->isAdmin()) {
+            return $this->deny();
+        }
+        $out = [];
+        $code = 0;
+        @exec('cmd /c "E:\\html\\NEXUS-L\\tools\\auto-push.cmd" 2>&1', $out, $code);
+
+        return $this->json([
+            'ok'     => ($code === 0),
+            'code'   => $code,
+            'output' => implode("\n", $out),
+        ]);
+    }
+
     // ------------------------------------------------------------------ database -----------------------------------------------------
 
     private function envPath(): string

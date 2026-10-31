@@ -1,12 +1,12 @@
 ---
 type: "CodebaseIndex"
 tags: [obsidian, graphify, icm, codebase-index, nexus-l, interlink, dtr, qc-lab]
-updated: "2026-10-29"
+updated: "2026-10-31"
 ---
 
 # NEXUS-L - Codebase Index
 
-[[ICM_CHANGELOG]] | Knowledge Graph: `D:\html\graphify.html` | Canvas: `_docs/obsidian/graph.canvas`
+[[ICM_CHANGELOG]] | Knowledge Graph: `E:\html\graphify.html` | Canvas: `_docs/obsidian/graph.canvas`
 
 NEXUS-L is the laboratory intelligence and execution system built on CodeIgniter 4, featuring real-time messaging, Intertek InterLink 2.0 integration, and the QC Lab Digital Test Reports (DTR) test suite.
 
@@ -14,6 +14,11 @@ NEXUS-L is the laboratory intelligence and execution system built on CodeIgniter
 
 | File | Responsibility |
 | :--- | :--- |
+| `app/Controllers/SettingsController.php` | Settings page (Admin only): InterLink background service settings & connectivity test, database in use / testing / switching, table-by-table background migration, and AI engine controls. |
+| `app/Controllers/BotController.php` | Help Bot & Assistant: live read-only DB querying (`dbSearchIntent`), Synology approval reminders (`approvalReminderIntent`), interactive test computation & pass/fail rating (`computeIntent`), and knowledge retrieval. |
+| `app/Libraries/ProblemKnowledgeSeeder.php` | 200 real-world QC Lab & testing problem scenarios with step-by-step diagnostic solutions, automated export to `C:\NexusAI\knowledge.jsonl`, and FAISS vector re-indexing. |
+| `app/Libraries/SystemSettings.php` | Persistent admin configuration in `tbl_system_settings` with `.env` fallback for AI mode, InterLink defaults, approval expiry, and Synology chat. |
+| `app/Libraries/AiBridge.php` | AI assistant microservice bridge: routes questions and user clickstream telemetry to the LangGraph/Rasa agent, handles shadow inference and live zero-hallucination gating. |
 | `app/Controllers/InterlinkController.php` | InterLink 2.0 proxy, Pre-Sync ComboBox data provider (`/interlink/labrefs`), report persistence, and 1-click live postback to Intertek portal. |
 | `app/Controllers/DtrController.php` | Digital Test Report (DTR) module: 10 Material Test Forms, Whole Shoe Bonding (U60), Smart Standards lookups, machine auto-loader, and print report preview. |
 | `app/Controllers/InboxController.php` | Messaging and inbox suite with group approval gating and theme reactions. |
@@ -52,6 +57,7 @@ NEXUS-L is the laboratory intelligence and execution system built on CodeIgniter
 - *Strict Rule:* Network files are read-only; never modified or deleted.
 
 
-## Status (2026-10-29)
+## Status (2026-10-31)
 - NEXUS-L is detached from Access: `dbnexus` is the only database; reports print from it (ICM Phase 196).
 - Nothing is saved in InterLink without an approved, signed report (ICM Phases 194 and 197).
+- AI Assistant & Help Bot fully operational (ICM Phase 200 & 201): live read-only DB querying, Synology Chat approval reminders, 200 problem knowledge corpus, and interactive test computation engine with follow-up validation.

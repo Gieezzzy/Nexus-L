@@ -15,6 +15,18 @@ $field = static function (array $r): string {
 
         return '<label class="st-row st-check"><input type="checkbox" id="' . $id . '" data-key="' . $key . '" data-type="bool" ' . ($on ? 'checked' : '') . '> <span>' . esc($r['label']) . '</span>' . $help . '</label>';
     }
+    if (str_starts_with($r['type'], 'select:')) {
+        $opts = explode(',', substr($r['type'], 7));
+        $cur  = (string) ($r['value'] ?? '');
+        $optionsHtml = '';
+        foreach ($opts as $o) {
+            $optionsHtml .= '<option value="' . esc($o, 'attr') . '" ' . ($cur === $o ? 'selected' : '') . '>' . esc(strtoupper($o)) . '</option>';
+        }
+        return '<label class="st-row"><span class="st-label">' . esc($r['label']) . '</span><select id="' . $id . '" data-key="' . $key . '" data-type="select">' . $optionsHtml . '</select>' . $help . '</label>';
+    }
+    if ($r['type'] === 'textarea') {
+        return '<label class="st-row"><span class="st-label">' . esc($r['label']) . '</span><textarea id="' . $id . '" data-key="' . $key . '" data-type="textarea" rows="2" style="width:100%;border-radius:6px;border:1px solid rgba(148,163,184,0.3);padding:6px 8px;background:var(--bg-glass);color:inherit">' . esc($r['value'] ?? '') . '</textarea>' . $help . '</label>';
+    }
     $type = $r['type'] === 'password' ? 'password' : ($r['type'] === 'number' ? 'number' : 'text');
     $ph   = $r['type'] === 'password' ? ($r['has_value'] ? ($r['from_env'] ? 'set in the .env file - type to replace' : 'saved - type to replace') : 'not set') : '';
     $val  = $r['type'] === 'password' ? '' : $r['value'];
@@ -26,6 +38,20 @@ $field = static function (array $r): string {
     <div class="card glass">
         <h3>Settings</h3>
         <p class="muted sm">Only an Admin sees and can open this page. What is saved here takes effect at once and is kept in the database (table <code>tbl_system_settings</code>); the database connection itself is written to <code>.env</code>, where the code reads it.</p>
+    </div>
+
+    <!-- AI Assistant & Bot Engine -->
+    <div class="card glass" id="st-ai">
+        <h3><?= esc($categories['ai'] ?? 'AI Assistant & Bot Engine') ?> <small class="muted">(LangGraph, Rasa NLU, Mem0 &amp; Phoenix stack)</small></h3>
+        <p class="muted sm">Configure operating mode (Shadow vs. Live), local Python service address, shared API key, confidence thresholds, and safe fallback messaging.</p>
+        <?php foreach ($byCat['ai'] ?? [] as $r) echo $field($r); ?>
+        <div class="st-actions">
+            <button type="button" class="nx-btn nx-primary" data-save="st-ai">Save</button>
+            <button type="button" class="nx-btn" id="st-ai-test">Test AI Service</button>
+            <button type="button" class="nx-btn" id="st-ai-seed">Seed 200 Problem Answers</button>
+            <button type="button" class="nx-btn" id="st-git-push">Push to Git</button>
+            <span class="st-msg" id="st-ai-msg"></span>
+        </div>
     </div>
 
     <!-- InterLink service -->

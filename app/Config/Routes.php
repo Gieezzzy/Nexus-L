@@ -127,6 +127,9 @@ $routes->group('', ['filter' => 'auth:admin'], static function (RouteCollection 
     $routes->get('settings', 'SettingsController::index', ['as' => 'settings']);
     $routes->post('settings/save', 'SettingsController::save');
     $routes->post('settings/service/test', 'SettingsController::testService');
+    $routes->post('settings/ai/test', 'SettingsController::testAi');
+    $routes->post('settings/ai/seed', 'SettingsController::seedAiKnowledge');
+    $routes->post('settings/git/sync', 'SettingsController::gitSync');
     $routes->post('settings/db/test', 'SettingsController::dbTest');
     $routes->post('settings/db/switch', 'SettingsController::dbSwitch');
     $routes->post('settings/transfer/start', 'SettingsController::transferStart');

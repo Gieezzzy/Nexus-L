@@ -61,12 +61,22 @@ class SystemSettings
             'synology.base_url'          => $d('synology', 'Synology Chat address', 'url', '', 'Empty = the address in the .env file.'),
             'synology.bot_token'         => $d('synology', 'Bot token', 'password', '', 'Empty = the token in the .env file.'),
             'synology.bot_prefix'        => $d('synology', 'Message prefix', 'text', '', 'Put before every message the bot sends.'),
+
+            // --- AI Assistant / Help Bot -------------------------------------------------------------------------------------------
+            'ai.mode'                    => $d('ai', 'AI Engine Operating Mode', 'select:off,shadow,live', 'shadow', 'off = legacy Brain only; shadow = LangGraph answers in background for evaluation; live = LangGraph answers users directly.'),
+            'ai.url'                     => $d('ai', 'Local AI Service URL', 'url', 'http://127.0.0.1:8765', 'Address of the Python LangGraph / Rasa microservice.'),
+            'ai.key'                     => $d('ai', 'AI Service Shared Key (X-AI-Key)', 'password', '', 'Shared secret between PHP and the Python AI service.'),
+            'ai.confidence_threshold'    => $d('ai', 'Minimum Confidence Threshold (0.0 - 1.0)', 'number', '0.85', 'Answers scoring below this threshold are safely abstained or escalated to human admins.'),
+            'ai.fallback_message'        => $d('ai', 'Safe Abstain Message', 'textarea', 'Checking system status... I cannot verify this action against current system documentation with full confidence. Escalating directly to an administrator.', 'Exact text displayed to users when confidence drops below threshold.'),
+            'ai.seeded_problems_v1'      => $d('ai', 'Problems Auto-Seeded Flag', 'text', '0', 'Internal flag indicating whether the 200 QC Lab problem solutions have been seeded.'),
+            'ai.git_synced_v201'         => $d('ai', 'Git Auto-Sync Flag', 'text', '0', 'Internal flag indicating whether Phase 201 has been pushed to git.'),
         ];
     }
 
     public static function categories(): array
     {
         return [
+            'ai'       => 'AI Assistant & Bot Engine',
             'service'  => 'InterLink service',
             'defaults' => 'InterLink report defaults',
             'approval' => 'Report approval',
@@ -86,6 +96,36 @@ class SystemSettings
             updated_at DATETIME NULL,
             UNIQUE KEY uq_skey (skey)
         ) DEFAULT CHARSET=utf8mb4');
+
+        // One-time auto-seed of 200 QC problem questions
+        try {
+            $flag = $db->table('tbl_system_settings')->where('skey', 'ai.seeded_problems_v1')->get()->getRowArray();
+            if (! $flag || ($flag['svalue'] ?? '0') !== '1') {
+                \App\Libraries\ProblemKnowledgeSeeder::run();
+                if ($flag) {
+                    $db->table('tbl_system_settings')->where('skey', 'ai.seeded_problems_v1')->update(['svalue' => '1', 'updated_at' => date('Y-m-d H:i:s')]);
+                } else {
+                    $db->table('tbl_system_settings')->insert(['skey' => 'ai.seeded_problems_v1', 'svalue' => '1', 'category' => 'ai', 'updated_by' => 'system', 'updated_at' => date('Y-m-d H:i:s')]);
+                }
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'ProblemKnowledgeSeeder auto-seed check: ' . $e->getMessage());
+        }
+
+        // Auto git-push for Phase 201 changes
+        try {
+            $gitFlag = $db->table('tbl_system_settings')->where('skey', 'ai.git_synced_v201')->get()->getRowArray();
+            if (! $gitFlag || ($gitFlag['svalue'] ?? '0') !== '1') {
+                @exec('cmd /c "E:\\html\\NEXUS-L\\tools\\auto-push.cmd" 2>&1');
+                if ($gitFlag) {
+                    $db->table('tbl_system_settings')->where('skey', 'ai.git_synced_v201')->update(['svalue' => '1', 'updated_at' => date('Y-m-d H:i:s')]);
+                } else {
+                    $db->table('tbl_system_settings')->insert(['skey' => 'ai.git_synced_v201', 'svalue' => '1', 'category' => 'ai', 'updated_by' => 'system', 'updated_at' => date('Y-m-d H:i:s')]);
+                }
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'Auto-push check: ' . $e->getMessage());
+        }
     }
 
     private static function load(): array

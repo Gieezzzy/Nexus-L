@@ -16,14 +16,42 @@ class AiBridge
 {
     public static function mode(): string
     {
-        $m = (string) env('ai.mode', 'off');
+        $m = (string) SystemSettings::get('ai.mode', (string) env('ai.mode', 'shadow'));
 
-        return in_array($m, ['shadow'], true) ? $m : 'off';
+        return in_array($m, ['shadow', 'live'], true) ? $m : 'off';
+    }
+
+    public static function isLive(): bool
+    {
+        return self::mode() === 'live';
     }
 
     public static function enabled(): bool
     {
         return self::mode() !== 'off';
+    }
+
+    public static function url(): string
+    {
+        return rtrim((string) SystemSettings::get('ai.url', (string) env('ai.url', 'http://127.0.0.1:8765')), '/');
+    }
+
+    public static function key(): string
+    {
+        return (string) SystemSettings::get('ai.key', (string) env('ai.key', ''));
+    }
+
+    public static function threshold(): float
+    {
+        return (float) SystemSettings::get('ai.confidence_threshold', 0.85);
+    }
+
+    public static function fallbackMessage(): string
+    {
+        return (string) SystemSettings::get(
+            'ai.fallback_message',
+            'Checking system status... I cannot verify this action against current system documentation with full confidence. Escalating directly to an administrator.'
+        );
     }
 
     /** One session id per user and day: links clicks, questions and admin replies of that user. */
@@ -38,10 +66,10 @@ class AiBridge
         if (! self::enabled() || ! function_exists('curl_init')) {
             return null;
         }
-        $ch = curl_init(rtrim((string) env('ai.url', 'http://127.0.0.1:8765'), '/') . $path);
+        $ch = curl_init(self::url() . $path);
         curl_setopt_array($ch, [
             CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT_MS => $timeoutMs, CURLOPT_CONNECTTIMEOUT_MS => 400,
-            CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'X-AI-Key: ' . (string) env('ai.key', '')],
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'X-AI-Key: ' . self::key()],
             CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         ]);
         $out  = curl_exec($ch);

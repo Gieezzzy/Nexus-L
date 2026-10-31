@@ -151,7 +151,60 @@ class BotController extends BaseController
         }
         $userChatId = $this->say((int) $thread['id'], 'user', (string) ($u['name'] ?? $u['username'] ?? 'User'), $text);
 
-        $reply = $this->labRefIntent($text) ?? $this->compose($text, ['page' => $page, 'role' => (string) ($u['role'] ?? ''), 'errors' => $this->recentErrors($uid)], $page);
+        $prev = $this->db()->table('tbl_bot_chats')->select('message')->where(['thread_id' => (int) $thread['id'], 'sender' => 'user'])->where('id <', $userChatId)->orderBy('id', 'DESC')->get(1)->getRowArray();
+        $prevUserMsg = (string) ($prev['message'] ?? '');
+
+        $intentReply = $this->labRefIntent($text) ?? $this->approvalReminderIntent($text, $uid, (array) $u) ?? $this->dbSearchIntent($text) ?? $this->computeIntent($text, $prevUserMsg);
+        if ($intentReply !== null) {
+            $reply = $intentReply;
+        } else {
+            $reply = $this->compose($text, ['page' => $page, 'role' => (string) ($u['role'] ?? ''), 'errors' => $this->recentErrors($uid)], $page);
+            if (\App\Libraries\AiBridge::isLive()) {
+                $aiResp = \App\Libraries\AiBridge::post('/ask', [
+                    'session_id' => \App\Libraries\AiBridge::session($uid),
+                    'user_id' => (string) $uid,
+                    'message' => $text,
+                    'prev_question' => $prevUserMsg,
+                    'ui' => ['page' => $page, 'role' => strtolower((string) ($u['role'] ?? 'user')) === 'admin' ? 'admin' : 'user'],
+                ], 4500);
+
+                $ansText = trim((string) ($aiResp['text'] ?? $aiResp['answer'] ?? ''));
+                if ($aiResp && $ansText !== '') {
+                    $conf = isset($aiResp['confidence']) ? (float) $aiResp['confidence'] : 0.0;
+                    $confPct = (int) round($conf * 100);
+                    $route = (string) ($aiResp['route'] ?? 'agent');
+
+                    // Zero-hallucination guard: if confidence is below threshold or route is abstain, enforce safe message
+                    $threshold = \App\Libraries\AiBridge::threshold();
+                    $finalText = ($route === 'abstain' || $conf < $threshold)
+                        ? \App\Libraries\AiBridge::fallbackMessage()
+                        : $ansText;
+
+                    $related = [];
+                    $rawRelated = is_array($aiResp['related'] ?? null) && ! empty($aiResp['related']) ? $aiResp['related'] : ($reply['related'] ?? []);
+                    foreach ($rawRelated as $rel) {
+                        $t = is_array($rel) ? (string) ($rel['title'] ?? $rel['question'] ?? '') : (string) $rel;
+                        if ($t !== '') {
+                            $relId = is_array($rel) ? (int) ($rel['id'] ?? $rel['kb_id'] ?? 0) : 0;
+                            $related[] = ['id' => $relId, 'kb_id' => $relId, 'title' => $t];
+                        }
+                    }
+
+                    $reply = [
+                        'text' => $finalText,
+                        'steps' => is_array($aiResp['steps'] ?? null) ? $aiResp['steps'] : ($reply['steps'] ?? []),
+                        'actions' => is_array($aiResp['actions'] ?? null) ? $aiResp['actions'] : ($reply['actions'] ?? []),
+                        'confidence' => $confPct,
+                        'related' => $related,
+                        'diagnosis' => null,
+                        'knowledge_id' => $aiResp['kb_id'] ?? null,
+                        'suggest_admin' => ! empty($aiResp['suggest_admin']) || ! empty($aiResp['escalate']) || $route === 'abstain',
+                        'sources' => $aiResp['citations'] ?? [],
+                        'trace_id' => $aiResp['trace_id'] ?? null,
+                    ];
+                }
+            }
+        }
         $cid   = $this->say((int) $thread['id'], 'bot', 'NEXUS-L Assistant', $reply['text'], $reply['knowledge_id'], $reply['confidence']);
         $reply['chat_id'] = $cid;
         if (\App\Libraries\AiBridge::enabled()) {
@@ -207,6 +260,884 @@ class BotController extends BaseController
         }
 
         return $out + ['title' => 'Lab Reference ' . $ref, 'confidence' => 100, 'related' => [], 'diagnosis' => null, 'knowledge_id' => null, 'suggest_admin' => false];
+    }
+
+
+    /**
+     * Read-only live database search & statistics query over tbl_dtr_unified_labrefs.
+     * Answers queries like:
+     *  - "what is the total failed for bonding", "how many fail and pass do we have", "bonding test summary"
+     *  - "how many reports failed this month", "total passed tests"
+     *  - "find failed reports for Vans", "search reports for supplier X"
+     */
+    /**
+     * Resends Synology Chat approval reminders to designated managers / signatories for pending reports.
+     * Triggered by phrases like:
+     *  - "resend notification for approver", "remind approver", "remind manager for approval"
+     *  - "send notification for pending approval", "notify signatories"
+     */
+    private function approvalReminderIntent(string $text, int $uid, array $u): ?array
+    {
+        $low = mb_strtolower(trim($text));
+
+        // Intent detection regex
+        $isReminder = (bool) (
+            (preg_match('/\b(resend|send|remind|notify|alert|ping|forward)\b/i', $low) &&
+             preg_match('/\b(approv|signator|manager|supervisor)/i', $low)) ||
+            preg_match('/\b(approval\s*reminder|remind\s*approver|resend\s*approval|notify\s*approver)\b/i', $low)
+        );
+
+        if (! $isReminder) {
+            return null;
+        }
+
+        $db = $this->db();
+        if (! $db->tableExists('tbl_dtr_report_approvals') || ! $db->tableExists('tbl_dtr_signatories')) {
+            return null;
+        }
+
+        // 1. Check if a specific Lab Reference or Application No. was mentioned
+        $targetLab = null;
+        if (preg_match('/\b(DTP\d{8}[A-Z0-9]{2,}(?:-[LR])?)\b/i', $text, $m)) {
+            $targetLab = strtoupper($m[1]);
+        }
+        $targetApp = null;
+        if (preg_match('/\b(APP[-_0-9A-Z]{3,})\b/i', $text, $am)) {
+            $targetApp = strtoupper($am[1]);
+        }
+
+        // 2. Query for pending approval
+        $apv = null;
+        if ($targetLab) {
+            $apv = $db->table('tbl_dtr_report_approvals')->where(['lab_ref_no' => $targetLab, 'status' => 'pending'])->orderBy('id', 'DESC')->get(1)->getRowArray();
+        } elseif ($targetApp) {
+            $apv = $db->table('tbl_dtr_report_approvals')->where(['application_no' => $targetApp, 'status' => 'pending'])->orderBy('id', 'DESC')->get(1)->getRowArray();
+        } else {
+            // Prefer pending approval requested by current user, else latest pending
+            if ($uid > 0) {
+                $apv = $db->table('tbl_dtr_report_approvals')
+                    ->where(['status' => 'pending', 'requested_by' => $uid])
+                    ->orderBy('id', 'DESC')
+                    ->get(1)->getRowArray();
+            }
+            if (! $apv) {
+                $apv = $db->table('tbl_dtr_report_approvals')->where('status', 'pending')->orderBy('id', 'DESC')->get(1)->getRowArray();
+            }
+        }
+
+        if (! $apv) {
+            return [
+                'text'          => "There are currently no reports with 'Pending' status waiting for approval. If you just generated or edited a report, open it and click 'Request approval (QR)' first.",
+                'title'         => 'No Pending Approvals Found',
+                'steps'         => [
+                    'Open the report in QC Lab Reports (Material Tests or Shoe Bonding).',
+                    'Click "Generate Report" or "Request approval (QR)".',
+                    'Once submitted, the managers and signatories are queued for sign-off.',
+                ],
+                'actions'       => [
+                    ['type' => 'open', 'label' => 'Open Lab Tracker', 'url' => site_url('dtr?tab=tracker')],
+                    ['type' => 'open', 'label' => 'Open InterLink Upload Form', 'url' => site_url('interlink')],
+                ],
+                'confidence'    => 100,
+                'related'       => [
+                    ['title' => 'How does QR report approval work?'],
+                    ['title' => 'Who are the registered signatories?'],
+                ],
+                'diagnosis'     => null,
+                'knowledge_id'  => null,
+                'suggest_admin' => false,
+            ];
+        }
+
+        // 3. Ensure token is valid and active (refresh if expired)
+        $now = date('Y-m-d H:i:s');
+        $linkMinutes = max(1, (int) \App\Libraries\SystemSettings::get('approval.link_minutes', 60));
+        $isExpired   = empty($apv['expires_at']) || strtotime((string) $apv['expires_at']) <= time();
+
+        $token = (string) $apv['token'];
+        if ($isExpired || strlen($token) !== 40) {
+            $token   = bin2hex(random_bytes(20));
+            $expires = date('Y-m-d H:i:s', time() + $linkMinutes * 60);
+            $db->table('tbl_dtr_report_approvals')->where('id', $apv['id'])->update([
+                'token'      => $token,
+                'expires_at' => $expires,
+                'updated_at' => $now,
+            ]);
+            $apv['token']      = $token;
+            $apv['expires_at'] = $expires;
+        }
+
+        $minutesLeft = max(1, (int) round((strtotime((string) $apv['expires_at']) - time()) / 60));
+        $approvalUrl = site_url('approve/' . $token);
+
+        // 4. Find active registered signatories and their SynologyIDs
+        $signRows = $db->table('tbl_dtr_signatories s')
+            ->select('s.full_name, s.title, s.user_id, u.SynologyID, u.name as user_name, u.role')
+            ->join('tbl_users u', 'u.UserID = s.user_id', 'left')
+            ->where('s.is_active', 1)
+            ->get()->getResultArray();
+
+        // If a required name is printed on the report, filter to matching signatory
+        if (! empty($apv['required_name'])) {
+            $filtered = array_values(array_filter($signRows, static fn ($r) => \App\Libraries\ReportPdf::nameMatches((string) $apv['required_name'], (string) $r['full_name'])));
+            if (! empty($filtered)) {
+                $signRows = $filtered;
+            }
+        }
+
+        if (empty($signRows)) {
+            return [
+                'text'          => "Report {$apv['lab_ref_no']} is pending, but no active signatories are currently registered in Report Designer → Signatories.",
+                'title'         => 'No Active Signatories Registered',
+                'steps'         => [
+                    'Ask an administrator to open Report Designer > Signatories.',
+                    'Register the Manager or Supervisor account with their printed name and title.',
+                    'Ensure the user account has a SynologyID set in tbl_users.',
+                ],
+                'actions'       => [
+                    ['type' => 'open', 'label' => 'Open Approval Link', 'url' => $approvalUrl],
+                ],
+                'confidence'    => 100,
+                'related'       => [],
+                'diagnosis'     => null,
+                'knowledge_id'  => null,
+                'suggest_admin' => true,
+            ];
+        }
+
+        // 5. Send Synology message to each signatory
+        $synologyChat = new \App\Libraries\SynologyChat();
+        $notified     = [];
+        $noSynologyId = [];
+
+        $msgText = "NEXUS-L Approval Reminder:\nReport {$apv['lab_ref_no']} (Application: " . ($apv['application_no'] ?: 'Regular') . ") requested by " . ($apv['requested_name'] ?: 'Lab Staff') . " is waiting for your approval before submission to InterLink.\nSingle-use sign-off link (expires in {$minutesLeft} min):\n{$approvalUrl}";
+
+        foreach ($signRows as $sr) {
+            $sId         = (int) ($sr['SynologyID'] ?? 0);
+            $displayName = $sr['full_name'] . ($sr['title'] ? " ({$sr['title']})" : '');
+            if ($sId > 0) {
+                try {
+                    $ok = $synologyChat->send($sId, $msgText);
+                    if ($ok) {
+                        $notified[] = "• {$displayName} - Synology ID: {$sId}";
+                    } else {
+                        $notified[] = "• {$displayName} - Failed to send: " . ($synologyChat->lastError() ?: 'Network error');
+                    }
+                } catch (\Throwable $e) {
+                    $notified[] = "• {$displayName} - Error: " . $e->getMessage();
+                }
+            } else {
+                $noSynologyId[] = "• {$displayName} (No SynologyID configured in user profile)";
+            }
+        }
+
+        // Format bot response
+        $replyText = "🔔 **Approval Notification Sent to Signatories!**\n\n";
+        $replyText .= "**Pending Report Details:**\n";
+        $replyText .= "• **Lab Reference:** {$apv['lab_ref_no']}\n";
+        if (! empty($apv['application_no'])) {
+            $replyText .= "• **Application No:** {$apv['application_no']}\n";
+        }
+        $replyText .= "• **Requested By:** " . ($apv['requested_name'] ?: 'User') . "\n";
+        $replyText .= "• **Link Expiration:** In {$minutesLeft} minutes\n\n";
+
+        if (! empty($notified)) {
+            $replyText .= "**Signatories Notified via Synology Chat:**\n" . implode("\n", $notified) . "\n\n";
+        }
+        if (! empty($noSynologyId)) {
+            $replyText .= "**Pending Signatories (No Synology ID linked):**\n" . implode("\n", $noSynologyId) . "\n\n";
+        }
+        $replyText .= "The managers can tap the secure single-use link on Synology Chat to view the signed sheet and sign off.";
+
+        $actions = [
+            ['type' => 'open', 'label' => 'Open Approval Sheet', 'url' => $approvalUrl],
+            ['type' => 'open', 'label' => 'View ' . $apv['lab_ref_no'], 'url' => site_url('dtr?open=' . rawurlencode($apv['lab_ref_no']))],
+        ];
+
+        return [
+            'text'          => $replyText,
+            'title'         => "Approval Notification Sent · {$apv['lab_ref_no']}",
+            'steps'         => [],
+            'actions'       => $actions,
+            'confidence'    => 100,
+            'related'       => [
+                ['title' => 'What is the status of pending approvals?'],
+                ['title' => 'How does QR report approval work?'],
+            ],
+            'diagnosis'     => null,
+            'knowledge_id'  => null,
+            'suggest_admin' => false,
+        ];
+    }
+
+    private function dbSearchIntent(string $text): ?array
+    {
+        try {
+            $low = mb_strtolower(trim($text));
+
+            // 1. Check if the question is asking for counts / statistics / totals / pass-fail
+            $isStats = (bool) (
+                preg_match('/\b(how\s*many|total|count|number\s*of|summary|statistics?|rate|percentage)\b/i', $low) &&
+                preg_match('/\b(fail|failed|pass|passed|tolerable|test|tests|report|reports|bonding|material|results?)\b/i', $low)
+            ) || preg_match('/\b(fail\s*(and|&|\/)\s*pass|pass\s*(and|&|\/)\s*fail)\b/i', $low);
+
+            // 2. Check if the question is asking to search / find / list reports
+            $isSearch = ! $isStats && (bool) preg_match('/\b(search|find|lookup|list|show)\b.*?\b(failed|passed|bonding|reports?|tests?)\b/i', $low);
+
+            if (! $isStats && ! $isSearch) {
+                return null;
+            }
+
+            $db = $this->db();
+            if (! $db->tableExists('tbl_dtr_unified_labrefs')) {
+                return null;
+            }
+
+            // Detect category
+            $slug = null;
+            $categoryName = 'All Reports (Overall Lab)';
+            if (preg_match('/\b(bonding|whole\s*shoe|shoe)\b/i', $low)) {
+                $slug = 'bonding';
+                $categoryName = 'Whole Shoe Bonding';
+            } elseif (preg_match('/\b(fabric)\b/i', $low)) {
+                $slug = 'fabric';
+                $categoryName = 'Fabric Material';
+            } elseif (preg_match('/\b(leather)\b/i', $low)) {
+                $slug = 'leather';
+                $categoryName = 'Leather Material';
+            } elseif (preg_match('/\b(rubber)\b/i', $low)) {
+                $slug = 'rubber';
+                $categoryName = 'Rubber Outsole';
+            } elseif (preg_match('/\b(wst|webbing|shoelace|thread)\b/i', $low)) {
+                $slug = 'wst';
+                $categoryName = 'Webbing / Shoelace / Thread';
+            } elseif (preg_match('/\b(fthl|foxing|heel\s*logo)\b/i', $low)) {
+                $slug = 'fthl';
+                $categoryName = 'Foxing Tape & Heel Logo';
+            } elseif (preg_match('/\b(hardware|eyelet|zipper)\b/i', $low)) {
+                $slug = 'hardware';
+                $categoryName = 'Hardware';
+            } elseif (preg_match('/\b(label)\b/i', $low)) {
+                $slug = 'label';
+                $categoryName = 'Label';
+            } elseif (preg_match('/\b(sockliner|foam|sklfm)\b/i', $low)) {
+                $slug = 'sklfm';
+                $categoryName = 'Sockliner & Foam';
+            } elseif (preg_match('/\b(box|carton)\b/i', $low)) {
+                $slug = 'box';
+                $categoryName = 'Carton Box';
+            } elseif (preg_match('/\b(insole)\b/i', $low)) {
+                $slug = 'insole';
+                $categoryName = 'Insole Board';
+            }
+
+            // Detect focus
+            $focusFailed = (bool) preg_match('/\b(fail|failed|failure)\b/i', $low) && ! preg_match('/\b(pass|passed)\b/i', $low);
+            $focusPassed = (bool) preg_match('/\b(pass|passed)\b/i', $low) && ! preg_match('/\b(fail|failed)\b/i', $low);
+
+            // Detect time filter
+            $timeFilterLabel = '';
+            $monthPattern = null;
+            if (preg_match('/\b(this\s*month|current\s*month)\b/i', $low)) {
+                $monthPattern = date('M Y');
+                $timeFilterLabel = ' (This Month: ' . date('F Y') . ')';
+            } elseif (preg_match('/\b(today)\b/i', $low)) {
+                $monthPattern = date('d M Y');
+                $timeFilterLabel = ' (Today: ' . date('d M Y') . ')';
+            } elseif (preg_match('/\b(this\s*year)\b/i', $low)) {
+                $monthPattern = date('Y');
+                $timeFilterLabel = ' (This Year: ' . date('Y') . ')';
+            }
+
+            // Handle Search query
+            if ($isSearch) {
+                $kw = trim((string) preg_replace('/\b(search|find|lookup|list|show|reports?|tests?|for|in|qc|lab)\b/i', '', $low));
+                $qb = $db->table('tbl_dtr_unified_labrefs')
+                    ->select('lab_ref_no, form_slug, form_category, source_id, overall_result, model_style, supplier, tested_date');
+                if ($slug) {
+                    $qb->where('form_slug', $slug);
+                }
+                if ($focusFailed) {
+                    $qb->where("LOWER(overall_result) IN ('fail', 'failed')", null, false);
+                } elseif ($focusPassed) {
+                    $qb->where("LOWER(overall_result) IN ('pass', 'passed')", null, false);
+                }
+                if ($kw !== '') {
+                    $qb->groupStart()
+                        ->like('lab_ref_no', $kw)
+                        ->orLike('model_style', $kw)
+                        ->orLike('supplier', $kw)
+                        ->orLike('material_description', $kw)
+                        ->groupEnd();
+                }
+                $matches = $qb->orderBy('id', 'DESC')->limit(5)->get()->getResultArray();
+                if (! $matches) {
+                    return [
+                        'text'          => "No reports matching your search were found in the database. You can search by Lab Reference number or check the Lab Tracker.",
+                        'title'         => 'Database Search: No Results',
+                        'steps'         => [],
+                        'actions'       => [['type' => 'open', 'label' => 'Open Lab Tracker', 'url' => site_url('dtr?tab=tracker')]],
+                        'confidence'    => 100,
+                        'related'       => [
+                            ['title' => 'What is the total failed for bonding?'],
+                            ['title' => 'How many fail and pass do we have?'],
+                        ],
+                        'diagnosis'     => null,
+                        'knowledge_id'  => null,
+                        'suggest_admin' => false,
+                    ];
+                }
+                $msg = "Live Database Search: {$categoryName}\nFound " . count($matches) . " matching reports:\n";
+                $acts = [];
+                foreach ($matches as $m) {
+                    $resTag = $m['overall_result'] ? " [{$m['overall_result']}]" : '';
+                    $style = $m['model_style'] ? " - {$m['model_style']}" : '';
+                    $msg .= "\n• {$m['lab_ref_no']}{$resTag}{$style}";
+                    $tab = $m['form_slug'] === 'bonding' ? 'bonding' : 'material';
+                    $acts[] = [
+                        'type'  => 'open',
+                        'label' => 'Open ' . $m['lab_ref_no'],
+                        'url'   => site_url("dtr?tab={$tab}&open=" . rawurlencode($m['form_slug'] . ':' . $m['source_id'])),
+                    ];
+                }
+
+                return [
+                    'text'          => $msg,
+                    'title'         => 'QC Lab Database Search',
+                    'steps'         => [],
+                    'actions'       => $acts,
+                    'confidence'    => 100,
+                    'related'       => [
+                        ['title' => 'What is the total failed for bonding?'],
+                        ['title' => 'How many fail and pass do we have?'],
+                    ],
+                    'diagnosis'     => null,
+                    'knowledge_id'  => null,
+                    'suggest_admin' => false,
+                ];
+            }
+
+            // Handle Stats / Count query
+            $b = $db->table('tbl_dtr_unified_labrefs')
+                ->select("
+                    COUNT(*) as total,
+                    SUM(CASE WHEN LOWER(overall_result) IN ('pass', 'passed') THEN 1 ELSE 0 END) as passed,
+                    SUM(CASE WHEN LOWER(overall_result) IN ('fail', 'failed') THEN 1 ELSE 0 END) as failed,
+                    SUM(CASE WHEN LOWER(overall_result) = 'tolerable' THEN 1 ELSE 0 END) as tolerable
+                ", false);
+
+            if ($slug) {
+                $b->where('form_slug', $slug);
+            }
+            if ($monthPattern) {
+                $b->like('tested_date', $monthPattern);
+            }
+
+            $stats = $b->get()->getRowArray() ?: [];
+            $total     = (int) ($stats['total'] ?? 0);
+            $passed    = (int) ($stats['passed'] ?? 0);
+            $failed    = (int) ($stats['failed'] ?? 0);
+            $tolerable = (int) ($stats['tolerable'] ?? 0);
+
+            $passPct = $total > 0 ? round(($passed / $total) * 100, 1) : 0;
+            $failPct = $total > 0 ? round(($failed / $total) * 100, 1) : 0;
+            $tolPct  = $total > 0 ? round(($tolerable / $total) * 100, 1) : 0;
+
+            $msg = "Live Database Statistics: {$categoryName}{$timeFilterLabel}\n";
+            $msg .= "• Total Reports: " . number_format($total) . "\n";
+            $msg .= "• Passed: " . number_format($passed) . " ({$passPct}%)\n";
+            $msg .= "• Failed: " . number_format($failed) . " ({$failPct}%)\n";
+            if ($tolerable > 0) {
+                $msg .= "• Tolerable: " . number_format($tolerable) . " ({$tolPct}%)\n";
+            }
+
+            // List up to 3 recent failed reports
+            $actions = [];
+            if ($failed > 0) {
+                $fb = $db->table('tbl_dtr_unified_labrefs')
+                    ->select('lab_ref_no, form_slug, source_id, model_style, tested_date')
+                    ->where("LOWER(overall_result) IN ('fail', 'failed')", null, false);
+                if ($slug) {
+                    $fb->where('form_slug', $slug);
+                }
+                if ($monthPattern) {
+                    $fb->like('tested_date', $monthPattern);
+                }
+                $recentFailed = $fb->orderBy('id', 'DESC')->limit(3)->get()->getResultArray();
+                if ($recentFailed) {
+                    $msg .= "\nRecent Failed Reports:";
+                    foreach ($recentFailed as $rf) {
+                        $model = $rf['model_style'] ? " ({$rf['model_style']})" : '';
+                        $msg .= "\n• {$rf['lab_ref_no']}{$model}";
+                        $actions[] = [
+                            'type'  => 'open',
+                            'label' => 'Open ' . $rf['lab_ref_no'],
+                            'url'   => site_url('dtr?tab=' . ($rf['form_slug'] === 'bonding' ? 'bonding' : 'material') . '&open=' . rawurlencode($rf['form_slug'] . ':' . $rf['source_id'])),
+                        ];
+                    }
+                }
+            }
+
+            // Add direct navigation buttons
+            if ($slug === 'bonding') {
+                $actions[] = ['type' => 'open', 'label' => 'Open Whole Shoe Bonding', 'url' => site_url('dtr?tab=bonding')];
+            } else {
+                $actions[] = ['type' => 'open', 'label' => 'Open Lab Tracker', 'url' => site_url('dtr?tab=tracker')];
+            }
+
+            $related = [
+                ['title' => 'What is the total failed for bonding?'],
+                ['title' => 'How many fail and pass do we have?'],
+                ['title' => 'How many reports failed this month?'],
+            ];
+
+            return [
+                'text'          => $msg,
+                'title'         => "QC Lab Live Query · {$categoryName}",
+                'steps'         => [],
+                'actions'       => $actions,
+                'confidence'    => 100,
+                'related'       => $related,
+                'diagnosis'     => null,
+                'knowledge_id'  => null,
+                'suggest_admin' => false,
+            ];
+        } catch (\Throwable $e) {
+            log_message('error', 'dbSearchIntent error: ' . $e->getMessage());
+
+            return null;
+        }
+    }
+
+    /**
+     * Interactive test computation & pass/fail rating engine.
+     * Computes values, evaluates against standards, and prompts for follow-up data if inputs are incomplete.
+     */
+    private function computeIntent(string $text, string $prev = ''): ?array
+    {
+        $low = mb_strtolower(trim($text));
+        $comb = mb_strtolower(trim($prev . ' ' . $text));
+
+        $hasComputeWord = (bool) preg_match('/\b(comput|calculat|verdict|pass\s*(or|\/)\s*fail|is\s*(this|it)\s*(pass|fail)|evaluate|work\s*out|average\s*of|how\s*much\s*is|formula|rating\s*of)\b/i', $low);
+        $hasTestWord = (bool) preg_match('/\b(bonding|u60|utf|fto|fito|tensile|elongation|tear|trouser|stitch|die\s*c|sg|specific\s*gravity|compression\s*set|abrasion|din|ross\s*flex|shrinkage|thickness|specimen|hardness)\b/i', $comb);
+        $hasNumbers = (bool) preg_match('/\d+(?:\.\d+)?/', $low);
+
+        if (! $hasComputeWord && ! ($hasTestWord && $hasNumbers && preg_match('/\b(std|standard|readings?|results?|values?|pass|fail|specimen)\b/i', $low))) {
+            return null;
+        }
+
+        // 1. Whole Shoe Bonding (U60)
+        if (preg_match('/\b(bonding|u60|utf|fto|fito|spot)\b/i', $comb)) {
+            return $this->computeBonding($low, $comb);
+        }
+
+        // 2. Specific Gravity
+        if (preg_match('/\b(specific\s*gravity|sg)\b/i', $comb)) {
+            return $this->computeSpecificGravity($low, $comb);
+        }
+
+        // 3. Compression Set
+        if (preg_match('/\b(compression\s*set|cs)\b/i', $comb)) {
+            return $this->computeCompressionSet($low, $comb);
+        }
+
+        // 4. Shrinkage
+        if (preg_match('/\b(shrinkage)\b/i', $comb)) {
+            return $this->computeShrinkage($low, $comb);
+        }
+
+        // 5. Directional (Tensile, Tear, etc.) or Generic Averaging & Standards
+        return $this->computeDirectionalOrGeneric($low, $comb);
+    }
+
+    private function computeBonding(string $low, string $comb): array
+    {
+        preg_match_all('/\b\d+(?:\.\d+)?\b/', $low, $m);
+        $nums = array_map('floatval', $m[0] ?? []);
+
+        // Detect STD / Category
+        $std = null;
+        $category = null;
+        if (preg_match('/\b(adult|3(?:\.0)?)\b/i', $comb)) {
+            $std = 3.0;
+            $category = 'Adult (STD 3.0 kg/cm)';
+        } elseif (preg_match('/\b(child|children|kids?|toddler|2\.5)\b/i', $comb)) {
+            $std = 2.5;
+            $category = 'Children / Kids (STD 2.5 kg/cm)';
+        } elseif (preg_match('/\b(fito|center|1(?:\.0)?)\b/i', $comb)) {
+            $std = 1.0;
+            $category = 'Center FiTO (STD 1.0 kg/cm)';
+        } elseif (preg_match('/\b(?:std|standard)\s*[:=]?\s*(\d+(?:\.\d+)?)/i', $comb, $sm)) {
+            $std = (float) $sm[1];
+            $category = "Custom STD ({$std} kg/cm)";
+        }
+
+        // Filter out the standard number if accidentally included in readings
+        if ($std !== null && ($key = array_search($std, $nums, true)) !== false && count($nums) > 1) {
+            unset($nums[$key]);
+            $nums = array_values($nums);
+        }
+
+        // Incomplete: No readings provided
+        if (empty($nums)) {
+            return [
+                'text'       => "To calculate the **Whole Shoe Bonding (U60)** rating, please provide:\n\n"
+                    . "1. **Spot readings** (e.g. `2.8, 3.2, 2.5`)\n"
+                    . "2. **Shoe Age Category or Standard**:\n"
+                    . "   • **Adult**: Standard 3.0 kg/cm (Tolerable $\ge$ 2.4)\n"
+                    . "   • **Children / Kids**: Standard 2.5 kg/cm (Tolerable $\ge$ 2.0)\n"
+                    . "   • **Center FiTO**: Standard 1.0 kg/cm (Tolerable $\ge$ 0.8)\n\n"
+                    . "Please enter your readings and category!",
+                'title'      => 'Whole Shoe Bonding Calculation',
+                'steps'      => ['Enter your spot readings and shoe category.'],
+                'actions'    => [['type' => 'open', 'label' => 'Open Whole Shoe Bonding', 'url' => site_url('dtr?tab=bonding')]],
+                'confidence' => 100,
+                'related'    => [['title' => 'How are specimen averages and pass fail worked out?']],
+                'diagnosis'  => null,
+                'knowledge_id' => null,
+                'suggest_admin' => false,
+            ];
+        }
+
+        // Incomplete: Readings provided but category/standard missing
+        if ($std === null) {
+            $min = min($nums);
+            $max = max($nums);
+            $ave = round(array_sum($nums) / count($nums), 2);
+            $readingsStr = implode(', ', $nums);
+
+            $adultRating = ($min >= 3.0) ? 'PASS' : (($min >= 2.4) ? 'TOLERABLE' : 'FAILED');
+            $childRating = ($min >= 2.5) ? 'PASS' : (($min >= 2.0) ? 'TOLERABLE' : 'FAILED');
+
+            return [
+                'text'       => "📊 **Bonding Readings Calculated:**\n"
+                    . "• **Readings:** {$readingsStr}\n"
+                    . "• **Min:** {$min} kg/cm | **Max:** {$max} kg/cm | **Average:** {$ave} kg/cm\n\n"
+                    . "⚠️ **Which age category is this shoe?**\n"
+                    . "• If **Adult (STD 3.0)**: Result is **{$adultRating}** (Tolerable limit: $\ge$ 2.4)\n"
+                    . "• If **Children / Kids (STD 2.5)**: Result is **{$childRating}** (Tolerable limit: $\ge$ 2.0)\n\n"
+                    . "Reply with **Adult** or **Children** to confirm the official verdict.",
+                'title'      => 'Bonding Evaluation: Specify Category',
+                'steps'      => ['Select Adult or Children category.'],
+                'actions'    => [['type' => 'open', 'label' => 'Open Whole Shoe Bonding', 'url' => site_url('dtr?tab=bonding')]],
+                'confidence' => 100,
+                'related'    => [['title' => 'How are specimen averages and pass fail worked out?']],
+                'diagnosis'  => null,
+                'knowledge_id' => null,
+                'suggest_admin' => false,
+            ];
+        }
+
+        // Complete data: Evaluate exact Access/VB.NET parity formula
+        $min = min($nums);
+        $max = max($nums);
+        $ave = round(array_sum($nums) / count($nums), 2);
+        $tol = round($std * 0.8, 2);
+
+        $worst = 'PASS';
+        foreach ($nums as $v) {
+            if ($v < $tol) {
+                $worst = 'FAILED';
+                break;
+            }
+            if ($v < $std) {
+                $worst = 'TOLERABLE';
+            }
+        }
+
+        $badge = $worst === 'PASS' ? '✅ PASS' : ($worst === 'TOLERABLE' ? '⚠️ TOLERABLE' : '❌ FAILED');
+        $readingsStr = implode(', ', $nums);
+
+        $out = "📊 **Whole Shoe Bonding Verdict:** **{$badge}**\n\n"
+            . "• **Category:** {$category}\n"
+            . "• **Standard (STD):** $\ge$ {$std} kg/cm\n"
+            . "• **Tolerable Range (80% STD):** {$tol} – " . ($std - 0.01) . " kg/cm\n"
+            . "• **Failure Threshold (< 80% STD):** < {$tol} kg/cm\n"
+            . "• **Specimen Readings:** {$readingsStr}\n"
+            . "• **Lowest Spot (Min):** {$min} kg/cm\n"
+            . "• **Average:** {$ave} kg/cm\n\n"
+            . "**Official Rule:** PASS $\ge$ STD, TOLERABLE $\ge$ 80% STD, FAILED < 80% STD.";
+
+        return [
+            'text'       => $out,
+            'title'      => "Bonding Evaluation · {$badge}",
+            'steps'      => [],
+            'actions'    => [['type' => 'open', 'label' => 'Open Whole Shoe Bonding', 'url' => site_url('dtr?tab=bonding')]],
+            'confidence' => 100,
+            'related'    => [['title' => 'How are specimen averages and pass fail worked out?']],
+            'diagnosis'  => null,
+            'knowledge_id' => null,
+            'suggest_admin' => false,
+        ];
+    }
+
+    private function computeSpecificGravity(string $low, string $comb): array
+    {
+        preg_match_all('/\b\d+(?:\.\d+)?\b/', $low, $m);
+        $nums = array_map('floatval', $m[0] ?? []);
+
+        // Check Hydrostatic (W1 and W2) or Sheet (RawW and Thickness)
+        $w1 = null; $w2 = null;
+        if (preg_match('/\bw1\s*[:=]?\s*(\d+(?:\.\d+)?)/i', $comb, $m1)) $w1 = (float) $m1[1];
+        if (preg_match('/\bw2\s*[:=]?\s*(\d+(?:\.\d+)?)/i', $comb, $m2)) $w2 = (float) $m2[1];
+
+        if ($w1 !== null && $w2 !== null && ($w1 - $w2) > 0) {
+            $sg = round($w1 / ($w1 - $w2), 3);
+            $std = null;
+            if (preg_match('/\b(?:std|standard)\s*[:=]?\s*(\d+(?:\.\d+)?)/i', $comb, $sm)) $std = (float) $sm[1];
+            $rateStr = '';
+            if ($std !== null) {
+                $ok = abs($sg - $std) <= 0.02;
+                $rateStr = "\n• **Standard:** {$std} (Tolerance $\pm 0.02$)\n• **Verdict:** " . ($ok ? '✅ PASS' : '❌ FAIL');
+            }
+
+            return [
+                'text'       => "📊 **Specific Gravity (Hydrostatic):**\n\n"
+                    . "• **Weight in Air ($W_1$):** {$w1} g\n"
+                    . "• **Weight in Water ($W_2$):** {$w2} g\n"
+                    . "• **Calculated SG:** **{$sg}** (Formula: $\\frac{W_1}{W_1 - W_2}$){$rateStr}",
+                'title'      => "Specific Gravity · {$sg}",
+                'steps'      => [],
+                'actions'    => [['type' => 'open', 'label' => 'Open Lab Tracker', 'url' => site_url('dtr?tab=tracker')]],
+                'confidence' => 100,
+                'related'    => [],
+                'diagnosis'  => null,
+                'knowledge_id' => null,
+                'suggest_admin' => false,
+            ];
+        }
+
+        // Sheet formula: RawW / (100 * (T / 10))
+        if (count($nums) >= 2) {
+            $rawW = $nums[0];
+            $t = $nums[1];
+            $denom = 100 * ($t / 10);
+            if ($denom > 0) {
+                $sg = round($rawW / $denom, 3);
+
+                return [
+                    'text'       => "📊 **Specific Gravity (Sheet Specimen):**\n\n"
+                        . "• **Raw Weight:** {$rawW} g\n"
+                        . "• **Thickness:** {$t} mm\n"
+                        . "• **Calculated SG:** **{$sg}** (Formula: $\\frac{\\text{RawWeight}}{100 \\times (T / 10)}$)\n\n"
+                        . "Tolerance against standard is $\pm 0.02$.",
+                    'title'      => "Specific Gravity · {$sg}",
+                    'steps'      => [],
+                    'actions'    => [['type' => 'open', 'label' => 'Open Lab Tracker', 'url' => site_url('dtr?tab=tracker')]],
+                    'confidence' => 100,
+                    'related'    => [],
+                    'diagnosis'  => null,
+                    'knowledge_id' => null,
+                    'suggest_admin' => false,
+                ];
+            }
+        }
+
+        return [
+            'text'       => "To calculate **Specific Gravity (SG)**, please provide either:\n\n"
+                . "• **Method 1 (Hydrostatic):** `W1=...` (weight in air) and `W2=...` (weight in water)\n"
+                . "• **Method 2 (Sheet):** Raw Weight (g) and Thickness (mm)\n\n"
+                . "You can also specify your standard (e.g. `STD=1.15`). What are your values?",
+            'title'      => 'Specific Gravity Calculator',
+            'steps'      => ['Provide W1 and W2 or Raw Weight and Thickness.'],
+            'actions'    => [['type' => 'open', 'label' => 'Open Lab Tracker', 'url' => site_url('dtr?tab=tracker')]],
+            'confidence' => 100,
+            'related'    => [],
+            'diagnosis'  => null,
+            'knowledge_id' => null,
+            'suggest_admin' => false,
+        ];
+    }
+
+    private function computeCompressionSet(string $low, string $comb): array
+    {
+        preg_match_all('/\b\d+(?:\.\d+)?\b/', $low, $m);
+        $nums = array_map('floatval', $m[0] ?? []);
+
+        $t0 = null; $t1 = null; $ts = null;
+        if (preg_match('/\b(?:t0|before|original)\s*[:=]?\s*(\d+(?:\.\d+)?)/i', $comb, $m0)) $t0 = (float) $m0[1];
+        if (preg_match('/\b(?:t1|after|final)\s*[:=]?\s*(\d+(?:\.\d+)?)/i', $comb, $m1)) $t1 = (float) $m1[1];
+        if (preg_match('/\b(?:ts|spacer)\s*[:=]?\s*(\d+(?:\.\d+)?)/i', $comb, $ms)) $ts = (float) $ms[1];
+
+        if ($t0 === null && count($nums) >= 3) {
+            $t0 = $nums[0]; $t1 = $nums[1]; $ts = $nums[2];
+        }
+
+        if ($t0 !== null && $t1 !== null && $ts !== null && ($t0 - $ts) != 0) {
+            $cs = round((($t0 - $t1) / ($t0 - $ts)) * 100, 1);
+            $std = null;
+            if (preg_match('/\b(?:std|standard)\s*[:=]?\s*(\d+(?:\.\d+)?)/i', $comb, $sm)) $std = (float) $sm[1];
+            $rateStr = '';
+            if ($std !== null) {
+                $ok = $cs <= $std;
+                $rateStr = "\n• **Standard (Max):** $\le$ {$std}%\n• **Verdict:** " . ($ok ? '✅ PASS' : '❌ FAIL');
+            }
+
+            return [
+                'text'       => "📊 **Compression Set Calculation:**\n\n"
+                    . "• **Original Thickness ($t_0$):** {$t0} mm\n"
+                    . "• **After Recovery ($t_1$):** {$t1} mm\n"
+                    . "• **Spacer Thickness ($t_s$):** {$ts} mm\n"
+                    . "• **Calculated Compression Set:** **{$cs}%**\n"
+                    . "• **Formula:** $\\frac{t_0 - t_1}{t_0 - t_s} \\times 100\\%${$rateStr}",
+                'title'      => "Compression Set · {$cs}%",
+                'steps'      => [],
+                'actions'    => [['type' => 'open', 'label' => 'Open Lab Tracker', 'url' => site_url('dtr?tab=tracker')]],
+                'confidence' => 100,
+                'related'    => [],
+                'diagnosis'  => null,
+                'knowledge_id' => null,
+                'suggest_admin' => false,
+            ];
+        }
+
+        return [
+            'text'       => "To calculate **Compression Set (CS)**, I need 3 measurements:\n\n"
+                . "1. **Original Thickness ($t_0$)** (e.g. `10.0 mm`)\n"
+                . "2. **Final Recovered Thickness ($t_1$)** (e.g. `9.2 mm`)\n"
+                . "3. **Spacer Thickness ($t_s$)** (e.g. `6.0 mm`)\n\n"
+                . "Formula: $\\frac{t_0 - t_1}{t_0 - t_s} \\times 100\\%$.\n"
+                . "What are your values?",
+            'title'      => 'Compression Set Calculator',
+            'steps'      => ['Provide original, after, and spacer thickness.'],
+            'actions'    => [['type' => 'open', 'label' => 'Open Lab Tracker', 'url' => site_url('dtr?tab=tracker')]],
+            'confidence' => 100,
+            'related'    => [],
+            'diagnosis'  => null,
+            'knowledge_id' => null,
+            'suggest_admin' => false,
+        ];
+    }
+
+    private function computeShrinkage(string $low, string $comb): array
+    {
+        preg_match_all('/\b\d+(?:\.\d+)?\b/', $low, $m);
+        $nums = array_map('floatval', $m[0] ?? []);
+
+        if (count($nums) >= 2 && $nums[0] > 0) {
+            $before = $nums[0];
+            $after = $nums[1];
+            $sh = round((($before - $after) / $before) * 100, 2);
+
+            return [
+                'text'       => "📊 **Shrinkage Calculation:**\n\n"
+                    . "• **Original Dimension:** {$before} mm\n"
+                    . "• **After Test Dimension:** {$after} mm\n"
+                    . "• **Shrinkage:** **{$sh}%**\n"
+                    . "• **Formula:** $\\frac{\\text{Before} - \\text{After}}{\\text{Before}} \\times 100\\%$",
+                'title'      => "Shrinkage · {$sh}%",
+                'steps'      => [],
+                'actions'    => [['type' => 'open', 'label' => 'Open Lab Tracker', 'url' => site_url('dtr?tab=tracker')]],
+                'confidence' => 100,
+                'related'    => [],
+                'diagnosis'  => null,
+                'knowledge_id' => null,
+                'suggest_admin' => false,
+            ];
+        }
+
+        return [
+            'text'       => "To calculate **Shrinkage %**, please provide:\n"
+                . "1. **Before test dimension** (e.g. `100 mm`)\n"
+                . "2. **After test dimension** (e.g. `98.5 mm`)\n\n"
+                . "Formula: $\\frac{\\text{Before} - \\text{After}}{\\text{Before}} \\times 100\\%$.",
+            'title'      => 'Shrinkage Calculator',
+            'steps'      => ['Provide before and after test dimensions.'],
+            'actions'    => [['type' => 'open', 'label' => 'Open Lab Tracker', 'url' => site_url('dtr?tab=tracker')]],
+            'confidence' => 100,
+            'related'    => [],
+            'diagnosis'  => null,
+            'knowledge_id' => null,
+            'suggest_admin' => false,
+        ];
+    }
+
+    private function computeDirectionalOrGeneric(string $low, string $comb): array
+    {
+        preg_match_all('/\b\d+(?:\.\d+)?\b/', $low, $m);
+        $nums = array_map('floatval', $m[0] ?? []);
+
+        // Detect Standard if specified
+        $std = null;
+        if (preg_match('/\b(?:std|standard|req|requirement)\s*[:=]?\s*(?:>=|<=)?\s*(\d+(?:\.\d+)?)/i', $comb, $sm)) {
+            $std = (float) $sm[1];
+            // Remove STD from numbers list if present
+            if (($key = array_search($std, $nums, true)) !== false && count($nums) > 1) {
+                unset($nums[$key]);
+                $nums = array_values($nums);
+            }
+        }
+
+        // Detect Test Name
+        $testName = 'Material Test';
+        if (preg_match('/\b(tensile)\b/i', $comb)) $testName = 'Tensile Strength';
+        elseif (preg_match('/\b(elongation)\b/i', $comb)) $testName = 'Elongation';
+        elseif (preg_match('/\b(trouser\s*tear)\b/i', $comb)) $testName = 'Trouser Tear';
+        elseif (preg_match('/\b(stitch\s*tear)\b/i', $comb)) $testName = 'Stitch Tear';
+        elseif (preg_match('/\b(die\s*c)\b/i', $comb)) $testName = 'Die C Tear';
+        elseif (preg_match('/\b(mullen\s*burst)\b/i', $comb)) $testName = 'Mullen Burst';
+        elseif (preg_match('/\b(thickness)\b/i', $comb)) $testName = 'Thickness';
+        elseif (preg_match('/\b(hardness)\b/i', $comb)) $testName = 'Hardness';
+
+        if (empty($nums)) {
+            return [
+                'text'       => "To calculate the average and evaluate **{$testName}**, please provide:\n\n"
+                    . "1. **Specimen readings** (e.g. `14.2, 15.1, 14.8`)\n"
+                    . "2. **Standard requirement** (e.g. `STD >= 12.0`)\n\n"
+                    . "What are your specimen values and standard?",
+                'title'      => "{$testName} Calculation",
+                'steps'      => ['Enter your specimen readings and standard.'],
+                'actions'    => [['type' => 'open', 'label' => 'Open Lab Tracker', 'url' => site_url('dtr?tab=tracker')]],
+                'confidence' => 100,
+                'related'    => [['title' => 'How are specimen averages and pass fail worked out?']],
+                'diagnosis'  => null,
+                'knowledge_id' => null,
+                'suggest_admin' => false,
+            ];
+        }
+
+        $min = min($nums);
+        $max = max($nums);
+        $ave = round(array_sum($nums) / count($nums), 2);
+        $readingsStr = implode(', ', $nums);
+
+        if ($std === null) {
+            return [
+                'text'       => "📊 **{$testName} Specimens Calculated:**\n\n"
+                    . "• **Readings:** {$readingsStr}\n"
+                    . "• **Average:** **{$ave}** (Min: {$min}, Max: {$max})\n\n"
+                    . "⚠️ **What is the Standard (STD) specification?**\n"
+                    . "Please enter your required standard (e.g. `STD 14.0`) so I can determine whether this is a **PASS** or **FAIL**.",
+                'title'      => "{$testName} · Average: {$ave}",
+                'steps'      => ['Specify the Standard requirement to determine Pass/Fail.'],
+                'actions'    => [['type' => 'open', 'label' => 'Open Lab Tracker', 'url' => site_url('dtr?tab=tracker')]],
+                'confidence' => 100,
+                'related'    => [['title' => 'How are specimen averages and pass fail worked out?']],
+                'diagnosis'  => null,
+                'knowledge_id' => null,
+                'suggest_admin' => false,
+            ];
+        }
+
+        $pass = ($ave >= $std);
+        $badge = $pass ? '✅ PASS' : '❌ FAIL';
+
+        return [
+            'text'       => "📊 **{$testName} Verdict:** **{$badge}**\n\n"
+                . "• **Specimens:** {$readingsStr}\n"
+                . "• **Average:** **{$ave}** (Min: {$min}, Max: {$max})\n"
+                . "• **Standard Specification:** $\ge$ {$std}\n"
+                . "• **Verdict:** **{$badge}** ({$ave} " . ($pass ? '$\ge$' : '<') . " {$std})\n\n"
+                . "**Formula:** Average = $\\frac{\\sum \\text{Specimens}}{N}$. Evaluated against standard priority rules.",
+            'title'      => "{$testName} · {$badge}",
+            'steps'      => [],
+            'actions'    => [['type' => 'open', 'label' => 'Open Lab Tracker', 'url' => site_url('dtr?tab=tracker')]],
+            'confidence' => 100,
+            'related'    => [['title' => 'How are specimen averages and pass fail worked out?']],
+            'diagnosis'  => null,
+            'knowledge_id' => null,
+            'suggest_admin' => false,
+        ];
     }
 
     /** Read-only look at the machine file of a report: found or not, and how many readings it holds. */

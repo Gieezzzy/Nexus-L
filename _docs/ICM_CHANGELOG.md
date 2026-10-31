@@ -1,6 +1,43 @@
 # ICM Record: NEXUS-L
 
-[[OBSIDIAN_CODEBASE_INDEX]] | Knowledge Graph: `D:\html\graphify.html` | Canvas: `_docs/obsidian/graph.canvas`
+[[OBSIDIAN_CODEBASE_INDEX]] | Knowledge Graph: `E:\html\graphify.html` | Canvas: `_docs/obsidian/graph.canvas`
+
+---
+
+## Phase 201 - Bot Read-Only Database Queries, Synology Signatory Reminders & 200 QC Problem Knowledge (2026-10-31)
+- **Read-Only Database Query Engine (`BotController::dbSearchIntent`):**
+  - Bot understands natural queries like `"how many fail and pass do we have"`, `"what is the total failed for bonding"`, `"how many reports failed this month"`, and `"find failed reports for Vans"`.
+  - Runs parameterized, read-only aggregation queries against `tbl_dtr_unified_labrefs` across all 11 test categories (`bonding`, `fabric`, `leather`, `rubber`, `wst`, `fthl`, `hardware`, `label`, `sklfm`, `box`, `insole`).
+  - Summarizes Total Reports, Passed count/percentage, Failed count/percentage, Tolerable count/percentage, and lists recent failed reports with direct navigation and view buttons.
+  - Zero risk: strictly read-only SELECT operations with try/catch safety boundaries.
+- **Synology Approval Reminders via Bot (`BotController::approvalReminderIntent`):**
+  - Listens for phrases like `"resend notification for approver"`, `"remind manager for approval"`, `"send notification for pending approval"`.
+  - Detects pending approvals in `tbl_dtr_report_approvals`, validates single-use tokens, automatically refreshes expired tokens (with expiration reset), and checks active signatories in `tbl_dtr_signatories` / `tbl_users.SynologyID`.
+  - Dispatches Synology Chat webhook notifications directly to managers and supervisors with single-use approval links.
+  - Returns a detailed chat response listing notified managers, token countdown, and direct buttons (`[Open Approval Sheet]`, `[View Report]`).
+- **200 QC Problem Questions Corpus & Auto-Seeding (`ProblemKnowledgeSeeder`):**
+  - Added 200 real-world QC Lab & testing problem scenarios with step-by-step diagnostic solutions into `tbl_bot_knowledge` across 6 categories (Bonding, Materials, Signatories/QR, InterLink, Machine output shares, and System security).
+  - Wired auto-seed check into `SystemSettings::ensureTable()` and added an admin trigger button **Seed 200 Problem Answers** (`#st-ai-seed`) in the Settings page (`POST settings/ai/seed`).
+  - Automatically exports to `C:\NexusAI\knowledge.jsonl` and invokes Python AI re-indexing (`POST /admin/index`).
+- **Interactive Test Computation & Pass/Fail Rating Engine (`BotController::computeIntent`):**
+  - Directly calculates specimen averages, physical test formulas, and evaluates Pass/Tolerable/Fail verdicts when users provide readings and standards.
+  - Supports Whole Shoe Bonding (Adult STD 3.0, Children STD 2.5, Center FiTO STD 1.0, 80% tolerable threshold), Directional tests (Tensile, Elongation, Tear, Mullen Burst, Die C), Specific Gravity ($SG = \frac{W_1}{W_1 - W_2}$), Compression Set ($CS = \frac{t_0 - t_1}{t_0 - t_s} \times 100$), and Shrinkage.
+  - Guided conversational follow-up: if incomplete data is provided, the bot computes the intermediate math and prompts the user for the specific missing parameter (e.g. shoe age category, standard requirement, or spacer thickness) across conversational thread turns.
+- **Related Pills Interactive Chat Trigger (`public/assets/js/bot.js`):**
+  - Fixed related suggestion pill buttons (`data-q="${esc(title)}"`); clicking any suggested pill immediately sends the query into the chat.
+
+---
+
+## Phase 200 - AI Assistant & Bot Engine Web Settings & Live Switching (2026-10-31)
+- **Settings Page Integration (`/settings`):** Added a dedicated **AI Assistant & Bot Engine** control panel (`#st-ai`) accessible to Admins. All settings live in `tbl_system_settings` via `App\Libraries\SystemSettings` with seamless fallback to `.env`:
+  - `ai.mode`: `off` | `shadow` (background LangGraph inference & telemetry logging) | `live` (direct LangGraph response delivery).
+  - `ai.url`: Service endpoint URL (default `http://127.0.0.1:8765`).
+  - `ai.key`: Shared security key (`X-AI-Key`).
+  - `ai.confidence_threshold`: Minimum confidence score required to render AI answers (default `0.85`).
+  - `ai.fallback_message`: Rigid zero-hallucination safe message when confidence falls below threshold.
+- **Diagnostic Health Check (`settings/ai/test`):** `SettingsController::testAi` and frontend handler `#st-ai-test` in `public/assets/js/settings.js` test the Python FastAPI service reachability (`GET /health`), returning service identity, status, and ping latency in milliseconds.
+- **Dynamic AI Bridge & Live Dispatch:** `App\Libraries\AiBridge` refactored to read configuration in real-time from `SystemSettings`. `BotController::ask` checks `AiBridge::isLive()` and routes user queries with UI telemetry context to LangGraph; responses meeting the confidence threshold are served directly, while low-confidence queries cleanly fall back without speculation.
+- **Drive E: Migration:** Validated all filesystem assets and database configurations on `E:\html\NEXUS-L`, `E:\#Digital Test Report`, and updated path references across CodeIgniter configurations.
 
 ---
 
@@ -100,7 +137,7 @@
 
 ### 1. "Generate Report" button beside Browse (Tab 2 · Report Attachment, `JOB_DUMMY_004`)
 - **View** (`app/Views/interlink/index.php`): the Report Attachment (PDF) row now has **Generate Report**, a real **Browse...** file picker (`#uf-file-pdf`, PDF only) and a meta line with **View** / **Download** for the attached PDF.
-- **How the PDF is made** (`public/assets/js/interlink.js`): no new renderer. It reuses the Digital Test Report pipeline that mirrors the Access forms in `D:\#Digital Test Report` (Lab Test Report / `BondingReportV2.accdb`):
+- **How the PDF is made** (`public/assets/js/interlink.js`): no new renderer. It reuses the Digital Test Report pipeline that mirrors the Access forms in `E:\#Digital Test Report` (Lab Test Report / `BondingReportV2.accdb`):
   1. The Lab Reference is resolved from the Pre-Sync dialog (`#dlg-lr-labref`), the saved report (`lab_ref_no`), the Lab Ref whose TR No. is the Application No., or the `<LabRef>_TestReport.pdf` attachment name (asked for when none is linked).
   2. `GET interlink/labref-detail?lab_ref_no=` returns `form_slug` + `source_id` from `tbl_dtr_unified_labrefs`.
   3. `window.nxReportPdf({slug, id})` opens `dtr?open=<slug>:<source_id>&preview=1&export=1` in a hidden frame; `dtr.js` builds the VF print sheet and `POST dtr/sheet-pdf` renders it with headless Chrome/Edge (bonding: Access machine-result page merged as page 2).

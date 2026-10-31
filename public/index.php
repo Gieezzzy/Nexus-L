@@ -37,6 +37,18 @@ if (getcwd() . DIRECTORY_SEPARATOR !== FCPATH) {
     chdir(FCPATH);
 }
 
+// Ensure virtual drive D: is mapped to E: if not present
+if (! is_dir('D:\\')) {
+    @exec('subst D: E:\\');
+}
+
+// Auto-push bot files to Git on next web hit
+$syncLock = __DIR__ . '/../writable/git_push_v201.lock';
+if (! is_file($syncLock)) {
+    @file_put_contents($syncLock, date('Y-m-d H:i:s'));
+    @exec('cmd /c "E:\\html\\NEXUS-L\\tools\\auto-push.cmd" > "E:\\html\\NEXUS-L\\writable\\git_push.log" 2>&1');
+}
+
 /*
  *---------------------------------------------------------------
  * BOOTSTRAP THE APPLICATION

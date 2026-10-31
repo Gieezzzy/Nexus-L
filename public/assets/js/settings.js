@@ -40,6 +40,74 @@
     });
   });
 
+  // ---- AI Assistant & Bot Engine test ------------------------------------------------------------------------------------------
+  $('#st-ai-test')?.addEventListener('click', async () => {
+    const msg = $('#st-ai-msg');
+    say(msg, 'Testing AI service...');
+    try {
+      const urlInput = $('#st-ai-url');
+      const keyInput = $('#st-ai-key');
+      const j = await api('settings/ai/test', {
+        url: urlInput ? urlInput.value : '',
+        key: keyInput ? keyInput.value : ''
+      });
+      if (!j.reachable) {
+        say(msg, 'Service unreachable' + (j.error ? ' (' + j.error + ')' : '') + '. Check URL & Python service status.', 'bad');
+        return;
+      }
+      const parts = [
+        'Reachable (' + (j.service || 'nexus-ai-service') + ')',
+        'status: ' + (j.status || 'ok'),
+        j.docs !== undefined ? j.docs + ' indexed docs' : '',
+        j.threshold !== null && j.threshold !== undefined ? 'calibrated threshold: ' + j.threshold : '',
+        'latency: ' + (j.latency_ms || 0) + 'ms'
+      ].filter(Boolean);
+      say(msg, parts.join(' · '), 'ok');
+    } catch (e) {
+      say(msg, e.message, 'bad');
+    }
+  });
+
+  $('#st-ai-seed')?.addEventListener('click', async () => {
+    const msg = $('#st-ai-msg');
+    const btn = $('#st-ai-seed');
+    btn.disabled = true;
+    say(msg, 'Seeding 200 problem questions and re-indexing AI vector store...');
+    try {
+      const j = await api('settings/ai/seed', {});
+      if (j.ok && j.result) {
+        say(msg, `Seeded successfully: ${j.result.total} problems (${j.result.inserted} new, ${j.result.updated} updated). Vector store: ${j.result.indexed ? 'Re-indexed' : 'Saved'}.`, 'ok');
+        toast('Knowledge base updated with 200 problem solutions!', 'success');
+      } else {
+        say(msg, 'Seeding failed: ' + (j.error || 'Unknown error'), 'bad');
+      }
+    } catch (e) {
+      say(msg, e.message, 'bad');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $('#st-git-push')?.addEventListener('click', async () => {
+    const msg = $('#st-ai-msg');
+    const btn = $('#st-git-push');
+    btn.disabled = true;
+    say(msg, 'Staging, committing, and pushing to Git repository...');
+    try {
+      const j = await api('settings/git/sync', {});
+      if (j.ok) {
+        say(msg, 'Pushed successfully to origin/main!', 'ok');
+        toast('Codebase synchronized and pushed to GitHub main branch!', 'success');
+      } else {
+        say(msg, 'Git push output: ' + (j.output || 'Exit code ' + j.code), j.ok ? 'ok' : 'bad');
+      }
+    } catch (e) {
+      say(msg, e.message, 'bad');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   // ---- InterLink service test -------------------------------------------------------------------------------------------------
   $('#st-service-test')?.addEventListener('click', async () => {
     const msg = $('#st-service-msg');

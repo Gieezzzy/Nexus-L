@@ -142,7 +142,7 @@
     if (r.steps && r.steps.length) h += '<ol>' + r.steps.map((s) => `<li>${esc(s)}</li>`).join('') + '</ol>';
     if (r.diagnosis && r.diagnosis.text) h += `<div class="nxbot-diag ${r.diagnosis.ok ? 'ok' : 'bad'}"><b>${r.diagnosis.ok ? 'Checked: OK' : 'Checked: problem found'}</b> ${esc(r.diagnosis.text)}</div>`;
     if (r.actions && r.actions.length) h += '<div class="nxbot-acts">' + r.actions.map((a, i) => `<button type="button" data-act="${i}">${esc(a.label)}</button>`).join('') + '</div>';
-    if (r.related && r.related.length) h += '<div class="nxbot-rel"><small>Related:</small> ' + r.related.map((x) => `<button type="button" data-topic="${x.id}">${esc(x.title)}</button>`).join('') + '</div>';
+    if (r.related && r.related.length) h += '<div class="nxbot-rel"><small>Related:</small> ' + r.related.map((x) => `<button type="button" data-q="${esc(x.title || x.question || x.label || x)}" data-topic="${esc(x.id || x.kb_id || '')}">${esc(x.title || x.question || x.label || x)}</button>`).join('') + '</div>';
     if (chatId) h += `<div class="nxbot-fb"><button type="button" data-fb="1" data-chat="${chatId}">Helpful</button><button type="button" data-fb="-1" data-chat="${chatId}">Not helpful</button>${r.suggest_admin ? '<button type="button" data-a="admin" class="nxbot-esc">Talk to an administrator</button>' : ''}</div>`;
     const d = add('bot', h, chatId);
     d._actions = r.actions || [];
