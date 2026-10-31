@@ -59,11 +59,11 @@ class TrainVfMethods extends BaseCommand
         CLI::write("Generated {$totalQueries} realistic training prompts & variations across VF test methods.", 'cyan');
 
         // Step 1: Train Term Weights (ML Epochs)
-        CLI::write("Training weights with BrainLearn::train() across 3 epochs...", 'yellow');
+        CLI::write("Training weights with BrainLearn::train() across 5 epochs...", 'yellow');
         $weightsUpdated = 0;
         $trainedCount = 0;
 
-        for ($epoch = 1; $epoch <= 3; $epoch++) {
+        for ($epoch = 1; $epoch <= 5; $epoch++) {
             foreach ($trainingCases as $item) {
                 $query = $item['q'];
                 $targetCode = $item['code'];
@@ -90,8 +90,8 @@ class TrainVfMethods extends BaseCommand
 
         CLI::write("Completed training: {$trainedCount} unique queries, {$weightsUpdated} total weight updates applied.", 'green');
 
-        // Step 2: Enrich keywords in tbl_bot_knowledge with user query phrases
-        CLI::write("Enriching keywords in tbl_bot_knowledge for fast candidate retrieval...", 'yellow');
+        // Step 2: Enrich keywords in tbl_bot_knowledge with user query phrases (comma-separated for phrase matching)
+        CLI::write("Enriching comma-separated keyword phrases in tbl_bot_knowledge for +4.0 phrase bonuses...", 'yellow');
         $groupedKeywords = [];
         foreach ($trainingCases as $item) {
             $c = $item['code'];
@@ -111,20 +111,27 @@ class TrainVfMethods extends BaseCommand
             }
 
             $existingKw = (string) ($current['keywords'] ?? '');
-            // Extract top unique tokens from training phrases
-            $newTokens = [];
+            $existingPhrases = array_filter(array_map('trim', explode(',', $existingKw)));
+
+            $newPhrases = [];
             foreach ($phrases as $phrase) {
-                $cleaned = preg_replace('/[^\p{L}\p{N}\s]+/u', ' ', $phrase);
-                foreach (explode(' ', $cleaned) as $w) {
-                    $w = trim($w);
-                    if (mb_strlen($w) >= 3 && ! in_array($w, ['the', 'and', 'for', 'how', 'what', 'can', 'you', 'show', 'give', 'test', 'method'])) {
-                        $newTokens[$w] = true;
-                    }
+                $cleanPhrase = trim(preg_replace('/\s+/', ' ', $phrase));
+                if (mb_strlen($cleanPhrase) >= 4 && mb_strlen($cleanPhrase) <= 45) {
+                    $newPhrases[$cleanPhrase] = true;
                 }
             }
 
-            $allTokens = array_unique(array_merge(explode(' ', $existingKw), array_keys($newTokens)));
-            $combinedKw = mb_substr(implode(' ', array_filter($allTokens)), 0, 600);
+            $allPhrases = array_unique(array_merge($existingPhrases, array_keys($newPhrases)));
+            $combinedKw = '';
+            foreach ($allPhrases as $p) {
+                if ($combinedKw === '') {
+                    $combinedKw = $p;
+                } elseif (mb_strlen($combinedKw . ', ' . $p) <= 590) {
+                    $combinedKw .= ', ' . $p;
+                } else {
+                    break;
+                }
+            }
 
             $db->table('tbl_bot_knowledge')->where('id', $kbId)->update([
                 'keywords'   => $combinedKw,
@@ -133,14 +140,14 @@ class TrainVfMethods extends BaseCommand
             $enrichedCount++;
         }
 
-        CLI::write("Enriched keywords on {$enrichedCount} knowledge entries.", 'green');
+        CLI::write("Enriched comma-separated keywords on {$enrichedCount} knowledge entries.", 'green');
 
         // Step 3: Flush Brain caches & Markdown playbooks
         CLI::write("Flushing Brain caches and synchronizing knowledge backups...", 'yellow');
         Brain::flush();
 
-        // Step 4: Verification sample run
-        CLI::write("Running verification sample on 10 random test queries...", 'cyan');
+        // Step 4: Verification sample run (Target: >= 90% confidence for all test methods)
+        CLI::write("Running verification sample on 15 real-world queries (Target: >= 90% confidence)...", 'cyan');
         $sampleQueries = [
             'how do we test rubber tensile strength at 500mm/min',
             'show me vf-b01 illustrated guide',
@@ -152,6 +159,11 @@ class TrainVfMethods extends BaseCommand
             'what test is used for shoelaces coming untied',
             'how to measure martindale abrasion on collar lining',
             'vans footwear performance testing manual 2026',
+            'what test is used when shoe sole is separating at the toe',
+            'how to check shore a durometer hardness for rubber',
+            'die c tear strength astm d624 test procedure',
+            'accelerated uv yellowing test on white foxing band',
+            'testing parameters with temperature pdf',
         ];
 
         $passed = 0;
@@ -159,16 +171,17 @@ class TrainVfMethods extends BaseCommand
             $hits = Brain::search($sq, ['role' => 'user'], 3);
             $conf = Brain::confidence($hits, $sq);
             $topTitle = $hits[0]['row']['title'] ?? '(none)';
-            $isOk = ($conf >= 50 && $topTitle !== '(none)');
-            if ($isOk) {
+            $isTargetMet = ($conf >= 90 && $topTitle !== '(none)');
+            if ($isTargetMet) {
                 $passed++;
-                CLI::write("  ✓ [{$conf}%] {$sq} -> " . mb_substr($topTitle, 0, 50), 'green');
+                CLI::write("  ✓ [{$conf}%] {$sq} -> " . mb_substr($topTitle, 0, 48), 'green');
             } else {
-                CLI::write("  ✗ [{$conf}%] {$sq} -> " . mb_substr($topTitle, 0, 50), 'red');
+                CLI::write("  ✗ [{$conf}%] {$sq} -> " . mb_substr($topTitle, 0, 48), 'red');
             }
         }
 
-        CLI::write("Verification accuracy: {$passed}/10 (" . ($passed * 10) . "%)", $passed >= 9 ? 'green' : 'yellow');
+        $pct = round(($passed / count($sampleQueries)) * 100);
+        CLI::write("Target Confidence Verification (>=90%): {$passed}/" . count($sampleQueries) . " ({$pct}%)", $passed === count($sampleQueries) ? 'green' : 'yellow');
 
         // Step 5: AI Vector Indexing
         if (\App\Libraries\AiBridge::isLive()) {

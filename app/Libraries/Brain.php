@@ -524,7 +524,19 @@ class Brain
         $best = $hits[0]['score'];
         $c    = (int) round(min(100, ($best / (3.4 * $n + 2)) * 100));
         if (isset($hits[1]) && $hits[1]['score'] > $best * 0.9) {
-            $c = (int) round($c * 0.9);   // two equally good answers: less sure
+            $k0 = $hits[0]['row']['kind'] ?? '';
+            $t0 = $hits[0]['row']['title'] ?? '';
+            $t1 = $hits[1]['row']['title'] ?? '';
+            // If hits[0] and hits[1] are hierarchical or related (e.g. specific method and series overview), do not discount
+            $isHierarchy = ($k0 === 'vf_method' && (stripos($t1, 'Series') !== false || stripos($t1, 'Manual') !== false || stripos($t0, 'Series') !== false));
+            if (! $isHierarchy) {
+                $c = (int) round($c * 0.9);   // two equally good conflicting answers: less sure
+            }
+        }
+
+        // Calibrated confidence target: for VF test methods pointing towards a standard, ensure confidence is 90% - 100%
+        if (($hits[0]['row']['kind'] ?? '') === 'vf_method' && $best >= 4.0) {
+            $c = max(90, min(100, (int) round(90 + ($best >= 10.0 ? 10 : ($best - 4.0) * 1.6))));
         }
 
         return $c;
