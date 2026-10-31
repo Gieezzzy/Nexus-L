@@ -361,6 +361,21 @@ class Brain
         $ql   = mb_strtolower($question);
         $FW   = ['kw' => 3.0, 'ti' => 2.5, 'bo' => 0.8];
         $scored = [];
+        // what earlier thumbs-up / thumbs-down taught: weight[answer][word]; '#' is the answer's own bias (BrainLearn::train)
+        $LW = [];
+        try {
+            $db = \Config\Database::connect();
+            if (self::learnedTable($db)) {
+                foreach ($db->table('tbl_bot_weights')->select('kb_id, term, w, updates')->whereIn('term', array_merge(['#'], $q))->get()->getResultArray() as $lw) {
+                    $LW[(int) $lw['kb_id']][$lw['term']] = (float) $lw['w'];
+                    if ($lw['term'] === '#') {
+                        $LW[(int) $lw['kb_id']]['votes'] = (int) $lw['updates'];
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            $LW = [];
+        }
         foreach ($C['rows'] as $id => $r) {
             if (($r['role_min'] ?? 'user') === 'admin' && ! $isAdmin) {
                 continue;
@@ -448,11 +463,52 @@ class Brain
                 }
             }
             $score *= 1 + min(0.3, max(-0.3, ((int) $r['helpful']) / 40));
+            if (isset($LW[$id])) {
+                $z = $LW[$id]['#'] ?? 0.0;
+                foreach ($q as $t) {
+                    $z += $LW[$id][$t] ?? 0.0;
+                }
+                $score *= 0.7 + 0.6 / (1 + exp(-$z));      // 1.0 when nothing is learned, 0.7 .. 1.3 when it is
+            }
             $scored[] = ['row' => $r, 'score' => round($score, 2)];
+        }
+        // an answer the users taught for THESE words (two or more votes) is a candidate even when it shares none of them,
+        // at a modest score: four tenths of a perfect hit at most, so one wording that was marked helpful never beats a real match
+        $have = [];
+        foreach ($scored as $si => $s) {
+            $have[(int) $s['row']['id']] = $si;
+        }
+        foreach ($LW as $id => $m) {
+            if (! isset($C['rows'][$id]) || ($m['votes'] ?? 0) < 2) {
+                continue;
+            }
+            if (($C['rows'][$id]['role_min'] ?? 'user') === 'admin' && ! $isAdmin) {
+                continue;
+            }
+            $z = 0.0;
+            foreach ($q as $t) {
+                $z += $m[$t] ?? 0.0;
+            }
+            if ($z <= 0) {
+                continue;
+            }
+            $ls = round((1 / (1 + exp(-($z + ($m['#'] ?? 0.0)))) - 0.5) * 2 * 0.4 * (3.4 * count($q) + 2), 2);
+            if (isset($have[$id])) {
+                $scored[$have[$id]]['score'] = max($scored[$have[$id]]['score'], $ls);
+            } else {
+                $scored[] = ['row' => $C['rows'][$id], 'score' => $ls];
+            }
         }
         usort($scored, static fn ($a, $b) => $b['score'] <=> $a['score']);
 
         return array_slice($scored, 0, $limit);
+    }
+
+    private static function learnedTable(\CodeIgniter\Database\BaseConnection $db): bool
+    {
+        static $ok = null;
+
+        return $ok ??= $db->tableExists('tbl_bot_weights');
     }
 
     /** @return int 0..100 confidence of the best hit against a perfect hit for this question */

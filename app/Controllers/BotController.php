@@ -356,6 +356,10 @@ class BotController extends BaseController
         // learn from it: a thumbs-down is a gap; a thumbs-up after a rephrase teaches the earlier wording
         if ((int) $c['feedback'] !== $val) {
             try {
+                if ($c['knowledge_id']) {
+                    // one learning step: the words of this question now point a little more (or less) to this answer
+                    \App\Libraries\BrainLearn::train(\App\Libraries\BrainLearn::questionTerms((int) $c['id']), (int) $c['knowledge_id'], $val > 0 ? 1 : 0);
+                }
                 if ($val < 0) {
                     $q = $db->query("SELECT message FROM tbl_bot_chats WHERE thread_id = (SELECT thread_id FROM tbl_bot_chats WHERE id = ?) AND sender = 'user' AND id < ? ORDER BY id DESC LIMIT 1", [$c['id'], $c['id']])->getRowArray();
                     if ($q) {

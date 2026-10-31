@@ -40,6 +40,8 @@
     <div class="card glass"><h4>What the assistant learned from users</h4>
         <p class="muted sm">The assistant watches what people ask, which answers get a thumbs-down, and how they rephrase. It only <b>proposes</b>: nothing becomes an answer until you apply it. Questions are stored without names.</p>
         <div class="br-cards" id="br-learn-stats"></div>
+        <div id="br-learn-loop"></div>
+        <p class="muted sm">How it learns, step by step: the assistant answers (prediction), a thumbs-down or a rephrase shows it was wrong (error), only the words of that question and that answer take the blame, and their weights move a small, limited step (update). The next similar question is ranked with the new weights, and the mistake rate above shows whether it is improving. Only the <i>ranking</i> changes by itself; new answer texts always wait for you below.</p>
         <div class="br-row"><button type="button" class="dsg-btn dsg-primary" id="br-learn-refresh">Look for new suggestions</button><span id="br-learn-msg" class="muted sm"></span></div>
         <ul id="br-learn-list" class="br-list"></ul></div>
 </section>

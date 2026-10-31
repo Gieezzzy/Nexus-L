@@ -136,6 +136,12 @@
       ? card('Waiting for you', s.open, 'suggestions') + card('Applied', s.applied, `${s.rejected} rejected`) + card('Gaps (30 days)', s.gaps30, 'questions not answered well') + card('Thumbs up / down', `${s.up30} / ${s.down30}`, 'last 30 days')
       : '<p class="muted sm">Run the database update (php spark migrate) to switch learning on.</p>';
     $('#br-n-learn').textContent = s.open || '';
+    const loss = s.loss || [];
+    const tot = (a) => a.reduce((x, d) => x + d.asked, 0);
+    const half = Math.floor(loss.length / 2);
+    const rate = (a) => (tot(a) ? Math.round(100 * a.reduce((x, d) => x + d.errors, 0) / tot(a)) + '%' : '-');
+    $('#br-learn-loop').innerHTML = (loss.length ? `<p class="sm"><b>Mistake rate</b> (answers missing, weak or thumbs-down): earlier ${rate(loss.slice(0, half || 1))} &rarr; recent ${rate(loss.slice(half || 1))}. ${loss.map((d) => `<span title="${esc(d.day)}: ${d.errors} of ${d.asked}">${Math.round(d.loss * 100)}%</span>`).join(' &middot; ')}</p>` : '<p class="muted sm">No answers recorded yet, so there is no mistake rate to show.</p>')
+      + ((s.learned || []).length ? `<details><summary>What the ranking has learned from thumbs-up / down (${s.learned.length} strongest)</summary><ul class="br-ev">${s.learned.map((l) => `<li>&ldquo;${esc(l.term)}&rdquo; ${l.w > 0 ? 'points to' : 'points away from'} <b>${esc(l.title)}</b> <small class="muted">(${Number(l.w).toFixed(2)}, ${l.updates} votes)</small></li>`).join('')}</ul></details>` : '');
     if (j.refreshed) $('#br-learn-msg').textContent = `Checked ${j.refreshed.groups} groups of questions: ${j.refreshed.drafts} answers from chats, ${j.refreshed.gaps} still need an answer.`;
     $('#br-learn-list').innerHTML = j.rows.length ? j.rows.map((r) => {
       const ev = r.evidence || {};

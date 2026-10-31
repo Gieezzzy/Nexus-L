@@ -43,6 +43,91 @@ class BrainLearn
         return $i / max(1, count(array_unique(array_merge($a, $b))));
     }
 
+    // ------------------------------------------------------------------------------------------------ the learning loop
+    //
+    // The same loop a neural network trains with, kept small enough to read:
+    //   predict      p = sigmoid(bias_answer + sum of weight[answer, word] for the words of the question)   (Brain::search uses it)
+    //   error        e = p - y          y = 1 when the user marked the answer helpful, 0 when thumbs-down
+    //   blame        only the words of THIS question and this answer's bias get the error (the rest of the answers do not move)
+    //   update       w <- w - eta * e   (clamped), so the next time the same words come in, p is closer to y
+    //   re-predict   the new p is returned, and the daily "loss" shows whether the assistant is making fewer mistakes
+
+    private const ETA  = 0.5;
+    private const WMAX = 2.0;
+
+    public static function weightsReady(): bool
+    {
+        static $ok = null;
+
+        return $ok ??= self::db()->tableExists('tbl_bot_weights');
+    }
+
+    /**
+     * One training step. @param list<string> $terms words of the question (Brain::tokens)
+     * @return array{before:float,after:float}|null
+     */
+    public static function train(array $terms, int $kbId, int $y): ?array
+    {
+        if (! self::weightsReady() || $kbId <= 0) {
+            return null;
+        }
+        $terms = array_slice(array_values(array_unique(array_filter($terms, static fn ($t) => $t !== '' && $t !== '#'))), 0, 12);
+        if (! $terms) {
+            return null;
+        }
+        $db   = self::db();
+        $keys = array_merge(['#'], $terms);
+        $cur  = [];
+        foreach ($db->table('tbl_bot_weights')->where('kb_id', $kbId)->whereIn('term', $keys)->get()->getResultArray() as $r) {
+            $cur[$r['term']] = (float) $r['w'];
+        }
+        $z = 0.0;
+        foreach ($keys as $k) {
+            $z += $cur[$k] ?? 0.0;
+        }
+        $p   = 1 / (1 + exp(-$z));
+        $e   = $p - $y;
+        $now = date('Y-m-d H:i:s');
+        $z2  = 0.0;
+        foreach ($keys as $k) {
+            $w   = max(-self::WMAX, min(self::WMAX, ($cur[$k] ?? 0.0) - self::ETA * $e));
+            $z2 += $w;
+            $db->query('INSERT INTO tbl_bot_weights (kb_id, term, w, updates, updated_at) VALUES (?, ?, ?, 1, ?) ON DUPLICATE KEY UPDATE w = VALUES(w), updates = updates + 1, updated_at = VALUES(updated_at)', [$kbId, $k, $w, $now]);
+        }
+
+        return ['before' => round($p, 3), 'after' => round(1 / (1 + exp(-$z2)), 3)];
+    }
+
+    /** The question (as words) that a bot message answered: the user message just before it. @return list<string> */
+    public static function questionTerms(int $botChatId): array
+    {
+        $q = self::db()->query("SELECT message FROM tbl_bot_chats WHERE thread_id = (SELECT thread_id FROM tbl_bot_chats WHERE id = ?) AND sender = 'user' AND id < ? ORDER BY id DESC LIMIT 1", [$botChatId, $botChatId])->getRowArray();
+
+        return $q ? Brain::tokens((string) $q['message']) : [];
+    }
+
+    /**
+     * The mistake rate per day: answers that were missing, weak (confidence below 45) or marked thumbs-down, divided by all
+     * answers. Falling numbers mean the loop is working. @return list<array{day:string,asked:int,errors:int,loss:float}>
+     */
+    public static function loss(int $days = 14): array
+    {
+        $rows = self::db()->query("SELECT DATE(created_at) d, COUNT(*) n, SUM(CASE WHEN knowledge_id IS NULL OR confidence < 45 OR feedback = -1 THEN 1 ELSE 0 END) e
+            FROM tbl_bot_chats WHERE sender = 'bot' AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY) GROUP BY DATE(created_at) ORDER BY d", [$days])->getResultArray();
+
+        return array_map(static fn ($r) => ['day' => $r['d'], 'asked' => (int) $r['n'], 'errors' => (int) $r['e'], 'loss' => $r['n'] ? round($r['e'] / $r['n'], 3) : 0.0], $rows);
+    }
+
+    /** The strongest things learned so far (word -> answer), for the console. @return list<array<string,mixed>> */
+    public static function topLearned(int $limit = 12): array
+    {
+        if (! self::weightsReady()) {
+            return [];
+        }
+
+        return self::db()->query("SELECT w.term, w.w, w.updates, k.title FROM tbl_bot_weights w JOIN tbl_bot_knowledge k ON k.id = w.kb_id WHERE w.term <> '#' AND w.updates >= 1 ORDER BY ABS(w.w) DESC LIMIT " . (int) $limit)->getResultArray();
+    }
+
     /** Records a gap that the plain "no answer" path of the assistant does not see (low confidence, thumbs-down). */
     public static function noteGap(string $text, string $page, string $reason, ?int $kbId = null): void
     {
@@ -101,6 +186,8 @@ class BrainLearn
         if (! $kb) {
             return;
         }
+        // the first wording ends up at the answer that helped: teach the ranking right away (bounded, reversible, no text changes)
+        self::train(Brain::tokens(Brain::redact($failedQ)), (int) $kb['id'], 1);
         $have = array_merge(Brain::tokens($kb['title'] . ' ' . $kb['keywords']));
         $new  = array_values(array_diff(array_slice(Brain::tokens(Brain::redact($failedQ)), 0, 10), $have));
         if (count($new) < 1) {
@@ -250,6 +337,8 @@ class BrainLearn
             'gaps30'   => $db->table('tbl_bot_unanswered')->where('last_seen >=', $since)->countAllResults(),
             'down30'   => $db->table('tbl_bot_chats')->where(['sender' => 'bot', 'feedback' => -1])->where('created_at >=', $since)->countAllResults(),
             'up30'     => $db->table('tbl_bot_chats')->where(['sender' => 'bot', 'feedback' => 1])->where('created_at >=', $since)->countAllResults(),
+            'loss'     => self::loss(14),
+            'learned'  => self::topLearned(10),
         ];
     }
 
