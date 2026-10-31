@@ -1,0 +1,21 @@
+# Rasa 3.6 (last open-source release, Python 3.10). NLU only: Rasa never generates text here, it names the intent and the entities.
+# Start:  rasa train  &&  rasa run --enable-api --port 5005      then set AI_USE_RASA=true in ai-service/.env
+recipe: default.v1
+language: en
+pipeline:
+  - name: WhitespaceTokenizer
+  - name: RegexFeaturizer
+  - name: LexicalSyntacticFeaturizer
+  - name: CountVectorsFeaturizer
+  - name: CountVectorsFeaturizer
+    analyzer: char_wb
+    min_ngram: 1
+    max_ngram: 4
+  - name: DIETClassifier
+    epochs: 100
+    constrain_similarities: true
+  - name: EntitySynonymMapper
+  - name: FallbackClassifier
+    threshold: 0.7
+policies: []
+assistant_id: nexus-l-assistant

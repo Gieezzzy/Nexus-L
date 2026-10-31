@@ -46,6 +46,7 @@ class BotController extends BaseController
         $now  = date('Y-m-d H:i:s');
         $ok   = ['view', 'click', 'save', 'error', 'http_error', 'stuck', 'bot'];
         $n    = 0;
+        $fwd  = [];
         foreach (array_slice((array) ($p['events'] ?? []), 0, 40) as $e) {
             $type = (string) ($e['type'] ?? '');
             if (! in_array($type, $ok, true)) {
@@ -61,6 +62,7 @@ class BotController extends BaseController
                 'status' => isset($e['status']) ? (int) $e['status'] : null, 'signature' => $sig, 'created_at' => $now,
             ]);
             $n++;
+            $fwd[] = ['event_type' => $type, 'page' => $page, 'target' => $target, 'detail' => $detail];
             if ($sig !== null) {
                 $exists = $db->table('tbl_bot_issues')->where('signature', $sig)->get()->getRowArray();
                 if ($exists) {
@@ -70,6 +72,8 @@ class BotController extends BaseController
                 }
             }
         }
+
+        \App\Libraries\AiBridge::events((int) ($u['id'] ?? 0), (string) ($u['role'] ?? ''), $fwd);
 
         return $this->json(['ok' => true, 'stored' => $n]);
     }
@@ -150,6 +154,11 @@ class BotController extends BaseController
         $reply = $this->labRefIntent($text) ?? $this->compose($text, ['page' => $page, 'role' => (string) ($u['role'] ?? ''), 'errors' => $this->recentErrors($uid)], $page);
         $cid   = $this->say((int) $thread['id'], 'bot', 'NEXUS-L Assistant', $reply['text'], $reply['knowledge_id'], $reply['confidence']);
         $reply['chat_id'] = $cid;
+        if (\App\Libraries\AiBridge::enabled()) {
+            // shadow mode: the AI service answers on the side for comparison; the user only ever sees the answer above
+            $prev = $db0 = $this->db()->table('tbl_bot_chats')->select('message')->where(['thread_id' => (int) $thread['id'], 'sender' => 'user'])->where('id <', $userChatId)->orderBy('id', 'DESC')->get(1)->getRowArray();
+            \App\Libraries\AiBridge::shadowAsk($uid, $text, $page, (string) ($u['role'] ?? ''), $reply['knowledge_id'] ? (int) $reply['knowledge_id'] : null, isset($reply['confidence']) ? (int) $reply['confidence'] : null, (string) ($prev['message'] ?? ''));
+        }
         unset($reply['knowledge_id']);
 
         return $this->json(['ok' => true, 'thread_id' => (int) $thread['id'], 'user_chat_id' => $userChatId, 'escalated' => false, 'reply' => $reply]);
@@ -353,6 +362,10 @@ class BotController extends BaseController
             $db->table('tbl_bot_knowledge')->where('id', $c['knowledge_id'])->set('helpful', 'helpful + ' . (int) $delta, false)->update();
         }
         $db->table('tbl_bot_chats')->where('id', $c['id'])->update(['feedback' => $val]);
+        if (\App\Libraries\AiBridge::enabled()) {
+            $qq = $db->query("SELECT message FROM tbl_bot_chats WHERE thread_id = (SELECT thread_id FROM tbl_bot_chats WHERE id = ?) AND sender = 'user' AND id < ? ORDER BY id DESC LIMIT 1", [$c['id'], $c['id']])->getRowArray();
+            \App\Libraries\AiBridge::feedback((int) $this->auth->user()['id'], $c['knowledge_id'] ? (int) $c['knowledge_id'] : null, $val, (string) ($qq['message'] ?? ''));
+        }
         // learn from it: a thumbs-down is a gap; a thumbs-up after a rephrase teaches the earlier wording
         if ((int) $c['feedback'] !== $val) {
             try {
@@ -508,6 +521,10 @@ class BotController extends BaseController
             return $this->json(['ok' => false, 'error' => 'This chat is closed. Nobody can write into it any more.'], 409);
         }
         $id = BotSessions::fromAdmin($s, $this->auth->user(), $msg);
+        if (\App\Libraries\AiBridge::enabled()) {
+            $q = $this->db()->table('tbl_bot_chats')->select('message')->where(['thread_id' => (int) $s['thread_id'], 'sender' => 'user'])->orderBy('id', 'DESC')->get(1)->getRowArray();
+            \App\Libraries\AiBridge::adminReply((int) $s['user_id'], (int) ($this->auth->user()['id'] ?? 0), (string) ($q['message'] ?? ''), $msg);
+        }
 
         return $this->json(['ok' => true, 'chat_id' => $id, 'session' => BotSessions::public(BotSessions::find((int) $s['id']))]);
     }

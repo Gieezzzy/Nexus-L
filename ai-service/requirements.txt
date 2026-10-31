@@ -1,0 +1,16 @@
+# Python 3.12 venv in C:\NexusAI\venv (Rasa 3.6 needs its own Python 3.10 venv and is not listed here)
+fastapi
+uvicorn[standard]
+httpx
+pydantic-settings
+psycopg[binary,pool]
+langgraph
+langgraph-checkpoint-postgres
+langchain-core
+langchain-ollama
+qdrant-client
+fastembed
+mem0ai
+arize-phoenix
+arize-phoenix-otel
+openinference-instrumentation-langchain

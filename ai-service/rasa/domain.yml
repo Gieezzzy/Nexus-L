@@ -1,0 +1,9 @@
+version: "3.1"
+intents:
+  - open_report
+  - talk_to_admin
+  - greet
+  - thanks
+  - feedback_negative
+entities:
+  - lab_ref

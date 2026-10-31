@@ -1,0 +1,38 @@
+version: "3.1"
+nlu:
+  - intent: open_report
+    examples: |
+      - open [DTP20261012FAA8-L](lab_ref)
+      - show me [DTP20260605SHB4-L](lab_ref) pdf
+      - preview [DTP20261012FAA8-R](lab_ref)
+      - find report [DTP20260929VH-12](lab_ref)
+      - check the machine file for [DTP20261012FAA8-L](lab_ref)
+      - print [DTP20260605SHB4-L](lab_ref)
+  - intent: talk_to_admin
+    examples: |
+      - talk to an administrator
+      - connect me to an admin
+      - I need a human
+      - speak to someone
+      - chat with the admin please
+  - intent: greet
+    examples: |
+      - hi
+      - hello
+      - good morning
+      - hey there
+  - intent: thanks
+    examples: |
+      - thanks
+      - thank you
+      - got it
+      - ok thanks
+  - intent: feedback_negative
+    examples: |
+      - not helpful
+      - that is wrong
+      - not what I asked
+      - useless
+  - regex: lab_ref
+    examples: |
+      - DTP\d{8}[A-Z0-9]{2,}(-[LR])?
