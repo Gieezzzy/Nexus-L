@@ -1,8 +1,11 @@
 <?php /** Brain console (admin): chats, unanswered questions, problems, knowledge, health. */ ?>
 <div class="card glass br-head">
-    <div>
-        <h3>Brain <span class="dsg-badge">Admin only</span></h3>
-        <p class="muted sm">What the assistant knows, what users asked, and the problems they hit. Everything is stored in the Brain folders as <code>.back</code> files.</p>
+    <div style="display:flex;align-items:center;gap:14px">
+        <img src="<?= base_url('assets/images/lexis-icon.png') ?>" alt="LEXIS AI" style="width:48px;height:48px;border-radius:10px;background:#fff;border:1px solid #bae6fd;box-shadow:0 2px 8px rgba(2,132,199,0.18);padding:3px;flex-shrink:0">
+        <div>
+            <h3>LEXIS AI Brain <span class="dsg-badge">Admin only</span></h3>
+            <p class="muted sm" style="margin-bottom:0">Laboratory Execution Intelligence System knowledge base, user interactions, problem diagnostics, and automated learning engine.</p>
+        </div>
     </div>
     <div class="br-tabs" role="tablist">
         <button type="button" class="br-tab active" data-tab="overview">Overview</button>

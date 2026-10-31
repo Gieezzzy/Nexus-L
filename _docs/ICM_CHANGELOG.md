@@ -5,6 +5,14 @@
 ---
 
 ## Phase 201 - Bot Read-Only Database Queries, Synology Signatory Reminders & 200 QC Problem Knowledge (2026-10-31)
+- **Visual Identity & Light Canva Logo Integration:**
+  - Designed and exported official light-themed LEXIS AI logo (`DAHZi0cxBt0`) via Canva with electric cyan and deep royal/navy blue 3D neural-molecular network iconography on a pure white background.
+  - Integrated high-resolution assets into `public/assets/images/`: `lexis-logo.png`, `lexis-logo-transparent.png`, `lexis-icon.png`, and `lexis-icon-transparent.png`.
+  - Floating Action Button (FAB `#nxbot-fab`) upgraded from generic `?` icon to a polished circular white launcher featuring the crisp 3D neural node mark, cyan hover illumination, and smooth micro-interactions.
+  - Bot chat panel header (`#nxbot-panel header`) now displays the branded logo badge alongside `LEXIS AI` and `Laboratory Execution Intelligence System`.
+  - Initial chat open showcases a branded welcome card with the full light logo and friendly onboarding copy.
+  - Bot messages styled with cyan accent indicator (`border-left: 3px solid #0284c7`).
+  - Admin Brain console (`/brain`) updated with the new LEXIS AI logo badge and system description.
 - **Brand Identity & AI Renaming:** Officially named and rebranded the assistant to **LEXIS AI (Laboratory Execution Intelligence System)** across widget headers, floating triggers, conversational greetings, database sender identities, LangGraph prompts, and service metadata, with customizable configuration via `ai.name` in `SystemSettings`.
 - **Read-Only Database Query Engine (`BotController::dbSearchIntent`):**
   - Bot understands natural queries like `"how many fail and pass do we have"`, `"what is the total failed for bonding"`, `"how many reports failed this month"`, and `"find failed reports for Vans"`.
