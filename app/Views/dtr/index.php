@@ -4,6 +4,11 @@
  * NEXUS-L QC Lab Digital Test Reports (#Digital Test Report & Bonding LIS System)
  * Migrated 100% from MS Access & VB.NET into MySQL dbnexus (367,333 rows across 31 tables).
  */
+$bondingShoes = $bondingShoes ?? [];
+$wholeShoes = $wholeShoes ?? [];
+$bondingTotal = $bondingTotal ?? count($bondingShoes);
+$shoeTotal = $shoeTotal ?? count($wholeShoes);
+$subTab = $subTab ?? 'bonding';
 ?>
 
 <!-- Top Summary KPI Bar -->

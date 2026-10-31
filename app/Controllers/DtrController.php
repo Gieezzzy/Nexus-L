@@ -161,6 +161,36 @@ class DtrController extends BaseController
             ->get()
             ->getResultArray();
 
+        // Bonding Shoe Collection (tbl_dtr_bonding_info) & Whole Shoe Collection (tbl_dtr_shoe_list)
+        $bondingTotal = 0;
+        $bondingShoes = [];
+        if ($db->tableExists('tbl_dtr_bonding_info')) {
+            $bondingTotal = $db->table('tbl_dtr_bonding_info')->countAllResults();
+            $bondingShoes = $db->table('tbl_dtr_bonding_info')
+                ->select('BondingTestID, LabRefNo, ModelStyle, Color, Side, Factory, ProductionDate, TestedDate, Technician, Result')
+                ->orderBy('BondingTestID', 'DESC')
+                ->limit(100)
+                ->get()
+                ->getResultArray();
+        }
+
+        $shoeTotal = 0;
+        $wholeShoes = [];
+        if ($db->tableExists('tbl_dtr_shoe_list')) {
+            $shoeTotal = $db->table('tbl_dtr_shoe_list')->countAllResults();
+            if ($db->tableExists('tbl_dtr_wholeshoe_intake')) {
+                $wholeShoes = $db->table('tbl_dtr_shoe_list s')
+                    ->select('s.*, i.LabRefNo, i.Building, i.LineNo, i.NoOfShoes, i.TestTypes, i.CollectionDate, i.ProductionDate AS IntakeProductionDate, i.EncodedBy')
+                    ->join('tbl_dtr_wholeshoe_intake i', 'i.IntakeID = (SELECT MAX(x.IntakeID) FROM tbl_dtr_wholeshoe_intake x WHERE x.ProdCode = s.ProdCode)', 'left', false)
+                    ->orderBy('s.ID', 'DESC')
+                    ->limit(100)
+                    ->get()
+                    ->getResultArray();
+            } else {
+                $wholeShoes = $db->table('tbl_dtr_shoe_list')->orderBy('ID', 'DESC')->limit(100)->get()->getResultArray();
+            }
+        }
+
         // Distinct MaterialTypes in tbl_dtr_standards
         $standardMatTypes = array_column(
             $db->query("SELECT DISTINCT MaterialType FROM tbl_dtr_standards WHERE MaterialType IS NOT NULL AND MaterialType <> '' ORDER BY MaterialType ASC")->getResultArray(),
@@ -181,6 +211,10 @@ class DtrController extends BaseController
             'recentReports'    => $recentReports,
             'containers'       => $containers,
             'materialsMaster'  => $materialsMaster,
+            'bondingTotal'     => $bondingTotal,
+            'bondingShoes'     => $bondingShoes,
+            'shoeTotal'        => $shoeTotal,
+            'wholeShoes'       => $wholeShoes,
             'standardMatTypes' => $standardMatTypes,
         ]);
     }
