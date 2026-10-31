@@ -162,33 +162,26 @@ class DtrController extends BaseController
             ->getResultArray();
 
         // Bonding Shoe Collection (tbl_dtr_bonding_info) & Whole Shoe Collection (tbl_dtr_shoe_list)
-        $bondingTotal = 0;
-        $bondingShoes = [];
-        if ($db->tableExists('tbl_dtr_bonding_info')) {
-            $bondingTotal = $db->table('tbl_dtr_bonding_info')->countAllResults();
-            $bondingShoes = $db->table('tbl_dtr_bonding_info')
-                ->select('BondingTestID, LabRefNo, ModelStyle, Color, Side, Factory, ProductionDate, TestedDate, Technician, Result')
-                ->orderBy('BondingTestID', 'DESC')
+        $bondingTotal = $db->table('tbl_dtr_bonding_info')->countAllResults();
+        $bondingShoes = $db->table('tbl_dtr_bonding_info')
+            ->select('BondingTestID, LabRefNo, ModelStyle, Color, Side, Factory, ProductionDate, TestedDate, Technician, Result')
+            ->orderBy('BondingTestID', 'DESC')
+            ->limit(100)
+            ->get()
+            ->getResultArray();
+
+        $shoeTotal  = $db->table('tbl_dtr_shoe_list')->countAllResults();
+        // each shoe with the details of its latest intake (building / line, no. of shoes, test types, dates, encoder) when recorded
+        if ($db->tableExists('tbl_dtr_wholeshoe_intake')) {
+            $wholeShoes = $db->table('tbl_dtr_shoe_list s')
+                ->select('s.*, i.LabRefNo, i.Building, i.LineNo, i.NoOfShoes, i.TestTypes, i.CollectionDate, i.ProductionDate AS IntakeProductionDate, i.EncodedBy')
+                ->join('tbl_dtr_wholeshoe_intake i', 'i.IntakeID = (SELECT MAX(x.IntakeID) FROM tbl_dtr_wholeshoe_intake x WHERE x.ProdCode = s.ProdCode)', 'left', false)
+                ->orderBy('s.ID', 'DESC')
                 ->limit(100)
                 ->get()
                 ->getResultArray();
-        }
-
-        $shoeTotal = 0;
-        $wholeShoes = [];
-        if ($db->tableExists('tbl_dtr_shoe_list')) {
-            $shoeTotal = $db->table('tbl_dtr_shoe_list')->countAllResults();
-            if ($db->tableExists('tbl_dtr_wholeshoe_intake')) {
-                $wholeShoes = $db->table('tbl_dtr_shoe_list s')
-                    ->select('s.*, i.LabRefNo, i.Building, i.LineNo, i.NoOfShoes, i.TestTypes, i.CollectionDate, i.ProductionDate AS IntakeProductionDate, i.EncodedBy')
-                    ->join('tbl_dtr_wholeshoe_intake i', 'i.IntakeID = (SELECT MAX(x.IntakeID) FROM tbl_dtr_wholeshoe_intake x WHERE x.ProdCode = s.ProdCode)', 'left', false)
-                    ->orderBy('s.ID', 'DESC')
-                    ->limit(100)
-                    ->get()
-                    ->getResultArray();
-            } else {
-                $wholeShoes = $db->table('tbl_dtr_shoe_list')->orderBy('ID', 'DESC')->limit(100)->get()->getResultArray();
-            }
+        } else {
+            $wholeShoes = $db->table('tbl_dtr_shoe_list')->orderBy('ID', 'DESC')->limit(100)->get()->getResultArray();
         }
 
         // Distinct MaterialTypes in tbl_dtr_standards
@@ -453,6 +446,329 @@ class DtrController extends BaseController
     }
 
     /**
+     * GET /dtr/shoe-lookup?code=&mtl=
+     * Library lookup for the Specimen Intake form: finds a whole shoe by Production Code or MTL #.
+     */
+    public function shoeLookup()
+    {
+        $db   = \Config\Database::connect();
+        $code = trim((string) ($this->request->getGet('code') ?? ''));
+        $mtl  = trim((string) ($this->request->getGet('mtl') ?? ''));
+        $shoe = null;
+
+        if ($code !== '') {
+            $shoe = $db->table('tbl_dtr_shoe_list')->where('ProdCode', $code)->orderBy('ID', 'DESC')->get(1)->getRowArray();
+        }
+        if (! $shoe && $mtl !== '') {
+            $shoe = $db->table('tbl_dtr_shoe_list')->where('MTL', $mtl)->orderBy('ID', 'DESC')->get(1)->getRowArray();
+        }
+
+        return $this->response->setJSON(['ok' => true, 'shoe' => $shoe, 'csrf' => csrf_hash()]);
+    }
+
+    /**
+     * GET /dtr/shoe-search?q=
+     * Library picker for the Specimen Intake form: searches tbl_dtr_shoe_list (newest first, max 30).
+     */
+    public function shoeSearch()
+    {
+        $q       = trim((string) ($this->request->getGet('q') ?? ''));
+        $builder = \Config\Database::connect()->table('tbl_dtr_shoe_list');
+
+        if ($q !== '') {
+            $builder->groupStart()
+                ->like('ProdCode', $q)
+                ->orLike('StyleNo', $q)
+                ->orLike('Colorway', $q)
+                ->orLike('MTL', $q)
+                ->groupEnd();
+        }
+
+        $shoes = $builder->orderBy('ID', 'DESC')->limit(30)->get()->getResultArray();
+
+        return $this->response->setJSON(['ok' => true, 'shoes' => $shoes, 'csrf' => csrf_hash()]);
+    }
+
+    /**
+     * POST /dtr/wholeshoe-save
+     * Whole Shoe Intake batch: adds shoes to tbl_dtr_shoe_list. A Production Code that already exists is skipped.
+     */
+    public function wholeShoeSave()
+    {
+        $p    = $this->request->getJSON(true) ?? [];
+        $rows = is_array($p['rows'] ?? null) ? $p['rows'] : [];
+        if (! $rows) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => 'No whole shoe lines to save.', 'csrf' => csrf_hash()]);
+        }
+
+        $db      = \Config\Database::connect();
+        $db->query('CREATE TABLE IF NOT EXISTS tbl_dtr_wholeshoe_intake (
+            IntakeID INT AUTO_INCREMENT PRIMARY KEY,
+            Building CHAR(1) NULL,
+            `LineNo` VARCHAR(10) NULL,
+            LabRefNo VARCHAR(191) NULL,
+            ProdCode VARCHAR(191) NULL,
+            NoOfShoes INT NOT NULL DEFAULT 1,
+            TestTypes VARCHAR(255) NULL,
+            CollectionDate DATE NULL,
+            ProductionDate DATE NULL,
+            EncodedBy VARCHAR(191) NULL,
+            CreatedAt DATETIME NULL,
+            INDEX (ProdCode)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+        if (! $db->fieldExists('LabRefNo', 'tbl_dtr_wholeshoe_intake')) {
+            $db->query('ALTER TABLE tbl_dtr_wholeshoe_intake ADD COLUMN LabRefNo VARCHAR(191) NULL AFTER `LineNo`');
+        }
+        $saved   = 0;
+        $skipped = [];
+        $seen    = [];
+
+        foreach ($rows as $r) {
+            $code = mb_substr(trim((string) ($r['code'] ?? '')), 0, 191);
+            if ($code === '') {
+                continue;
+            }
+            if (isset($seen[$code]) || $db->table('tbl_dtr_shoe_list')->where('ProdCode', $code)->countAllResults() > 0) {
+                $skipped[] = $code;
+                continue;
+            }
+            $seen[$code] = true;
+            $db->table('tbl_dtr_shoe_list')->insert([
+                'ProdCode' => $code,
+                'StyleNo'  => mb_substr(trim((string) ($r['style'] ?? '')), 0, 191),
+                'Colorway' => trim((string) ($r['color'] ?? '')),
+                'MTL'      => mb_substr(trim((string) ($r['mtl'] ?? '')), 0, 191),
+            ]);
+            $saved++;
+
+            // Lab Ref No = DTP + production date (YYYYMMDD) + WS + line (building letter + number); a letter is added if it is already used
+            $bld   = strtoupper(mb_substr((string) ($p['building'] ?? 'A'), 0, 1)) === 'B' ? 'B' : 'A';
+            $pd    = preg_replace('/\D/', '', (string) (($p['productionDate'] ?? '') ?: ($p['collectionDate'] ?? '') ?: date('Y-m-d')));
+            $lineN = (int) preg_replace('/\D/', '', (string) ($r['line'] ?? '')) ?: ($saved + 1);
+            $base  = 'DTP' . $pd . 'WS' . $bld . $lineN;
+            $labRef = $base;
+            for ($sfx = 'B'; $db->table('tbl_dtr_wholeshoe_intake')->where('LabRefNo', $labRef)->countAllResults() > 0 && $sfx <= 'Z'; $sfx++) {
+                $labRef = $base . $sfx;
+            }
+            $db->table('tbl_dtr_wholeshoe_intake')->insert([
+                'Building'       => $bld,
+                'LineNo'         => mb_substr((string) ($r['line'] ?? ''), 0, 10),
+                'LabRefNo'       => $labRef,
+                'ProdCode'       => $code,
+                'NoOfShoes'      => max(1, (int) ($r['qty'] ?? 1)),
+                'TestTypes'      => implode(', ', array_map('strval', is_array($r['tests'] ?? null) ? $r['tests'] : [])),
+                'CollectionDate' => ($p['collectionDate'] ?? '') ?: null,
+                'ProductionDate' => ($p['productionDate'] ?? '') ?: null,
+                'EncodedBy'      => mb_substr(trim((string) ($p['encodedBy'] ?? '')), 0, 191),
+                'CreatedAt'      => date('Y-m-d H:i:s'),
+            ]);
+        }
+
+        $msg = "Saved {$saved} whole shoe(s).";
+        if ($skipped) {
+            $msg .= ' Skipped (already exist): ' . implode(', ', $skipped) . '.';
+        }
+
+        return $this->response->setJSON(['ok' => $saved > 0, 'message' => $msg, 'saved' => $saved, 'skipped' => $skipped, 'csrf' => csrf_hash()]);
+    }
+
+    /**
+     * POST /dtr/material-receive-save
+     * Material Receive batch: each line is added to the IQC Container Receiving Log (tbl_dtr_containers; an existing
+     * Container No. is skipped) and the full receiving details are kept in tbl_dtr_material_receipts.
+     */
+    public function materialReceiveSave()
+    {
+        $p    = $this->request->getJSON(true) ?? [];
+        $rows = is_array($p['rows'] ?? null) ? $p['rows'] : [];
+        if (! $rows) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => 'No material lines to save.', 'csrf' => csrf_hash()]);
+        }
+
+        $db = \Config\Database::connect();
+        $db->query('CREATE TABLE IF NOT EXISTS tbl_dtr_material_receipts (
+            ReceiptID INT AUTO_INCREMENT PRIMARY KEY,
+            MaterialType VARCHAR(191) NULL,
+            ContainerNo VARCHAR(191) NULL,
+            DateArrived DATE NULL,
+            LabReceivedDate DATE NULL,
+            Quantity VARCHAR(100) NULL,
+            FinishedTesting VARCHAR(100) NULL,
+            RemainingForTesting VARCHAR(100) NULL,
+            EstimatedTimeline DATE NULL,
+            Status VARCHAR(191) NULL,
+            EncodedBy VARCHAR(191) NULL,
+            CreatedAt DATETIME NULL,
+            INDEX (ContainerNo)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+        foreach (['MaterialName', 'ProdCode', 'ProcessingNo'] as $col) {
+            if (! $db->fieldExists($col, 'tbl_dtr_material_receipts')) {
+                $db->query("ALTER TABLE tbl_dtr_material_receipts ADD COLUMN {$col} VARCHAR(191) NULL AFTER ContainerNo");
+            }
+        }
+
+        $date    = static fn ($v) => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $v) ? (string) $v : null;
+        $str     = static fn ($v, int $n = 191) => mb_substr(trim((string) $v), 0, $n);
+        $enc     = $str($p['encodedBy'] ?? '');
+        $now     = date('Y-m-d H:i:s');
+        $saved   = 0;
+        $skipped = [];
+
+        foreach ($rows as $r) {
+            $containerNo = $str($r['no'] ?? '');
+            $prod        = $str($r['prod'] ?? '');
+            $proc        = $str($r['proc'] ?? '');
+            $no          = $containerNo ?: ($prod ?: $proc);   // the receiving log is keyed by whichever number was entered first
+            if ($no === '') {
+                continue;
+            }
+            $received = $date($p['receivedDate'] ?? '');
+            $arrived  = $date($p['arrivedDate'] ?? '');
+            $db->table('tbl_dtr_material_receipts')->insert([
+                'MaterialType'        => $str($r['type'] ?? ''),
+                'MaterialName'        => $str($r['name'] ?? ''),
+                'ContainerNo'         => $containerNo,
+                'ProdCode'            => $prod,
+                'ProcessingNo'        => $proc,
+                'DateArrived'         => $arrived,
+                'LabReceivedDate'     => $received,
+                'Quantity'            => $str($r['qty'] ?? '', 100),
+                'FinishedTesting'     => $str($r['finished'] ?? '', 100),
+                'RemainingForTesting' => $str($r['remaining'] ?? '', 100),
+                'EstimatedTimeline'   => $date($r['eta'] ?? ''),
+                'EncodedBy'           => $enc,
+                'CreatedAt'           => $now,
+            ]);
+            if ($db->table('tbl_dtr_containers')->where('ContainerNo', $no)->countAllResults() > 0) {
+                $skipped[] = $no;
+            } else {
+                $db->table('tbl_dtr_containers')->insert([
+                    'ContainerNo'       => $no,
+                    'DateArrived'       => $arrived,
+                    'DateReceivedInLab' => $received,
+                    'Remarks'           => $str(trim(($r['type'] ?? '') . ' ' . ($r['name'] ?? ''))),
+                    'Encodedby'         => $enc,
+                    'EncodedDate'       => $now,
+                ]);
+            }
+            $saved++;
+        }
+
+        $msg = "Saved {$saved} material line(s).";
+        if ($skipped) {
+            $msg .= ' Already in the receiving log (details still kept): ' . implode(', ', $skipped) . '.';
+        }
+
+        return $this->response->setJSON(['ok' => $saved > 0, 'message' => $msg, 'saved' => $saved, 'skipped' => $skipped, 'csrf' => csrf_hash()]);
+    }
+
+    /**
+     * GET /dtr/retest-list?q=
+     * Failed bonding Lab Ref Nos still waiting for a retest, with the recorded failure analysis / reason.
+     * A Lab Ref No. already referenced by a "Retest of ..." note is left out.
+     */
+    public function retestList()
+    {
+        $db = \Config\Database::connect();
+        $q  = trim((string) ($this->request->getGet('q') ?? ''));
+
+        $builder = $db->table('tbl_dtr_bonding_info')
+            ->select("LabRefNo, ModelStyle, Color, POLotNO, Result, ModeOfFailure, TestedDate, COALESCE(NULLIF(PossibleCause, ''), NULLIF(Remarks, ''), NULLIF(LabNotesComments, '')) AS Analysis", false)
+            ->like('Result', 'FAIL', 'after')
+            ->where("NOT EXISTS (SELECT 1 FROM tbl_dtr_bonding_info r WHERE r.LabNotesComments LIKE CONCAT('%Retest of ', tbl_dtr_bonding_info.LabRefNo, '%'))", null, false);
+
+        if ($q !== '') {
+            $builder->groupStart()->like('LabRefNo', $q)->orLike('ModelStyle', $q)->orLike('Color', $q)->groupEnd();
+        }
+
+        $rows = $builder->orderBy('BondingTestID', 'DESC')->limit(60)->get()->getResultArray();
+
+        return $this->response->setJSON(['ok' => true, 'rows' => $rows, 'csrf' => csrf_hash()]);
+    }
+
+    /**
+     * POST /dtr/intake-save
+     * Specimen Intake batch: one tbl_dtr_bonding_info row per filled line.
+     * LabRefNo = DTP + production date (YYYYMMDD) + SH + building + line no. + -L / -R (e.g. DTP20261015SHA10-L).
+     * A LabRefNo that already exists is skipped, never overwritten.
+     */
+    public function intakeSave()
+    {
+        $p        = $this->request->getJSON(true) ?? [];
+        $building = strtoupper(trim((string) ($p['building'] ?? '')));
+        $collect  = trim((string) ($p['collectionDate'] ?? ''));
+        $prod     = trim((string) ($p['productionDate'] ?? '')) ?: $collect;
+        $rows     = is_array($p['rows'] ?? null) ? $p['rows'] : [];
+        $encodedBy = mb_substr(trim((string) ($p['encodedBy'] ?? '')), 0, 100);
+        $fail     = fn (string $msg) => $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => $msg, 'csrf' => csrf_hash()]);
+
+        if (! in_array($building, ['A', 'B'], true)) {
+            return $fail('Choose Building A or B.');
+        }
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $prod) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $collect)) {
+            return $fail('Collection and Production dates are required.');
+        }
+        if (! $rows) {
+            return $fail('No specimen lines to save.');
+        }
+
+        $db      = \Config\Database::connect();
+        $table   = $db->table('tbl_dtr_bonding_info');
+        $saved   = 0;
+        $skipped = [];
+
+        foreach ($rows as $r) {
+            $line = strtoupper(trim((string) ($r['line'] ?? '')));
+            if (! preg_match('/^' . $building . '(\d{1,2})$/', $line, $m)) {
+                continue;
+            }
+            $side   = (($r['side'] ?? 'L') === 'R') ? 'R' : 'L';
+            $labRef = 'DTP' . str_replace('-', '', $prod) . 'SH' . $building . (int) $m[1] . '-' . $side;
+
+            if ($db->table('tbl_dtr_bonding_info')->where('LabRefNo', $labRef)->countAllResults() > 0) {
+                $skipped[] = $labRef;
+                continue;
+            }
+
+            $notes = [];
+            if (! empty($r['mtl'])) {
+                $notes[] = 'MTL ' . trim((string) $r['mtl']);
+            }
+            if (! empty($r['retest'])) {
+                $notes[] = 'RETEST: ' . trim((string) ($r['retestNote'] ?? ''));
+            }
+            if (! empty($r['lacking'])) {
+                $notes[] = 'LACKING';
+            }
+            if ($encodedBy !== '') {
+                $notes[] = 'Encoded by ' . $encodedBy;
+            }
+
+            $table->insert([
+                'LabRefNo'         => $labRef,
+                'Factory'          => 'DATIAN SUBIC SHOES INC. (DTP)',
+                'ModelStyle'       => mb_substr(trim((string) ($r['style'] ?? '')), 0, 191),
+                'Color'            => trim((string) ($r['color'] ?? '')),
+                'ProductionDate'   => $prod,
+                'POLotNO'          => mb_substr(trim((string) ($r['code'] ?? '')), 0, 191),
+                'MaterialSource'   => 'Prod. Material',
+                'ReceivedDate'     => $collect,
+                'Side'             => $side === 'R' ? 'Right' : 'Left',
+                'Remarks'          => mb_substr(trim((string) ($r['type'] ?? '')) . (! empty($r['retest']) ? ' / Retest' : ''), 0, 191),
+                'LabNotesComments' => implode('; ', $notes),
+            ]);
+            $saved++;
+        }
+
+        $msg = "Saved {$saved} specimen(s) for Building {$building}.";
+        if ($skipped) {
+            $msg .= ' Skipped (already exist): ' . implode(', ', $skipped) . '.';
+        }
+
+        return $this->response->setJSON(['ok' => $saved > 0, 'message' => $msg, 'saved' => $saved, 'skipped' => $skipped, 'csrf' => csrf_hash()]);
+    }
+
+    /**
      * POST /dtr/load-machine
      * Safely reads/copies machine output .xlsx or .csv files from \\192.168.32.45\OUTDATA\MATERIALS\ or \BONDING\
      * into writable/cache/outdata_samples/ (Read-Only on 192.168.32.45!) and extracts the exact test readings
@@ -627,8 +943,8 @@ class DtrController extends BaseController
     private function deriveBondingFields(array $f, string $labRefNo): array
     {
         $techs = [
-            'DTP-QC-001' => 'S. Aquino', 'DTP-QC-002' => 'L. Tuddao', 'DTP-QC-048' => 'L. Aquidado',
-            'DTP-QC-064' => 'J. Barrera', 'DTP-QC-066' => 'D. Parrilla', 'DTP-QC-067' => 'T. Villalobos',
+            'DTP-QC-001' => 'L. Tuddao', 'DTP-QC-002' => 'S. Aquino', 'DTP-QC-048' => 'L. Aquidado',
+            'DTP-QC-064' => 'J. Barrera', 'DTP-QC-066' => 'J. Parrilla', 'DTP-QC-067' => 'R. Cabiga',
         ];
         $db = \Config\Database::connect();
         if ($db->tableExists('tbl_app_settings')) {
@@ -659,7 +975,20 @@ class DtrController extends BaseController
             $set($f, 'Color', $f['ModelStyle']);
         }
         if (! empty($f['EquipmentCode'])) {
-            $set($f, 'Technician', $techs[$f['EquipmentCode']] ?? '');
+            // "048 - L. Aquidado": the machine no. (last digits of the equipment code) (DTP-QC-NNN) goes in front of the name
+            // the code may be written "DTP-QC-048", "DTP - QC - 48" or "DTP QC-048": it is matched on its number
+            $name = '';
+            $mn   = [];
+            if (preg_match('/dtp[\s-]*qc[\s-]*0*(\d+)/i', (string) $f['EquipmentCode'], $mn) || preg_match('/(\d+)\s*$/', (string) $f['EquipmentCode'], $mn)) {
+                $no = str_pad(substr($mn[1], -3), 3, '0', STR_PAD_LEFT);
+                foreach ($techs as $code => $tn) {
+                    if (preg_match('/(\d+)\s*$/', (string) $code, $cn) && str_pad(substr($cn[1], -3), 3, '0', STR_PAD_LEFT) === $no) {
+                        $name = preg_match('/^DTP-QC-\d{3}\s*-/', (string) $tn) ? (string) $tn : 'DTP-QC-' . $no . ' - ' . $tn;
+                        break;
+                    }
+                }
+            }
+            $set($f, 'Technician', $name);
         }
         $last = strtoupper(substr(trim($labRefNo), -1));
         $set($f, 'Side', $last === 'L' ? 'Left' : ($last === 'R' ? 'Right' : 'Unknown'));
@@ -982,6 +1311,342 @@ class DtrController extends BaseController
     }
 
     /**
+     * GET /dtr/bonding-machine-pdf?lab_ref=
+     * "Bonding Test-VF" machine-result page (header table + point1-45 tables) rebuilt from the OUTDATA xlsx of the Lab Ref.
+     */
+    public function bondingMachinePdf()
+    {
+        $ref = \App\Libraries\MachineFileReader::safeRef((string) $this->request->getGet('lab_ref'));
+        if ($ref === null) {
+            return $this->response->setStatusCode(422)->setBody('Invalid Lab Ref No.');
+        }
+        $reader = new \App\Libraries\MachineFileReader();
+        $path   = null;
+        foreach (['BONDING', 'WHOLESHOE', 'BONDING ADVANCE 07-09', 'Bonding Test Reports'] as $folder) {
+            if (($path = $reader->findFile($folder, $ref)) !== null) {
+                break;
+            }
+        }
+        if ($path === null) {
+            return $this->response->setStatusCode(404)->setBody('No machine result yet for ' . $ref . ' (the test file is not on the machine share).');
+        }
+
+        // the sheet of the file that belongs to this Lab Ref (files hold several runs)
+        $grid = [];
+        foreach (array_merge($reader->sheets($path), ['']) as $sh) {
+            $g = $reader->grid($path, $sh);
+            if (! $g) {
+                continue;
+            }
+            $grid = $grid ?: $g;
+            if (in_array($ref, array_map('trim', $g[6] ?? []), true) || in_array(strtok($ref, '-'), array_map(static fn ($v) => strtok(trim((string) $v), '-'), $g[6] ?? []), true)) {
+                $grid = $g;
+                break;
+            }
+        }
+        if (! $grid) {
+            return $this->response->setStatusCode(422)->setBody('The machine file of ' . $ref . ' could not be read.');
+        }
+
+        $cols = [];
+        for ($c = 3; $c <= 12; $c++) {
+            $n = trim((string) ($grid[8][$c] ?? ''));
+            if ($n === '' || ! is_numeric($n) || trim((string) ($grid[6][$c] ?? '')) === '---') {
+                break;
+            }
+            $cols[] = $c;
+        }
+        if (! $cols) {
+            return $this->response->setStatusCode(422)->setBody('No test columns found in the machine file.');
+        }
+
+        $e     = static fn ($v) => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+        $date  = static function ($v) {
+            $v = trim((string) $v);
+
+            return (is_numeric($v) && (float) $v > 30000) ? gmdate('Y-m-d', (int) (((float) $v - 25569) * 86400)) : $v;
+        };
+        $fmt   = static function ($v) {
+            $v = trim((string) $v);
+
+            return is_numeric($v) ? number_format((float) $v, 2, '.', '') : ($v === '' ? '-' : $v);
+        };
+        $equip = trim((string) preg_replace('/^\s*Equip Code\s*:?\s*/i', '', (string) ($grid[3][1] ?? '')));
+        $desc  = trim(implode(' ', array_filter([(string) ($grid[7][4] ?? ''), (string) ($grid[7][5] ?? '')], static fn ($x) => trim($x) !== '' && trim($x) !== '---')));
+
+        $head = '';
+        foreach ($cols as $i => $c) {
+            $head .= '<tr><td>' . $e($grid[8][$c]) . '</td><td>' . $e($date($grid[4][$c] ?? '')) . '</td><td>' . $e($grid[11][$c] ?? '') . '</td><td class="d">'
+                . $e($desc) . '</td><td>' . $e($grid[6][$c] ?? '') . '</td><td>' . $e($grid[5][$c] ?? '') . '</td><td>' . $e($grid[10][$c] ?? '') . '</td></tr>';
+        }
+
+        $pts = [];
+        foreach ($grid as $r => $row) {
+            if (preg_match('/^M(\d+)$/i', trim((string) ($row[1] ?? '')), $m)) {
+                $pts[(int) $m[1]] = $row;
+            }
+        }
+        $blocks = '';
+        for ($start = 1; $start <= 45; $start += 15) {
+            $h1 = $h2 = '';
+            $vals = array_fill(0, count($cols), '');
+            for ($p = $start; $p < $start + 15; $p++) {
+                $h1 .= '<th>point' . $p . '</th>';
+                $h2 .= '<td>kgf/cm</td>';
+                foreach ($cols as $i => $c) {
+                    $vals[$i] .= '<td>' . $e($fmt($pts[$p][$c] ?? '-')) . '</td>';
+                }
+            }
+            $blocks .= '<table class="pt"><tr>' . $h1 . '</tr><tr>' . $h2 . '</tr>';
+            foreach ($vals as $v) {
+                $blocks .= '<tr>' . $v . '</tr>';
+            }
+            $blocks .= '</table>';
+        }
+
+        $html = '<h1>Bonding Test-VF</h1><p class="eq">Equip Code:' . $e($equip) . '</p>'
+            . '<table class="hd"><tr><th>Test No</th><th>Test Date</th><th>Sample</th><th>Description</th><th>Report No.</th><th>Speed<br><small>mm/min</small></th><th>Width<br><small>mm</small></th></tr>'
+            . $head . '</table>' . $blocks;
+
+        $pdf = $this->htmlToPdfBytes($html, 'body{font-family:Arial,sans-serif;font-size:11px;color:#000;padding:10px 14px}h1{text-align:center;font-size:22px;font-weight:400;margin:18px 0 26px}.eq{margin:0 0 12px}'
+            . 'table{border-collapse:collapse;width:100%;margin-bottom:22px}th,td{border:1px solid #000;padding:4px 3px;text-align:center;font-weight:400}.hd .d{width:36%}.pt th,.pt td{border-left:0;border-right:0;font-size:10px}.pt tr:nth-child(n+3) td{border-top:0;border-bottom:0}.pt tr:last-child td{border-bottom:1px solid #000}small{font-size:9px}');
+        if ($pdf === null) {
+            return $this->response->setStatusCode(500)->setBody('The PDF could not be created on the server (Chrome or Edge is required).');
+        }
+
+        return $this->response->setHeader('Content-Type', 'application/pdf')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . preg_replace('/[^A-Za-z0-9._-]+/', '_', $ref) . '_Bonding-Test-VF.pdf"')
+            ->setBody($pdf);
+    }
+
+    // ------------------------------------------------------------------------------------------------------------------
+    // Whole Shoe report ("Whole Footwear Test Results", Form # Lab VF 002)
+    // ------------------------------------------------------------------------------------------------------------------
+
+    /** The test sections of the form: id => [test ticked at intake, title, conditions, fields key => label]. */
+    private function wsSections(): array
+    {
+        $std = ['delam' => 'Delamination / Separation 分层', 'bleed' => 'Bleeding 溢色', 'color' => 'Color Change 颜色变化', 'warp' => 'Outsole Warping 大底变形', 'bloom' => 'Blooming 吐霜', 'other' => 'Other findings 其它结果'];
+
+        return [
+            'G02' => ['Flexing', 'Whole Shoe Flexing 整鞋弯曲 - SA &nbsp;VF-G02 (2016/11)', 'SA Flexing :Regular Flexing<br>* 45 deg angle 45 度角<br>* 60 deg angle 60 度角<br>*30 degrees for thick outsole such as PRO mining, smelter or logger boots 30度角<br>* Temp温度: 23 +/- 2°C / -20 °C<br>* Standard cycle 标准转数: 125,000cycle / 100,000cycles', ['delam' => 'Delamination / Separation 分层', 'sa' => 'SA Flexing']],
+            'G05' => ['Flexing', 'Whole Shoe Flexing 整鞋弯曲 - China ( GB ) Testing 中国标准 &nbsp;VF-G05 (2013/01)', 'GB Flexing :Regular Flexing<br>* 50 deg angle 50 度角<br>* Temp温度: 23 +/- 2°C<br>Standard cycle 标准转数: 40,000', ['cut' => 'Cut growth@ initial 5mm : < 20mm 切口长度小于20 mm', 'crack' => 'Cracking standard : max. 3 points cracks, none beyond 5mm width per crack', 'delam' => 'Delamination / Separation 分层', 'other' => 'Other findings 其它结果']],
+            'G04' => ['Flexing', 'Whole Shoe Water Penetration Flexing 整鞋动态防水测试 &nbsp;VF-G04 (2016/05)', 'Water Penetration - Flexing<br>* 30 deg angle 30 度角<br>* Temp温度 : 23 +/- 2°C<br>Standard cycles标准转数: 15,000 / 100,000 / 200,000 cycles', ['wp' => 'Water Penetration 防水', 'other' => 'Other findings 其它结果']],
+            'G07' => ['Flexing', 'Whole Shoe Water Penetration Static 整鞋静态防水测试 &nbsp;VF-G07 (2014/03)', 'Water Penetration - Static<br>* Temp温度 : 23 +/- 2°C<br>Standard time标准时间: 4 hours', ['wp' => 'Water Penetration 防水', 'other' => 'Other findings 其它结果']],
+            'E03' => ['UV', 'UV Light Discoloration (紫外线黄变) AATCC &nbsp;VF-E03 (2019/05)', '* Temp温度 : 50 °C<br>* Time 时间: 24 hrs', ['yellow' => 'Yellowing 变黄 (UV Light Standard: 4.0G)', 'other' => 'Other findings 其它结果']],
+            'G03' => ['Washing', 'Whole Shoe Washing 整鞋水洗 &nbsp;VF-G03 (2024/08)', '3 complete cycles of washing and draining', $std],
+            'E26' => ['Dip Test', 'Whole Shoe Dip Test &nbsp;VF-E26 (2020/09)', '* Temp温度 : 23 +/- 2°C<br>* Distilled water 1 minute', ['bleed' => 'Bleeding 溢色', 'color' => 'Color Change 颜色变化', 'other' => 'Other findings 其它结果']],
+            'E04' => ['Heat Aging', 'Whole Shoe Aging Test 老化测试 &nbsp;VF-E04 (2022/09)', '* Temp温度 : 70 °C<br>* Time 时间: 3 days / 7 days', $std],
+            'TM361' => ['Hydrolysis', 'Whole Shoe Hydrolysis Test 水解测试 &nbsp;SATRA TM 361', '* Temp温度 : 70°C<br>* %RH 湿度: 95%<br>* Time 时间: 7 days', $std],
+        ];
+    }
+
+    private function wsReportTable(): \CodeIgniter\Database\BaseConnection
+    {
+        $db = \Config\Database::connect();
+        $db->query('CREATE TABLE IF NOT EXISTS tbl_dtr_wholeshoe_reports (
+            ReportID INT AUTO_INCREMENT PRIMARY KEY,
+            LabRefNo VARCHAR(191) NOT NULL,
+            ReportData LONGTEXT NULL,
+            UpdatedBy VARCHAR(191) NULL,
+            UpdatedAt DATETIME NULL,
+            UNIQUE KEY uq_labref (LabRefNo)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+
+        return $db;
+    }
+
+    /** Whole shoe intake line of a Lab Ref (joined with its shoe) + the saved report data. */
+    private function wsLoad(string $ref): ?array
+    {
+        $db = $this->wsReportTable();
+        if (! $db->tableExists('tbl_dtr_wholeshoe_intake')) {
+            return null;
+        }
+        $row = $db->table('tbl_dtr_wholeshoe_intake i')->select('i.*, s.StyleNo, s.Colorway, s.MTL')
+            ->join('tbl_dtr_shoe_list s', 's.ProdCode = i.ProdCode', 'left')->where('i.LabRefNo', $ref)->get()->getRowArray();
+        if (! $row) {
+            return null;
+        }
+        $saved = $db->table('tbl_dtr_wholeshoe_reports')->where('LabRefNo', $ref)->get()->getRowArray();
+        $tests = array_values(array_filter(array_map('trim', explode(',', (string) ($row['TestTypes'] ?? '')))));
+        $sections = [];
+        foreach ($this->wsSections() as $id => $s) {
+            if (! $tests || in_array($s[0], $tests, true)) {
+                $sections[] = ['id' => $id, 'title' => strip_tags(str_replace('&nbsp;', ' ', $s[1])), 'cond' => $s[2], 'fields' => $s[3]];
+            }
+        }
+
+        return [
+            'info' => [
+                'labRef' => $ref, 'prodCode' => $row['ProdCode'], 'style' => $row['StyleNo'] ?? '', 'color' => $row['Colorway'] ?? '',
+                'qty' => (int) ($row['NoOfShoes'] ?? 1), 'received' => substr((string) ($row['CollectionDate'] ?? ''), 0, 10),
+                'tests' => $tests, 'encodedBy' => $row['EncodedBy'] ?? '',
+            ],
+            'sections' => $sections,
+            'data'     => $saved ? (json_decode((string) $saved['ReportData'], true) ?: []) : [],
+        ];
+    }
+
+    /** GET /dtr/wholeshoe-labrefs?q= : whole shoe Lab Refs (newest first) for the Whole Shoe report picker. */
+    public function wholeShoeLabRefs()
+    {
+        $db = \Config\Database::connect();
+        // every section of the form, so the blank sheet can be shown before a Lab Ref is chosen
+        $blank = [];
+        foreach ($this->wsSections() as $id => $s) {
+            $blank[] = ['id' => $id, 'title' => strip_tags(str_replace('&nbsp;', ' ', $s[1])), 'cond' => $s[2], 'fields' => $s[3]];
+        }
+        if (! $db->tableExists('tbl_dtr_wholeshoe_intake')) {
+            return $this->response->setJSON(['ok' => true, 'rows' => [], 'sections' => $blank, 'csrf' => csrf_hash()]);
+        }
+        $q = trim((string) ($this->request->getGet('q') ?? ''));
+        $b = $db->table('tbl_dtr_wholeshoe_intake i')->select('i.LabRefNo, i.ProdCode, i.TestTypes, s.StyleNo, s.Colorway')
+            ->join('tbl_dtr_shoe_list s', 's.ProdCode = i.ProdCode', 'left')->where("i.LabRefNo IS NOT NULL AND i.LabRefNo <> ''", null, false);
+        if ($q !== '') {
+            $b->groupStart()->like('i.LabRefNo', $q)->orLike('i.ProdCode', $q)->orLike('s.StyleNo', $q)->groupEnd();
+        }
+        $rows = $b->orderBy('i.IntakeID', 'DESC')->limit(100)->get()->getResultArray();
+
+        return $this->response->setJSON(['ok' => true, 'rows' => $rows, 'sections' => $blank, 'csrf' => csrf_hash()]);
+    }
+
+    /** GET /dtr/wholeshoe-report?lab_ref= */
+    public function wholeShoeReport()
+    {
+        $ref = \App\Libraries\MachineFileReader::safeRef((string) $this->request->getGet('lab_ref'));
+        $out = $ref !== null ? $this->wsLoad($ref) : null;
+        if (! $out) {
+            return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'No whole shoe intake found for that Lab Ref No.', 'csrf' => csrf_hash()]);
+        }
+
+        return $this->response->setJSON(['ok' => true, 'csrf' => csrf_hash()] + $out);
+    }
+
+    /** POST /dtr/wholeshoe-report-save {lab_ref, data} */
+    public function wholeShoeReportSave()
+    {
+        $p   = $this->request->getJSON(true) ?? [];
+        $ref = \App\Libraries\MachineFileReader::safeRef((string) ($p['lab_ref'] ?? ''));
+        if ($ref === null || ! $this->wsLoad($ref)) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => 'Choose a whole shoe Lab Ref No first.', 'csrf' => csrf_hash()]);
+        }
+        $d    = is_array($p['data'] ?? null) ? $p['data'] : [];
+        $clean = [];
+        foreach (['testedDate', 'finishedDate', 'technician', 'reviewedBy', 'approvedBy', 'comments'] as $k) {
+            $clean[$k] = mb_substr(trim((string) ($d[$k] ?? '')), 0, 500);
+        }
+        $clean['results'] = [];
+        foreach ($this->wsSections() as $id => $s) {
+            foreach (array_keys($s[3]) as $k) {
+                $v = trim((string) ($d['results'][$id][$k] ?? ''));
+                if ($v !== '') {
+                    $clean['results'][$id][$k] = mb_substr($v, 0, 500);
+                }
+            }
+        }
+        $db   = $this->wsReportTable();
+        $user = (string) (service('auth')->user()['name'] ?? '');
+        $json = json_encode($clean, JSON_UNESCAPED_UNICODE);
+        $db->query('INSERT INTO tbl_dtr_wholeshoe_reports (LabRefNo, ReportData, UpdatedBy, UpdatedAt) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE ReportData = VALUES(ReportData), UpdatedBy = VALUES(UpdatedBy), UpdatedAt = VALUES(UpdatedAt)', [$ref, $json, $user, date('Y-m-d H:i:s')]);
+
+        return $this->response->setJSON(['ok' => true, 'message' => "Saved Whole Shoe report {$ref}.", 'csrf' => csrf_hash()]);
+    }
+
+    /**
+     * GET /dtr/wholeshoe-report-pdf?lab_ref=&inline=1
+     * "Whole Footwear Test Results" (Form # Lab VF 002) filled from the whole shoe intake and the saved results; only the test
+     * sections ticked at intake are printed (all when none were).
+     */
+    public function wholeShoeReportPdf()
+    {
+        $ref = \App\Libraries\MachineFileReader::safeRef((string) $this->request->getGet('lab_ref'));
+        $rep = $ref !== null ? $this->wsLoad($ref) : null;
+        if (! $rep) {
+            return $this->response->setStatusCode(404)->setBody('No whole shoe intake found for ' . (string) $ref . '.');
+        }
+        $info = $rep['info'];
+        $d    = $rep['data'];
+        $e    = static fn ($v) => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+        $all  = $this->wsSections();
+
+        $body = '';
+        foreach ($rep['sections'] as $s) {
+            $res = '';
+            foreach ($s['fields'] as $k => $label) {
+                $res .= '<div class="rl"><b>' . $e($label) . ' :</b> ' . $e($d['results'][$s['id']][$k] ?? '') . '</div>';
+            }
+            $body .= '<div class="st">' . $all[$s['id']][1] . '</div><table class="sc"><tr><td class="tc"><b>Test conditions测试条件:</b></td><td class="tr"><b>Result结果 :</b></td></tr>'
+                . '<tr><td class="cd">' . $all[$s['id']][2] . '</td><td class="rs">' . $res . '</td></tr></table>';
+        }
+
+        $logo = base_url('assets/images/vf-logo.webp');
+        $sat  = base_url('assets/images/satra-accredited.png');
+        $html = '<div class="hd"><img src="' . $logo . '" class="vf"><div class="tt"><h1>Whole Footwear Test Results</h1><h2>整鞋测试报告</h2></div><img src="' . $sat . '" class="sa"></div>'
+            . '<table class="ref"><tr><td class="frm">Form # : Lab VF 002</td><td class="rf"><div>ETRF. No :</div><div>Lab Ref. No : <b>' . $e($ref) . '</b></div></td></tr></table>'
+            . '<table class="info"><tr><td>Supplier/Factory(厂商) :</td><td><b>DATIAN SUBIC SHOES INC.</b></td><td>O Prod.Material (量产材料)</td><td>O Prod.Re-test量产重测</td></tr>'
+            . '<tr><td>Supplier\'s country(国家):</td><td><b>Philippines</b></td><td>O New/Development 开发段新材料</td><td>O Trial Test 试用测试</td></tr>'
+            . '<tr><td>Material Description(材料):</td><td></td><td colspan="2">o Tech 1 &nbsp;&nbsp; Tech 2 &nbsp;&nbsp; Tech 3 &nbsp;&nbsp; Tech 4</td></tr>'
+            . '<tr><td>Model No./Style(型体):</td><td>' . $e($info['style']) . '</td><td colspan="2">O Sales Sample (销售样品)</td></tr>'
+            . '<tr><td>Color (颜色):</td><td>' . $e($info['color']) . '</td><td>Received Date(收到日) : ' . $e($info['received']) . '</td><td></td></tr>'
+            . '<tr><td>P.O/Lot No(编号):</td><td>' . $e($info['prodCode']) . '</td><td>Tested Date(测试时间) : ' . $e($d['testedDate'] ?? '') . '</td><td></td></tr>'
+            . '<tr><td>Quantity(数量):</td><td>' . (int) $info['qty'] . '</td><td>Finished Date(完成时间) : ' . $e($d['finishedDate'] ?? '') . '</td><td></td></tr>'
+            . '<tr><td>Send by (提供方):</td><td></td><td>Technician(技术人员) : ' . $e($d['technician'] ?? '') . '</td><td></td></tr></table>'
+            . $body
+            . '<table class="ft"><tr><td>Comments备注 : ' . $e($d['comments'] ?? '') . '</td><td>Reviewed by 检查: <b>' . $e($d['reviewedBy'] ?? '') . '</b><br><br>Approved by核准: <b>' . $e($d['approvedBy'] ?? '') . '</b></td></tr></table>';
+
+        $css = 'body{font-family:Arial,sans-serif;font-size:10px;color:#000;margin:0}.hd{display:flex;align-items:center;justify-content:space-between}.hd .vf{height:62px}.hd .sa{height:58px}.tt{text-align:center}.tt h1{font-size:22px;margin:0}.tt h2{font-size:19px;margin:2px 0 0}'
+            . 'table{border-collapse:collapse;width:100%}.ref{margin-top:6px}.ref td{border:1px solid #000;padding:3px 5px}.frm{width:60%}.info td{border:1px solid #000;padding:5px 5px;font-size:10.5px}'
+            . '.st{background:#ddd9c4;border:1px solid #000;border-top:0;text-align:center;font-weight:700;font-size:12px;padding:6px 3px}.sc td{border:1px solid #000;vertical-align:top;padding:4px 5px}.tc{width:26%;text-align:center}.cd{text-align:center;font-size:9.5px;height:60px}.rs{padding:4px 5px}.rl{padding:4px 0}'
+            . '.ft{margin-top:8px}.ft td{border:1px solid #000;padding:10px 6px;height:44px;vertical-align:top}';
+
+        $pdf = $this->htmlToPdfBytes($html, $css);
+        if ($pdf === null) {
+            return $this->response->setStatusCode(500)->setBody('The PDF could not be created on the server (Chrome or Edge is required).');
+        }
+        $disp = $this->request->getGet('inline') ? 'inline' : 'attachment';
+
+        return $this->response->setHeader('Content-Type', 'application/pdf')
+            ->setHeader('Content-Disposition', $disp . '; filename="' . preg_replace('/[^A-Za-z0-9._-]+/', '_', (string) $ref) . '_Whole-Footwear-Test-Results.pdf"')
+            ->setBody($pdf);
+    }
+
+    /** Body HTML + CSS to an A4 PDF with the installed Chrome / Edge (headless); null when it cannot be made. */
+    private function htmlToPdfBytes(string $body, string $css): ?string
+    {
+        $browser = null;
+        foreach (['C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe', 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe', 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'] as $c) {
+            if (is_file($c)) {
+                $browser = $c;
+                break;
+            }
+        }
+        if ($browser === null) {
+            return null;
+        }
+        $dir = WRITEPATH . 'cache/sheet_pdfs/';
+        if (! is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        $id       = bin2hex(random_bytes(8));
+        $htmlFile = $dir . $id . '.html';
+        $pdfFile  = $dir . $id . '.pdf';
+        file_put_contents($htmlFile, '<!doctype html><html><head><meta charset="utf-8"><style>@page{size:A4 portrait;margin:8mm}' . $css . '</style></head><body>' . $body . '</body></html>');
+        @shell_exec('"' . $browser . '" --headless=new --disable-gpu --disable-extensions --no-first-run --no-pdf-header-footer'
+            . ' --user-data-dir="' . $dir . 'profile" --print-to-pdf="' . $pdfFile . '" "file:///' . str_replace('\\', '/', $htmlFile) . '" 2>&1');
+        @unlink($htmlFile);
+        if (! is_file($pdfFile) || filesize($pdfFile) < 500) {
+            @unlink($pdfFile);
+
+            return null;
+        }
+        $bytes = (string) file_get_contents($pdfFile);
+        @unlink($pdfFile);
+
+        return $bytes;
+    }
+
+    /**
      * POST /dtr/sheet-pdf {html, name}: renders the printable report sheet (the same one shown in the preview,
      * with the VF and SATRA logos) to a PDF with the installed Chrome / Edge in headless mode.
      */
@@ -1042,5 +1707,50 @@ class DtrController extends BaseController
         return $this->response->setHeader('Content-Type', 'application/pdf')
             ->setHeader('Content-Disposition', 'attachment; filename="' . $name . '.pdf"')
             ->setBody($pdf);
+    }
+
+
+    /**
+     * GET /dtr/bonding-access-pdf?id=1099&side=Left
+     * Invokes Microsoft Access COM to generate the official Report - LEFT / Report - RIGHT PDF directly
+     * and streams it to the user.
+     */
+    public function bondingAccessPdf()
+    {
+        $id = (int) ($this->request->getGet('id') ?? 0);
+        $side = ucfirst(strtolower(trim((string) ($this->request->getGet('side') ?? 'Left'))));
+        if (! in_array($side, ['Left', 'Right'], true)) {
+            $side = 'Left';
+        }
+
+        if ($id <= 0) {
+            return $this->response->setStatusCode(400)->setBody('Invalid or missing BondingTestID');
+        }
+
+        $cacheDir = WRITEPATH . 'cache/bonding_pdfs/';
+        if (! is_dir($cacheDir)) {
+            @mkdir($cacheDir, 0777, true);
+        }
+        $pdfPath = $cacheDir . "bonding_report_{$id}_{$side}.pdf";
+
+        // Generate PDF using Access COM script if not cached or empty
+        if (! file_exists($pdfPath) || filesize($pdfPath) === 0) {
+            $psScript    = APPPATH . 'Libraries/export_bonding_pdf.ps1';
+            $psScriptEsc = escapeshellarg($psScript);
+            $sideEsc     = escapeshellarg($side);
+            $pdfPathEsc  = escapeshellarg($pdfPath);
+
+            $cmd = "powershell -ExecutionPolicy Bypass -File {$psScriptEsc} -BondingTestID {$id} -Side {$sideEsc} -OutPdf {$pdfPathEsc}";
+            @shell_exec($cmd);
+        }
+
+        if (file_exists($pdfPath) && filesize($pdfPath) > 0) {
+            return $this->response
+                ->setHeader('Content-Type', 'application/pdf')
+                ->setHeader('Content-Disposition', 'inline; filename="Bonding_Report_' . $id . '_' . $side . '.pdf"')
+                ->setBody(file_get_contents($pdfPath));
+        }
+
+        return $this->response->setStatusCode(500)->setBody('The Access PDF could not be created for report #' . (int) $id . ' (Microsoft Access must be installed on the server and this report must exist in the Access file). Please close this tab and use "Print Report / Save as PDF" instead.');
     }
 }

@@ -62,6 +62,31 @@
     else if (v === 'FAIL' || v === 'ERROR') el.classList.add('dtr-rate-fail');
   };
 
+  // Technician with the equipment code ("DTP-QC-048 - L. Aquidado"): names, machine nos. and older formats are completed from this list
+  const TECHNICIANS = [
+    { no: '048', name: 'L. Aquidado', alias: ['lucila'] },
+    { no: '002', name: 'S. Aquino', alias: ['sharine'] },
+    { no: '001', name: 'L. Tuddao', alias: ['larina'] },
+    { no: '064', name: 'J. Barrera', alias: ['jessa'] },
+    { no: '066', name: 'J. Parrilla', alias: ['joy'] },
+    { no: '067', name: 'R. Cabiga', alias: ['rose'] },
+  ];
+  const withMachineNo = (value) => {
+    const v = String(value ?? '').trim();
+    if (!v || /^DTP-QC-\d{3}\s*-\s*\S/.test(v)) return v;                  // empty or already "DTP-QC-NNN - Name"
+    const key = v.toLowerCase().replace(/[^a-z0-9]/g, '');
+    // equipment code in any spelling (DTP-QC-048, DTP - QC - 48), the old "048 - Name", or just the machine no.
+    const code = /dtp[\s-]*qc[\s-]*0*(\d+)/i.exec(v) || /^0*(\d{1,3})\s*-\s*\S/.exec(v) || /^0*(\d{1,3})$/.exec(v);
+    const hit = TECHNICIANS.find((t) => (code && Number(code[1]) === Number(t.no))
+      || t.name.toLowerCase().replace(/[^a-z0-9]/g, '') === key
+      || t.alias.some((a) => key === a || key.startsWith(a)));
+    return hit ? `DTP-QC-${hit.no} - ${hit.name}` : v;
+  };
+  ['#bf_Technician', '#pf_Technician', '#ws-tech', '#mf_TestedBy'].forEach((sel) => {
+    const el = document.querySelector(sel);
+    if (el) el.addEventListener('change', () => { el.value = withMachineNo(el.value); });
+  });
+
   // =========================================================================
   // 1. TAB SWITCHING
   // =========================================================================
@@ -69,10 +94,535 @@
     $$('[data-dtr-for]').forEach((bar) => {
       bar.hidden = bar.dataset.dtrFor !== tabName;
     });
-    ['tracker', 'material', 'bonding', 'calculators'].forEach((t) => {
+    const navBar = $('#dtr-nav-bar');
+    if (navBar) navBar.hidden = tabName === 'labtracker';
+    ['tracker', 'labtracker', 'wholeshoe', 'material', 'bonding', 'calculators', 'wholeshoetest'].forEach((t) => {
       $(`#dtr-panel-${t}`)?.classList.toggle('hidden', t !== tabName);
     });
+    if (tabName === 'wholeshoetest' && typeof loadWstRecords === 'function') {
+      loadWstRecords(currentWstCategory);
+    }
   };
+
+  // Lab Tracker sub-tabs (containers / materials / bonding shoes / whole shoes)
+  $$('.dtr-subtab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      $$('.dtr-subtab').forEach((b) => b.classList.toggle('active', b === btn));
+      $$('.dtr-subpanel').forEach((p) => p.classList.toggle('hidden', p.dataset.subpanel !== btn.dataset.subtab));
+    });
+  });
+
+  // =========================================================================
+  // Specimen Intake (+ Shoe Collected): Building A (12 lines) / Building B (14 lines)
+  // =========================================================================
+  const intake = { building: 'A' };
+  const intakeEl = { back: $('#dtr-intake-backdrop'), tbody: $('#dtr-intake-tbody'), msg: $('#dtr-intake-msg') };
+
+  const renderIntakeRows = () => {
+    if (!intakeEl.tbody) return;
+    const b = intake.building;
+    let html = '';
+    const lineCount = b === 'B' ? 14 : 12;
+    for (let i = 1; i <= lineCount; i++) {
+      const rightSide = i % 2 === 0;
+      html += `
+        <tr data-line="${b}${i}">
+          <td><label class="dtr-switch"><input type="checkbox" class="ik-active" checked><span></span></label></td>
+          <td><b>${b}${i}</b></td>
+          <td><div class="dtr-side-toggle"><button type="button" data-side="L" class="${rightSide ? '' : 'active'}">L</button><button type="button" data-side="R" class="${rightSide ? 'active' : ''}">R</button></div></td>
+          <td class="ik-labref mono"></td>
+          <td><input type="text" class="ik-code" placeholder="Enter code"></td>
+          <td><input type="text" class="ik-style" placeholder="Enter style"></td>
+          <td><input type="text" class="ik-color" placeholder="Enter colorway"></td>
+          <td><input type="text" class="ik-mtl" placeholder="Enter MTL #"></td>
+          <td><button type="button" class="dtr-btn dtr-btn-outline ik-lib">Library</button></td>
+          <td><b>Bonding</b></td>
+          <td class="muted">&mdash;</td>
+          <td><select class="ik-type"><option>DAILY</option><option>TECH TRIAL</option><option>FIRST CASE</option><option>RETEST</option></select></td>
+          <td><label style="display:flex;align-items:center;gap:6px;font-weight:600"><input type="checkbox" class="ik-lacking"> Lacking</label></td>
+          <td><textarea class="ik-retest-note" rows="2" placeholder="Retest details"></textarea></td>
+        </tr>`;
+    }
+    intakeEl.tbody.innerHTML = html;
+    const label = $('#dtr-intake-batch-label');
+    if (label) label.textContent = `${b} • ${$('#dtr-intake-collection')?.value || ''}`;
+    refreshIntakeLabRefs();
+  };
+  // Lab Ref No = DTP + production date (YYYYMMDD) + SH + building + line number + -side (same rule the server uses on save)
+  const refreshIntakeLabRefs = () => {
+    const d = ($('#dtr-intake-production')?.value || '').replace(/-/g, '');
+    $$('#dtr-intake-tbody tr').forEach((tr) => {
+      const side = tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L';
+      tr.querySelector('.ik-labref').textContent = d ? `DTP${d}SH${tr.dataset.line}-${side}` : '';
+    });
+  };
+
+  const openIntake = () => {
+    intake.building = 'A';
+    $$('#dtr-intake-building button').forEach((x) => x.classList.toggle('active', x.dataset.building === 'A'));
+    if (intakeEl.msg) intakeEl.msg.textContent = '';
+    renderIntakeRows();
+    intakeEl.back?.classList.remove('hidden');
+  };
+  const closeIntake = () => { closeLibrary(); closeRetest(); intakeEl.back?.classList.add('hidden'); };
+
+  $$('[data-add-record="bonding"]').forEach((btn) => btn.addEventListener('click', openIntake));
+  $('#btn-intake-close')?.addEventListener('click', closeIntake);
+  $('#btn-intake-cancel')?.addEventListener('click', closeIntake);
+
+  $$('#dtr-intake-building button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      intake.building = btn.dataset.building;
+      $$('#dtr-intake-building button').forEach((x) => x.classList.toggle('active', x === btn));
+      renderIntakeRows();
+    });
+  });
+
+  const syncIntakeDates = () => {
+    if ($('#dtr-intake-match')?.checked) $('#dtr-intake-production').value = $('#dtr-intake-collection').value;
+    const label = $('#dtr-intake-batch-label');
+    if (label) label.textContent = `${intake.building} • ${$('#dtr-intake-collection').value}`;
+    refreshIntakeLabRefs();
+  };
+  $('#dtr-intake-collection')?.addEventListener('change', syncIntakeDates);
+  $('#dtr-intake-production')?.addEventListener('change', refreshIntakeLabRefs);
+  $('#dtr-intake-match')?.addEventListener('change', () => {
+    $('#dtr-intake-production').disabled = $('#dtr-intake-match').checked;
+    syncIntakeDates();
+  });
+  // L / R toggle changes the -L / -R ending
+  intakeEl.tbody?.addEventListener('click', (e) => { if (e.target.closest('.dtr-side-toggle')) setTimeout(refreshIntakeLabRefs, 0); });
+  if ($('#dtr-intake-production')) $('#dtr-intake-production').disabled = true;
+
+  // Library picker: searches tbl_dtr_shoe_list (Production Code / Style / Colorway / MTL)
+  let libPanel = null;
+  const closeLibrary = () => { libPanel?.remove(); libPanel = null; };
+  const openLibrary = (tr, anchor) => {
+    closeLibrary();
+    const rect = anchor.getBoundingClientRect();
+    libPanel = document.createElement('div');
+    libPanel.className = 'dtr-lib-panel';
+    libPanel.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 540)) + 'px';
+    libPanel.style.top = Math.min(rect.bottom + 4, window.innerHeight - 340) + 'px';
+    libPanel.innerHTML = '<div class="lib-head"><input type="text" placeholder="Search code, style, colorway or MTL # ..."></div><div class="lib-list"></div>';
+    document.body.appendChild(libPanel);
+    const input = libPanel.querySelector('input');
+    const list = libPanel.querySelector('.lib-list');
+    let timer = null;
+    const search = async () => {
+      const q = input.value.trim();
+      list.innerHTML = '<div class="lib-empty">Searching...</div>';
+      try {
+        const res = await apiFetch(`dtr/shoe-search?q=${encodeURIComponent(q)}`);
+        const shoes = (res && res.shoes) || [];
+        if (!shoes.length) { list.innerHTML = '<div class="lib-empty">No shoes found in the library.</div>'; return; }
+        list.innerHTML = shoes.map((s, i) => `<div class="lib-item" data-i="${i}"><b>${escHtml(s.ProdCode || '')}</b><span>${escHtml(s.StyleNo || '')}</span><span>${escHtml(s.Colorway || '')} ${s.MTL ? '- ' + escHtml(s.MTL) : ''}</span></div>`).join('');
+        list.onclick = (ev) => {
+          const item = ev.target.closest('.lib-item');
+          if (!item) return;
+          const s = shoes[Number(item.dataset.i)];
+          tr.querySelector('.ik-code').value = s.ProdCode || '';
+          tr.querySelector('.ik-style').value = s.StyleNo || '';
+          tr.querySelector('.ik-color').value = s.Colorway || '';
+          tr.querySelector('.ik-mtl').value = s.MTL || '';
+          closeLibrary();
+        };
+      } catch (err) {
+        list.innerHTML = '<div class="lib-empty">Library lookup failed.</div>';
+      }
+    };
+    input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(search, 250); });
+    input.value = (tr.querySelector('.ik-code').value || tr.querySelector('.ik-mtl').value || tr.querySelector('.ik-style').value).trim();
+    input.focus();
+    search();
+  };
+  document.addEventListener('mousedown', (e) => { if (libPanel && !libPanel.contains(e.target) && !e.target.closest('.ik-lib')) closeLibrary(); });
+  intakeEl.tbody?.addEventListener('click', async (e) => {
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+    const sideBtn = e.target.closest('.dtr-side-toggle button');
+    if (sideBtn) {
+      tr.querySelectorAll('.dtr-side-toggle button').forEach((x) => x.classList.toggle('active', x === sideBtn));
+      return;
+    }
+    if (e.target.closest('.ik-lib')) {
+      openLibrary(tr, e.target.closest('.ik-lib'));
+    }
+  });
+
+  // Retest picker: lists failed Lab Ref Nos (with analysis / reason) when Test Type = RETEST
+  const retestEl = { back: $('#dtr-retest-backdrop'), tbody: $('#dtr-retest-tbody'), search: $('#dtr-retest-search') };
+  let retestRow = null;
+  const closeRetest = () => {
+    retestEl.back?.classList.add('hidden');
+    if (retestRow && !retestRow.querySelector('.ik-retest-note').value.trim()) retestRow.querySelector('.ik-type').value = 'DAILY';
+    retestRow = null;
+  };
+  const loadRetestList = async () => {
+    const q = retestEl.search.value.trim();
+    retestEl.tbody.innerHTML = '<tr><td colspan="8" class="muted">Loading…</td></tr>';
+    try {
+      const res = await apiFetch(`dtr/retest-list?q=${encodeURIComponent(q)}`);
+      const list = (res && res.rows) || [];
+      if (!list.length) { retestEl.tbody.innerHTML = '<tr><td colspan="8" class="muted">No failed Lab Ref No. is waiting for a retest.</td></tr>'; return; }
+      retestEl.tbody.innerHTML = list.map((r, i) => `
+        <tr>
+          <td class="mono"><b>${escHtml(r.LabRefNo)}</b></td>
+          <td>${escHtml(r.ModelStyle || '')}</td>
+          <td>${escHtml(r.Color || '')}</td>
+          <td><span class="badge b-err">${escHtml(r.Result || '')}</span></td>
+          <td>${escHtml(r.ModeOfFailure || '-')}</td>
+          <td style="max-width:320px">${escHtml(r.Analysis || '-')}</td>
+          <td>${escHtml(String(r.TestedDate || '').slice(0, 10))}</td>
+          <td><button type="button" class="dtr-btn dtr-btn-primary" data-pick="${i}">Select</button></td>
+        </tr>`).join('');
+      retestEl.tbody.onclick = (ev) => {
+        const b = ev.target.closest('[data-pick]');
+        if (!b || !retestRow) return;
+        const r = list[Number(b.dataset.pick)];
+        retestRow.querySelector('.ik-style').value = r.ModelStyle || '';
+        retestRow.querySelector('.ik-color').value = r.Color || '';
+        retestRow.querySelector('.ik-code').value = r.POLotNO || retestRow.querySelector('.ik-code').value;
+        const why = [r.ModeOfFailure, r.Analysis].filter(Boolean).join(' - ');
+        retestRow.querySelector('.ik-retest-note').value = `Retest of ${r.LabRefNo}\nFailed: ${why || 'no analysis recorded'}`;
+        const sideBtn = retestRow.querySelector(`.dtr-side-toggle button[data-side="${/-R$/.test(r.LabRefNo) ? 'R' : 'L'}"]`);
+        sideBtn?.click();
+        retestEl.back.classList.add('hidden');
+        retestRow = null;
+      };
+    } catch (err) {
+      retestEl.tbody.innerHTML = '<tr><td colspan="8" class="muted">Could not load the retest list.</td></tr>';
+    }
+  };
+  let retestTimer = null;
+  retestEl.search?.addEventListener('input', () => { clearTimeout(retestTimer); retestTimer = setTimeout(loadRetestList, 250); });
+  $('#btn-retest-close')?.addEventListener('click', closeRetest);
+  $('#btn-retest-cancel')?.addEventListener('click', closeRetest);
+
+  intakeEl.tbody?.addEventListener('change', (e) => {
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+    if (e.target.classList.contains('ik-active')) tr.classList.toggle('inactive', !e.target.checked);
+    if (e.target.classList.contains('ik-type') && e.target.value === 'RETEST') {
+      retestRow = tr;
+      retestEl.search.value = '';
+      retestEl.back.classList.remove('hidden');
+      loadRetestList();
+    }
+  });
+
+  $('#btn-intake-save')?.addEventListener('click', async () => {
+    const rows = [];
+    $$('#dtr-intake-tbody tr').forEach((tr) => {
+      if (!tr.querySelector('.ik-active').checked) return;
+      const row = {
+        line: tr.dataset.line,
+        side: tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L',
+        code: tr.querySelector('.ik-code').value.trim(),
+        style: tr.querySelector('.ik-style').value.trim(),
+        color: tr.querySelector('.ik-color').value.trim(),
+        mtl: tr.querySelector('.ik-mtl').value.trim(),
+        test: 'Bonding',
+        type: tr.querySelector('.ik-type').value,
+        retestNote: tr.querySelector('.ik-retest-note').value.trim().replace(/\s*\n\s*/g, ' | '),
+        lacking: tr.querySelector('.ik-lacking').checked,
+      };
+      row.retest = row.type === 'RETEST' || row.retestNote !== '';
+      if (row.code || row.style || row.color || row.mtl) rows.push(row);
+    });
+    if (!rows.length) { intakeEl.msg.textContent = 'Fill in at least one active line before saving.'; return; }
+    try {
+      const res = await apiFetch('dtr/intake-save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          building: intake.building,
+          collectionDate: $('#dtr-intake-collection').value,
+          productionDate: $('#dtr-intake-production').value,
+          encodedBy: $('#dtr-intake-encoder').value.trim(),
+          rows,
+        }),
+      });
+      if (res && res.ok) {
+        showToast(`✓ ${res.message}`);
+        closeIntake();
+      } else {
+        intakeEl.msg.textContent = (res && res.message) || 'Save failed.';
+      }
+    } catch (err) {
+      intakeEl.msg.textContent = 'Save failed: ' + err.message;
+    }
+  });
+
+  // =========================================================================
+  // Whole Shoe Intake (+ Whole Shoe Collected): adds shoes to tbl_dtr_shoe_list
+  // =========================================================================
+  const wsEl = { back: $('#dtr-wshoe-backdrop'), tbody: $('#dtr-wshoe-tbody'), msg: $('#dtr-wshoe-msg') };
+  let wsLines = 0;
+  let wsBuilding = 'A';
+  const WS_TESTS = ['Heat Aging', 'Hydrolysis', 'Washing', 'UV', 'Flexing', 'Dip Test'];
+
+  const addWholeShoeRow = () => {
+    wsLines += 1;
+    wsEl.tbody.insertAdjacentHTML('beforeend', `
+      <tr data-line="${wsBuilding}${wsLines}">
+        <td><label class="dtr-switch"><input type="checkbox" class="ik-active" checked><span></span></label></td>
+        <td><b>${wsBuilding}${wsLines}</b></td>
+        <td class="ik-labref mono"></td>
+        <td><input type="text" class="ik-code" placeholder="Enter code"></td>
+        <td><input type="text" class="ik-style" placeholder="Enter style"></td>
+        <td><input type="text" class="ik-color" placeholder="Enter colorway"></td>
+        <td><input type="text" class="ik-mtl" placeholder="Enter MTL #"></td>
+        <td><button type="button" class="dtr-btn dtr-btn-outline ik-lib">Library</button></td>
+        <td><input type="number" class="ik-qty" min="1" step="1" value="1"></td>
+        <td class="ik-tests">${WS_TESTS.map((t) => `<label class="ik-test"><input type="checkbox" value="${t}"><span>${t}</span></label>`).join('')}</td>
+      </tr>`);
+  };
+  const renderWholeShoeRows = () => {
+    wsEl.tbody.innerHTML = '';
+    wsLines = 0;
+    const count = wsBuilding === 'B' ? 14 : 12;
+    for (let i = 0; i < count; i++) addWholeShoeRow();
+    refreshWholeShoeLabRefs();
+  };
+  // Lab Ref No = DTP + production date (YYYYMMDD) + WS + building + line number (the server adds a letter if it is already used)
+  const refreshWholeShoeLabRefs = () => {
+    const d = ($('#dtr-wshoe-production')?.value || '').replace(/-/g, '');
+    $$('#dtr-wshoe-tbody tr').forEach((tr) => {
+      tr.querySelector('.ik-labref').textContent = d ? `DTP${d}WS${tr.dataset.line}` : '';
+    });
+  };
+  const openWholeShoe = () => {
+    wsBuilding = 'A';
+    $$('#dtr-wshoe-building button').forEach((x) => x.classList.toggle('active', x.dataset.building === 'A'));
+    renderWholeShoeRows();
+    wsEl.msg.textContent = '';
+    wsEl.back.classList.remove('hidden');
+  };
+  $$('#dtr-wshoe-building button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      wsBuilding = btn.dataset.building;
+      $$('#dtr-wshoe-building button').forEach((x) => x.classList.toggle('active', x === btn));
+      renderWholeShoeRows();
+    });
+  });
+  const syncWholeShoeDates = () => {
+    const match = $('#dtr-wshoe-match').checked;
+    $('#dtr-wshoe-production').disabled = match;
+    if (match) $('#dtr-wshoe-production').value = $('#dtr-wshoe-date').value;
+    refreshWholeShoeLabRefs();
+  };
+  $('#dtr-wshoe-production')?.addEventListener('change', refreshWholeShoeLabRefs);
+  $('#dtr-wshoe-date')?.addEventListener('change', syncWholeShoeDates);
+  $('#dtr-wshoe-match')?.addEventListener('change', syncWholeShoeDates);
+  const closeWholeShoe = () => { closeLibrary(); wsEl.back?.classList.add('hidden'); };
+
+  $$('[data-add-record="shoes"]').forEach((btn) => btn.addEventListener('click', openWholeShoe));
+  $('#btn-wshoe-close')?.addEventListener('click', closeWholeShoe);
+  $('#btn-wshoe-cancel')?.addEventListener('click', closeWholeShoe);
+  wsEl.tbody?.addEventListener('click', (e) => {
+    const lib = e.target.closest('.ik-lib');
+    if (lib) openLibrary(lib.closest('tr'), lib);
+  });
+  wsEl.tbody?.addEventListener('change', (e) => {
+    if (e.target.classList.contains('ik-active')) e.target.closest('tr').classList.toggle('inactive', !e.target.checked);
+  });
+
+  $('#btn-wshoe-save')?.addEventListener('click', async () => {
+    const rows = [];
+    $$('#dtr-wshoe-tbody tr').forEach((tr) => {
+      if (!tr.querySelector('.ik-active').checked) return;
+      const row = {
+        code: tr.querySelector('.ik-code').value.trim(),
+        style: tr.querySelector('.ik-style').value.trim(),
+        color: tr.querySelector('.ik-color').value.trim(),
+        mtl: tr.querySelector('.ik-mtl').value.trim(),
+        line: tr.dataset.line,
+        qty: Math.max(1, parseInt(tr.querySelector('.ik-qty').value, 10) || 1),
+        tests: [...tr.querySelectorAll('.ik-tests input:checked')].map((c) => c.value),
+      };
+      if (row.code) rows.push(row);
+    });
+    if (!rows.length) { wsEl.msg.textContent = 'Enter a Production Code on at least one active line.'; return; }
+    try {
+      const res = await apiFetch('dtr/wholeshoe-save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          building: wsBuilding,
+          collectionDate: $('#dtr-wshoe-date').value,
+          productionDate: $('#dtr-wshoe-production').value,
+          encodedBy: $('#dtr-wshoe-encoder').value.trim(),
+          rows,
+        }),
+      });
+      if (res && res.ok) {
+        showToast(`✓ ${res.message}`);
+        closeWholeShoe();
+      } else {
+        wsEl.msg.textContent = (res && res.message) || 'Save failed.';
+      }
+    } catch (err) {
+      wsEl.msg.textContent = 'Save failed: ' + err.message;
+    }
+  });
+
+  // =========================================================================
+  // Material Receive (+ Material Receive): IQC Container Receiving Log
+  // =========================================================================
+  const mrBack = $('#dtr-mrec-backdrop');
+  const mrBody = $('#dtr-mrec-tbody');
+  const mrMsg = $('#dtr-mrec-msg');
+  const addMaterialRow = () => {
+    mrBody.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td><select class="mr-type"><option value="">Select type</option>${['LEATHER', 'FABRIC', 'SYNTHETIC', 'ACCESSORIES', 'RUBBER'].map((t) => `<option value="${t}">${t}</option>`).join('')}</select></td>
+        <td><input type="text" class="mr-name" placeholder="Material name"></td>
+        <td><input type="text" class="mr-no" placeholder="Container no."></td>
+        <td><input type="text" class="mr-prod" placeholder="Prod code"></td>
+        <td><input type="text" class="mr-proc" placeholder="Processing no."></td>
+        <td><input type="text" class="mr-qty" placeholder="Qty"></td>
+        <td><input type="date" class="mr-eta"></td>
+      </tr>`);
+  };
+  const openMaterialReceive = () => {
+    mrBody.innerHTML = '';
+    for (let i = 0; i < 10; i++) addMaterialRow();
+    mrMsg.textContent = '';
+    mrBack.classList.remove('hidden');
+  };
+  const closeMaterialReceive = () => mrBack.classList.add('hidden');
+  $$('[data-add-record="containers"]').forEach((b) => b.addEventListener('click', openMaterialReceive));
+  $('#btn-mrec-addrow')?.addEventListener('click', addMaterialRow);
+  $('#btn-mrec-close')?.addEventListener('click', closeMaterialReceive);
+  $('#btn-mrec-cancel')?.addEventListener('click', closeMaterialReceive);
+  $('#btn-mrec-save')?.addEventListener('click', async () => {
+    const v = (tr, c) => tr.querySelector(c).value.trim();
+    const rows = [...mrBody.children].map((tr) => ({
+      type: v(tr, '.mr-type'), name: v(tr, '.mr-name'), no: v(tr, '.mr-no'), prod: v(tr, '.mr-prod'), proc: v(tr, '.mr-proc'),
+      qty: v(tr, '.mr-qty'), eta: v(tr, '.mr-eta'),
+    })).filter((r) => r.no || r.prod || r.proc);
+    if (!rows.length) { mrMsg.textContent = 'Enter a Container No., Prod Code or Processing No. on at least one line.'; return; }
+    try {
+      const res = await apiFetch('dtr/material-receive-save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ arrivedDate: $('#dtr-mrec-arrived').value, receivedDate: $('#dtr-mrec-date').value, encodedBy: $('#dtr-mrec-encoder').value.trim(), rows }),
+      });
+      if (res && res.ok) {
+        showToast(`✓ ${res.message}`);
+        closeMaterialReceive();
+        setTimeout(() => location.reload(), 900);
+      } else {
+        mrMsg.textContent = (res && res.message) || 'Save failed.';
+      }
+    } catch (err) { mrMsg.textContent = 'Save failed: ' + err.message; }
+  });
+
+  // =========================================================================
+  // Whole Shoe report page (Whole Footwear Test Results, Form # Lab VF 002)
+  // =========================================================================
+  const wsPanel = $('#dtr-wholeshoe-panel-guard') || $('#dtr-panel-wholeshoe');
+  if (wsPanel) {
+    const wsSel = $('#ws-labref');
+    const wsMsg = $('#ws-msg');
+    let wsSections = [];
+    const wsVal = (id) => $(id).value.trim();
+
+    const wsRenderSections = (sections, data) => {
+      wsSections = sections;
+      $('#ws-sections').innerHTML = sections.map((s) => `
+        <div class="ws-sec" data-sec="${s.id}">
+          <div class="wsf-st">${escHtml(s.title)}</div>
+          <table class="wsf-t wsf-sc">
+            <tr><td class="wsf-tc"><b>Test conditions测试条件:</b></td><td><b>Result结果 :</b></td></tr>
+            <tr><td class="wsf-cd">${s.cond}</td><td class="wsf-rs">${Object.entries(s.fields).map(([k, label]) =>
+              `<div class="wsf-rl"><b>${escHtml(label)} :</b><input type="text" data-k="${k}" value="${escHtml(((data.results || {})[s.id] || {})[k] || '')}"></div>`).join('')}</td></tr>
+          </table>
+        </div>`).join('');
+    };
+
+    const wsLoad = async (ref) => {
+      wsMsg.textContent = '';
+      if (!ref) return;
+      try {
+        const j = await apiFetch('dtr/wholeshoe-report?lab_ref=' + encodeURIComponent(ref));
+        const i = j.info; const d = j.data || {};
+        $('#ws-style').value = i.style; $('#ws-color').value = i.color; $('#ws-po').value = i.prodCode;
+        $('#ws-qty').value = i.qty; $('#ws-received').value = i.received; $('#ws-tests').value = (i.tests || []).join(', ') || 'All';
+        $('#ws-tested').value = d.testedDate || ''; $('#ws-finished').value = d.finishedDate || '';
+        $('#ws-tech').value = d.technician || ''; $('#ws-comments').value = d.comments || '';
+        $('#ws-reviewed').value = d.reviewedBy || ''; $('#ws-approved').value = d.approvedBy || '';
+        wsRenderSections(j.sections || [], d);
+      } catch (err) { wsMsg.textContent = err.message; }
+    };
+
+    const wsCollect = () => {
+      const results = {};
+      $$('#ws-sections .ws-sec').forEach((sec) => {
+        results[sec.dataset.sec] = {};
+        sec.querySelectorAll('input[data-k]').forEach((inp) => { results[sec.dataset.sec][inp.dataset.k] = inp.value.trim(); });
+      });
+      return {
+        testedDate: wsVal('#ws-tested'), finishedDate: wsVal('#ws-finished'), technician: wsVal('#ws-tech'),
+        reviewedBy: wsVal('#ws-reviewed'), approvedBy: wsVal('#ws-approved'), comments: wsVal('#ws-comments'), results,
+      };
+    };
+
+    const wsSave = async () => {
+      const ref = wsSel.value;
+      if (!ref) { wsMsg.textContent = 'Choose a Lab Ref No first.'; return false; }
+      try {
+        const res = await apiFetch('dtr/wholeshoe-report-save', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lab_ref: ref, data: wsCollect() }),
+        });
+        if (res && res.ok) { wsMsg.textContent = res.message; return true; }
+        wsMsg.textContent = (res && res.message) || 'Save failed.';
+      } catch (err) { wsMsg.textContent = 'Save failed: ' + err.message; }
+      return false;
+    };
+
+    $('#btn-ws-save')?.addEventListener('click', async () => { if (await wsSave()) showToast('✓ ' + wsMsg.textContent); });
+    $('#btn-ws-preview')?.addEventListener('click', async () => {
+      if (!wsSel.value) { wsMsg.textContent = 'Choose a Lab Ref No first.'; return; }
+      if (await wsSave()) window.open(BASE_URL + 'dtr/wholeshoe-report-pdf?inline=1&lab_ref=' + encodeURIComponent(wsSel.value), '_blank');
+    });
+    wsSel.addEventListener('change', () => wsLoad(wsSel.value));
+
+    (async () => {
+      try {
+        const j = await apiFetch('dtr/wholeshoe-labrefs');
+        const rows = j.rows || [];
+        wsRenderSections(j.sections || [], {});   // blank sheet with every test section until a Lab Ref is chosen
+        wsSel.innerHTML = rows.length
+          ? rows.map((r) => `<option value="${escHtml(r.LabRefNo)}">${escHtml(r.LabRefNo)}</option>`).join('')
+          : '<option value="">- no whole shoe intake yet -</option>';
+        const want = new URLSearchParams(location.search).get('labref');
+        if (want && rows.some((r) => r.LabRefNo === want)) wsSel.value = want;
+        if (rows.length) wsLoad(wsSel.value);
+      } catch (err) { wsSel.innerHTML = '<option value="">Could not load</option>'; }
+    })();
+  }
+
+  // Download icon before the LabRefNo (Bonding Shoe Collection): Bonding Test-VF machine-result PDF
+  document.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-dl-labref]');
+    if (!b || b.disabled) return;
+    b.disabled = true;
+    try {
+      const ref = b.dataset.dlLabref;
+      const res = await fetch(BASE_URL + (b.dataset.dlRoute || 'dtr/bonding-machine-pdf') + '?lab_ref=' + encodeURIComponent(ref), { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+      if (!res.ok) throw new Error((await res.text()).slice(0, 160) || 'Download failed');
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = ref.replace(/[^A-Za-z0-9._-]+/g, '_') + '_' + (b.dataset.dlSuffix || 'Bonding-Test-VF') + '.pdf';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    } catch (err) { nxToast('Could not download the report: ' + err.message, 'error', 7000); }
+    b.disabled = false;
+  });
 
   $$('[data-goto-calc]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -891,6 +1441,7 @@
         if (el) el.value = rec[k] ?? '';
       });
       $$('#dtr-bonding-form [name^="cf_"]').forEach((el) => { el.value = (res.customValues || {})[el.name] ?? ''; });
+      if ($('#bf_Technician')) $('#bf_Technician').value = withMachineNo($('#bf_Technician').value);   // add the machine no. to older records
 
       for (let i = 1; i <= 35; i++) {
         if ($(`#bp_UTFpoint${i}`)) $(`#bp_UTFpoint${i}`).value = bp[`UTFpoint${i}`] ?? '';
@@ -964,6 +1515,7 @@
     });
     activeBondingPoints = {};
     if ($('#bf_LabRefNo')) $('#bf_LabRefNo').value = `DTP${today.replace(/-/g, '')}SHB01-R`;
+    if ($('#bf_Factory')) $('#bf_Factory').value = 'DATIAN SUBIC SHOES INC. (DTP)';   // default supplier, same text the saved records use
     const sel = $('#dtr-bonding-record-select');
     if (sel) sel.value = '';
     computeBondingPoints();
@@ -972,6 +1524,7 @@
 
   $('#btn-bond-save')?.addEventListener('click', async () => {
     if (isPull()) return savePull();
+    if ($('#bf_Technician')) $('#bf_Technician').value = withMachineNo($('#bf_Technician').value);
     const fields = {};
     $$('#dtr-bonding-form [name]').forEach((inp) => {
       if (inp.name) fields[inp.name] = inp.value;
@@ -2556,4 +3109,954 @@
       }
     }, 900);
   })();
+
+
+  // =========================================================================
+  // WHOLE SHOE TEST SUITE ENGINE & LIVE TELEMETRY (MARC)
+  // =========================================================================
+  let currentWstCategory = 'bally-flex';
+  let currentWstTestId = null;
+  let activeWstGroup = 'dry';
+
+  // Modal open / close handlers for "Create New Test" popup
+  const openWstNewModal = () => {
+    refreshNextLabref();
+    $('#wst-new-modal-backdrop')?.classList.remove('hidden');
+  };
+
+  const closeWstNewModal = () => {
+    $('#wst-new-modal-backdrop')?.classList.add('hidden');
+  };
+
+  $('#btn-wst-open-new-modal')?.addEventListener('click', openWstNewModal);
+  $('#btn-wst-trigger-new')?.addEventListener('click', openWstNewModal);
+  $('#btn-wst-close-new-modal')?.addEventListener('click', closeWstNewModal);
+  $('#btn-wst-new-cancel')?.addEventListener('click', closeWstNewModal);
+
+  // Fetch list of records from dbnexus
+  const loadWstRecords = async (category = currentWstCategory, q = '') => {
+    const tbody = $('#wst-list-tbody');
+    const cntBadge = $('#wst-record-count');
+    if (!tbody) return;
+
+    tbody.innerHTML = '<tr><td colspan="8" class="muted" style="text-align:center;padding:24px"><svg class="ic animate-spin" aria-hidden="true" style="margin-right:6px"><use href="#i-sync"/></svg> Loading test sessions from dbnexus...</td></tr>';
+    try {
+      const res = await apiFetch(`wst/records?category=${encodeURIComponent(category)}&q=${encodeURIComponent(q)}`);
+      if (!res.success || !res.records || res.records.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="muted" style="text-align:center;padding:28px">No test sessions found for this category. Click "+ NEW TEST" to create one.</td></tr>';
+        if (cntBadge) cntBadge.textContent = 'Showing 0 records';
+        $('#wst-kpi-total') && ($('#wst-kpi-total').textContent = '0');
+        $('#wst-kpi-running') && ($('#wst-kpi-running').textContent = '0');
+        $('#wst-kpi-completed') && ($('#wst-kpi-completed').textContent = '0');
+        $('#wst-kpi-pending') && ($('#wst-kpi-pending').textContent = '0');
+        return;
+      }
+
+      // Compute quick KPIs
+      let runCount = 0;
+      let doneCount = 0;
+      let pendCount = 0;
+      res.records.forEach((r) => {
+        if (r.is_running == 1 || r.status === 'RUNNING') runCount++;
+        else if (r.status === 'COMPLETED') doneCount++;
+        else pendCount++;
+      });
+
+      $('#wst-kpi-total') && ($('#wst-kpi-total').textContent = res.records.length.toLocaleString());
+      $('#wst-kpi-running') && ($('#wst-kpi-running').textContent = runCount.toLocaleString());
+      $('#wst-kpi-completed') && ($('#wst-kpi-completed').textContent = doneCount.toLocaleString());
+      $('#wst-kpi-pending') && ($('#wst-kpi-pending').textContent = pendCount.toLocaleString());
+
+      if (cntBadge) cntBadge.textContent = `Showing ${res.records.length} record(s)`;
+      tbody.innerHTML = res.records.map((r, i) => {
+        const isRun = r.is_running == 1 || r.status === 'RUNNING';
+        const isDone = r.status === 'COMPLETED';
+        const pillClass = isRun ? 'dtr-pill-blue' : (isDone ? 'dtr-pill-pass' : 'dtr-pill-warn');
+        const targetCycles = Number(r.target_cycles || 100000);
+        const currCycles = Number(r.current_cycles || 0);
+        const pct = Math.min(100, Math.round((currCycles / targetCycles) * 100));
+
+        return `
+          <tr class="clickable-row wst-row" data-id="${r.id}" style="cursor:pointer">
+            <td class="mono">${i + 1}</td>
+            <td><b class="mono" style="color:var(--brand,#2563eb);font-size:13.5px">${esc(r.labreference)}</b></td>
+            <td>${esc(r.testdate || '—')}</td>
+            <td><span style="font-weight:600">${esc(r.type || 'Standard')}</span></td>
+            <td><span class="mono sm muted">${esc(r.machine_number || 'MC-01')} &bull; ${esc(r.technician || r.operator || 'QC')}</span></td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="flex:1;background:rgba(255,255,255,0.06);height:6px;border-radius:3px;overflow:hidden;min-width:70px">
+                  <div style="background:${isDone ? '#22c55e' : '#3b82f6'};width:${pct}%;height:100%"></div>
+                </div>
+                <span class="mono sm" style="white-space:nowrap">${currCycles.toLocaleString()} / ${targetCycles.toLocaleString()}</span>
+              </div>
+            </td>
+            <td><span class="dtr-pill ${pillClass}">${esc(r.status || 'PENDING')}</span></td>
+            <td style="text-align:right">
+              <button type="button" class="dtr-btn-xs dtr-btn-primary wst-open-record-btn" data-id="${r.id}" style="box-shadow:0 1px 4px rgba(37,99,235,0.25)">
+                <svg class="ic" aria-hidden="true" style="margin-right:2px"><use href="#i-grid"/></svg> Open Monitor
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      tbody.querySelectorAll('.wst-open-record-btn, .wst-row').forEach((el) => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const tr = el.closest('tr');
+          const id = tr?.dataset.id;
+          if (id) openWstMonitorModal(id);
+        });
+      });
+    } catch (err) {
+      console.error('loadWstRecords failed:', err);
+      tbody.innerHTML = `<tr><td colspan="8" style="color:#ef4444;text-align:center;padding:24px">Failed to load test sessions from dbnexus: ${esc(err.message)}<br><button type="button" class="dtr-btn-xs dtr-btn-outline" id="btn-wst-retry-load" style="margin-top:10px;display:inline-flex;align-items:center;gap:4px"><svg class="ic" aria-hidden="true"><use href="#i-sync"/></svg> Retry</button></td></tr>`;
+      $('#btn-wst-retry-load')?.addEventListener('click', () => loadWstRecords(category, q));
+    }
+  };
+
+  // Search filter
+  let wstSearchDebounce = null;
+  $('#wst-list-search')?.addEventListener('input', (e) => {
+    clearTimeout(wstSearchDebounce);
+    wstSearchDebounce = setTimeout(() => {
+      loadWstRecords(currentWstCategory, e.target.value.trim());
+    }, 250);
+  });
+
+  // Switch category tabs
+  $$('.wst-cat-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      $$('.wst-cat-tab').forEach((t) => t.classList.remove('active'));
+      tab.classList.add('active');
+      currentWstCategory = tab.dataset.wstCat;
+      const title = tab.textContent.trim().toUpperCase();
+      if ($('#wst-modal-title')) $('#wst-modal-title').textContent = `${title} MONITORING`;
+      if ($('#wst-new-cat')) $('#wst-new-cat').value = currentWstCategory;
+      refreshNextLabref();
+      loadWstRecords(currentWstCategory);
+      showToast(`Category: ${tab.textContent.trim()}`);
+    });
+  });
+
+  let wstCatalogData = {};
+
+  const refreshNextLabref = async () => {
+    const typeSelect = $('#wst-new-type');
+    const type = typeSelect?.value || '';
+    const date = $('#wst-new-date')?.value || new Date().toISOString().slice(0, 10);
+    try {
+      const res = await apiFetch(`wst/next-labref?category=${encodeURIComponent(currentWstCategory)}&type=${encodeURIComponent(type)}&date=${encodeURIComponent(date)}`);
+      if (res.success) {
+        wstCatalogData = res.catalog || {};
+
+        if (res.materials && typeSelect) {
+          const currentVal = typeSelect.value;
+          typeSelect.innerHTML = res.materials.map((m) => `<option value="${esc(m)}" ${m === currentVal ? 'selected' : ''}>${esc(m)}</option>`).join('');
+          if (!typeSelect.value && res.materials.length > 0) {
+            typeSelect.value = res.materials[0];
+          }
+        }
+        if (res.labref && $('#wst-new-labref')) {
+          $('#wst-new-labref').value = res.labref;
+        }
+
+        const defaultMachines = {
+          'hydrolysis': 'CH-HYDRO-01',
+          'heat-aging': 'OVEN-01',
+          'washing': 'WASH-MC-01',
+          'uv-light': 'UV-CHAMBER-01',
+          'flexing': 'MC-FLEX-01',
+          'bally-flex': 'MC-FLEX-01',
+        };
+        if ($('#wst-new-machine') && defaultMachines[currentWstCategory]) {
+          $('#wst-new-machine').value = defaultMachines[currentWstCategory];
+        }
+
+        syncNewSampleGroups();
+      }
+    } catch (_) {}
+  };
+
+    // Calculate LMS batch breakdown helper
+    const batchSummary = (count, batchSize) => {
+      const batches = [];
+      for (let remaining = count; remaining > 0; remaining -= batchSize) {
+        batches.push(Math.min(remaining, batchSize));
+      }
+      return batches.map((size, index) => `Batch ${index + 1}: ${size}`).join(' · ');
+    };
+
+    const syncNewSampleGroups = (resetCounts = false) => {
+      const type = $('#wst-new-type')?.value;
+      const mat = wstCatalogData[type];
+      const groups = mat?.groups || {};
+
+      ['dry', 'wet', 'hydro'].forEach((g) => {
+        const check = $(`#wst-check-${g}`);
+        const input = $(`#wst-count-${g}`);
+        const prev = $(`#wst-preview-${g}`);
+        const opt = $(`#wst-option-${g}`);
+        if (!check || !input || !prev || !opt) return;
+
+        const ok = Boolean(groups[g]);
+        check.disabled = !ok;
+        opt.classList.toggle('is-disabled', !ok);
+
+        if (!ok) {
+          check.checked = false;
+          input.disabled = true;
+          prev.textContent = '';
+        } else {
+          if (resetCounts) {
+            check.checked = true;
+            input.value = String(groups[g].count || 4);
+          }
+          input.disabled = !check.checked;
+        }
+
+        const standardCount = Number(groups[g]?.count || 0);
+        const count = check.checked ? Number(input.value) || 0 : 0;
+        if (standardCount && count) {
+          prev.textContent = batchSummary(count, standardCount);
+        } else if (standardCount) {
+          prev.textContent = `Standard batch: ${standardCount}`;
+        } else {
+          prev.textContent = '';
+        }
+      });
+
+      // Keep at least one selected if available
+      const anyChecked = ['dry', 'wet', 'hydro'].some((g) => $(`#wst-check-${g}`)?.checked);
+      if (!anyChecked) {
+        const dry = $('#wst-check-dry');
+        if (dry && !dry.disabled) {
+          dry.checked = true;
+          const dryInput = $('#wst-count-dry');
+          if (dryInput) dryInput.disabled = false;
+        }
+      }
+
+      // Update trigger button label e.g. "4D / 4W"
+      const shortLabels = { dry: 'D', wet: 'W', hydro: 'H' };
+      const selectedParts = [];
+      ['dry', 'wet', 'hydro'].forEach((g) => {
+        const check = $(`#wst-check-${g}`);
+        const input = $(`#wst-count-${g}`);
+        if (check?.checked) {
+          const val = Number(input?.value) || 0;
+          if (val > 0) selectedParts.push(`${val}${shortLabels[g]}`);
+        }
+      });
+      const trigger = $('#wst-new-samples-trigger');
+      if (trigger) {
+        trigger.textContent = selectedParts.length ? selectedParts.join(' / ') : 'Choose sample types and amount';
+      }
+    };
+
+    // Modal open / close handlers for sample modal
+    const openSampleModal = () => {
+      syncNewSampleGroups(false);
+      $('#wst-sample-modal-backdrop')?.classList.remove('hidden');
+    };
+    const closeSampleModal = () => {
+      $('#wst-sample-modal-backdrop')?.classList.add('hidden');
+    };
+
+    $('#wst-new-samples-trigger')?.addEventListener('click', openSampleModal);
+    $('#btn-wst-open-sample-modal')?.addEventListener('click', openSampleModal);
+    $('#btn-wst-close-sample-modal')?.addEventListener('click', closeSampleModal);
+    $('#btn-wst-done-sample-modal')?.addEventListener('click', () => {
+      syncNewSampleGroups(false);
+      closeSampleModal();
+    });
+    $('#wst-sample-modal-backdrop')?.addEventListener('click', (e) => {
+      if (e.target.id === 'wst-sample-modal-backdrop') closeSampleModal();
+    });
+
+    ['dry', 'wet', 'hydro'].forEach((g) => {
+      $(`#wst-check-${g}`)?.addEventListener('change', () => syncNewSampleGroups(false));
+      $(`#wst-count-${g}`)?.addEventListener('input', () => syncNewSampleGroups(false));
+    });
+
+    $('#btn-wst-regen-labref')?.addEventListener('click', refreshNextLabref);
+    $('#wst-new-type')?.addEventListener('change', () => {
+      syncNewSampleGroups(true);
+      refreshNextLabref();
+    });
+    $('#wst-new-date')?.addEventListener('change', refreshNextLabref);
+    $('#wst-new-cat')?.addEventListener('change', (e) => {
+      currentWstCategory = e.target.value;
+      $$('.wst-cat-tab').forEach((t) => t.classList.toggle('active', t.dataset.wstCat === currentWstCategory));
+      refreshNextLabref();
+    });
+
+  // Cached state for active monitor test
+  let currentWstGroups = {};
+  let currentWstState = {};
+
+  // Live monitor modal renderer
+  const openWstMonitorModal = async (testId) => {
+    currentWstTestId = testId;
+    const tableWrap = $('.wst-monitoring-container .dtr-table-wrap');
+    if (tableWrap) {
+      tableWrap.innerHTML = '<div style="text-align:center;padding:24px;color:#64748b"><svg class="ic animate-spin" aria-hidden="true" style="margin-right:6px"><use href="#i-sync"/></svg> Loading checkpoint matrix...</div>';
+    }
+    $('#wst-monitor-modal-backdrop')?.classList.remove('hidden');
+
+    try {
+      const res = await apiFetch(`wst/record/${testId}`);
+      if (!res.success || !res.record) {
+        showToast('Failed to load test record.');
+        return;
+      }
+
+      const r = res.record;
+      currentWstGroups = res.groups || {};
+      currentWstState = res.state || {};
+
+      if ($('#wst-modal-dt-labref')) $('#wst-modal-dt-labref').value = r.labreference;
+      if ($('#wst-card-dt-labref')) $('#wst-card-dt-labref').textContent = r.labreference;
+      if ($('#wst-modal-labref-badge')) $('#wst-modal-labref-badge').textContent = r.labreference;
+      if ($('#wst-modal-dt-date')) $('#wst-modal-dt-date').value = r.testdate || '';
+      if ($('#wst-card-dt-date')) $('#wst-card-dt-date').textContent = r.testdate || '—';
+      const sampleSummary = `${r.samplecountdry}D / ${r.samplecountwet}W / ${r.samplecounthydro}H`;
+      if ($('#wst-modal-dt-samples')) $('#wst-modal-dt-samples').value = sampleSummary;
+      if ($('#wst-card-dt-samples')) $('#wst-card-dt-samples').textContent = sampleSummary;
+      if ($('#wst-modal-dt-type')) $('#wst-modal-dt-type').value = r.type || 'Standard';
+      if ($('#wst-card-dt-type')) $('#wst-card-dt-type').textContent = r.type || 'Standard Whole Shoe Flexing';
+
+      if ($('#wst-view-op')) $('#wst-view-op').textContent = r.technician || r.operator || 'QC Specialist';
+      if ($('#wst-view-mc')) $('#wst-view-mc').textContent = r.machine_number || 'MC-FLEX-01';
+      if ($('#wst-view-temp')) $('#wst-view-temp').innerHTML = `${Number(r.temperature || 23.0).toFixed(1)} &deg;C`;
+      if ($('#wst-view-hum')) $('#wst-view-hum').textContent = `${Number(r.humidity || 50.0).toFixed(1)} %RH`;
+      if ($('#wst-view-note')) $('#wst-view-note').textContent = r.remarks || (r.status === 'COMPLETED' ? 'Session Completed' : 'In Progress');
+
+      const isRun = r.is_running == 1 || r.status === 'RUNNING';
+      const isDone = r.status === 'COMPLETED' || res.isCompleted;
+      
+      // Update dynamic status badge and pulsing dot
+      const badge = $('#wst-modal-status-badge');
+      const badgeText = $('#wst-modal-status-text');
+      const pulseDot = $('#wst-modal-pulse-dot');
+      if (badge) {
+        const statusStr = isDone ? 'COMPLETED' : (isRun ? 'RUNNING' : (r.status || 'PENDING'));
+        if (badgeText) badgeText.textContent = statusStr;
+        else badge.textContent = statusStr;
+        badge.className = `dtr-pill ${isRun ? 'dtr-pill-pass' : (isDone ? 'dtr-pill-blue' : 'dtr-pill-warn')}`;
+      }
+      if (pulseDot) {
+        pulseDot.className = `wst-pulse-dot ${isRun ? 'wst-pulse-dot-green' : (isDone ? 'wst-pulse-dot-blue' : 'wst-pulse-dot-amber')}`;
+      }
+
+      // State-Aware Action Rail: Toggle RUN vs Active indicator vs Disabled on Complete
+      const startBtn = $('#btn-wst-modal-start');
+      const runningBar = $('#wst-running-indicator-bar');
+      const findingsBtn = $('#btn-wst-modal-findings');
+      const stopSampleBtn = $('#btn-wst-modal-stop-sample');
+      const stopTestBtn = $('#btn-wst-modal-stop');
+
+      if (isRun && !isDone) {
+        startBtn?.classList.add('hidden');
+        runningBar?.classList.remove('hidden');
+      } else {
+        startBtn?.classList.remove('hidden');
+        runningBar?.classList.add('hidden');
+        if (startBtn) {
+          startBtn.disabled = isDone;
+          startBtn.style.opacity = isDone ? '0.45' : '1';
+          startBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
+        }
+      }
+
+      // When test is completed (all samples finished or stop test triggered)
+      if (findingsBtn) {
+        findingsBtn.disabled = isDone;
+        findingsBtn.style.opacity = isDone ? '0.45' : '1';
+        findingsBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
+      }
+      if (stopSampleBtn) {
+        stopSampleBtn.disabled = isDone;
+        stopSampleBtn.style.opacity = isDone ? '0.45' : '1';
+        stopSampleBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
+      }
+      if (stopTestBtn) {
+        stopTestBtn.disabled = isDone;
+        stopTestBtn.style.opacity = isDone ? '0.45' : '1';
+        stopTestBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
+      }
+
+      renderMonitoringTable(res.groups, res.state);
+      showToast(`Loaded monitor: ${r.labreference}`);
+    } catch (err) {
+      showToast(`Error opening monitor: ${err.message}`);
+    }
+  };
+
+  const closeWstMonitorModal = () => {
+    $('#wst-monitor-modal-backdrop')?.classList.add('hidden');
+    loadWstRecords(currentWstCategory);
+  };
+
+  $('#btn-wst-open-modal-monitor')?.addEventListener('click', () => {
+    const firstRow = $('#wst-list-tbody tr.wst-row');
+    if (firstRow?.dataset.id) openWstMonitorModal(firstRow.dataset.id);
+    else showToast('Please select a test from the queue first.');
+  });
+  $('#btn-wst-close-monitor-modal')?.addEventListener('click', closeWstMonitorModal);
+  $('#btn-wst-cancel-monitor-modal')?.addEventListener('click', closeWstMonitorModal);
+
+  // Render monitoring cycle grid
+  const renderMonitoringTable = (groups, state) => {
+    const groupTabsContainer = $('.wst-monitoring-container .wst-group-tabs');
+    const tableWrap = $('.wst-monitoring-container .dtr-table-wrap');
+    if (!groupTabsContainer || !tableWrap) return;
+
+    const availableGroups = Object.keys(groups || {});
+    if (availableGroups.length === 0) {
+      tableWrap.innerHTML = '<p class="muted" style="padding:16px;text-align:center">No sample groups configured for this test.</p>';
+      return;
+    }
+
+    if (!availableGroups.includes(activeWstGroup)) {
+      activeWstGroup = availableGroups[0];
+    }
+
+    // Populate the findings modal cycle dropdown with current category's exact cycles
+    const findingsCycleSelect = $('#wst-findings-cycle');
+    if (findingsCycleSelect && groups[activeWstGroup]?.cycles) {
+      findingsCycleSelect.innerHTML = groups[activeWstGroup].cycles.map((c) => {
+        return `<option value="${c}">${Number(c).toLocaleString()} Cycles</option>`;
+      }).join('');
+    }
+
+    groupTabsContainer.innerHTML = availableGroups.map((gKey) => {
+      const g = groups[gKey];
+      return `<button type="button" class="wst-gt-btn wst-modal-gt-btn ${gKey === activeWstGroup ? 'active' : ''}" data-modal-gt="${gKey}">${g.label} (${g.count})</button>`;
+    }).join('');
+
+    groupTabsContainer.querySelectorAll('.wst-modal-gt-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        activeWstGroup = btn.dataset.modalGt;
+        renderMonitoringTable(groups, state);
+      });
+    });
+
+    const curr = groups[activeWstGroup];
+    if (!curr) return;
+
+    const cycles = curr.cycles || [];
+    const count = curr.count || 1;
+    const recordedMap = state?.recorded?.[activeWstGroup] || {};
+    const stoppedMap = state?.stopped?.[activeWstGroup] || {};
+
+    // Determine currently active target cycle (the lowest cycle with unrecorded running samples)
+    let activeCycle = null;
+    let maxRecordedCycle = 0;
+    for (const c of cycles) {
+      let cycleHasUnrecorded = false;
+      for (let s = 1; s <= count; s++) {
+        const isStopped = stoppedMap[s];
+        const isRecorded = (recordedMap[s] || []).includes(c);
+        if (isRecorded && c > maxRecordedCycle) maxRecordedCycle = c;
+        if (!isStopped && !isRecorded) {
+          cycleHasUnrecorded = true;
+        }
+      }
+      if (cycleHasUnrecorded && activeCycle === null) {
+        activeCycle = c;
+      }
+    }
+
+    // Update Overall Test Progress Bar
+    const targetCycleLimit = cycles[cycles.length - 1] || 100000;
+    const pct = Math.min(100, Math.round((maxRecordedCycle / targetCycleLimit) * 100));
+    if ($('#wst-progress-cycles')) $('#wst-progress-cycles').textContent = maxRecordedCycle.toLocaleString();
+    if ($('#wst-progress-target')) $('#wst-progress-target').textContent = targetCycleLimit.toLocaleString();
+    if ($('#wst-progress-pct')) $('#wst-progress-pct').textContent = `${pct}%`;
+    if ($('#wst-progress-bar-fill')) $('#wst-progress-bar-fill').style.width = `${pct}%`;
+
+    let html = `
+      <table class="dtr-table wst-cycle-table">
+        <thead>
+          <tr>
+            <th style="min-width:110px">SPECIMEN</th>
+            ${cycles.map((c) => {
+              const isActive = c === activeCycle;
+              return `<th class="${isActive ? 'wst-cell-active' : ''}" style="${isActive ? 'border-top:2px solid #3b82f6;' : ''}">${Number(c).toLocaleString()}</th>`;
+            }).join('')}
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    const batchSize = Number(curr?.batchSize || curr?.standardCount || 4);
+
+    for (let s = 1; s <= count; s++) {
+      const rec = recordedMap[s] || [];
+      const isStopped = Boolean(stoppedMap[s]);
+      const batch = Math.floor((s - 1) / batchSize) + 1;
+      const isBatchStart = (s - 1) % batchSize === 0;
+      const rowClass = isBatchStart ? 'sample-batch-start' : '';
+      const specimenLabel = isBatchStart
+        ? `${s}-${curr.prefix}<span class="sample-batch-label">Batch ${batch}</span>`
+        : `${s}-${curr.prefix}`;
+
+      html += `<tr class="${rowClass}"><td class="mono sample-label" style="font-weight:700">${specimenLabel}</td>`;
+      cycles.forEach((c) => {
+        const isRecorded = rec.includes(c);
+        let cellClass = 'cycle-cell';
+
+        // LMS Matching Display:
+        // 1. isRecorded -> soft green background (#86efac)
+        // 2. isStopped (and not recorded) -> diagonal grey stripe pattern
+        // 3. pending -> blank cell
+        if (isRecorded) {
+          cellClass += ' is-recorded';
+        } else if (isStopped) {
+          cellClass += ' is-stopped';
+        }
+
+        html += `<td class="${cellClass}" data-group="${activeWstGroup}" data-sample="${s}" data-cycle="${c}"></td>`;
+      });
+      html += `</tr>`;
+    }
+
+    html += `</tbody></table>`;
+    tableWrap.innerHTML = html;
+  };
+
+  // Findings modal controls
+  const openFindingsModal = () => {
+    const curr = currentWstGroups[activeWstGroup];
+    const count = curr?.count || 4;
+    const groupName = curr?.label || `${activeWstGroup.toUpperCase()} SAMPLES`;
+    const cycles = curr?.cycles || [];
+    const recordedMap = currentWstState?.recorded?.[activeWstGroup] || {};
+    const stoppedMap = currentWstState?.stopped?.[activeWstGroup] || {};
+
+    // Auto-detect next cycle (LMS behavior): lowest cycle that has unrecorded running specimens
+    let nextUnrecordedCycle = cycles[cycles.length - 1] || 25000;
+    for (const c of cycles) {
+      let allDone = true;
+      for (let s = 1; s <= count; s++) {
+        const isStopped = Boolean(stoppedMap[s]);
+        const isRecorded = (recordedMap[s] || []).includes(c);
+        if (!isStopped && !isRecorded) {
+          allDone = false;
+          break;
+        }
+      }
+      if (!allDone) {
+        nextUnrecordedCycle = c;
+        break;
+      }
+    }
+
+    if ($('#wst-findings-cycle')) {
+      $('#wst-findings-cycle').value = nextUnrecordedCycle;
+    }
+
+    // Set remark placeholder and text based on category mode (LMS parity)
+    const isFlexCategory = ['bally-flex', 'ross-flex'].includes(currentWstCategory);
+    if ($('#wst-findings-text')) {
+      if (isFlexCategory) {
+        $('#wst-findings-text').value = 'NO DAMAGE OF COATING';
+        $('#wst-findings-text').placeholder = 'No cracking, peeling, or delamination observed.';
+      } else {
+        $('#wst-findings-text').value = 'No noticeable abrasion or surface damage.';
+        $('#wst-findings-text').placeholder = 'Enter inspection details (e.g. slight color transfer, minor wear, acceptable)...';
+      }
+    }
+
+    if ($('#wst-findings-group-display')) $('#wst-findings-group-display').value = groupName;
+    if ($('#wst-findings-start')) {
+      $('#wst-findings-start').value = 1;
+      $('#wst-findings-start').max = count;
+    }
+    if ($('#wst-findings-end')) {
+      $('#wst-findings-end').value = count;
+      $('#wst-findings-end').max = count;
+    }
+
+    // Render batch & all preset range buttons (LMS Parity)
+    const presetsContainer = $('#wst-findings-presets');
+    if (presetsContainer) {
+      const batchSize = Number(curr?.batchSize || curr?.standardCount || 4);
+      let presetBtns = '';
+      for (let bStart = 1, bNum = 1; bStart <= count; bStart += batchSize, bNum++) {
+        const bEnd = Math.min(count, bStart + batchSize - 1);
+        presetBtns += `<button type="button" class="lf-range-preset" data-first="${bStart}" data-last="${bEnd}">Batch ${bNum} (${bStart}–${bEnd})</button>`;
+      }
+      presetBtns += `<button type="button" class="lf-range-preset is-active" data-first="1" data-last="${count}">All (1–${count})</button>`;
+      presetsContainer.innerHTML = presetBtns;
+
+      presetsContainer.querySelectorAll('.lf-range-preset').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          if ($('#wst-findings-start')) $('#wst-findings-start').value = btn.dataset.first;
+          if ($('#wst-findings-end')) $('#wst-findings-end').value = btn.dataset.last;
+          presetsContainer.querySelectorAll('.lf-range-preset').forEach((p) => p.classList.toggle('is-active', p === btn));
+          updateFindingsRangeLabel();
+        });
+      });
+    }
+
+    updateFindingsRangeLabel();
+    $('#wst-findings-modal-backdrop')?.classList.remove('hidden');
+  };
+
+  const closeFindingsModal = () => {
+    $('#wst-findings-modal-backdrop')?.classList.add('hidden');
+  };
+
+  const updateFindingsRangeLabel = () => {
+    const s = parseInt($('#wst-findings-start')?.value || '1', 10);
+    const e = parseInt($('#wst-findings-end')?.value || '1', 10);
+    const minS = Math.min(s, e);
+    const maxS = Math.max(s, e);
+    const stoppedMap = currentWstState?.stopped?.[activeWstGroup] || {};
+
+    let totalSelected = 0;
+    let runningSelected = 0;
+    let stoppedSelected = 0;
+
+    for (let i = minS; i <= maxS; i++) {
+      totalSelected++;
+      if (stoppedMap[i]) {
+        stoppedSelected++;
+      } else {
+        runningSelected++;
+      }
+    }
+
+    if ($('#wst-findings-range-info')) {
+      const parts = [`${runningSelected} running specimen(s)`];
+      if (stoppedSelected > 0) parts.push(`${stoppedSelected} stopped (will be skipped)`);
+      $('#wst-findings-range-info').textContent = parts.join(' · ');
+    }
+  };
+
+  $('#wst-findings-start')?.addEventListener('input', updateFindingsRangeLabel);
+  $('#wst-findings-end')?.addEventListener('input', updateFindingsRangeLabel);
+
+  $('#btn-wst-action-monitored')?.addEventListener('click', openFindingsModal);
+  $('#btn-wst-modal-findings')?.addEventListener('click', openFindingsModal);
+  $('#btn-wst-close-findings-modal')?.addEventListener('click', closeFindingsModal);
+  $('#btn-wst-cancel-findings')?.addEventListener('click', closeFindingsModal);
+
+  $('#btn-wst-save-findings')?.addEventListener('click', async () => {
+    if (!currentWstTestId) {
+      showToast('No active test selected.');
+      return;
+    }
+    const cycle = parseInt($('#wst-findings-cycle')?.value || '25000', 10);
+    const findings = $('#wst-findings-text')?.value.trim() || 'Passed inspection';
+    const pass = $('#wst-findings-pass')?.checked;
+
+    const startNum = parseInt($('#wst-findings-start')?.value || '1', 10);
+    const endNum = parseInt($('#wst-findings-end')?.value || '1', 10);
+    const stoppedMap = currentWstState?.stopped?.[activeWstGroup] || {};
+    const sampleArr = [];
+    for (let i = Math.min(startNum, endNum); i <= Math.max(startNum, endNum); i++) {
+      if (!stoppedMap[i]) {
+        sampleArr.push(i);
+      }
+    }
+
+    if (sampleArr.length === 0) {
+      showToast('All specimens in the selected range are stopped. No specimens to record.');
+      return;
+    }
+
+    try {
+      const res = await apiFetch(`wst/log-findings/${currentWstTestId}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          cycle,
+          group: activeWstGroup,
+          findings,
+          pass,
+          samples: sampleArr,
+        }),
+      });
+
+      if (res.success) {
+        closeFindingsModal();
+        openWstMonitorModal(currentWstTestId);
+        showToast(res.message || 'Saved checkpoint findings.', 'success');
+      } else {
+        showToast(res.message || 'Failed to save findings.', 'error');
+      }
+    } catch (err) {
+      showToast(`Error: ${err.message}`, 'error');
+    }
+  });
+
+  // =========================================================================
+  // STOP SAMPLE MODAL CONTROLS (LMS PARITY)
+  // =========================================================================
+  const openStopSampleModal = () => {
+    const list = $('#wst-stop-sample-list');
+    if (!list) return;
+
+    const curr = currentWstGroups[activeWstGroup];
+    const count = curr?.count || 4;
+    const stoppedMap = currentWstState?.stopped?.[activeWstGroup] || {};
+    const recordedMap = currentWstState?.recorded?.[activeWstGroup] || {};
+    const cycles = curr?.cycles || [];
+    const lastCycle = cycles.length > 0 ? cycles[cycles.length - 1] : 0;
+
+    let itemsHtml = '';
+    let runningCount = 0;
+
+    for (let s = 1; s <= count; s++) {
+      const isStopped = Boolean(stoppedMap[s]);
+      const isComplete = lastCycle > 0 && (recordedMap[s] || []).includes(lastCycle);
+      const isFinished = isStopped || isComplete;
+      if (!isFinished) runningCount++;
+
+      itemsHtml += `
+        <label style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:8px;background:rgba(255,255,255,${isFinished ? '0.01' : '0.04'});border:1px solid rgba(148,163,184,${isFinished ? '0.08' : '0.2'});cursor:${isFinished ? 'default' : 'pointer'};opacity:${isFinished ? '0.5' : '1'}">
+          <div style="display:flex;align-items:center;gap:10px">
+            <input type="checkbox" class="wst-stop-sample-chk" value="${s}" ${isStopped ? 'checked disabled' : (isComplete ? 'disabled' : '')} style="width:16px;height:16px">
+            <span class="mono" style="font-weight:700;font-size:13.5px">${s}-${curr.prefix}</span>
+          </div>
+          <span class="sm mono" style="color:${isStopped ? '#ef4444' : (isComplete ? '#22c55e' : '#38bdf8')}">
+            ${isStopped ? 'STOPPED' : (isComplete ? 'COMPLETED' : 'RUNNING')}
+          </span>
+        </label>
+      `;
+    }
+
+    if (runningCount === 0) {
+      itemsHtml += `<p class="muted" style="text-align:center;padding:16px">No running specimens remaining for this group.</p>`;
+    }
+
+    list.innerHTML = itemsHtml;
+    $('#wst-stop-sample-modal-backdrop')?.classList.remove('hidden');
+  };
+
+  const closeStopSampleModal = () => {
+    $('#wst-stop-sample-modal-backdrop')?.classList.add('hidden');
+  };
+
+  $('#btn-wst-modal-stop-sample')?.addEventListener('click', openStopSampleModal);
+  $('#btn-wst-close-stop-sample')?.addEventListener('click', closeStopSampleModal);
+  $('#btn-wst-cancel-stop-sample')?.addEventListener('click', closeStopSampleModal);
+
+  $('#btn-wst-confirm-stop-sample')?.addEventListener('click', async () => {
+    if (!currentWstTestId) return;
+
+    const checked = $$('#wst-stop-sample-list .wst-stop-sample-chk:checked:not(:disabled)');
+    const samplesToStop = Array.from(checked).map((c) => ({
+      group: activeWstGroup,
+      sample: parseInt(c.value, 10),
+    }));
+
+    if (samplesToStop.length === 0) {
+      showToast('Please select at least one running sample to stop.');
+      return;
+    }
+
+    try {
+      const res = await apiFetch(`wst/stop-sample/${currentWstTestId}`, {
+        method: 'POST',
+        body: JSON.stringify({ samples: samplesToStop }),
+      });
+
+      if (res.success) {
+        closeStopSampleModal();
+        openWstMonitorModal(currentWstTestId);
+        showToast(res.message || 'Specimen stopped successfully.');
+      } else {
+        showToast(res.message || 'Failed to stop specimen.');
+      }
+    } catch (err) {
+      showToast(`Error: ${err.message}`);
+    }
+  });
+
+  // Modal actions (Start / Stop)
+  $('#btn-wst-modal-start')?.addEventListener('click', async () => {
+    if (!currentWstTestId) return;
+    try {
+      const res = await apiFetch(`wst/start/${currentWstTestId}`, { method: 'POST' });
+      if (res.success) {
+        openWstMonitorModal(currentWstTestId);
+        showToast('Started test session.');
+      }
+    } catch (err) {
+      showToast(`Error: ${err.message}`);
+    }
+  });
+
+  // Dedicated Stop Entire Test Modal Handlers
+  const openStopTestModal = () => {
+    $('#wst-stop-test-modal-backdrop')?.classList.remove('hidden');
+  };
+  const closeStopTestModal = () => {
+    $('#wst-stop-test-modal-backdrop')?.classList.add('hidden');
+  };
+
+  $('#btn-wst-modal-stop')?.addEventListener('click', openStopTestModal);
+  $('#btn-wst-close-stop-test')?.addEventListener('click', closeStopTestModal);
+  $('#btn-wst-cancel-stop-test')?.addEventListener('click', closeStopTestModal);
+
+  $('#btn-wst-confirm-stop-test')?.addEventListener('click', async () => {
+    if (!currentWstTestId) return;
+    const confirmBtn = $('#btn-wst-confirm-stop-test');
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Stopping...';
+    }
+
+    try {
+      const res = await apiFetch(`wst/stop/${currentWstTestId}`, { method: 'POST' });
+      if (res.success) {
+        closeStopTestModal();
+        openWstMonitorModal(currentWstTestId);
+        showToast(res.message || 'Entire test session stopped and marked COMPLETED.');
+      } else {
+        showToast(res.message || 'Failed to stop test session.');
+      }
+    } catch (err) {
+      showToast(`Error: ${err.message}`);
+    } finally {
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-close"/></svg> Stop Entire Test';
+      }
+    }
+  });
+
+  // Create new test submit handler
+  $('#btn-wst-create-submit')?.addEventListener('click', async () => {
+    const category = $('#wst-new-cat')?.value || currentWstCategory;
+    const type = $('#wst-new-type')?.value || 'Standard Flexing';
+    const date = $('#wst-new-date')?.value || new Date().toISOString().slice(0, 10);
+    const labreference = $('#wst-new-labref')?.value.trim();
+    const machine = $('#wst-new-machine')?.value.trim() || 'MC-FLEX-01';
+    const dry = $('#wst-check-dry')?.checked ? parseInt($('#wst-count-dry')?.value || '0', 10) : 0;
+    const wet = $('#wst-check-wet')?.checked ? parseInt($('#wst-count-wet')?.value || '0', 10) : 0;
+    const hydro = $('#wst-check-hydro')?.checked ? parseInt($('#wst-count-hydro')?.value || '0', 10) : 0;
+
+    try {
+      const res = await apiFetch('wst/create', {
+        method: 'POST',
+        body: JSON.stringify({
+          category,
+          type,
+          date,
+          labreference,
+          machine_number: machine,
+          dry,
+          wet,
+          hydro,
+          target_cycles: 100000,
+        }),
+      });
+
+      if (res.success && res.id) {
+        closeWstNewModal();
+        loadWstRecords(currentWstCategory);
+        openWstMonitorModal(res.id);
+        showToast(res.message || 'Created new Whole Shoe test session!');
+      } else {
+        showToast(res.message || 'Could not create test session.');
+      }
+    } catch (err) {
+      showToast(`Creation error: ${err.message}`);
+    }
+  });
+
+  $('#btn-wst-refresh-queue')?.addEventListener('click', () => {
+    loadWstRecords(currentWstCategory);
+    showToast('Refreshed test queue.');
+  });
+
+  // Print summary button inside modal
+  $('#btn-wst-modal-print')?.addEventListener('click', () => {
+    window.print();
+  });
+
+  // Background Live State Polling (Matches LMS 8s sync)
+  let wstSyncInterval = null;
+  const startWstLivePolling = () => {
+    if (wstSyncInterval) clearInterval(wstSyncInterval);
+    wstSyncInterval = setInterval(async () => {
+      // Only poll when modal is visible and test is active
+      const modal = $('#wst-monitor-modal-backdrop');
+      if (!modal || modal.classList.contains('hidden') || !currentWstTestId) return;
+
+      try {
+        const res = await apiFetch(`wst/state/${currentWstTestId}`);
+        if (res.success) {
+          currentWstState.recorded = res.recorded || {};
+          currentWstState.stopped = res.stopped || {};
+
+          const isRun = res.is_running === 1;
+          const isDone = res.completed || res.status === 'COMPLETED';
+          
+          const badge = $('#wst-modal-status-badge');
+          const badgeText = $('#wst-modal-status-text');
+          const pulseDot = $('#wst-modal-pulse-dot');
+          if (badge) {
+            const statusStr = isDone ? 'COMPLETED' : (isRun ? 'RUNNING' : (res.status || 'PENDING'));
+            if (badgeText) badgeText.textContent = statusStr;
+            else badge.textContent = statusStr;
+            badge.className = `dtr-pill ${isRun ? 'dtr-pill-pass' : (isDone ? 'dtr-pill-blue' : 'dtr-pill-warn')}`;
+          }
+          if (pulseDot) {
+            pulseDot.className = `wst-pulse-dot ${isRun ? 'wst-pulse-dot-green' : (isDone ? 'wst-pulse-dot-blue' : 'wst-pulse-dot-amber')}`;
+          }
+
+          const startBtn = $('#btn-wst-modal-start');
+          const runningBar = $('#wst-running-indicator-bar');
+          const findingsBtn = $('#btn-wst-modal-findings');
+          const stopSampleBtn = $('#btn-wst-modal-stop-sample');
+          const stopTestBtn = $('#btn-wst-modal-stop');
+
+          if (isRun && !isDone) {
+            startBtn?.classList.add('hidden');
+            runningBar?.classList.remove('hidden');
+          } else {
+            startBtn?.classList.remove('hidden');
+            runningBar?.classList.add('hidden');
+            if (startBtn) {
+              startBtn.disabled = isDone;
+              startBtn.style.opacity = isDone ? '0.45' : '1';
+              startBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
+            }
+          }
+
+          if (findingsBtn) {
+            findingsBtn.disabled = isDone;
+            findingsBtn.style.opacity = isDone ? '0.45' : '1';
+            findingsBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
+          }
+          if (stopSampleBtn) {
+            stopSampleBtn.disabled = isDone;
+            stopSampleBtn.style.opacity = isDone ? '0.45' : '1';
+            stopSampleBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
+          }
+          if (stopTestBtn) {
+            stopTestBtn.disabled = isDone;
+            stopTestBtn.style.opacity = isDone ? '0.45' : '1';
+            stopTestBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
+          }
+
+          renderMonitoringTable(currentWstGroups, currentWstState);
+        }
+      } catch (_) {}
+    }, 8000);
+  };
+  startWstLivePolling();
+
+  // Trigger initial list load if active tab is Whole Shoe Test
+  loadWstRecords(currentWstCategory);
+  $('[data-dtr-tab="wholeshoetest"]')?.addEventListener('click', () => {
+    loadWstRecords(currentWstCategory);
+  });
+
 })();

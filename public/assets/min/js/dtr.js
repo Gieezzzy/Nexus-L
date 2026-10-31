@@ -1,81 +1,1759 @@
-(()=>{"use strict";var ua,va,ma,ha,ba,_a,ga,Ta,ya,Sa,$a,Fa,La,Ca,wa,Ra,xa,Aa,Ea,Ma,Oa,ka,Pa,Na,Da,Wa,Ia,Ua,Ha,Va,Ba,ja,Ga,za,qa,Qa,Ja,Ka,Xa,Ya,Za,ts,es,as;const t=(e,a=document)=>a.querySelector(e),k=(e,a=document)=>[...a.querySelectorAll(e)],Ye=t('meta[name="base-url"]'),st=Ye?Ye.content.replace(/\/+$/,"")+"/":location.origin+"/";let $t="fabric",Pe={},h={};const I=(e,a=!1)=>{const s=t("#dtr-toast");s&&(s.textContent=e,s.style.background=a?"#dc2626":"#0f172a",s.classList.remove("hidden"),clearTimeout(s._timer),s._timer=setTimeout(()=>s.classList.add("hidden"),4200))},c=e=>String(e??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"),J=async(e,a={})=>(await fetch(st+e.replace(/^\/+/,""),a)).json(),R=(e,a=2)=>{const s=Number(e);if(!Number.isFinite(s))return 0;const l=Math.pow(10,a);return Math.round((s+Number.EPSILON)*l)/l},j=e=>{if(!e)return;const a=String(e.value||"").trim().toUpperCase();e.classList.remove("dtr-rate-pass","dtr-rate-warn","dtr-rate-fail"),a==="PASS"?e.classList.add("dtr-rate-pass"):a==="TOLERABLE"?e.classList.add("dtr-rate-warn"):(a==="FAIL"||a==="ERROR")&&e.classList.add("dtr-rate-fail")},gt=e=>{k("[data-dtr-for]").forEach(a=>{a.hidden=a.dataset.dtrFor!==e}),["tracker","material","bonding","calculators"].forEach(a=>{var s;(s=t(`#dtr-panel-${a}`))==null||s.classList.toggle("hidden",a!==e)})};k("[data-goto-calc]").forEach(e=>{e.addEventListener("click",()=>{gt("calculators");const a=t(`#calc-card-${e.dataset.gotoCalc}`);a&&a.scrollIntoView({behavior:"smooth",block:"center"})})});const ls=async(e="all",a="")=>{const s=t("#dtr-tracker-tbody");try{s&&window.nxState&&nxState(s,"loading","Loading lab reports…",16);const l=await J(`dtr/records?slug=${encodeURIComponent(e)}&q=${encodeURIComponent(a)}`);if(!s||!l.rows)return;if(!l.rows.length){nxState(s,"empty","No lab reports match your search. Clear the filters or try another Lab Ref No.",16);return}s.innerHTML=l.rows.map(o=>{const n=String(o.overall_result||"PASS").toUpperCase(),r=n==="FAIL"?"b-err":n==="TOLERABLE"?"b-warn":"b-ok";return`
+/**
+ * NEXUS-L QC Lab Digital Test Reports (#Digital Test Report & Bonding LIS System)
+ * Preserves 100% of Access VBA & VB.NET computations automatically:
+ * - UpdateMinMax (Thickness 1..6 -> TMin, TMax, TAve = Round(Sum/6, 2))
+ * - ApplyStandardValuesSmart (Queries tbl_dtr_standards by MaterialType & TAve)
+ * - UpdateDirectionalAverage (Tensile, Elongation, TrouserTear, StitchTear, MullenBurst, DieC)
+ * - Evaluate6PointRating (Wool, Acrylic, Polyester, Nylon, Cotton, Acetate vs CTP/CTW)
+ * - EvaluateRatings (Priority: FAIL > TOLERABLE > PASS > UNRATED)
+ * - Bonding Spot & Tolerance Rules (TODDLER 14, KIDS 16, CHILDREN 24, ADULT 35 spots)
+ * - All 6 Calculators (Weight, Specific Gravity, Compression Set, DIN Abrasion, Ross Flex, Shrinkage)
+ * - Auto-Lookups (MaterialCode -> tbl_dtr_material_list, POLotNo -> tbl_dtr_shoe_list, MTL -> tbl_dtr_dsr)
+ * - Machine Output Auto-Loader (\\192.168.32.45\OUTDATA\ read-only copy & parse)
+ */
+(() => {
+  'use strict';
+
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+  const baseMeta = $('meta[name="base-url"]');
+  const BASE_URL = baseMeta ? baseMeta.content.replace(/\/+$/, '') + '/' : location.origin + '/';
+
+  let activeSlug = 'fabric';
+  let activeRecord = {};
+  let activeBondingPoints = {};
+
+  const showToast = (msg, isErr = false) => {
+    const t = $('#dtr-toast');
+    if (!t) return;
+    t.textContent = msg;
+    t.style.background = isErr ? '#dc2626' : '#0f172a';
+    t.classList.remove('hidden');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => t.classList.add('hidden'), 4200);
+  };
+
+  const escHtml = (str) =>
+    String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+  const apiFetch = async (path, opts = {}) => {
+    const res = await fetch(BASE_URL + path.replace(/^\/+/, ''), opts);
+    return res.json();
+  };
+
+  const roundTo = (num, dec = 2) => {
+    const n = Number(num);
+    if (!Number.isFinite(n)) return 0;
+    const f = Math.pow(10, dec);
+    return Math.round((n + Number.EPSILON) * f) / f;
+  };
+
+  const styleRatingInput = (el) => {
+    if (!el) return;
+    const v = String(el.value || '').trim().toUpperCase();
+    el.classList.remove('dtr-rate-pass', 'dtr-rate-warn', 'dtr-rate-fail');
+    if (v === 'PASS') el.classList.add('dtr-rate-pass');
+    else if (v === 'TOLERABLE') el.classList.add('dtr-rate-warn');
+    else if (v === 'FAIL' || v === 'ERROR') el.classList.add('dtr-rate-fail');
+  };
+
+  // Technician with the equipment code ("DTP-QC-048 - L. Aquidado"): names, machine nos. and older formats are completed from this list
+  const TECHNICIANS = [
+    { no: '048', name: 'L. Aquidado', alias: ['lucila'] },
+    { no: '002', name: 'S. Aquino', alias: ['sharine'] },
+    { no: '001', name: 'L. Tuddao', alias: ['larina'] },
+    { no: '064', name: 'J. Barrera', alias: ['jessa'] },
+    { no: '066', name: 'J. Parrilla', alias: ['joy'] },
+    { no: '067', name: 'R. Cabiga', alias: ['rose'] },
+  ];
+  const withMachineNo = (value) => {
+    const v = String(value ?? '').trim();
+    if (!v || /^DTP-QC-\d{3}\s*-\s*\S/.test(v)) return v;                  // empty or already "DTP-QC-NNN - Name"
+    const key = v.toLowerCase().replace(/[^a-z0-9]/g, '');
+    // equipment code in any spelling (DTP-QC-048, DTP - QC - 48), the old "048 - Name", or just the machine no.
+    const code = /dtp[\s-]*qc[\s-]*0*(\d+)/i.exec(v) || /^0*(\d{1,3})\s*-\s*\S/.exec(v) || /^0*(\d{1,3})$/.exec(v);
+    const hit = TECHNICIANS.find((t) => (code && Number(code[1]) === Number(t.no))
+      || t.name.toLowerCase().replace(/[^a-z0-9]/g, '') === key
+      || t.alias.some((a) => key === a || key.startsWith(a)));
+    return hit ? `DTP-QC-${hit.no} - ${hit.name}` : v;
+  };
+  ['#bf_Technician', '#pf_Technician', '#ws-tech', '#mf_TestedBy'].forEach((sel) => {
+    const el = document.querySelector(sel);
+    if (el) el.addEventListener('change', () => { el.value = withMachineNo(el.value); });
+  });
+
+  // =========================================================================
+  // 1. TAB SWITCHING
+  // =========================================================================
+  const switchTab = (tabName) => {
+    $$('[data-dtr-for]').forEach((bar) => {
+      bar.hidden = bar.dataset.dtrFor !== tabName;
+    });
+    const navBar = $('#dtr-nav-bar');
+    if (navBar) navBar.hidden = tabName === 'labtracker';
+    ['tracker', 'labtracker', 'wholeshoe', 'material', 'bonding', 'calculators', 'wholeshoetest'].forEach((t) => {
+      $(`#dtr-panel-${t}`)?.classList.toggle('hidden', t !== tabName);
+    });
+    if (tabName === 'wholeshoetest' && typeof loadWstRecords === 'function') {
+      loadWstRecords(currentWstCategory);
+    }
+  };
+
+  // Lab Tracker sub-tabs (containers / materials / bonding shoes / whole shoes)
+  $$('.dtr-subtab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      $$('.dtr-subtab').forEach((b) => b.classList.toggle('active', b === btn));
+      $$('.dtr-subpanel').forEach((p) => p.classList.toggle('hidden', p.dataset.subpanel !== btn.dataset.subtab));
+    });
+  });
+
+  // =========================================================================
+  // Specimen Intake (+ Shoe Collected): Building A (12 lines) / Building B (14 lines)
+  // =========================================================================
+  const intake = { building: 'A' };
+  const intakeEl = { back: $('#dtr-intake-backdrop'), tbody: $('#dtr-intake-tbody'), msg: $('#dtr-intake-msg') };
+
+  const renderIntakeRows = () => {
+    if (!intakeEl.tbody) return;
+    const b = intake.building;
+    let html = '';
+    const lineCount = b === 'B' ? 14 : 12;
+    for (let i = 1; i <= lineCount; i++) {
+      const rightSide = i % 2 === 0;
+      html += `
+        <tr data-line="${b}${i}">
+          <td><label class="dtr-switch"><input type="checkbox" class="ik-active" checked><span></span></label></td>
+          <td><b>${b}${i}</b></td>
+          <td><div class="dtr-side-toggle"><button type="button" data-side="L" class="${rightSide ? '' : 'active'}">L</button><button type="button" data-side="R" class="${rightSide ? 'active' : ''}">R</button></div></td>
+          <td class="ik-labref mono"></td>
+          <td><input type="text" class="ik-code" placeholder="Enter code"></td>
+          <td><input type="text" class="ik-style" placeholder="Enter style"></td>
+          <td><input type="text" class="ik-color" placeholder="Enter colorway"></td>
+          <td><input type="text" class="ik-mtl" placeholder="Enter MTL #"></td>
+          <td><button type="button" class="dtr-btn dtr-btn-outline ik-lib">Library</button></td>
+          <td><b>Bonding</b></td>
+          <td class="muted">&mdash;</td>
+          <td><select class="ik-type"><option>DAILY</option><option>TECH TRIAL</option><option>FIRST CASE</option><option>RETEST</option></select></td>
+          <td><label style="display:flex;align-items:center;gap:6px;font-weight:600"><input type="checkbox" class="ik-lacking"> Lacking</label></td>
+          <td><textarea class="ik-retest-note" rows="2" placeholder="Retest details"></textarea></td>
+        </tr>`;
+    }
+    intakeEl.tbody.innerHTML = html;
+    const label = $('#dtr-intake-batch-label');
+    if (label) label.textContent = `${b} • ${$('#dtr-intake-collection')?.value || ''}`;
+    refreshIntakeLabRefs();
+  };
+  // Lab Ref No = DTP + production date (YYYYMMDD) + SH + building + line number + -side (same rule the server uses on save)
+  const refreshIntakeLabRefs = () => {
+    const d = ($('#dtr-intake-production')?.value || '').replace(/-/g, '');
+    $$('#dtr-intake-tbody tr').forEach((tr) => {
+      const side = tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L';
+      tr.querySelector('.ik-labref').textContent = d ? `DTP${d}SH${tr.dataset.line}-${side}` : '';
+    });
+  };
+
+  const openIntake = () => {
+    intake.building = 'A';
+    $$('#dtr-intake-building button').forEach((x) => x.classList.toggle('active', x.dataset.building === 'A'));
+    if (intakeEl.msg) intakeEl.msg.textContent = '';
+    renderIntakeRows();
+    intakeEl.back?.classList.remove('hidden');
+  };
+  const closeIntake = () => { closeLibrary(); closeRetest(); intakeEl.back?.classList.add('hidden'); };
+
+  $$('[data-add-record="bonding"]').forEach((btn) => btn.addEventListener('click', openIntake));
+  $('#btn-intake-close')?.addEventListener('click', closeIntake);
+  $('#btn-intake-cancel')?.addEventListener('click', closeIntake);
+
+  $$('#dtr-intake-building button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      intake.building = btn.dataset.building;
+      $$('#dtr-intake-building button').forEach((x) => x.classList.toggle('active', x === btn));
+      renderIntakeRows();
+    });
+  });
+
+  const syncIntakeDates = () => {
+    if ($('#dtr-intake-match')?.checked) $('#dtr-intake-production').value = $('#dtr-intake-collection').value;
+    const label = $('#dtr-intake-batch-label');
+    if (label) label.textContent = `${intake.building} • ${$('#dtr-intake-collection').value}`;
+    refreshIntakeLabRefs();
+  };
+  $('#dtr-intake-collection')?.addEventListener('change', syncIntakeDates);
+  $('#dtr-intake-production')?.addEventListener('change', refreshIntakeLabRefs);
+  $('#dtr-intake-match')?.addEventListener('change', () => {
+    $('#dtr-intake-production').disabled = $('#dtr-intake-match').checked;
+    syncIntakeDates();
+  });
+  // L / R toggle changes the -L / -R ending
+  intakeEl.tbody?.addEventListener('click', (e) => { if (e.target.closest('.dtr-side-toggle')) setTimeout(refreshIntakeLabRefs, 0); });
+  if ($('#dtr-intake-production')) $('#dtr-intake-production').disabled = true;
+
+  // Library picker: searches tbl_dtr_shoe_list (Production Code / Style / Colorway / MTL)
+  let libPanel = null;
+  const closeLibrary = () => { libPanel?.remove(); libPanel = null; };
+  const openLibrary = (tr, anchor) => {
+    closeLibrary();
+    const rect = anchor.getBoundingClientRect();
+    libPanel = document.createElement('div');
+    libPanel.className = 'dtr-lib-panel';
+    libPanel.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 540)) + 'px';
+    libPanel.style.top = Math.min(rect.bottom + 4, window.innerHeight - 340) + 'px';
+    libPanel.innerHTML = '<div class="lib-head"><input type="text" placeholder="Search code, style, colorway or MTL # ..."></div><div class="lib-list"></div>';
+    document.body.appendChild(libPanel);
+    const input = libPanel.querySelector('input');
+    const list = libPanel.querySelector('.lib-list');
+    let timer = null;
+    const search = async () => {
+      const q = input.value.trim();
+      list.innerHTML = '<div class="lib-empty">Searching...</div>';
+      try {
+        const res = await apiFetch(`dtr/shoe-search?q=${encodeURIComponent(q)}`);
+        const shoes = (res && res.shoes) || [];
+        if (!shoes.length) { list.innerHTML = '<div class="lib-empty">No shoes found in the library.</div>'; return; }
+        list.innerHTML = shoes.map((s, i) => `<div class="lib-item" data-i="${i}"><b>${escHtml(s.ProdCode || '')}</b><span>${escHtml(s.StyleNo || '')}</span><span>${escHtml(s.Colorway || '')} ${s.MTL ? '- ' + escHtml(s.MTL) : ''}</span></div>`).join('');
+        list.onclick = (ev) => {
+          const item = ev.target.closest('.lib-item');
+          if (!item) return;
+          const s = shoes[Number(item.dataset.i)];
+          tr.querySelector('.ik-code').value = s.ProdCode || '';
+          tr.querySelector('.ik-style').value = s.StyleNo || '';
+          tr.querySelector('.ik-color').value = s.Colorway || '';
+          tr.querySelector('.ik-mtl').value = s.MTL || '';
+          closeLibrary();
+        };
+      } catch (err) {
+        list.innerHTML = '<div class="lib-empty">Library lookup failed.</div>';
+      }
+    };
+    input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(search, 250); });
+    input.value = (tr.querySelector('.ik-code').value || tr.querySelector('.ik-mtl').value || tr.querySelector('.ik-style').value).trim();
+    input.focus();
+    search();
+  };
+  document.addEventListener('mousedown', (e) => { if (libPanel && !libPanel.contains(e.target) && !e.target.closest('.ik-lib')) closeLibrary(); });
+  intakeEl.tbody?.addEventListener('click', async (e) => {
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+    const sideBtn = e.target.closest('.dtr-side-toggle button');
+    if (sideBtn) {
+      tr.querySelectorAll('.dtr-side-toggle button').forEach((x) => x.classList.toggle('active', x === sideBtn));
+      return;
+    }
+    if (e.target.closest('.ik-lib')) {
+      openLibrary(tr, e.target.closest('.ik-lib'));
+    }
+  });
+
+  // Retest picker: lists failed Lab Ref Nos (with analysis / reason) when Test Type = RETEST
+  const retestEl = { back: $('#dtr-retest-backdrop'), tbody: $('#dtr-retest-tbody'), search: $('#dtr-retest-search') };
+  let retestRow = null;
+  const closeRetest = () => {
+    retestEl.back?.classList.add('hidden');
+    if (retestRow && !retestRow.querySelector('.ik-retest-note').value.trim()) retestRow.querySelector('.ik-type').value = 'DAILY';
+    retestRow = null;
+  };
+  const loadRetestList = async () => {
+    const q = retestEl.search.value.trim();
+    retestEl.tbody.innerHTML = '<tr><td colspan="8" class="muted">Loading…</td></tr>';
+    try {
+      const res = await apiFetch(`dtr/retest-list?q=${encodeURIComponent(q)}`);
+      const list = (res && res.rows) || [];
+      if (!list.length) { retestEl.tbody.innerHTML = '<tr><td colspan="8" class="muted">No failed Lab Ref No. is waiting for a retest.</td></tr>'; return; }
+      retestEl.tbody.innerHTML = list.map((r, i) => `
+        <tr>
+          <td class="mono"><b>${escHtml(r.LabRefNo)}</b></td>
+          <td>${escHtml(r.ModelStyle || '')}</td>
+          <td>${escHtml(r.Color || '')}</td>
+          <td><span class="badge b-err">${escHtml(r.Result || '')}</span></td>
+          <td>${escHtml(r.ModeOfFailure || '-')}</td>
+          <td style="max-width:320px">${escHtml(r.Analysis || '-')}</td>
+          <td>${escHtml(String(r.TestedDate || '').slice(0, 10))}</td>
+          <td><button type="button" class="dtr-btn dtr-btn-primary" data-pick="${i}">Select</button></td>
+        </tr>`).join('');
+      retestEl.tbody.onclick = (ev) => {
+        const b = ev.target.closest('[data-pick]');
+        if (!b || !retestRow) return;
+        const r = list[Number(b.dataset.pick)];
+        retestRow.querySelector('.ik-style').value = r.ModelStyle || '';
+        retestRow.querySelector('.ik-color').value = r.Color || '';
+        retestRow.querySelector('.ik-code').value = r.POLotNO || retestRow.querySelector('.ik-code').value;
+        const why = [r.ModeOfFailure, r.Analysis].filter(Boolean).join(' - ');
+        retestRow.querySelector('.ik-retest-note').value = `Retest of ${r.LabRefNo}\nFailed: ${why || 'no analysis recorded'}`;
+        const sideBtn = retestRow.querySelector(`.dtr-side-toggle button[data-side="${/-R$/.test(r.LabRefNo) ? 'R' : 'L'}"]`);
+        sideBtn?.click();
+        retestEl.back.classList.add('hidden');
+        retestRow = null;
+      };
+    } catch (err) {
+      retestEl.tbody.innerHTML = '<tr><td colspan="8" class="muted">Could not load the retest list.</td></tr>';
+    }
+  };
+  let retestTimer = null;
+  retestEl.search?.addEventListener('input', () => { clearTimeout(retestTimer); retestTimer = setTimeout(loadRetestList, 250); });
+  $('#btn-retest-close')?.addEventListener('click', closeRetest);
+  $('#btn-retest-cancel')?.addEventListener('click', closeRetest);
+
+  intakeEl.tbody?.addEventListener('change', (e) => {
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+    if (e.target.classList.contains('ik-active')) tr.classList.toggle('inactive', !e.target.checked);
+    if (e.target.classList.contains('ik-type') && e.target.value === 'RETEST') {
+      retestRow = tr;
+      retestEl.search.value = '';
+      retestEl.back.classList.remove('hidden');
+      loadRetestList();
+    }
+  });
+
+  $('#btn-intake-save')?.addEventListener('click', async () => {
+    const rows = [];
+    $$('#dtr-intake-tbody tr').forEach((tr) => {
+      if (!tr.querySelector('.ik-active').checked) return;
+      const row = {
+        line: tr.dataset.line,
+        side: tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L',
+        code: tr.querySelector('.ik-code').value.trim(),
+        style: tr.querySelector('.ik-style').value.trim(),
+        color: tr.querySelector('.ik-color').value.trim(),
+        mtl: tr.querySelector('.ik-mtl').value.trim(),
+        test: 'Bonding',
+        type: tr.querySelector('.ik-type').value,
+        retestNote: tr.querySelector('.ik-retest-note').value.trim().replace(/\s*\n\s*/g, ' | '),
+        lacking: tr.querySelector('.ik-lacking').checked,
+      };
+      row.retest = row.type === 'RETEST' || row.retestNote !== '';
+      if (row.code || row.style || row.color || row.mtl) rows.push(row);
+    });
+    if (!rows.length) { intakeEl.msg.textContent = 'Fill in at least one active line before saving.'; return; }
+    try {
+      const res = await apiFetch('dtr/intake-save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          building: intake.building,
+          collectionDate: $('#dtr-intake-collection').value,
+          productionDate: $('#dtr-intake-production').value,
+          encodedBy: $('#dtr-intake-encoder').value.trim(),
+          rows,
+        }),
+      });
+      if (res && res.ok) {
+        showToast(`✓ ${res.message}`);
+        closeIntake();
+      } else {
+        intakeEl.msg.textContent = (res && res.message) || 'Save failed.';
+      }
+    } catch (err) {
+      intakeEl.msg.textContent = 'Save failed: ' + err.message;
+    }
+  });
+
+  // =========================================================================
+  // Whole Shoe Intake (+ Whole Shoe Collected): adds shoes to tbl_dtr_shoe_list
+  // =========================================================================
+  const wsEl = { back: $('#dtr-wshoe-backdrop'), tbody: $('#dtr-wshoe-tbody'), msg: $('#dtr-wshoe-msg') };
+  let wsLines = 0;
+  let wsBuilding = 'A';
+  const WS_TESTS = ['Heat Aging', 'Hydrolysis', 'Washing', 'UV', 'Flexing', 'Dip Test'];
+
+  const addWholeShoeRow = () => {
+    wsLines += 1;
+    wsEl.tbody.insertAdjacentHTML('beforeend', `
+      <tr data-line="${wsBuilding}${wsLines}">
+        <td><label class="dtr-switch"><input type="checkbox" class="ik-active" checked><span></span></label></td>
+        <td><b>${wsBuilding}${wsLines}</b></td>
+        <td class="ik-labref mono"></td>
+        <td><input type="text" class="ik-code" placeholder="Enter code"></td>
+        <td><input type="text" class="ik-style" placeholder="Enter style"></td>
+        <td><input type="text" class="ik-color" placeholder="Enter colorway"></td>
+        <td><input type="text" class="ik-mtl" placeholder="Enter MTL #"></td>
+        <td><button type="button" class="dtr-btn dtr-btn-outline ik-lib">Library</button></td>
+        <td><input type="number" class="ik-qty" min="1" step="1" value="1"></td>
+        <td class="ik-tests">${WS_TESTS.map((t) => `<label class="ik-test"><input type="checkbox" value="${t}"><span>${t}</span></label>`).join('')}</td>
+      </tr>`);
+  };
+  const renderWholeShoeRows = () => {
+    wsEl.tbody.innerHTML = '';
+    wsLines = 0;
+    const count = wsBuilding === 'B' ? 14 : 12;
+    for (let i = 0; i < count; i++) addWholeShoeRow();
+    refreshWholeShoeLabRefs();
+  };
+  // Lab Ref No = DTP + production date (YYYYMMDD) + WS + building + line number (the server adds a letter if it is already used)
+  const refreshWholeShoeLabRefs = () => {
+    const d = ($('#dtr-wshoe-production')?.value || '').replace(/-/g, '');
+    $$('#dtr-wshoe-tbody tr').forEach((tr) => {
+      tr.querySelector('.ik-labref').textContent = d ? `DTP${d}WS${tr.dataset.line}` : '';
+    });
+  };
+  const openWholeShoe = () => {
+    wsBuilding = 'A';
+    $$('#dtr-wshoe-building button').forEach((x) => x.classList.toggle('active', x.dataset.building === 'A'));
+    renderWholeShoeRows();
+    wsEl.msg.textContent = '';
+    wsEl.back.classList.remove('hidden');
+  };
+  $$('#dtr-wshoe-building button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      wsBuilding = btn.dataset.building;
+      $$('#dtr-wshoe-building button').forEach((x) => x.classList.toggle('active', x === btn));
+      renderWholeShoeRows();
+    });
+  });
+  const syncWholeShoeDates = () => {
+    const match = $('#dtr-wshoe-match').checked;
+    $('#dtr-wshoe-production').disabled = match;
+    if (match) $('#dtr-wshoe-production').value = $('#dtr-wshoe-date').value;
+    refreshWholeShoeLabRefs();
+  };
+  $('#dtr-wshoe-production')?.addEventListener('change', refreshWholeShoeLabRefs);
+  $('#dtr-wshoe-date')?.addEventListener('change', syncWholeShoeDates);
+  $('#dtr-wshoe-match')?.addEventListener('change', syncWholeShoeDates);
+  const closeWholeShoe = () => { closeLibrary(); wsEl.back?.classList.add('hidden'); };
+
+  $$('[data-add-record="shoes"]').forEach((btn) => btn.addEventListener('click', openWholeShoe));
+  $('#btn-wshoe-close')?.addEventListener('click', closeWholeShoe);
+  $('#btn-wshoe-cancel')?.addEventListener('click', closeWholeShoe);
+  wsEl.tbody?.addEventListener('click', (e) => {
+    const lib = e.target.closest('.ik-lib');
+    if (lib) openLibrary(lib.closest('tr'), lib);
+  });
+  wsEl.tbody?.addEventListener('change', (e) => {
+    if (e.target.classList.contains('ik-active')) e.target.closest('tr').classList.toggle('inactive', !e.target.checked);
+  });
+
+  $('#btn-wshoe-save')?.addEventListener('click', async () => {
+    const rows = [];
+    $$('#dtr-wshoe-tbody tr').forEach((tr) => {
+      if (!tr.querySelector('.ik-active').checked) return;
+      const row = {
+        code: tr.querySelector('.ik-code').value.trim(),
+        style: tr.querySelector('.ik-style').value.trim(),
+        color: tr.querySelector('.ik-color').value.trim(),
+        mtl: tr.querySelector('.ik-mtl').value.trim(),
+        line: tr.dataset.line,
+        qty: Math.max(1, parseInt(tr.querySelector('.ik-qty').value, 10) || 1),
+        tests: [...tr.querySelectorAll('.ik-tests input:checked')].map((c) => c.value),
+      };
+      if (row.code) rows.push(row);
+    });
+    if (!rows.length) { wsEl.msg.textContent = 'Enter a Production Code on at least one active line.'; return; }
+    try {
+      const res = await apiFetch('dtr/wholeshoe-save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          building: wsBuilding,
+          collectionDate: $('#dtr-wshoe-date').value,
+          productionDate: $('#dtr-wshoe-production').value,
+          encodedBy: $('#dtr-wshoe-encoder').value.trim(),
+          rows,
+        }),
+      });
+      if (res && res.ok) {
+        showToast(`✓ ${res.message}`);
+        closeWholeShoe();
+      } else {
+        wsEl.msg.textContent = (res && res.message) || 'Save failed.';
+      }
+    } catch (err) {
+      wsEl.msg.textContent = 'Save failed: ' + err.message;
+    }
+  });
+
+  // =========================================================================
+  // Material Receive (+ Material Receive): IQC Container Receiving Log
+  // =========================================================================
+  const mrBack = $('#dtr-mrec-backdrop');
+  const mrBody = $('#dtr-mrec-tbody');
+  const mrMsg = $('#dtr-mrec-msg');
+  const addMaterialRow = () => {
+    mrBody.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td><select class="mr-type"><option value="">Select type</option>${['LEATHER', 'FABRIC', 'SYNTHETIC', 'ACCESSORIES', 'RUBBER'].map((t) => `<option value="${t}">${t}</option>`).join('')}</select></td>
+        <td><input type="text" class="mr-name" placeholder="Material name"></td>
+        <td><input type="text" class="mr-no" placeholder="Container no."></td>
+        <td><input type="text" class="mr-prod" placeholder="Prod code"></td>
+        <td><input type="text" class="mr-proc" placeholder="Processing no."></td>
+        <td><input type="text" class="mr-qty" placeholder="Qty"></td>
+        <td><input type="date" class="mr-eta"></td>
+      </tr>`);
+  };
+  const openMaterialReceive = () => {
+    mrBody.innerHTML = '';
+    for (let i = 0; i < 10; i++) addMaterialRow();
+    mrMsg.textContent = '';
+    mrBack.classList.remove('hidden');
+  };
+  const closeMaterialReceive = () => mrBack.classList.add('hidden');
+  $$('[data-add-record="containers"]').forEach((b) => b.addEventListener('click', openMaterialReceive));
+  $('#btn-mrec-addrow')?.addEventListener('click', addMaterialRow);
+  $('#btn-mrec-close')?.addEventListener('click', closeMaterialReceive);
+  $('#btn-mrec-cancel')?.addEventListener('click', closeMaterialReceive);
+  $('#btn-mrec-save')?.addEventListener('click', async () => {
+    const v = (tr, c) => tr.querySelector(c).value.trim();
+    const rows = [...mrBody.children].map((tr) => ({
+      type: v(tr, '.mr-type'), name: v(tr, '.mr-name'), no: v(tr, '.mr-no'), prod: v(tr, '.mr-prod'), proc: v(tr, '.mr-proc'),
+      qty: v(tr, '.mr-qty'), eta: v(tr, '.mr-eta'),
+    })).filter((r) => r.no || r.prod || r.proc);
+    if (!rows.length) { mrMsg.textContent = 'Enter a Container No., Prod Code or Processing No. on at least one line.'; return; }
+    try {
+      const res = await apiFetch('dtr/material-receive-save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ arrivedDate: $('#dtr-mrec-arrived').value, receivedDate: $('#dtr-mrec-date').value, encodedBy: $('#dtr-mrec-encoder').value.trim(), rows }),
+      });
+      if (res && res.ok) {
+        showToast(`✓ ${res.message}`);
+        closeMaterialReceive();
+        setTimeout(() => location.reload(), 900);
+      } else {
+        mrMsg.textContent = (res && res.message) || 'Save failed.';
+      }
+    } catch (err) { mrMsg.textContent = 'Save failed: ' + err.message; }
+  });
+
+  // =========================================================================
+  // Whole Shoe report page (Whole Footwear Test Results, Form # Lab VF 002)
+  // =========================================================================
+  const wsPanel = $('#dtr-wholeshoe-panel-guard') || $('#dtr-panel-wholeshoe');
+  if (wsPanel) {
+    const wsSel = $('#ws-labref');
+    const wsMsg = $('#ws-msg');
+    let wsSections = [];
+    const wsVal = (id) => $(id).value.trim();
+
+    const wsRenderSections = (sections, data) => {
+      wsSections = sections;
+      $('#ws-sections').innerHTML = sections.map((s) => `
+        <div class="ws-sec" data-sec="${s.id}">
+          <div class="wsf-st">${escHtml(s.title)}</div>
+          <table class="wsf-t wsf-sc">
+            <tr><td class="wsf-tc"><b>Test conditions测试条件:</b></td><td><b>Result结果 :</b></td></tr>
+            <tr><td class="wsf-cd">${s.cond}</td><td class="wsf-rs">${Object.entries(s.fields).map(([k, label]) =>
+              `<div class="wsf-rl"><b>${escHtml(label)} :</b><input type="text" data-k="${k}" value="${escHtml(((data.results || {})[s.id] || {})[k] || '')}"></div>`).join('')}</td></tr>
+          </table>
+        </div>`).join('');
+    };
+
+    const wsLoad = async (ref) => {
+      wsMsg.textContent = '';
+      if (!ref) return;
+      try {
+        const j = await apiFetch('dtr/wholeshoe-report?lab_ref=' + encodeURIComponent(ref));
+        const i = j.info; const d = j.data || {};
+        $('#ws-style').value = i.style; $('#ws-color').value = i.color; $('#ws-po').value = i.prodCode;
+        $('#ws-qty').value = i.qty; $('#ws-received').value = i.received; $('#ws-tests').value = (i.tests || []).join(', ') || 'All';
+        $('#ws-tested').value = d.testedDate || ''; $('#ws-finished').value = d.finishedDate || '';
+        $('#ws-tech').value = d.technician || ''; $('#ws-comments').value = d.comments || '';
+        $('#ws-reviewed').value = d.reviewedBy || ''; $('#ws-approved').value = d.approvedBy || '';
+        wsRenderSections(j.sections || [], d);
+      } catch (err) { wsMsg.textContent = err.message; }
+    };
+
+    const wsCollect = () => {
+      const results = {};
+      $$('#ws-sections .ws-sec').forEach((sec) => {
+        results[sec.dataset.sec] = {};
+        sec.querySelectorAll('input[data-k]').forEach((inp) => { results[sec.dataset.sec][inp.dataset.k] = inp.value.trim(); });
+      });
+      return {
+        testedDate: wsVal('#ws-tested'), finishedDate: wsVal('#ws-finished'), technician: wsVal('#ws-tech'),
+        reviewedBy: wsVal('#ws-reviewed'), approvedBy: wsVal('#ws-approved'), comments: wsVal('#ws-comments'), results,
+      };
+    };
+
+    const wsSave = async () => {
+      const ref = wsSel.value;
+      if (!ref) { wsMsg.textContent = 'Choose a Lab Ref No first.'; return false; }
+      try {
+        const res = await apiFetch('dtr/wholeshoe-report-save', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lab_ref: ref, data: wsCollect() }),
+        });
+        if (res && res.ok) { wsMsg.textContent = res.message; return true; }
+        wsMsg.textContent = (res && res.message) || 'Save failed.';
+      } catch (err) { wsMsg.textContent = 'Save failed: ' + err.message; }
+      return false;
+    };
+
+    $('#btn-ws-save')?.addEventListener('click', async () => { if (await wsSave()) showToast('✓ ' + wsMsg.textContent); });
+    $('#btn-ws-preview')?.addEventListener('click', async () => {
+      if (!wsSel.value) { wsMsg.textContent = 'Choose a Lab Ref No first.'; return; }
+      if (await wsSave()) window.open(BASE_URL + 'dtr/wholeshoe-report-pdf?inline=1&lab_ref=' + encodeURIComponent(wsSel.value), '_blank');
+    });
+    wsSel.addEventListener('change', () => wsLoad(wsSel.value));
+
+    (async () => {
+      try {
+        const j = await apiFetch('dtr/wholeshoe-labrefs');
+        const rows = j.rows || [];
+        wsRenderSections(j.sections || [], {});   // blank sheet with every test section until a Lab Ref is chosen
+        wsSel.innerHTML = rows.length
+          ? rows.map((r) => `<option value="${escHtml(r.LabRefNo)}">${escHtml(r.LabRefNo)}</option>`).join('')
+          : '<option value="">- no whole shoe intake yet -</option>';
+        const want = new URLSearchParams(location.search).get('labref');
+        if (want && rows.some((r) => r.LabRefNo === want)) wsSel.value = want;
+        if (rows.length) wsLoad(wsSel.value);
+      } catch (err) { wsSel.innerHTML = '<option value="">Could not load</option>'; }
+    })();
+  }
+
+  // Download icon before the LabRefNo (Bonding Shoe Collection): Bonding Test-VF machine-result PDF
+  document.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-dl-labref]');
+    if (!b || b.disabled) return;
+    b.disabled = true;
+    try {
+      const ref = b.dataset.dlLabref;
+      const res = await fetch(BASE_URL + (b.dataset.dlRoute || 'dtr/bonding-machine-pdf') + '?lab_ref=' + encodeURIComponent(ref), { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+      if (!res.ok) throw new Error((await res.text()).slice(0, 160) || 'Download failed');
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = ref.replace(/[^A-Za-z0-9._-]+/g, '_') + '_' + (b.dataset.dlSuffix || 'Bonding-Test-VF') + '.pdf';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    } catch (err) { nxToast('Could not download the report: ' + err.message, 'error', 7000); }
+    b.disabled = false;
+  });
+
+  $$('[data-goto-calc]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      switchTab('calculators');
+      const target = $(`#calc-card-${btn.dataset.gotoCalc}`);
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  });
+
+  // =========================================================================
+  // 2. LAB TRACKER SEARCH & CATEGORY PILLS
+  // =========================================================================
+  const loadTrackerRows = async (slug = 'all', q = '') => {
+    const tbody = $('#dtr-tracker-tbody');
+    try {
+      if (tbody && window.nxState) nxState(tbody, 'loading', 'Loading lab reports…', 16);
+      const res = await apiFetch(`dtr/records?slug=${encodeURIComponent(slug)}&q=${encodeURIComponent(q)}`);
+      if (!tbody || !res.rows) return;
+      if (!res.rows.length) {
+        nxState(tbody, 'empty', 'No lab reports match your search. Clear the filters or try another Lab Ref No.', 16);
+        return;
+      }
+      tbody.innerHTML = res.rows.map((r) => {
+        const resUpper = String(r.overall_result || 'PASS').toUpperCase();
+        const badgeCls = resUpper === 'FAIL' ? 'b-err' : (resUpper === 'TOLERABLE' ? 'b-warn' : 'b-ok');
+        return `
           <tr>
             <td style="white-space:nowrap">
-              <button type="button" class="dtr-btn-xs dtr-btn-primary" data-open-record="${c(o.form_slug)}" data-source-id="${c(o.source_id)}" data-labref="${c(o.lab_ref_no)}">
+              <button type="button" class="dtr-btn-xs dtr-btn-primary" data-open-record="${escHtml(r.form_slug)}" data-source-id="${escHtml(r.source_id)}" data-labref="${escHtml(r.lab_ref_no)}">
                 Open Form
               </button>
             </td>
-            <td class="mono"><b>${c(o.lab_ref_no)}</b></td>
-            <td class="mono">${c(o.tr_no||"-")}</td>
-            <td><span class="dtr-tag">${c(o.form_category)}</span></td>
-            <td>${c(o.material_type||"-")}</td>
-            <td class="mono">${c(o.material_code||"-")}</td>
-            <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c(o.material_description||"")}">${c(o.material_description||"-")}</td>
-            <td>${c(o.supplier||"-")}</td>
-            <td class="mono">${c(o.model_style||"-")}</td>
-            <td>${c(o.color||"-")}</td>
-            <td class="mono">${c(o.po_lot_no||"-")}</td>
-            <td class="mono">${c(o.mtl_no||"-")}</td>
-            <td>${c(o.tested_date||o.received_date||"-")}</td>
-            <td>${c(o.technician||"-")}</td>
-            <td>${c(o.status||"Complete")}</td>
-            <td><span class="badge ${r}">${c(n)}</span></td>
+            <td class="mono"><b>${escHtml(r.lab_ref_no)}</b></td>
+            <td class="mono">${escHtml(r.tr_no || '-')}</td>
+            <td><span class="dtr-tag">${escHtml(r.form_category)}</span></td>
+            <td>${escHtml(r.material_type || '-')}</td>
+            <td class="mono">${escHtml(r.material_code || '-')}</td>
+            <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.material_description || '')}">${escHtml(r.material_description || '-')}</td>
+            <td>${escHtml(r.supplier || '-')}</td>
+            <td class="mono">${escHtml(r.model_style || '-')}</td>
+            <td>${escHtml(r.color || '-')}</td>
+            <td class="mono">${escHtml(r.po_lot_no || '-')}</td>
+            <td class="mono">${escHtml(r.mtl_no || '-')}</td>
+            <td>${escHtml(r.tested_date || r.received_date || '-')}</td>
+            <td>${escHtml(r.technician || '-')}</td>
+            <td>${escHtml(r.status || 'Complete')}</td>
+            <td><span class="badge ${badgeCls}">${escHtml(resUpper)}</span></td>
           </tr>
-        `}).join("")}catch(l){console.error(l),s&&window.nxState&&nxState(s,"error","The list could not be loaded. Check your connection and try again.",16)}},Ze=()=>{var s,l;const e=((s=t("#dtr-tracker-cat"))==null?void 0:s.value)||"all",a=((l=t("#dtr-tracker-search"))==null?void 0:l.value.trim())||"";ls(e,a)};(ua=t("#dtr-tracker-cat"))==null||ua.addEventListener("change",Ze),(va=t("#dtr-tracker-btn-search"))==null||va.addEventListener("click",Ze),(ma=t("#dtr-tracker-search"))==null||ma.addEventListener("keydown",e=>{var a;e.key==="Enter"&&(e.preventDefault(),(a=t("#dtr-tracker-btn-search"))==null||a.click())}),(ha=t("#dtr-tracker-tbody"))==null||ha.addEventListener("click",async e=>{const a=e.target.closest("[data-open-record]");if(!a)return;const s=a.dataset.openRecord,l=a.dataset.sourceId;if(s==="pull")gt("bonding"),Me("pull"),await ds(l);else if(s==="bonding")gt("bonding"),Me("bonding"),await Ve(l),await Be(l);else{gt("material");const o=t("#dtr-mat-form-slug");o&&(o.value=s),$t=s,await we(s,l),await sa(s,l)}});const Ne=(e=!0)=>{var r,d;const a=[];for(let i=1;i<=6;i++){const m=parseFloat(((r=t(`#mf_Thickness${i}`))==null?void 0:r.value)??"");Number.isFinite(m)&&m>0&&a.push(m)}if(!a.length)return;const s=Math.min(...a),l=Math.max(...a),o=R(a.reduce((i,m)=>i+m,0)/a.length,2);t("#mf_TMin")&&(t("#mf_TMin").value=s),t("#mf_TMax")&&(t("#mf_TMax").value=l),t("#mf_TAve")&&(t("#mf_TAve").value=o);const n=parseFloat(((d=t("#mf_T_S"))==null?void 0:d.value)??"");Number.isFinite(n)&&n>0&&t("#mf_TRating")&&(t("#mf_TRating").value=o>=n?"PASS":"FAIL",j(t("#mf_TRating"))),e&&Ce()},Tt=()=>{var r,d,i,m;const e=[1,2,3].map(u=>{var v;return parseFloat(((v=t(`#mf_Weight${u}`))==null?void 0:v.value)??"")}).filter(u=>Number.isFinite(u)&&u>0);if(e.length>0&&t("#mf_WAve")){const u=R(e.reduce((x,L)=>x+L,0)/e.length,2);t("#mf_WAve").value=u;const v=parseFloat(((r=t("#mf_Weight_S"))==null?void 0:r.value)??"");Number.isFinite(v)&&v>0&&t("#mf_WRating")&&(t("#mf_WRating").value=u>=v?"PASS":"FAIL",j(t("#mf_WRating")))}const a=[1,2,3].map(u=>{var v;return parseFloat(((v=t(`#mf_SG${u}`))==null?void 0:v.value)??"")}).filter(u=>Number.isFinite(u)&&u>0);if(a.length>0&&t("#mf_SG_Ave")){const u=R(a.reduce((x,L)=>x+L,0)/a.length,2);t("#mf_SG_Ave").value=u;const v=parseFloat(((d=t("#mf_SG_Std"))==null?void 0:d.value)??"");Number.isFinite(v)&&v>0&&t("#mf_SG_Rate")&&(t("#mf_SG_Rate").value=Math.abs(u-v)<=.02?"PASS":"FAIL",j(t("#mf_SG_Rate")))}const s=[1,2,3].map(u=>{var v;return parseFloat(((v=t(`#mf_DIN_${u}`))==null?void 0:v.value)??"")}).filter(u=>Number.isFinite(u)&&u>0);s.length>0&&t("#mf_DIN_Rate")&&(t("#mf_DIN_Rate").value=s.some(u=>u>150)?"FAIL":"PASS",j(t("#mf_DIN_Rate")));const l=[1,2].map(u=>{var v;return parseFloat(((v=t(`#mf_RossFlex_${u}`))==null?void 0:v.value)??"")}).filter(u=>Number.isFinite(u)&&u>0);l.length>0&&t("#mf_RossFlex_Rate")&&(t("#mf_RossFlex_Rate").value=l.some(u=>u>50)?"FAIL":"PASS",j(t("#mf_RossFlex_Rate")));const o=parseFloat(((i=t("#mf_ShrinkageL"))==null?void 0:i.value)??""),n=parseFloat(((m=t("#mf_Shrinkage_S"))==null?void 0:m.value)??"");Number.isFinite(o)&&Number.isFinite(n)&&n>0&&t("#mf_ShrinkageLRating")&&(t("#mf_ShrinkageLRating").value=Math.abs(o)<=Math.abs(n)?"PASS":"FAIL",j(t("#mf_ShrinkageLRating")))},ta={TensileL:{inputs:["mf_TensileL1","mf_TensileL2","mf_TensileL3"],ave:"mf_TensileLAve",std:"mf_Tensile_L",rate:"mf_TensileLRating",dec:2},TensileW:{inputs:["mf_TensileW1","mf_TensileW2","mf_TensileW3"],ave:"mf_TensileWAve",std:"mf_Tensile_W",rate:"mf_TensileWRating",dec:2},ElongationL:{inputs:["mf_ElongationL1","mf_ElongationL2","mf_ElongationL3"],ave:"mf_ElongationLAve",std:"mf_Elongation_L",rate:"mf_ElongationLRating",dec:2},ElongationW:{inputs:["mf_ElongationW1","mf_ElongationW2","mf_ElongationW3"],ave:"mf_ElongationWAve",std:"mf_Elongation_W",rate:"mf_ElongationWRating",dec:2},TrouserTearL:{inputs:["mf_TrouserTearL1","mf_TrouserTearL2","mf_TrouserTearL3"],ave:"mf_TrouserTearLAve",std:"mf_TrouserTear_L",rate:"mf_TrouserTearLRating",dec:2},TrouserTearW:{inputs:["mf_TrouserTearW1","mf_TrouserTearW2","mf_TrouserTearW3"],ave:"mf_TrouserTearWAve",std:"mf_TrouserTear_W",rate:"mf_TrouserTearWRating",dec:2},StitchTearL:{inputs:["mf_StitchTearL1","mf_StitchTearL2","mf_StitchTearL3"],ave:"mf_StitchTearLAve",std:"mf_StitchTear_L",rate:"mf_StitchTearLRating",dec:2},StitchTearW:{inputs:["mf_StitchTearW1","mf_StitchTearW2","mf_StitchTearW3"],ave:"mf_StitchTearWAve",std:"mf_StitchTear_W",rate:"mf_StitchTearWRating",dec:2},MullenBurst:{inputs:["mf_MullenBurst1","mf_MullenBurst2","mf_MullenBurst3"],ave:"mf_Text3977",std:"mf_MullenBurst",rate:"mf_MullenBurstRating",dec:4},DieC:{inputs:["mf_DieC_1","mf_DieC_2","mf_DieC_3"],ave:"mf_DieC_Ave",std:"mf_DieC_Std",rate:"mf_DieC_Rate",dec:2}},ea=e=>{const a=ta[e];if(!a)return;const s=a.inputs.map(i=>{var m;return parseFloat(((m=t(`#${i}`))==null?void 0:m.value)??"")}).filter(i=>Number.isFinite(i)),l=t(`#${a.ave}`),o=t(`#${a.std}`),n=t(`#${a.rate}`);if(!s.length)return;const r=R(s.reduce((i,m)=>i+m,0)/s.length,a.dec);l&&(l.value=r);const d=parseFloat((o==null?void 0:o.value)??"");Number.isFinite(d)&&d>0&&n&&(n.value=r>=d?"PASS":"FAIL",j(n))},Le=()=>{Object.keys(ta).forEach(ea)},De={CTP:{fibers:["mf_CtPWool","mf_CtPAcrylic","mf_CtPPolyester","mf_CtPNylon","mf_CtPCotton","mf_CtPAcetate"],std:"mf_CTP",rate:"mf_CTPRating"},CTPB:{fibers:["mf_CtPBWool","mf_CtPBAcrylic","mf_CtPBPolyester","mf_CtPBNylon","mf_CtPBCotton","mf_CtPBAcetate"],std:"mf_CtPB_S",rate:"mf_CTPB_Rating"},CTW:{fibers:["mf_CtWWool","mf_CtWAcrylic","mf_CtWPolyester","mf_CtWNylon","mf_CtWCotton","mf_CtWAcetate"],std:"mf_CTW",rate:"mf_CTWRating"},CTWB:{fibers:["mf_CtWBackSideWool","mf_CtWBackSideAcrylic","mf_CtWBackSidePolyester","mf_CtWBackSideNylon","mf_CtWBackSideCotton","mf_CtWBackSideAcetate"],std:"mf_CtWB_S",rate:"mf_CtWB_Rating"}},We=e=>{var n;const a=De[e];if(!a)return;const s=parseFloat(((n=t(`#${a.std}`))==null?void 0:n.value)??""),l=t(`#${a.rate}`);if(!Number.isFinite(s)||s<=0||!l)return;const o=a.fibers.map(r=>{var d;return parseFloat(((d=t(`#${r}`))==null?void 0:d.value)??"")});o.some(r=>!Number.isFinite(r))||(l.value=o.some(r=>r<s)?"FAIL":"PASS",j(l))},Ie=()=>{var f,g,N,G,E,et,at,Y,y,C,T,M,F,D,U;const e=parseFloat(((f=t("#mf_CtCDry"))==null?void 0:f.value)??""),a=parseFloat(((g=t("#mf_CtCDry_S"))==null?void 0:g.value)??"");Number.isFinite(e)&&Number.isFinite(a)&&a>0&&t("#mf_CTCDRYRating")&&(t("#mf_CTCDRYRating").value=e>=a?"PASS":"FAIL",j(t("#mf_CTCDRYRating")));const s=parseFloat(((N=t("#mf_CtCWet"))==null?void 0:N.value)??""),l=parseFloat(((G=t("#mf_CtCWet_S"))==null?void 0:G.value)??"");Number.isFinite(s)&&Number.isFinite(l)&&l>0&&t("#mf_CTCWETRating")&&(t("#mf_CTCWETRating").value=s>=l?"PASS":"FAIL",j(t("#mf_CTCWETRating")));const o=parseFloat(((E=t("#mf_UV"))==null?void 0:E.value)??""),n=parseFloat(((et=t("#mf_UV_S"))==null?void 0:et.value)??"");Number.isFinite(o)&&Number.isFinite(n)&&n>0&&t("#mf_UVRating")&&(t("#mf_UVRating").value=o>=n?"PASS":"FAIL",j(t("#mf_UVRating")));const r=parseFloat(((at=t("#mf_HeatAging1"))==null?void 0:at.value)??""),d=parseFloat(((Y=t("#mf_HeatAging2"))==null?void 0:Y.value)??""),i=parseFloat(((y=t("#mf_HeatAging_S"))==null?void 0:y.value)??"");Number.isFinite(r)&&Number.isFinite(d)&&Number.isFinite(i)&&i>0&&t("#mf_HeatAgingRating")&&(t("#mf_HeatAgingRating").value=r<i||d<i?"FAIL":"PASS",j(t("#mf_HeatAgingRating")));const m=parseFloat(((C=t("#mf_Hydrolysis1"))==null?void 0:C.value)??""),u=parseFloat(((T=t("#mf_Hydrolysis2"))==null?void 0:T.value)??""),v=parseFloat(((M=t("#mf_Hydrolysis_S"))==null?void 0:M.value)??"");Number.isFinite(m)&&Number.isFinite(u)&&Number.isFinite(v)&&v>0&&t("#mf_HydrolysisRating")&&(t("#mf_HydrolysisRating").value=m<v||u<v?"FAIL":"PASS",j(t("#mf_HydrolysisRating")));const x=parseFloat(((F=t("#mf_PVC_1"))==null?void 0:F.value)??""),L=parseFloat(((D=t("#mf_PVC_2"))==null?void 0:D.value)??""),P=parseFloat(((U=t("#mf_PVC_S"))==null?void 0:U.value)??"");Number.isFinite(x)&&Number.isFinite(L)&&Number.isFinite(P)&&P>0&&t("#mf_PVC_Rating")&&(t("#mf_PVC_Rating").value=x<P||L<P?"FAIL":"PASS",j(t("#mf_PVC_Rating")))},ot=()=>{var n;let e=!1,a=!1,s=!1;k("#dtr-material-form .dtr-rate-inp").forEach(r=>{j(r);const d=String(r.value||"").trim().toUpperCase();d==="FAIL"?a=!0:d==="TOLERABLE"?s=!0:d==="PASS"&&(e=!0)});let l="PASS";a?l="FAIL":s?l="TOLERABLE":e?l="PASS":(n=t("#mf_Remarks"))!=null&&n.value&&(l=String(t("#mf_Remarks").value).toUpperCase()),t("#mf_Remarks")&&(t("#mf_Remarks").value=l);const o=t("#dtr-stamp-badge");o&&(o.textContent=l,o.className="dtr-stamp "+(l==="FAIL"?"dtr-stamp-fail":l==="TOLERABLE"?"dtr-stamp-warn":"dtr-stamp-pass"))},Ce=async()=>{var s,l;const e=((s=t("#mf_MaterialType"))==null?void 0:s.value.trim())||"",a=parseFloat(((l=t("#mf_TAve"))==null?void 0:l.value)??"0")||0;if(e)try{const o=await J(`dtr/standards?material_type=${encodeURIComponent(e)}&t_ave=${encodeURIComponent(a)}`);o&&o.mapped&&Object.keys(o.mapped).forEach(n=>{const r=o.mapped[n],d=t(`#mf_${n}`)||t(`[name="${n}"]`,t("#dtr-material-form"));d&&(d.value=r)}),Tt(),Le(),Object.keys(De).forEach(We),Ie(),ot()}catch(o){console.warn("[DTR] applyStandardValuesSmart error:",o)}},rs=async()=>{Ne(!1),await Ce(),I("✓ Executed ApplyStandardValuesSmart + Thickness + Directional Averages + 6-Point Colorfastness + EvaluateRatings.")},we=async(e,a=null)=>{const s=t("#dtr-mat-record-select");try{s&&(s.innerHTML='<option value="">Loading records…</option>');const l=await J(`dtr/records?slug=${encodeURIComponent(e)}`);if(!s||!l.rows)return;if(!l.rows.length){s.innerHTML='<option value="">No records yet - press “+ New Record”</option>';return}s.innerHTML='<option value="">- New report (not saved yet) -</option>'+l.rows.map(o=>`
-        <option value="${c(o.source_id)}" ${String(o.source_id)===String(a)?"selected":""}>
-          ${c(o.lab_ref_no)} · ${c(o.material_type||o.form_category)} · ${c(o.model_style||o.material_code||"")} [${c(o.overall_result||"Pass")}]
+        `;
+      }).join('');
+    } catch (err) {
+      console.error(err);
+      if (tbody && window.nxState) nxState(tbody, 'error', 'The list could not be loaded. Check your connection and try again.', 16);
+    }
+  };
+
+  const runTrackerSearch = () => {
+    const slug = $('#dtr-tracker-cat')?.value || 'all';
+    const q = $('#dtr-tracker-search')?.value.trim() || '';
+    loadTrackerRows(slug, q);
+  };
+
+  $('#dtr-tracker-cat')?.addEventListener('change', runTrackerSearch);
+  $('#dtr-tracker-btn-search')?.addEventListener('click', runTrackerSearch);
+
+  $('#dtr-tracker-search')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      $('#dtr-tracker-btn-search')?.click();
+    }
+  });
+
+  // Open a clicked record in Material Form or Bonding Form
+  $('#dtr-tracker-tbody')?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-open-record]');
+    if (!btn) return;
+    const slug = btn.dataset.openRecord;
+    const sourceId = btn.dataset.sourceId;
+    if (slug === 'pull') {
+      switchTab('bonding');
+      setReportKind('pull');
+      await loadPullRecord(sourceId);
+    } else if (slug === 'bonding') {
+      switchTab('bonding');
+      setReportKind('bonding');
+      await loadBondingRecordList(sourceId);
+      await loadSingleBondingRecord(sourceId);
+    } else {
+      switchTab('material');
+      const formSel = $('#dtr-mat-form-slug');
+      if (formSel) formSel.value = slug;
+      activeSlug = slug;
+      await loadMaterialRecordList(slug, sourceId);
+      await loadSingleMaterialRecord(slug, sourceId);
+    }
+  });
+
+  // =========================================================================
+  // 3. EXACT ACCESS VBA COMPUTATIONS FOR MATERIAL FORMS
+  // =========================================================================
+
+  // 3a. UpdateMinMax: Thickness 1..6 -> TMin, TMax, TAve = Round(Sum/6, 2)
+  const computeThicknessMinMax = (triggerSmartStd = true) => {
+    const vals = [];
+    for (let i = 1; i <= 6; i++) {
+      const v = parseFloat($(`#mf_Thickness${i}`)?.value ?? '');
+      if (Number.isFinite(v) && v > 0) vals.push(v);
+    }
+    if (!vals.length) return;
+    const minVal = Math.min(...vals);
+    const maxVal = Math.max(...vals);
+    const aveVal = roundTo(vals.reduce((a, b) => a + b, 0) / vals.length, 2);
+
+    if ($('#mf_TMin')) $('#mf_TMin').value = minVal;
+    if ($('#mf_TMax')) $('#mf_TMax').value = maxVal;
+    if ($('#mf_TAve')) $('#mf_TAve').value = aveVal;
+
+    // Check Thickness Rating if T_S is numeric
+    const tStd = parseFloat($('#mf_T_S')?.value ?? '');
+    if (Number.isFinite(tStd) && tStd > 0 && $('#mf_TRating')) {
+      $('#mf_TRating').value = aveVal >= tStd ? 'PASS' : 'FAIL';
+      styleRatingInput($('#mf_TRating'));
+    }
+
+    if (triggerSmartStd) {
+      applyStandardValuesSmart();
+    }
+  };
+
+  // 3b. Weight Average & Specific Gravity Rating (Tol = 0.02) & DIN & RossFlex & Shrinkage
+  const computeWeightAndPhysicals = () => {
+    const wVals = [1, 2, 3]
+      .map((i) => parseFloat($(`#mf_Weight${i}`)?.value ?? ''))
+      .filter((v) => Number.isFinite(v) && v > 0);
+    if (wVals.length > 0 && $('#mf_WAve')) {
+      const wAve = roundTo(wVals.reduce((a, b) => a + b, 0) / wVals.length, 2);
+      $('#mf_WAve').value = wAve;
+      const wStd = parseFloat($('#mf_Weight_S')?.value ?? '');
+      if (Number.isFinite(wStd) && wStd > 0 && $('#mf_WRating')) {
+        $('#mf_WRating').value = wAve >= wStd ? 'PASS' : 'FAIL';
+        styleRatingInput($('#mf_WRating'));
+      }
+    }
+
+    // Specific Gravity (SG1..SG3 -> SG_Ave = Round(total/3, 2), Abs(ave - std) <= 0.02)
+    const sgVals = [1, 2, 3]
+      .map((i) => parseFloat($(`#mf_SG${i}`)?.value ?? ''))
+      .filter((v) => Number.isFinite(v) && v > 0);
+    if (sgVals.length > 0 && $('#mf_SG_Ave')) {
+      const sgAve = roundTo(sgVals.reduce((a, b) => a + b, 0) / sgVals.length, 2);
+      $('#mf_SG_Ave').value = sgAve;
+      const sgStd = parseFloat($('#mf_SG_Std')?.value ?? '');
+      if (Number.isFinite(sgStd) && sgStd > 0 && $('#mf_SG_Rate')) {
+        $('#mf_SG_Rate').value = Math.abs(sgAve - sgStd) <= 0.02 ? 'PASS' : 'FAIL';
+        styleRatingInput($('#mf_SG_Rate'));
+      }
+    }
+
+    // DIN Abrasion (Rubber: DIN_1..3 > 150 -> FAIL else PASS)
+    const dinVals = [1, 2, 3]
+      .map((i) => parseFloat($(`#mf_DIN_${i}`)?.value ?? ''))
+      .filter((v) => Number.isFinite(v) && v > 0);
+    if (dinVals.length > 0 && $('#mf_DIN_Rate')) {
+      $('#mf_DIN_Rate').value = dinVals.some((v) => v > 150) ? 'FAIL' : 'PASS';
+      styleRatingInput($('#mf_DIN_Rate'));
+    }
+
+    // Ross Flex (Rubber: RossFlex_1..2 > 50 -> FAIL else PASS)
+    const rfVals = [1, 2]
+      .map((i) => parseFloat($(`#mf_RossFlex_${i}`)?.value ?? ''))
+      .filter((v) => Number.isFinite(v) && v > 0);
+    if (rfVals.length > 0 && $('#mf_RossFlex_Rate')) {
+      $('#mf_RossFlex_Rate').value = rfVals.some((v) => v > 50) ? 'FAIL' : 'PASS';
+      styleRatingInput($('#mf_RossFlex_Rate'));
+    }
+
+    // Shrinkage (Abs(ShrinkageL) <= Shrinkage_S)
+    const shL = parseFloat($('#mf_ShrinkageL')?.value ?? '');
+    const shStd = parseFloat($('#mf_Shrinkage_S')?.value ?? '');
+    if (Number.isFinite(shL) && Number.isFinite(shStd) && shStd > 0 && $('#mf_ShrinkageLRating')) {
+      $('#mf_ShrinkageLRating').value = Math.abs(shL) <= Math.abs(shStd) ? 'PASS' : 'FAIL';
+      styleRatingInput($('#mf_ShrinkageLRating'));
+    }
+  };
+
+  // 3c. UpdateDirectionalAverage: Tensile, Elongation, TrouserTear, StitchTear, MullenBurst, DieC
+  const DIR_GROUPS = {
+    TensileL:     { inputs: ['mf_TensileL1', 'mf_TensileL2', 'mf_TensileL3'], ave: 'mf_TensileLAve', std: 'mf_Tensile_L', rate: 'mf_TensileLRating', dec: 2 },
+    TensileW:     { inputs: ['mf_TensileW1', 'mf_TensileW2', 'mf_TensileW3'], ave: 'mf_TensileWAve', std: 'mf_Tensile_W', rate: 'mf_TensileWRating', dec: 2 },
+    ElongationL:  { inputs: ['mf_ElongationL1', 'mf_ElongationL2', 'mf_ElongationL3'], ave: 'mf_ElongationLAve', std: 'mf_Elongation_L', rate: 'mf_ElongationLRating', dec: 2 },
+    ElongationW:  { inputs: ['mf_ElongationW1', 'mf_ElongationW2', 'mf_ElongationW3'], ave: 'mf_ElongationWAve', std: 'mf_Elongation_W', rate: 'mf_ElongationWRating', dec: 2 },
+    TrouserTearL: { inputs: ['mf_TrouserTearL1', 'mf_TrouserTearL2', 'mf_TrouserTearL3'], ave: 'mf_TrouserTearLAve', std: 'mf_TrouserTear_L', rate: 'mf_TrouserTearLRating', dec: 2 },
+    TrouserTearW: { inputs: ['mf_TrouserTearW1', 'mf_TrouserTearW2', 'mf_TrouserTearW3'], ave: 'mf_TrouserTearWAve', std: 'mf_TrouserTear_W', rate: 'mf_TrouserTearWRating', dec: 2 },
+    StitchTearL:  { inputs: ['mf_StitchTearL1', 'mf_StitchTearL2', 'mf_StitchTearL3'], ave: 'mf_StitchTearLAve', std: 'mf_StitchTear_L', rate: 'mf_StitchTearLRating', dec: 2 },
+    StitchTearW:  { inputs: ['mf_StitchTearW1', 'mf_StitchTearW2', 'mf_StitchTearW3'], ave: 'mf_StitchTearWAve', std: 'mf_StitchTear_W', rate: 'mf_StitchTearWRating', dec: 2 },
+    MullenBurst:  { inputs: ['mf_MullenBurst1', 'mf_MullenBurst2', 'mf_MullenBurst3'], ave: 'mf_Text3977', std: 'mf_MullenBurst', rate: 'mf_MullenBurstRating', dec: 4 },
+    DieC:         { inputs: ['mf_DieC_1', 'mf_DieC_2', 'mf_DieC_3'], ave: 'mf_DieC_Ave', std: 'mf_DieC_Std', rate: 'mf_DieC_Rate', dec: 2 },
+  };
+
+  const computeDirectionalGroup = (groupKey) => {
+    const g = DIR_GROUPS[groupKey];
+    if (!g) return;
+    const vals = g.inputs
+      .map((id) => parseFloat($(`#${id}`)?.value ?? ''))
+      .filter((v) => Number.isFinite(v));
+    const aveEl = $(`#${g.ave}`);
+    const stdEl = $(`#${g.std}`);
+    const rateEl = $(`#${g.rate}`);
+    if (!vals.length) return;
+    const avg = roundTo(vals.reduce((a, b) => a + b, 0) / vals.length, g.dec);
+    if (aveEl) aveEl.value = avg;
+    const stdVal = parseFloat(stdEl?.value ?? '');
+    if (Number.isFinite(stdVal) && stdVal > 0 && rateEl) {
+      rateEl.value = avg >= stdVal ? 'PASS' : 'FAIL';
+      styleRatingInput(rateEl);
+    }
+  };
+
+  const computeAllDirectionalGroups = () => {
+    Object.keys(DIR_GROUPS).forEach(computeDirectionalGroup);
+  };
+
+  // 3d. Evaluate6PointRating: Wool, Acrylic, Polyester, Nylon, Cotton, Acetate vs Standard
+  const SIX_POINT_GROUPS = {
+    CTP:  { fibers: ['mf_CtPWool', 'mf_CtPAcrylic', 'mf_CtPPolyester', 'mf_CtPNylon', 'mf_CtPCotton', 'mf_CtPAcetate'], std: 'mf_CTP', rate: 'mf_CTPRating' },
+    CTPB: { fibers: ['mf_CtPBWool', 'mf_CtPBAcrylic', 'mf_CtPBPolyester', 'mf_CtPBNylon', 'mf_CtPBCotton', 'mf_CtPBAcetate'], std: 'mf_CtPB_S', rate: 'mf_CTPB_Rating' },
+    CTW:  { fibers: ['mf_CtWWool', 'mf_CtWAcrylic', 'mf_CtWPolyester', 'mf_CtWNylon', 'mf_CtWCotton', 'mf_CtWAcetate'], std: 'mf_CTW', rate: 'mf_CTWRating' },
+    CTWB: { fibers: ['mf_CtWBackSideWool', 'mf_CtWBackSideAcrylic', 'mf_CtWBackSidePolyester', 'mf_CtWBackSideNylon', 'mf_CtWBackSideCotton', 'mf_CtWBackSideAcetate'], std: 'mf_CtWB_S', rate: 'mf_CtWB_Rating' },
+  };
+
+  const compute6PointColorfastness = (key) => {
+    const g = SIX_POINT_GROUPS[key];
+    if (!g) return;
+    const stdVal = parseFloat($(`#${g.std}`)?.value ?? '');
+    const rateEl = $(`#${g.rate}`);
+    if (!Number.isFinite(stdVal) || stdVal <= 0 || !rateEl) return;
+    const fiberVals = g.fibers.map((id) => parseFloat($(`#${id}`)?.value ?? ''));
+    if (fiberVals.some((v) => !Number.isFinite(v))) return;
+    rateEl.value = fiberVals.some((v) => v < stdVal) ? 'FAIL' : 'PASS';
+    styleRatingInput(rateEl);
+  };
+
+  const computeCrockingAndWeathering = () => {
+    // Crocking Dry
+    const cDry = parseFloat($('#mf_CtCDry')?.value ?? '');
+    const cDryS = parseFloat($('#mf_CtCDry_S')?.value ?? '');
+    if (Number.isFinite(cDry) && Number.isFinite(cDryS) && cDryS > 0 && $('#mf_CTCDRYRating')) {
+      $('#mf_CTCDRYRating').value = cDry >= cDryS ? 'PASS' : 'FAIL';
+      styleRatingInput($('#mf_CTCDRYRating'));
+    }
+    // Crocking Wet
+    const cWet = parseFloat($('#mf_CtCWet')?.value ?? '');
+    const cWetS = parseFloat($('#mf_CtCWet_S')?.value ?? '');
+    if (Number.isFinite(cWet) && Number.isFinite(cWetS) && cWetS > 0 && $('#mf_CTCWETRating')) {
+      $('#mf_CTCWETRating').value = cWet >= cWetS ? 'PASS' : 'FAIL';
+      styleRatingInput($('#mf_CTCWETRating'));
+    }
+    // UV
+    const uv = parseFloat($('#mf_UV')?.value ?? '');
+    const uvS = parseFloat($('#mf_UV_S')?.value ?? '');
+    if (Number.isFinite(uv) && Number.isFinite(uvS) && uvS > 0 && $('#mf_UVRating')) {
+      $('#mf_UVRating').value = uv >= uvS ? 'PASS' : 'FAIL';
+      styleRatingInput($('#mf_UVRating'));
+    }
+    // Heat Aging 1..2
+    const ha1 = parseFloat($('#mf_HeatAging1')?.value ?? '');
+    const ha2 = parseFloat($('#mf_HeatAging2')?.value ?? '');
+    const haS = parseFloat($('#mf_HeatAging_S')?.value ?? '');
+    if (Number.isFinite(ha1) && Number.isFinite(ha2) && Number.isFinite(haS) && haS > 0 && $('#mf_HeatAgingRating')) {
+      $('#mf_HeatAgingRating').value = (ha1 < haS || ha2 < haS) ? 'FAIL' : 'PASS';
+      styleRatingInput($('#mf_HeatAgingRating'));
+    }
+    // Hydrolysis 1..2
+    const hy1 = parseFloat($('#mf_Hydrolysis1')?.value ?? '');
+    const hy2 = parseFloat($('#mf_Hydrolysis2')?.value ?? '');
+    const hyS = parseFloat($('#mf_Hydrolysis_S')?.value ?? '');
+    if (Number.isFinite(hy1) && Number.isFinite(hy2) && Number.isFinite(hyS) && hyS > 0 && $('#mf_HydrolysisRating')) {
+      $('#mf_HydrolysisRating').value = (hy1 < hyS || hy2 < hyS) ? 'FAIL' : 'PASS';
+      styleRatingInput($('#mf_HydrolysisRating'));
+    }
+    // PVC 1..2
+    const pvc1 = parseFloat($('#mf_PVC_1')?.value ?? '');
+    const pvc2 = parseFloat($('#mf_PVC_2')?.value ?? '');
+    const pvcS = parseFloat($('#mf_PVC_S')?.value ?? '');
+    if (Number.isFinite(pvc1) && Number.isFinite(pvc2) && Number.isFinite(pvcS) && pvcS > 0 && $('#mf_PVC_Rating')) {
+      $('#mf_PVC_Rating').value = (pvc1 < pvcS || pvc2 < pvcS) ? 'FAIL' : 'PASS';
+      styleRatingInput($('#mf_PVC_Rating'));
+    }
+  };
+
+  // 3e. EvaluateRatings: Priority FAIL > TOLERABLE > PASS > UNRATED
+  const evaluateMaterialOverallRatings = () => {
+    let foundPass = false;
+    let foundFail = false;
+    let foundTol = false;
+
+    $$('#dtr-material-form .dtr-rate-inp').forEach((inp) => {
+      styleRatingInput(inp);
+      const val = String(inp.value || '').trim().toUpperCase();
+      if (val === 'FAIL') foundFail = true;
+      else if (val === 'TOLERABLE') foundTol = true;
+      else if (val === 'PASS') foundPass = true;
+    });
+
+    let result = 'PASS';
+    if (foundFail) result = 'FAIL';
+    else if (foundTol) result = 'TOLERABLE';
+    else if (foundPass) result = 'PASS';
+    else if ($('#mf_Remarks')?.value) result = String($('#mf_Remarks').value).toUpperCase();
+
+    if ($('#mf_Remarks')) $('#mf_Remarks').value = result;
+
+    const stamp = $('#dtr-stamp-badge');
+    if (stamp) {
+      stamp.textContent = result;
+      stamp.className = 'dtr-stamp ' + (result === 'FAIL' ? 'dtr-stamp-fail' : (result === 'TOLERABLE' ? 'dtr-stamp-warn' : 'dtr-stamp-pass'));
+    }
+  };
+
+  // 3f. ApplyStandardValuesSmart: Query tbl_dtr_standards by MaterialType & TAve
+  const applyStandardValuesSmart = async () => {
+    const matType = $('#mf_MaterialType')?.value.trim() || '';
+    const tAve = parseFloat($('#mf_TAve')?.value ?? '0') || 0;
+    if (!matType) return;
+
+    try {
+      const res = await apiFetch(`dtr/standards?material_type=${encodeURIComponent(matType)}&t_ave=${encodeURIComponent(tAve)}`);
+      if (res && res.mapped) {
+        Object.keys(res.mapped).forEach((ctrlName) => {
+          const val = res.mapped[ctrlName];
+          const el = $(`#mf_${ctrlName}`) || $(`[name="${ctrlName}"]`, $('#dtr-material-form'));
+          if (el) el.value = val;
+        });
+      }
+      computeWeightAndPhysicals();
+      computeAllDirectionalGroups();
+      Object.keys(SIX_POINT_GROUPS).forEach(compute6PointColorfastness);
+      computeCrockingAndWeathering();
+      evaluateMaterialOverallRatings();
+    } catch (err) {
+      console.warn('[DTR] applyStandardValuesSmart error:', err);
+    }
+  };
+
+  const runFullMaterialRecalc = async () => {
+    computeThicknessMinMax(false);
+    await applyStandardValuesSmart();
+    showToast('✓ Executed ApplyStandardValuesSmart + Thickness + Directional Averages + 6-Point Colorfastness + EvaluateRatings.');
+  };
+
+  // =========================================================================
+  // 4. LOAD & SAVE MATERIAL RECORDS
+  // =========================================================================
+  const loadMaterialRecordList = async (slug, selectedId = null) => {
+    const sel = $('#dtr-mat-record-select');
+    try {
+      if (sel) sel.innerHTML = '<option value="">Loading records…</option>';
+      const res = await apiFetch(`dtr/records?slug=${encodeURIComponent(slug)}`);
+      if (!sel || !res.rows) return;
+      if (!res.rows.length) { sel.innerHTML = '<option value="">No records yet - press “+ New Record”</option>'; return; }
+      sel.innerHTML = '<option value="">- New report (not saved yet) -</option>' + res.rows.map((r) => `
+        <option value="${escHtml(r.source_id)}" ${String(r.source_id) === String(selectedId) ? 'selected' : ''}>
+          ${escHtml(r.lab_ref_no)} · ${escHtml(r.material_type || r.form_category)} · ${escHtml(r.model_style || r.material_code || '')} [${escHtml(r.overall_result || 'Pass')}]
         </option>
-      `).join("")}catch(l){console.error(l),s&&(s.innerHTML='<option value="">Could not load records - reload the page</option>'),window.nxToast&&nxToast("The record list could not be loaded.","error")}},ns=e=>{const a=t("#dtr-raw-cols-container"),s=t("#dtr-raw-col-count");if(!a)return;const l=Object.keys(e||{});s&&(s.textContent=l.length),a.innerHTML=l.map(o=>`
+      `).join('');
+    } catch (err) {
+      console.error(err);
+      if (sel) sel.innerHTML = '<option value="">Could not load records - reload the page</option>';
+      if (window.nxToast) nxToast('The record list could not be loaded.', 'error');
+    }
+  };
+
+  const renderRawColumnsEditor = (record) => {
+    const container = $('#dtr-raw-cols-container');
+    const cntEl = $('#dtr-raw-col-count');
+    if (!container) return;
+    const keys = Object.keys(record || {});
+    if (cntEl) cntEl.textContent = keys.length;
+    container.innerHTML = keys.map((col) => `
       <div class="dtr-field">
-        <label title="${c(o)}"><code>${c(o)}</code></label>
-        <input type="text" data-raw-col="${c(o)}" value="${c(e[o]??"")}" ${o==="ID"?'readonly class="dtr-ro"':""}>
+        <label title="${escHtml(col)}"><code>${escHtml(col)}</code></label>
+        <input type="text" data-raw-col="${escHtml(col)}" value="${escHtml(record[col] ?? '')}" ${col === 'ID' ? 'readonly class="dtr-ro"' : ''}>
       </div>
-    `).join("")},aa=(e,a={})=>{Pe=e||{},t("#dtr-active-form-label")&&a.label&&(t("#dtr-active-form-label").textContent=`${a.label}`),t("#dtr-active-labref-title")&&(t("#dtr-active-labref-title").textContent=`${e.LabRefNo||"New Report"} — ${e["Material Description"]||e.MaterialDescription||e.MaterialType||""}`),k("#dtr-material-form input, #dtr-material-form select").forEach(s=>{s.name&&(s.value="")}),Object.keys(e).forEach(s=>{const l=e[s]??"",o=t(`#mf_${s.replace(/[^a-zA-Z0-9_]/g,"")}`);o&&(o.value=l);const n=t(`[name="${CSS.escape(s)}"]`,t("#dtr-material-form"));n&&(n.value=l)}),t("#mf_MaterialDescription")&&!t("#mf_MaterialDescription").value&&(t("#mf_MaterialDescription").value=e["Material Description"]||e.MaterialDescription||""),t("#mf_SupplierFactory")&&!t("#mf_SupplierFactory").value&&(t("#mf_SupplierFactory").value=e["Supplier/Factory"]||e.Supplier||e.SupplierFactory||""),t("#mf_POLotNo")&&!t("#mf_POLotNo").value&&(t("#mf_POLotNo").value=e["PO/Lot No"]||e.POLotNo||""),t("#mf_ModelNoStyle")&&!t("#mf_ModelNoStyle").value&&(t("#mf_ModelNoStyle").value=e["Model No/Style"]||e.ModelNoStyle||""),t("#mf_POQuantity")&&!t("#mf_POQuantity").value&&(t("#mf_POQuantity").value=e["PO Quantity"]||e.POQuantity||""),t("#mf_TestedBy")&&!t("#mf_TestedBy").value&&(t("#mf_TestedBy").value=e["Tested by"]||e.TestedBy||e.Technician||""),ns(e),Ne(!1),Tt(),Le(),Object.keys(De).forEach(We),Ie(),ot()},sa=async(e,a=0)=>{try{const s=await J(`dtr/record?slug=${encodeURIComponent(e)}&source_id=${encodeURIComponent(a)}`);s&&s.ok&&aa(s.record||{},s.config||{})}catch(s){console.error(s)}};(ba=t("#mf_LabRefNo"))==null||ba.addEventListener("change",()=>{var s;const e=(((s=t("#mf_LabRefNo"))==null?void 0:s.value)||"").toUpperCase().trim(),a=t("#mf_MaterialType");!e||!a||(e.includes("FBU")||e.includes("FBL")?a.value||(a.value="Canvas"):e.includes("LEU")||e.includes("LEL")?a.value||(a.value="Suede"):e.includes("RB")?a.value="Rubber":e.includes("IB")?a.value="Inner Box":e.includes("OB")?a.value="Outer Box":e.includes("FML")?a.value="Sockliner - Latex":e.includes("FM")?a.value="PU Foam":e.includes("SKL")?a.value="Sockliner - EVA":e.includes("LC")?a.value="Shoe lace":e.includes("TH")?a.value="Thread":e.includes("EY")?a.value="Eyelet":e.includes("GR")?a.value="Grommet":e.includes("ZP")&&(a.value="Zipper"),Ce())});const Re=async()=>{var l,o,n;const e=((l=t("#mf_MaterialCode"))==null?void 0:l.value.trim())||"",a=((o=t("#mf_POLotNo"))==null?void 0:o.value.trim())||"",s=((n=t("#mf_MTL"))==null?void 0:n.value.trim())||"";if(!e&&!a&&!s){I("Enter a Material Code, PO/Lot No, or MTL # first.",!0);return}try{const r=await J(`dtr/lookup?material_code=${encodeURIComponent(e)}&po_lot_no=${encodeURIComponent(a)}&mtl_no=${encodeURIComponent(s)}`);let d=[];if(r.material&&(t("#mf_SupplierFactory")&&(t("#mf_SupplierFactory").value=r.material.Supplier||""),t("#mf_MaterialDescription")&&(t("#mf_MaterialDescription").value=r.material.MaterialName||""),d.push(`MaterialList (${r.material.MaterialCode})`)),r.shoe&&(t("#mf_ModelNoStyle")&&(t("#mf_ModelNoStyle").value=r.shoe.StyleNo||""),t("#mf_Color")&&(t("#mf_Color").value=r.shoe.Colorway||""),t("#mf_MTL")&&r.shoe.MTL&&(t("#mf_MTL").value=r.shoe.MTL),d.push(`ShoeList (${r.shoe.StyleNo})`)),r.dsr&&r.dsr.length>0){const i=r.dsr[0];t("#mf_StyleNumber_DSR")&&(t("#mf_StyleNumber_DSR").value=i.StyleNumber||""),t("#mf_StyleDescription_DSR")&&(t("#mf_StyleDescription_DSR").value=i.StyleDescription||""),t("#mf_Colorway_DSR")&&(t("#mf_Colorway_DSR").value=i.Colorway||""),t("#mf_ComponentorLocation_DSR")&&(t("#mf_ComponentorLocation_DSR").value=i.ComponentorLocation||""),t("#mf_VFMaterialCode_DSR")&&(t("#mf_VFMaterialCode_DSR").value=i.VFMaterialCode||""),t("#mf_InternalName_DSR")&&(t("#mf_InternalName_DSR").value=i["Internal NameVans1"]||i.Material||""),t("#mf_ColorName_DSR")&&(t("#mf_ColorName_DSR").value=i.ColorName||i.Color||""),d.push(`tblDSR (${r.dsr.length} component rows)`)}d.length?I(`✓ Auto-Lookup populated from: ${d.join(" · ")}`):I("No exact match found in MaterialList / ShoeList / tblDSR.",!0)}catch(r){console.error(r)}};(_a=t("#btn-dtr-lookup-all"))==null||_a.addEventListener("click",Re),(ga=t("#mf_MaterialCode"))==null||ga.addEventListener("change",Re),(Ta=t("#mf_POLotNo"))==null||Ta.addEventListener("change",Re),(ya=t("#mf_MTL"))==null||ya.addEventListener("change",Re),(Sa=t("#mf_MaterialType"))==null||Sa.addEventListener("change",Ce),k(".dtr-calc-thick").forEach(e=>{e.addEventListener("input",()=>Ne(!0))}),k(".dtr-calc-weight, .dtr-calc-sg, .dtr-calc-din, .dtr-calc-ross, .dtr-calc-shrink").forEach(e=>{e.addEventListener("input",()=>{Tt(),ot()})}),k(".dtr-dir-inp, .dtr-std-inp").forEach(e=>{e.addEventListener("input",()=>{e.dataset.dirGroup?ea(e.dataset.dirGroup):Le(),ot()})}),k(".dtr-6pt-inp").forEach(e=>{e.addEventListener("input",()=>{e.dataset["6pt"]&&We(e.dataset["6pt"]),ot()})}),k(".dtr-crock-inp").forEach(e=>{e.addEventListener("input",()=>{Ie(),ot()})}),k(".dtr-rate-inp").forEach(e=>{e.addEventListener("change",ot),e.addEventListener("input",ot)}),($a=t("#dtr-mat-form-slug"))==null||$a.addEventListener("change",async e=>{$t=e.target.value,Ue(!1),await we($t)}),(Fa=t("#dtr-mat-record-select"))==null||Fa.addEventListener("change",async e=>{const a=e.target.value;a&&await sa($t,a)});const Ue=(e=!0)=>{var l,o;const a=new Date().toISOString().slice(0,10);aa({ID:"",LabRefNo:`DTP${a.replace(/-/g,"")}${$t.toUpperCase().slice(0,3)}-1`},{label:((o=(l=t("#dtr-mat-form-slug"))==null?void 0:l.selectedOptions[0])==null?void 0:o.textContent.trim())||""}),k("#dtr-material-form textarea").forEach(n=>{n.value=""}),k("#dtr-material-form input[type=radio], #dtr-material-form input[type=checkbox]").forEach(n=>{n.checked=!1});const s=t("#dtr-mat-record-select");s&&(s.value=""),e&&I("Initialized new blank test report record.")};(La=t("#btn-dtr-new"))==null||La.addEventListener("click",()=>Ue()),(Ca=t("#btn-dtr-review"))==null||Ca.addEventListener("click",()=>{const e=prompt("Enter Reviewer Name:","Faye Ann Elaysa");if(!e)return;const a=t('[data-raw-col="AuthorizedBy"]');a&&(a.value=e);const s=t('[data-raw-col="AuthorizationStatus"]');s&&(s.value="Reviewed"),I(`✓ Record stamped Reviewed by ${e}`)}),(wa=t("#btn-dtr-refresh-calc"))==null||wa.addEventListener("click",rs),(Ra=t("#btn-dtr-load-machine"))==null||Ra.addEventListener("click",async()=>{var a;const e=((a=t("#mf_LabRefNo"))==null?void 0:a.value.trim())||"";if(!e){I("Enter a LabRefNo first before loading machine results.",!0);return}try{const s=await J("dtr/load-machine",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({slug:$t,lab_ref_no:e})});s&&s.loadedFields&&(Object.keys(s.loadedFields).forEach(l=>{const o=s.loadedFields[l],n=t(`#mf_${l}`)||t(`[name="${CSS.escape(l)}"]`,t("#dtr-material-form"));n&&(n.value=o);const r=t(`[data-raw-col="${CSS.escape(l)}"]`);r&&(r.value=o)}),Tt(),Le(),ot(),t("#dtr-machine-status")&&(t("#dtr-machine-status").textContent=s.message||"Machine data loaded."),I(`${s.message}`))}catch(s){I("Machine loader error: "+(s.message||""),!0)}}),(xa=t("#btn-dtr-save"))==null||xa.addEventListener("click",async()=>{const e=Object.assign({},Pe);k("#dtr-raw-cols-container [data-raw-col]").forEach(a=>{e[a.dataset.rawCol]=a.value}),k("#dtr-material-form [name]").forEach(a=>{a.name&&(e[a.name]=a.value)});try{const a=await J("dtr/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({slug:$t,fields:e})});a&&a.ok?(t("#mf_ID")&&(t("#mf_ID").value=a.recordId),I(`✓ ${a.message} (Ready in InterLink Sync ComboBox!)`),await we($t,a.recordId)):I(a.error||"Save failed.",!0)}catch{I("Failed to save record.",!0)}}),(Aa=t("#btn-toggle-raw-cols"))==null||Aa.addEventListener("click",()=>{var e;(e=t("#dtr-raw-cols-container"))==null||e.classList.toggle("hidden")});const oa={TODDLER:14,KIDS:16,CHILDREN:24,ADULT:35},is={TODDLER:"2.0",KIDS:"2.0",CHILDREN:"2.5",ADULT:"3.0"},xe=1,Ae=e=>Math.round(e*.8*100)/100,He=(e,a)=>!Number.isFinite(e)||e<=0?null:e>=a?"PASS":e>=Ae(a)?"TOLERABLE":"FAIL",Gt=()=>{var i,m;const e=(((i=t("#bf_AgeCategory"))==null?void 0:i.value)||"ADULT").toUpperCase(),a=oa[e]||35,s=parseFloat(((m=t("#bf_STD"))==null?void 0:m.value)??"2.5")||2.5;k("#dtr-bonding-points-tbody [data-spot-row]").forEach(u=>{const v=Number(u.dataset.spotRow);u.style.opacity=v<=a?"1":"0.45"});const l=(u,v,x)=>{const L=[];let P=!1,f=!1;for(let g=1;g<=v;g++){const N=t(`#bp_${u}${g}`);if(!N)continue;const G=parseFloat(N.value??"");if(N.classList.remove("dtr-rate-pass","dtr-rate-warn","dtr-rate-fail"),Number.isFinite(G)&&G>0){L.push(G);const E=He(G,x);E==="FAIL"?(P=!0,N.classList.add("dtr-rate-fail")):E==="TOLERABLE"?(f=!0,N.classList.add("dtr-rate-warn")):N.classList.add("dtr-rate-pass")}}return L.length?{min:R(Math.min(...L),2),max:R(Math.max(...L),2),ave:R(L.reduce((g,N)=>g+N,0)/L.length,2),res:P?"FAIL":f?"TOLERABLE":"PASS"}:{min:"",max:"",ave:"",res:""}},o=l("UTFpoint",a,s),n=l("FTOpoint",a,s),r=l("FiTO",13,xe);t("#bp_UTFMin")&&(t("#bp_UTFMin").value=o.min),t("#bp_UTFMax")&&(t("#bp_UTFMax").value=o.max),t("#bp_UTFAverage")&&(t("#bp_UTFAverage").value=o.ave),t("#bp_UTF_Result")&&(t("#bp_UTF_Result").value=o.res,j(t("#bp_UTF_Result"))),t("#bp_FTOMin")&&(t("#bp_FTOMin").value=n.min),t("#bp_FTOMax")&&(t("#bp_FTOMax").value=n.max),t("#bp_FTOAverage")&&(t("#bp_FTOAverage").value=n.ave),t("#bp_FTO_Result")&&(t("#bp_FTO_Result").value=n.res,j(t("#bp_FTO_Result"))),t("#bp_FiTOMin")&&(t("#bp_FiTOMin").value=r.min),t("#bp_FiTOMax")&&(t("#bp_FiTOMax").value=r.max),t("#bp_FiTOAverage")&&(t("#bp_FiTOAverage").value=r.ave),t("#bp_FiTO_Result")&&(t("#bp_FiTO_Result").value=r.res,j(t("#bp_FiTO_Result")));const d=[o.res,n.res,r.res].filter(Boolean);t("#bf_Result")&&(d.length&&(t("#bf_Result").value=d.includes("FAIL")?"FAIL":d.includes("TOLERABLE")?"TOLERABLE":"PASS"),j(t("#bf_Result"))),ke()},Ve=async(e=null)=>{const a=t("#dtr-bonding-record-select");try{a&&(a.innerHTML='<option value="">Loading reports…</option>');const s=await J("dtr/records?slug=bonding");if(!a||!s.rows)return;if(!s.rows.length){a.innerHTML='<option value="">No bonding reports yet</option>';return}a.innerHTML='<option value="">- New report (not saved yet) -</option>'+s.rows.map(l=>`
-        <option value="${c(l.source_id)}" ${String(l.source_id)===String(e)?"selected":""}>
-          ${c(l.lab_ref_no)} · ${c(l.model_style||"")} · ${c(l.color||"")} [${c(l.overall_result||"Pass")}]
+    `).join('');
+  };
+
+  const populateMaterialForm = (record, cfg = {}) => {
+    activeRecord = record || {};
+    if ($('#dtr-active-form-label') && cfg.label) {
+      $('#dtr-active-form-label').textContent = `${cfg.label}`;
+    }
+    if ($('#dtr-active-labref-title')) {
+      $('#dtr-active-labref-title').textContent = `${record.LabRefNo || 'New Report'} — ${record['Material Description'] || record.MaterialDescription || record.MaterialType || ''}`;
+    }
+
+    // Clear all inputs first
+    $$('#dtr-material-form input, #dtr-material-form select').forEach((inp) => {
+      if (inp.name) inp.value = '';
+    });
+
+    // Populate matching inputs by name or id
+    Object.keys(record).forEach((col) => {
+      const val = record[col] ?? '';
+      const byId = $(`#mf_${col.replace(/[^a-zA-Z0-9_]/g, '')}`);
+      if (byId) byId.value = val;
+      const byName = $(`[name="${CSS.escape(col)}"]`, $('#dtr-material-form'));
+      if (byName) byName.value = val;
+    });
+
+    // Handle alternate column names across the 10 Access tables
+    if ($('#mf_MaterialDescription') && !$('#mf_MaterialDescription').value) {
+      $('#mf_MaterialDescription').value = record['Material Description'] || record.MaterialDescription || '';
+    }
+    if ($('#mf_SupplierFactory') && !$('#mf_SupplierFactory').value) {
+      $('#mf_SupplierFactory').value = record['Supplier/Factory'] || record.Supplier || record.SupplierFactory || '';
+    }
+    if ($('#mf_POLotNo') && !$('#mf_POLotNo').value) {
+      $('#mf_POLotNo').value = record['PO/Lot No'] || record.POLotNo || '';
+    }
+    if ($('#mf_ModelNoStyle') && !$('#mf_ModelNoStyle').value) {
+      $('#mf_ModelNoStyle').value = record['Model No/Style'] || record.ModelNoStyle || '';
+    }
+    if ($('#mf_POQuantity') && !$('#mf_POQuantity').value) {
+      $('#mf_POQuantity').value = record['PO Quantity'] || record.POQuantity || '';
+    }
+    if ($('#mf_TestedBy') && !$('#mf_TestedBy').value) {
+      $('#mf_TestedBy').value = record['Tested by'] || record.TestedBy || record.Technician || '';
+    }
+
+    renderRawColumnsEditor(record);
+    computeThicknessMinMax(false);
+    computeWeightAndPhysicals();
+    computeAllDirectionalGroups();
+    Object.keys(SIX_POINT_GROUPS).forEach(compute6PointColorfastness);
+    computeCrockingAndWeathering();
+    evaluateMaterialOverallRatings();
+  };
+
+  const loadSingleMaterialRecord = async (slug, sourceId = 0) => {
+    try {
+      const res = await apiFetch(`dtr/record?slug=${encodeURIComponent(slug)}&source_id=${encodeURIComponent(sourceId)}`);
+      if (res && res.ok) {
+        populateMaterialForm(res.record || {}, res.config || {});
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Auto-detect MaterialType when LabRefNo changes (Exact LabRefNo_AfterUpdate rule from VBA)
+  $('#mf_LabRefNo')?.addEventListener('change', () => {
+    const ref = ($('#mf_LabRefNo')?.value || '').toUpperCase().trim();
+    const mtEl = $('#mf_MaterialType');
+    if (!ref || !mtEl) return;
+    if (ref.includes('FBU') || ref.includes('FBL')) {
+      if (!mtEl.value) mtEl.value = 'Canvas';
+    } else if (ref.includes('LEU') || ref.includes('LEL')) {
+      if (!mtEl.value) mtEl.value = 'Suede';
+    } else if (ref.includes('RB')) {
+      mtEl.value = 'Rubber';
+    } else if (ref.includes('IB')) {
+      mtEl.value = 'Inner Box';
+    } else if (ref.includes('OB')) {
+      mtEl.value = 'Outer Box';
+    } else if (ref.includes('FML')) {
+      mtEl.value = 'Sockliner - Latex';
+    } else if (ref.includes('FM')) {
+      mtEl.value = 'PU Foam';
+    } else if (ref.includes('SKL')) {
+      mtEl.value = 'Sockliner - EVA';
+    } else if (ref.includes('LC')) {
+      mtEl.value = 'Shoe lace';
+    } else if (ref.includes('TH')) {
+      mtEl.value = 'Thread';
+    } else if (ref.includes('EY')) {
+      mtEl.value = 'Eyelet';
+    } else if (ref.includes('GR')) {
+      mtEl.value = 'Grommet';
+    } else if (ref.includes('ZP')) {
+      mtEl.value = 'Zipper';
+    }
+    applyStandardValuesSmart();
+  });
+
+  // Auto-lookup MaterialCode, PO/Lot No, and MTL from dbnexus (MaterialList, ShoeList, tblDSR)
+  const triggerMasterLookups = async () => {
+    const matCode = $('#mf_MaterialCode')?.value.trim() || '';
+    const poLot = $('#mf_POLotNo')?.value.trim() || '';
+    const mtl = $('#mf_MTL')?.value.trim() || '';
+
+    if (!matCode && !poLot && !mtl) {
+      showToast('Enter a Material Code, PO/Lot No, or MTL # first.', true);
+      return;
+    }
+
+    try {
+      const res = await apiFetch(
+        `dtr/lookup?material_code=${encodeURIComponent(matCode)}&po_lot_no=${encodeURIComponent(poLot)}&mtl_no=${encodeURIComponent(mtl)}`
+      );
+      let msgParts = [];
+      if (res.material) {
+        if ($('#mf_SupplierFactory')) $('#mf_SupplierFactory').value = res.material.Supplier || '';
+        if ($('#mf_MaterialDescription')) $('#mf_MaterialDescription').value = res.material.MaterialName || '';
+        msgParts.push(`MaterialList (${res.material.MaterialCode})`);
+      }
+      if (res.shoe) {
+        if ($('#mf_ModelNoStyle')) $('#mf_ModelNoStyle').value = res.shoe.StyleNo || '';
+        if ($('#mf_Color')) $('#mf_Color').value = res.shoe.Colorway || '';
+        if ($('#mf_MTL') && res.shoe.MTL) $('#mf_MTL').value = res.shoe.MTL;
+        msgParts.push(`ShoeList (${res.shoe.StyleNo})`);
+      }
+      if (res.dsr && res.dsr.length > 0) {
+        const d = res.dsr[0];
+        if ($('#mf_StyleNumber_DSR')) $('#mf_StyleNumber_DSR').value = d.StyleNumber || '';
+        if ($('#mf_StyleDescription_DSR')) $('#mf_StyleDescription_DSR').value = d.StyleDescription || '';
+        if ($('#mf_Colorway_DSR')) $('#mf_Colorway_DSR').value = d.Colorway || '';
+        if ($('#mf_ComponentorLocation_DSR')) $('#mf_ComponentorLocation_DSR').value = d.ComponentorLocation || '';
+        if ($('#mf_VFMaterialCode_DSR')) $('#mf_VFMaterialCode_DSR').value = d.VFMaterialCode || '';
+        if ($('#mf_InternalName_DSR')) $('#mf_InternalName_DSR').value = d['Internal NameVans1'] || d.Material || '';
+        if ($('#mf_ColorName_DSR')) $('#mf_ColorName_DSR').value = d.ColorName || d.Color || '';
+        msgParts.push(`tblDSR (${res.dsr.length} component rows)`);
+      }
+      if (msgParts.length) {
+        showToast(`✓ Auto-Lookup populated from: ${msgParts.join(' · ')}`);
+      } else {
+        showToast('No exact match found in MaterialList / ShoeList / tblDSR.', true);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  $('#btn-dtr-lookup-all')?.addEventListener('click', triggerMasterLookups);
+  $('#mf_MaterialCode')?.addEventListener('change', triggerMasterLookups);
+  $('#mf_POLotNo')?.addEventListener('change', triggerMasterLookups);
+  $('#mf_MTL')?.addEventListener('change', triggerMasterLookups);
+  $('#mf_MaterialType')?.addEventListener('change', applyStandardValuesSmart);
+
+  // Bind live automatic calculations on input changes
+  $$('.dtr-calc-thick').forEach((inp) => {
+    inp.addEventListener('input', () => computeThicknessMinMax(true));
+  });
+  $$('.dtr-calc-weight, .dtr-calc-sg, .dtr-calc-din, .dtr-calc-ross, .dtr-calc-shrink').forEach((inp) => {
+    inp.addEventListener('input', () => {
+      computeWeightAndPhysicals();
+      evaluateMaterialOverallRatings();
+    });
+  });
+  $$('.dtr-dir-inp, .dtr-std-inp').forEach((inp) => {
+    inp.addEventListener('input', () => {
+      if (inp.dataset.dirGroup) computeDirectionalGroup(inp.dataset.dirGroup);
+      else computeAllDirectionalGroups();
+      evaluateMaterialOverallRatings();
+    });
+  });
+  $$('.dtr-6pt-inp').forEach((inp) => {
+    inp.addEventListener('input', () => {
+      if (inp.dataset['6pt']) compute6PointColorfastness(inp.dataset['6pt']);
+      evaluateMaterialOverallRatings();
+    });
+  });
+  $$('.dtr-crock-inp').forEach((inp) => {
+    inp.addEventListener('input', () => {
+      computeCrockingAndWeathering();
+      evaluateMaterialOverallRatings();
+    });
+  });
+  $$('.dtr-rate-inp').forEach((inp) => {
+    inp.addEventListener('change', evaluateMaterialOverallRatings);
+    inp.addEventListener('input', evaluateMaterialOverallRatings);
+  });
+
+  // Switch Material Form Slug
+  $('#dtr-mat-form-slug')?.addEventListener('change', async (e) => {
+    activeSlug = e.target.value;
+    newMaterialRecord(false);
+    await loadMaterialRecordList(activeSlug);
+  });
+
+  // Switch Record inside Material Form
+  $('#dtr-mat-record-select')?.addEventListener('change', async (e) => {
+    const id = e.target.value;
+    if (id) await loadSingleMaterialRecord(activeSlug, id);
+  });
+
+  // + New Record: a blank form, only the Lab Ref No. is suggested
+  const newMaterialRecord = (notify = true) => {
+    const today = new Date().toISOString().slice(0, 10);
+    populateMaterialForm({
+      ID: '',
+      LabRefNo: `DTP${today.replace(/-/g, '')}${activeSlug.toUpperCase().slice(0, 3)}-1`,
+    }, { label: $('#dtr-mat-form-slug')?.selectedOptions[0]?.textContent.trim() || '' });
+    $$('#dtr-material-form textarea').forEach((t) => { t.value = ''; });
+    $$('#dtr-material-form input[type=radio], #dtr-material-form input[type=checkbox]').forEach((c) => { c.checked = false; });
+    const sel = $('#dtr-mat-record-select');
+    if (sel) sel.value = '';
+    if (notify) showToast('Initialized new blank test report record.');
+  };
+  $('#btn-dtr-new')?.addEventListener('click', () => newMaterialRecord());
+
+  // Stamp Reviewed
+  $('#btn-dtr-review')?.addEventListener('click', () => {
+    const reviewer = prompt('Enter Reviewer Name:', 'Faye Ann Elaysa');
+    if (!reviewer) return;
+    const rawAuth = $('[data-raw-col="AuthorizedBy"]');
+    if (rawAuth) rawAuth.value = reviewer;
+    const rawStat = $('[data-raw-col="AuthorizationStatus"]');
+    if (rawStat) rawStat.value = 'Reviewed';
+    showToast(`✓ Record stamped Reviewed by ${reviewer}`);
+  });
+
+  // Refresh & Apply Smart Standards
+  $('#btn-dtr-refresh-calc')?.addEventListener('click', runFullMaterialRecalc);
+
+  // Load Machine Results from \\192.168.32.45\OUTDATA\MATERIALS\
+  $('#btn-dtr-load-machine')?.addEventListener('click', async () => {
+    const labRefNo = $('#mf_LabRefNo')?.value.trim() || '';
+    if (!labRefNo) {
+      showToast('Enter a LabRefNo first before loading machine results.', true);
+      return;
+    }
+    try {
+      const res = await apiFetch('dtr/load-machine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: activeSlug, lab_ref_no: labRefNo }),
+      });
+      if (res && res.loadedFields) {
+        Object.keys(res.loadedFields).forEach((k) => {
+          const v = res.loadedFields[k];
+          const el = $(`#mf_${k}`) || $(`[name="${CSS.escape(k)}"]`, $('#dtr-material-form'));
+          if (el) el.value = v;
+          const rawEl = $(`[data-raw-col="${CSS.escape(k)}"]`);
+          if (rawEl) rawEl.value = v;
+        });
+        computeWeightAndPhysicals();
+        computeAllDirectionalGroups();
+        evaluateMaterialOverallRatings();
+        if ($('#dtr-machine-status')) {
+          $('#dtr-machine-status').textContent = res.message || 'Machine data loaded.';
+        }
+        showToast(`${res.message}`);
+      }
+    } catch (err) {
+      showToast('Machine loader error: ' + (err.message || ''), true);
+    }
+  });
+
+  // Save Material Report to dbnexus
+  $('#btn-dtr-save')?.addEventListener('click', async () => {
+    const fields = Object.assign({}, activeRecord);
+    // Collect raw col inputs first
+    $$('#dtr-raw-cols-container [data-raw-col]').forEach((inp) => {
+      fields[inp.dataset.rawCol] = inp.value;
+    });
+    // Collect main form inputs (override raw cols)
+    $$('#dtr-material-form [name]').forEach((inp) => {
+      if (inp.name) fields[inp.name] = inp.value;
+    });
+
+    try {
+      const res = await apiFetch('dtr/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: activeSlug, fields }),
+      });
+      if (res && res.ok) {
+        if ($('#mf_ID')) $('#mf_ID').value = res.recordId;
+        showToast(`✓ ${res.message} (Ready in InterLink Sync ComboBox!)`);
+        await loadMaterialRecordList(activeSlug, res.recordId);
+      } else {
+        showToast(res.error || 'Save failed.', true);
+      }
+    } catch (err) {
+      showToast('Failed to save record.', true);
+    }
+  });
+
+  $('#btn-toggle-raw-cols')?.addEventListener('click', () => {
+    $('#dtr-raw-cols-container')?.classList.toggle('hidden');
+  });
+
+  // =========================================================================
+  // 5. WHOLE SHOE BONDING TEST FORM (U60) & SPOT/TOLERANCE COMPUTATIONS
+  // =========================================================================
+  const AGE_SPOT_LIMITS = {
+    TODDLER: 14,
+    KIDS: 16,
+    CHILDREN: 24,
+    ADULT: 35,
+  };
+
+  // VF-F01 standard spec per age category (matches deriveBondingFields() on the PHP side).
+  const AGE_STD_DEFAULTS = {
+    TODDLER: '2.0',
+    KIDS: '2.0',
+    CHILDREN: '2.5',
+    ADULT: '3.0',
+  };
+
+  // Access rules (BondingReportV2 "Test Log - Bonding": UpdateBondingResult / UpdateFillerResult): PASS >= STD,
+  // TOLERABLE >= 80% of STD, else FAIL. UTF/FTO: Adult 3.0 / 2.4, Children 2.5 / 2.0; Center IS/OS (FiTO): 1.0 / 0.8
+  const FITO_STD = 1.0;
+  const bondingTolerance = (std) => Math.round(std * 0.8 * 100) / 100;
+  const evaluateSpotVerdict = (val, std) => {
+    if (!Number.isFinite(val) || val <= 0) return null;
+    if (val >= std) return 'PASS';
+    if (val >= bondingTolerance(std)) return 'TOLERABLE';
+    return 'FAIL';
+  };
+
+  const computeBondingPoints = () => {
+    const ageCat = ($('#bf_AgeCategory')?.value || 'ADULT').toUpperCase();
+    const maxSpots = AGE_SPOT_LIMITS[ageCat] || 35;
+    const stdVal = parseFloat($('#bf_STD')?.value ?? '2.5') || 2.5;
+
+    // Show/hide rows up to maxSpots
+    $$('#dtr-bonding-points-tbody [data-spot-row]').forEach((tr) => {
+      const pt = Number(tr.dataset.spotRow);
+      tr.style.opacity = pt <= maxSpots ? '1' : '0.45';
+    });
+
+    const calcSeries = (prefix, limit, specStd) => {
+      const vals = [];
+      let hasFail = false;
+      let hasTol = false;
+      for (let i = 1; i <= limit; i++) {
+        const inp = $(`#bp_${prefix}${i}`);
+        if (!inp) continue;
+        const v = parseFloat(inp.value ?? '');
+        inp.classList.remove('dtr-rate-pass', 'dtr-rate-warn', 'dtr-rate-fail');
+        if (Number.isFinite(v) && v > 0) {
+          vals.push(v);
+          const verdict = evaluateSpotVerdict(v, specStd);
+          if (verdict === 'FAIL') {
+            hasFail = true;
+            inp.classList.add('dtr-rate-fail');
+          } else if (verdict === 'TOLERABLE') {
+            hasTol = true;
+            inp.classList.add('dtr-rate-warn');
+          } else {
+            inp.classList.add('dtr-rate-pass');
+          }
+        }
+      }
+      if (!vals.length) return { min: '', max: '', ave: '', res: '' };
+      return {
+        min: roundTo(Math.min(...vals), 2),
+        max: roundTo(Math.max(...vals), 2),
+        ave: roundTo(vals.reduce((a, b) => a + b, 0) / vals.length, 2),
+        res: hasFail ? 'FAIL' : (hasTol ? 'TOLERABLE' : 'PASS'),
+      };
+    };
+
+    const utf = calcSeries('UTFpoint', maxSpots, stdVal);
+    const fto = calcSeries('FTOpoint', maxSpots, stdVal);
+    const fito = calcSeries('FiTO', 13, FITO_STD);
+
+    if ($('#bp_UTFMin')) $('#bp_UTFMin').value = utf.min;
+    if ($('#bp_UTFMax')) $('#bp_UTFMax').value = utf.max;
+    if ($('#bp_UTFAverage')) $('#bp_UTFAverage').value = utf.ave;
+    if ($('#bp_UTF_Result')) { $('#bp_UTF_Result').value = utf.res; styleRatingInput($('#bp_UTF_Result')); }
+
+    if ($('#bp_FTOMin')) $('#bp_FTOMin').value = fto.min;
+    if ($('#bp_FTOMax')) $('#bp_FTOMax').value = fto.max;
+    if ($('#bp_FTOAverage')) $('#bp_FTOAverage').value = fto.ave;
+    if ($('#bp_FTO_Result')) { $('#bp_FTO_Result').value = fto.res; styleRatingInput($('#bp_FTO_Result')); }
+
+    if ($('#bp_FiTOMin')) $('#bp_FiTOMin').value = fito.min;
+    if ($('#bp_FiTOMax')) $('#bp_FiTOMax').value = fito.max;
+    if ($('#bp_FiTOAverage')) $('#bp_FiTOAverage').value = fito.ave;
+    if ($('#bp_FiTO_Result')) { $('#bp_FiTO_Result').value = fito.res; styleRatingInput($('#bp_FiTO_Result')); }
+
+    // no spot readings -> keep what the report already has (blank on a new report)
+    const allRes = [utf.res, fto.res, fito.res].filter(Boolean);
+    if ($('#bf_Result')) {
+      if (allRes.length) {
+        $('#bf_Result').value = allRes.includes('FAIL') ? 'FAIL' : (allRes.includes('TOLERABLE') ? 'TOLERABLE' : 'PASS');
+      }
+      styleRatingInput($('#bf_Result'));
+    }
+    scheduleFormSketch();
+  };
+
+  const loadBondingRecordList = async (selectedId = null) => {
+    const sel = $('#dtr-bonding-record-select');
+    try {
+      if (sel) sel.innerHTML = '<option value="">Loading reports…</option>';
+      const res = await apiFetch('dtr/records?slug=bonding');
+      if (!sel || !res.rows) return;
+      if (!res.rows.length) { sel.innerHTML = '<option value="">No bonding reports yet</option>'; return; }
+      sel.innerHTML = '<option value="">- New report (not saved yet) -</option>' + res.rows.map((r) => `
+        <option value="${escHtml(r.source_id)}" ${String(r.source_id) === String(selectedId) ? 'selected' : ''}>
+          ${escHtml(r.lab_ref_no)} · ${escHtml(r.model_style || '')} · ${escHtml(r.color || '')} [${escHtml(r.overall_result || 'Pass')}]
         </option>
-      `).join("")}catch(s){console.error(s),a&&(a.innerHTML='<option value="">Could not load reports - reload the page</option>'),window.nxToast&&nxToast("The bonding report list could not be loaded.","error")}},Be=async(e=0,a="")=>{try{const s=a?`lab_ref_no=${encodeURIComponent(a)}`:`source_id=${encodeURIComponent(e)}`,l=await J(`dtr/record?slug=bonding&${s}`);if(!l||!l.ok||a&&!Object.keys(l.record||{}).length)return;const o=l.record||{},n=l.bondingPoints||{};h=n,Object.keys(o).forEach(r=>{const d=t(`#bf_${r}`);d&&(d.value=o[r]??"")}),k('#dtr-bonding-form [name^="cf_"]').forEach(r=>{r.value=(l.customValues||{})[r.name]??""});for(let r=1;r<=35;r++)t(`#bp_UTFpoint${r}`)&&(t(`#bp_UTFpoint${r}`).value=n[`UTFpoint${r}`]??""),t(`#bp_FTOpoint${r}`)&&(t(`#bp_FTOpoint${r}`).value=n[`FTOpoint${r}`]??""),r<=13&&t(`#bp_FiTO${r}`)&&(t(`#bp_FiTO${r}`).value=n[`FiTO${r}`]??"");Gt()}catch(s){console.error(s)}};(Ea=t("#dtr-bonding-record-select"))==null||Ea.addEventListener("change",e=>{e.target.value&&Be(e.target.value)});let je=[];const cs=async()=>{try{const e=await J("dtr/bonding-labrefs");je=e&&e.labRefs||[];const a=t("#bf_LabRefNo_list");a&&(a.innerHTML=je.map(s=>`<option value="${c(s)}"></option>`).join(""))}catch(e){console.error(e)}};(Ma=t("#bf_LabRefNo"))==null||Ma.addEventListener("change",e=>{const a=e.target.value.trim();a&&je.includes(a)&&Be(0,a)}),(Oa=t("#bf_LabRefNo"))==null||Oa.addEventListener("focus",e=>{e.target.dataset.keep=e.target.value,e.target.value=""}),(ka=t("#bf_LabRefNo"))==null||ka.addEventListener("blur",e=>{e.target.value||(e.target.value=e.target.dataset.keep||"")}),cs(),(Pa=t("#bf_AgeCategory"))==null||Pa.addEventListener("change",ke),(Na=t("#bf_AgeCategory"))==null||Na.addEventListener("change",e=>{const a=is[(e.target.value||"").toUpperCase()];a&&t("#bf_STD")&&(t("#bf_STD").value=a),Gt()}),(Da=t("#bf_STD"))==null||Da.addEventListener("change",Gt),(Wa=t("#bf_Side"))==null||Wa.addEventListener("change",ke),ke(),k("#dtr-bonding-points-tbody .dtr-bp-inp").forEach(e=>{e.addEventListener("input",Gt)}),(Ia=t("#btn-bond-recalc"))==null||Ia.addEventListener("click",()=>{if(ze()){Ee(),I("✓ Recalculated Maximum and Rating of every pull test row.");return}Gt(),I("✓ Recalculated UTF, FTO, and FiTO Min/Max/Ave & Spot Tolerances.")});const la=(e=!0)=>{const a=new Date().toISOString().slice(0,10);k("#dtr-bonding-form input, #dtr-bonding-form select, #dtr-bonding-form textarea").forEach(l=>{l.type==="radio"||l.type==="checkbox"?l.checked=!1:l.value=""}),h={},t("#bf_LabRefNo")&&(t("#bf_LabRefNo").value=`DTP${a.replace(/-/g,"")}SHB01-R`);const s=t("#dtr-bonding-record-select");s&&(s.value=""),Gt(),e&&I("Initialized new Whole Shoe Bonding Test Report.")};(Ua=t("#btn-bond-save"))==null||Ua.addEventListener("click",async()=>{var s,l,o,n,r,d,i,m,u,v,x,L,P;if(ze())return fs();const e={};k("#dtr-bonding-form [name]").forEach(f=>{f.name&&(e[f.name]=f.value)});const a={UTFMin:((s=t("#bp_UTFMin"))==null?void 0:s.value)||null,UTFMax:((l=t("#bp_UTFMax"))==null?void 0:l.value)||null,UTFAverage:((o=t("#bp_UTFAverage"))==null?void 0:o.value)||null,UTF_Result:((n=t("#bp_UTF_Result"))==null?void 0:n.value)||null,FTOMin:((r=t("#bp_FTOMin"))==null?void 0:r.value)||null,FTOMax:((d=t("#bp_FTOMax"))==null?void 0:d.value)||null,FTOAverage:((i=t("#bp_FTOAverage"))==null?void 0:i.value)||null,FTO_Result:((m=t("#bp_FTO_Result"))==null?void 0:m.value)||null,FiTOMin:((u=t("#bp_FiTOMin"))==null?void 0:u.value)||null,FiTOMax:((v=t("#bp_FiTOMax"))==null?void 0:v.value)||null,FiTOAverage:((x=t("#bp_FiTOAverage"))==null?void 0:x.value)||null,FiTO_Result:((L=t("#bp_FiTO_Result"))==null?void 0:L.value)||null,Result:((P=t("#bf_Result"))==null?void 0:P.value)||null};k("#dtr-bonding-points-tbody [data-bp-col]").forEach(f=>{a[f.dataset.bpCol]=f.value});try{const f=await J("dtr/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({slug:"bonding",fields:e,bondingPoints:a})});f&&f.ok&&(t("#bf_BondingTestID")&&(t("#bf_BondingTestID").value=f.recordId),I(`✓ ${f.message}`),await Ve(f.recordId))}catch{I("Error saving Bonding Report.",!0)}});const Ge={left:6,right:6,other:4},ze=()=>{var e;return(((e=t("#dtr-report-kind"))==null?void 0:e.value)||"bonding")==="pull"},qe=()=>k("#dtr-pull-form [data-pull]"),Wt=(e,a,s)=>t(`#dtr-pull-form [data-pull="${e}.${a}.${s}"]`),ra=()=>{[["pf_MaterialSource","pf_ms_radio"],["pf_TechSlot","pf_tech_radio"]].forEach(([e,a])=>{var l;const s=((l=t(`#${e}`))==null?void 0:l.value)||"";k(`#dtr-pull-form input[name="${a}"]`).forEach(o=>{o.checked=!!s&&o.value===s})})};(Ha=t("#dtr-pull-form"))==null||Ha.addEventListener("change",e=>{const a=e.target;if(a.type!=="radio")return;const s=a.name==="pf_ms_radio"?t("#pf_MaterialSource"):a.name==="pf_tech_radio"?t("#pf_TechSlot"):null;s&&(s.value=a.value)});const Ee=()=>{let e=0,a=0;Object.keys(Ge).forEach(l=>{for(let o=0;o<Ge[l];o++){const n=[Wt(l,o,"lat"),Wt(l,o,"med")].map(u=>parseFloat((u==null?void 0:u.value)??"")).filter(Number.isFinite);Wt(l,o,"max").value=n.length?R(Math.max(...n),2):"";const r=parseFloat(Wt(l,o,"std").value),d=/max/i.test(Wt(l,o,"tol").value);let i="";if(n.length&&Number.isFinite(r)){const u=d?Math.max(...n)<=r:Math.min(...n)>=r;i=u?"PASS":"FAIL",e++,u||a++}const m=Wt(l,o,"rating");m.value=i,j(m)}});const s=t("#pf_Result");s&&(e&&(s.value=a?"FAIL":"PASS"),j(s))};(Va=t("#dtr-pull-form"))==null||Va.addEventListener("input",e=>{e.target.matches("[data-pull]")&&Ee()});const na=()=>{k("#dtr-pull-form [name]").forEach(e=>{e.type==="radio"?e.checked=!1:e.value=""}),qe().forEach(e=>{e.value=e.defaultValue}),ra()},ia=(e=!0)=>{const a=new Date().toISOString().slice(0,10);na(),t("#pf_LabRefNo").value=`DTP${a.replace(/-/g,"")}PL01-R`,Ee(),e&&I("Initialized new Pull Footwear Test Report.")},ds=async e=>{try{const a=await J(`dtr/record?slug=pull&source_id=${encodeURIComponent(e)}`);if(!a||!a.ok)return;const s=a.record||{};na(),Object.keys(s).forEach(o=>{const n=t(`#pf_${o}`);n&&(n.value=s[o]??"")});let l=null;try{l=JSON.parse(s.PullData||"null")}catch{l=null}qe().forEach(o=>{var m,u;const[n,r,d]=o.dataset.pull.split("."),i=(u=(m=l==null?void 0:l[n])==null?void 0:m[r])==null?void 0:u[d];o.value=i??o.defaultValue}),ra(),Ee()}catch(a){console.error(a)}},fs=async()=>{const e={};k("#dtr-pull-form [name]").forEach(s=>{s.type!=="radio"&&(e[s.name]=s.value)});const a={left:[],right:[],other:[]};qe().forEach(s=>{const[l,o,n]=s.dataset.pull.split(".");(a[l][o]=a[l][o]||{})[n]=s.value}),e.PullData=JSON.stringify(a);try{const s=await J("dtr/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({slug:"pull",fields:e})});s&&s.ok?(t("#pf_ID").value=s.recordId,I(`✓ ${s.message}`)):I(s&&s.error||"Save failed.",!0)}catch{I("Error saving Pull Test Report.",!0)}},ps=()=>{var v,x,L,P;const e=f=>{var g;return c(((g=t(`#pf_${f}`))==null?void 0:g.value)||"")},a=(f,g,N)=>{var G;return c(((G=Wt(f,g,N))==null?void 0:G.value)||"")},s=k("#dtr-pull-form tbody tr td.vf-res-part-cell").map(f=>f.innerHTML),l=k("#dtr-pull-form .pf-sketch").map(f=>f.innerHTML),o=((v=t("#pf_MaterialSource"))==null?void 0:v.value)||"",n=((x=t("#pf_TechSlot"))==null?void 0:x.value)||"",r=(f,g,N)=>`<div>${N===f?"&#9673;":"&#9675;"} ${g}</div>`,d=(f,g,N)=>{let G="";for(let E=0;E<g;E++){const et=f==="other"?a(f,E,"item"):s[(f==="right"?6:0)+E]||"",at=f==="other"?a(f,E,"method"):"VF-B04<br>(2019/05)",Y=f==="other"?a(f,E,"unit"):"kgf",y=a(f,E,"rating");G+=`<tr>
-          <td class="pf-p-l">${et}</td><td class="pf-p-c">${at}</td><td class="pf-p-c">${Y}</td>
-          ${E===0?`<td rowspan="${g}" class="pf-p-sk">${N}</td>`:""}
-          <td class="pf-p-c">${a(f,E,"lat")}</td><td class="pf-p-c">${a(f,E,"med")}</td><td class="pf-p-c">${a(f,E,"max")}</td>
-          <td class="pf-p-c pf-p-blue">${a(f,E,"std")}</td><td class="pf-p-c pf-p-blue">${a(f,E,"tol")}</td>
-          <td class="pf-p-c"><b class="${y==="FAIL"?"pf-p-fail":""}">${y}</b></td></tr>`}return G};let i="";for(let f=0;f<Ge.other;f++)i+=`<tr>
-        <td class="pf-p-l">${a("other",f,"item")}</td><td class="pf-p-c">${a("other",f,"method")}</td><td class="pf-p-c">${a("other",f,"unit")}</td><td></td>
-        <td class="pf-p-c">${a("other",f,"lat")}</td><td class="pf-p-c">${a("other",f,"med")}</td><td class="pf-p-c">${a("other",f,"max")}</td>
-        <td class="pf-p-c pf-p-blue">${a("other",f,"std")}</td><td class="pf-p-c pf-p-blue">${a("other",f,"tol")}</td><td class="pf-p-c"><b>${a("other",f,"rating")}</b></td></tr>`;const m=((L=t("#pf_LabRefNo"))==null?void 0:L.value)||"Pull Test",u=`
+      `).join('');
+    } catch (err) {
+      console.error(err);
+      if (sel) sel.innerHTML = '<option value="">Could not load reports - reload the page</option>';
+      if (window.nxToast) nxToast('The bonding report list could not be loaded.', 'error');
+    }
+  };
+
+  const loadSingleBondingRecord = async (sourceId = 0, labRefNo = '') => {
+    try {
+      const query = labRefNo ? `lab_ref_no=${encodeURIComponent(labRefNo)}` : `source_id=${encodeURIComponent(sourceId)}`;
+      const res = await apiFetch(`dtr/record?slug=bonding&${query}`);
+      if (!res || !res.ok) return;
+      if (labRefNo && !Object.keys(res.record || {}).length) return;
+      const rec = res.record || {};
+      const bp = res.bondingPoints || {};
+      activeBondingPoints = bp;
+
+      Object.keys(rec).forEach((k) => {
+        const el = $(`#bf_${k}`);
+        if (el) el.value = rec[k] ?? '';
+      });
+      $$('#dtr-bonding-form [name^="cf_"]').forEach((el) => { el.value = (res.customValues || {})[el.name] ?? ''; });
+      if ($('#bf_Technician')) $('#bf_Technician').value = withMachineNo($('#bf_Technician').value);   // add the machine no. to older records
+
+      for (let i = 1; i <= 35; i++) {
+        if ($(`#bp_UTFpoint${i}`)) $(`#bp_UTFpoint${i}`).value = bp[`UTFpoint${i}`] ?? '';
+        if ($(`#bp_FTOpoint${i}`)) $(`#bp_FTOpoint${i}`).value = bp[`FTOpoint${i}`] ?? '';
+        if (i <= 13 && $(`#bp_FiTO${i}`)) $(`#bp_FiTO${i}`).value = bp[`FiTO${i}`] ?? '';
+      }
+
+      computeBondingPoints();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  $('#dtr-bonding-record-select')?.addEventListener('change', (e) => {
+    if (e.target.value) loadSingleBondingRecord(e.target.value);
+  });
+  // Lab Ref.No dropdown: the Lab Ref Nos saved in tbl_dtr_bonding_points; picking one loads its report
+  let bondingLabRefs = [];
+  const loadBondingLabRefs = async () => {
+    try {
+      const res = await apiFetch('dtr/bonding-labrefs');
+      bondingLabRefs = (res && res.labRefs) || [];
+      const dl = $('#bf_LabRefNo_list');
+      if (dl) dl.innerHTML = bondingLabRefs.map((v) => `<option value="${escHtml(v)}"></option>`).join('');
+    } catch (err) {
+      console.error(err);
+    }
+  };
+  $('#bf_LabRefNo')?.addEventListener('change', (e) => {
+    const v = e.target.value.trim();
+    if (v && bondingLabRefs.includes(v)) loadSingleBondingRecord(0, v);
+  });
+  // The browser filters the list by the current text: empty the suggested Lab Ref No. while the list is open
+  // so every saved Lab Ref No. shows, and put it back if nothing was picked or typed.
+  $('#bf_LabRefNo')?.addEventListener('focus', (e) => {
+    e.target.dataset.keep = e.target.value;
+    e.target.value = '';
+  });
+  $('#bf_LabRefNo')?.addEventListener('blur', (e) => {
+    if (!e.target.value) e.target.value = e.target.dataset.keep || '';
+  });
+  loadBondingLabRefs();
+  $('#bf_AgeCategory')?.addEventListener('change', scheduleFormSketch);
+  $('#bf_AgeCategory')?.addEventListener('change', (e) => {
+    const std = AGE_STD_DEFAULTS[(e.target.value || '').toUpperCase()];
+    if (std && $('#bf_STD')) $('#bf_STD').value = std;
+    computeBondingPoints();
+  });
+  $('#bf_STD')?.addEventListener('change', computeBondingPoints);
+  $('#bf_Side')?.addEventListener('change', scheduleFormSketch);
+  scheduleFormSketch();
+  $$('#dtr-bonding-points-tbody .dtr-bp-inp').forEach((inp) => {
+    inp.addEventListener('input', computeBondingPoints);
+  });
+  $('#btn-bond-recalc')?.addEventListener('click', () => {
+    if (isPull()) {
+      computePull();
+      showToast('✓ Recalculated Maximum and Rating of every pull test row.');
+      return;
+    }
+    computeBondingPoints();
+    showToast('✓ Recalculated UTF, FTO, and FiTO Min/Max/Ave & Spot Tolerances.');
+  });
+
+  // + New Bonding Report: a blank form, only the Lab Ref No. is suggested
+  const newBondingRecord = (notify = true) => {
+    const today = new Date().toISOString().slice(0, 10);
+    $$('#dtr-bonding-form input, #dtr-bonding-form select, #dtr-bonding-form textarea').forEach((el) => {
+      if (el.type === 'radio' || el.type === 'checkbox') el.checked = false;
+      else el.value = '';
+    });
+    activeBondingPoints = {};
+    if ($('#bf_LabRefNo')) $('#bf_LabRefNo').value = `DTP${today.replace(/-/g, '')}SHB01-R`;
+    if ($('#bf_Factory')) $('#bf_Factory').value = 'DATIAN SUBIC SHOES INC. (DTP)';   // default supplier, same text the saved records use
+    const sel = $('#dtr-bonding-record-select');
+    if (sel) sel.value = '';
+    computeBondingPoints();
+    if (notify) showToast('Initialized new Whole Shoe Bonding Test Report.');
+  };
+
+  $('#btn-bond-save')?.addEventListener('click', async () => {
+    if (isPull()) return savePull();
+    if ($('#bf_Technician')) $('#bf_Technician').value = withMachineNo($('#bf_Technician').value);
+    const fields = {};
+    $$('#dtr-bonding-form [name]').forEach((inp) => {
+      if (inp.name) fields[inp.name] = inp.value;
+    });
+    const bondingPoints = {
+      UTFMin: $('#bp_UTFMin')?.value || null,
+      UTFMax: $('#bp_UTFMax')?.value || null,
+      UTFAverage: $('#bp_UTFAverage')?.value || null,
+      UTF_Result: $('#bp_UTF_Result')?.value || null,
+      FTOMin: $('#bp_FTOMin')?.value || null,
+      FTOMax: $('#bp_FTOMax')?.value || null,
+      FTOAverage: $('#bp_FTOAverage')?.value || null,
+      FTO_Result: $('#bp_FTO_Result')?.value || null,
+      FiTOMin: $('#bp_FiTOMin')?.value || null,
+      FiTOMax: $('#bp_FiTOMax')?.value || null,
+      FiTOAverage: $('#bp_FiTOAverage')?.value || null,
+      FiTO_Result: $('#bp_FiTO_Result')?.value || null,
+      Result: $('#bf_Result')?.value || null,
+    };
+    $$('#dtr-bonding-points-tbody [data-bp-col]').forEach((inp) => {
+      bondingPoints[inp.dataset.bpCol] = inp.value;
+    });
+
+    try {
+      const res = await apiFetch('dtr/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: 'bonding', fields, bondingPoints }),
+      });
+      if (res && res.ok) {
+        if ($('#bf_BondingTestID')) $('#bf_BondingTestID').value = res.recordId;
+        showToast(`✓ ${res.message}`);
+        await loadBondingRecordList(res.recordId);
+      }
+    } catch (err) {
+      showToast('Error saving Bonding Report.', true);
+    }
+  });
+
+  // =========================================================================
+  // 5b. PULL FOOTWEAR TEST REPORT (Lab VF 003) - shares the Shoe Bonding toolbar
+  // =========================================================================
+  const PULL_GROUPS = { left: 6, right: 6, other: 4 };
+  const isPull = () => ($('#dtr-report-kind')?.value || 'bonding') === 'pull';
+  const pullInputs = () => $$('#dtr-pull-form [data-pull]');
+  const pullInput = (g, i, k) => $(`#dtr-pull-form [data-pull="${g}.${i}.${k}"]`);
+
+  const syncPullRadios = () => {
+    [['pf_MaterialSource', 'pf_ms_radio'], ['pf_TechSlot', 'pf_tech_radio']].forEach(([hid, name]) => {
+      const val = $(`#${hid}`)?.value || '';
+      $$(`#dtr-pull-form input[name="${name}"]`).forEach((r) => { r.checked = !!val && r.value === val; });
+    });
+  };
+  $('#dtr-pull-form')?.addEventListener('change', (e) => {
+    const r = e.target;
+    if (r.type !== 'radio') return;
+    const hid = r.name === 'pf_ms_radio' ? $('#pf_MaterialSource') : (r.name === 'pf_tech_radio' ? $('#pf_TechSlot') : null);
+    if (hid) hid.value = r.value;
+  });
+
+  // Maximum + Rating per row. Standard is a minimum unless Tolerance says "maximum".
+  const computePull = () => {
+    let rated = 0;
+    let failed = 0;
+    Object.keys(PULL_GROUPS).forEach((g) => {
+      for (let i = 0; i < PULL_GROUPS[g]; i++) {
+        const vals = [pullInput(g, i, 'lat'), pullInput(g, i, 'med')]
+          .map((el) => parseFloat(el?.value ?? '')).filter(Number.isFinite);
+        pullInput(g, i, 'max').value = vals.length ? roundTo(Math.max(...vals), 2) : '';
+        const std = parseFloat(pullInput(g, i, 'std').value);
+        const isMax = /max/i.test(pullInput(g, i, 'tol').value);
+        let rating = '';
+        if (vals.length && Number.isFinite(std)) {
+          const ok = isMax ? Math.max(...vals) <= std : Math.min(...vals) >= std;
+          rating = ok ? 'PASS' : 'FAIL';
+          rated++;
+          if (!ok) failed++;
+        }
+        const out = pullInput(g, i, 'rating');
+        out.value = rating;
+        styleRatingInput(out);
+      }
+    });
+    const res = $('#pf_Result');
+    if (res) {
+      if (rated) res.value = failed ? 'FAIL' : 'PASS';
+      styleRatingInput(res);
+    }
+  };
+  $('#dtr-pull-form')?.addEventListener('input', (e) => {
+    if (e.target.matches('[data-pull]')) computePull();
+  });
+
+  const resetPullForm = () => {
+    $$('#dtr-pull-form [name]').forEach((el) => {
+      if (el.type === 'radio') el.checked = false;
+      else el.value = '';
+    });
+    pullInputs().forEach((el) => { el.value = el.defaultValue; });
+    syncPullRadios();
+  };
+
+  const newPullRecord = (notify = true) => {
+    const today = new Date().toISOString().slice(0, 10);
+    resetPullForm();
+    $('#pf_LabRefNo').value = `DTP${today.replace(/-/g, '')}PL01-R`;
+    computePull();
+    if (notify) showToast('Initialized new Pull Footwear Test Report.');
+  };
+
+  const loadPullRecord = async (sourceId) => {
+    try {
+      const res = await apiFetch(`dtr/record?slug=pull&source_id=${encodeURIComponent(sourceId)}`);
+      if (!res || !res.ok) return;
+      const rec = res.record || {};
+      resetPullForm();
+      Object.keys(rec).forEach((k) => {
+        const el = $(`#pf_${k}`);
+        if (el) el.value = rec[k] ?? '';
+      });
+      let data = null;
+      try { data = JSON.parse(rec.PullData || 'null'); } catch (e) { data = null; }
+      pullInputs().forEach((el) => {
+        const [g, i, k] = el.dataset.pull.split('.');
+        const v = data?.[g]?.[i]?.[k];
+        el.value = v !== undefined && v !== null ? v : el.defaultValue;
+      });
+      syncPullRadios();
+      computePull();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const savePull = async () => {
+    const fields = {};
+    $$('#dtr-pull-form [name]').forEach((el) => {
+      if (el.type !== 'radio') fields[el.name] = el.value;
+    });
+    const data = { left: [], right: [], other: [] };
+    pullInputs().forEach((el) => {
+      const [g, i, k] = el.dataset.pull.split('.');
+      (data[g][i] = data[g][i] || {})[k] = el.value;
+    });
+    fields.PullData = JSON.stringify(data);
+    try {
+      const res = await apiFetch('dtr/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: 'pull', fields }),
+      });
+      if (res && res.ok) {
+        $('#pf_ID').value = res.recordId;
+        showToast(`✓ ${res.message}`);
+      } else {
+        showToast((res && res.error) || 'Save failed.', true);
+      }
+    } catch (err) {
+      showToast('Error saving Pull Test Report.', true);
+    }
+  };
+
+  const openPullPrintPreview = () => {
+    const f = (n) => escHtml($(`#pf_${n}`)?.value || '');
+    const c = (g, i, k) => escHtml(pullInput(g, i, k)?.value || '');
+    const names = $$('#dtr-pull-form tbody tr td.vf-res-part-cell').map((td) => td.innerHTML);
+    const sketches = $$('#dtr-pull-form .pf-sketch').map((td) => td.innerHTML);
+    const ms = $('#pf_MaterialSource')?.value || '';
+    const tech = $('#pf_TechSlot')?.value || '';
+    const radio = (val, label, cur) => `<div>${cur === val ? '&#9673;' : '&#9675;'} ${label}</div>`;
+    const group = (g, n, sketch) => {
+      let rows = '';
+      for (let i = 0; i < n; i++) {
+        const name = g === 'other' ? c(g, i, 'item') : (names[(g === 'right' ? 6 : 0) + i] || '');
+        const method = g === 'other' ? c(g, i, 'method') : 'VF-B04<br>(2019/05)';
+        const unit = g === 'other' ? c(g, i, 'unit') : 'kgf';
+        const rating = c(g, i, 'rating');
+        rows += `<tr>
+          <td class="pf-p-l">${name}</td><td class="pf-p-c">${method}</td><td class="pf-p-c">${unit}</td>
+          ${i === 0 ? `<td rowspan="${n}" class="pf-p-sk">${sketch}</td>` : ''}
+          <td class="pf-p-c">${c(g, i, 'lat')}</td><td class="pf-p-c">${c(g, i, 'med')}</td><td class="pf-p-c">${c(g, i, 'max')}</td>
+          <td class="pf-p-c pf-p-blue">${c(g, i, 'std')}</td><td class="pf-p-c pf-p-blue">${c(g, i, 'tol')}</td>
+          <td class="pf-p-c"><b class="${rating === 'FAIL' ? 'pf-p-fail' : ''}">${rating}</b></td></tr>`;
+      }
+      return rows;
+    };
+    let otherRows = '';
+    for (let i = 0; i < PULL_GROUPS.other; i++) {
+      otherRows += `<tr>
+        <td class="pf-p-l">${c('other', i, 'item')}</td><td class="pf-p-c">${c('other', i, 'method')}</td><td class="pf-p-c">${c('other', i, 'unit')}</td><td></td>
+        <td class="pf-p-c">${c('other', i, 'lat')}</td><td class="pf-p-c">${c('other', i, 'med')}</td><td class="pf-p-c">${c('other', i, 'max')}</td>
+        <td class="pf-p-c pf-p-blue">${c('other', i, 'std')}</td><td class="pf-p-c pf-p-blue">${c('other', i, 'tol')}</td><td class="pf-p-c"><b>${c('other', i, 'rating')}</b></td></tr>`;
+    }
+    const labRef = $('#pf_LabRefNo')?.value || 'Pull Test';
+
+    const html = `
       <div class="vf-report-sheet pf-print">
         <div class="pf-p-top">
-          <img class="rpt-logo-vf" src="${st}assets/images/vf-logo.webp" alt="VF">
+          <img class="rpt-logo-vf" src="${BASE_URL}assets/images/vf-logo.webp" alt="VF">
           <div class="pf-p-title"><h1>Pull Footwear Test Results</h1><h2>整鞋部件拉力测试</h2></div>
-          <img class="rpt-logo-satra" src="${st}assets/images/satra-accredited.png" alt="SATRA Accredited Laboratory">
+          <img class="rpt-logo-satra" src="${BASE_URL}assets/images/satra-accredited.png" alt="SATRA Accredited Laboratory">
         </div>
         <div class="pf-p-ids">
           <div>Form # : Lab VF 003</div>
-          <div>ETRF.No: <b>${e("ETRFNo")}</b></div>
-          <div>Lab Ref.No: <b>${e("LabRefNo")}</b></div>
+          <div>ETRF.No: <b>${f('ETRFNo')}</b></div>
+          <div>Lab Ref.No: <b>${f('LabRefNo')}</b></div>
         </div>
         <div class="pf-p-head">
           <div>
-            <div>Supplier/Factory(厂商) : <b>${e("Supplier")}</b></div>
-            <div>Supplier's country(国家): <b>${e("SupplierCountry")}</b></div>
-            <div>Material Description(材料):<b> ${e("MaterialDescription")}</b></div>
-            <div>Model No./Style(鞋体): <b>${e("ModelNoStyle")}</b></div>
-            <div>Color(颜色): <b>${e("Color")}</b></div>
-            <div>P.O/Lot No(订单号码): <b>${e("POLotNo")}</b></div>
-            <div>PO Quantity(订单数量): <b>${e("POQuantity")}</b></div>
-            <div>Send by (提供方): <b>${e("SendBy")}</b></div>
+            <div>Supplier/Factory(厂商) : <b>${f('Supplier')}</b></div>
+            <div>Supplier's country(国家): <b>${f('SupplierCountry')}</b></div>
+            <div>Material Description(材料):<b> ${f('MaterialDescription')}</b></div>
+            <div>Model No./Style(鞋体): <b>${f('ModelNoStyle')}</b></div>
+            <div>Color(颜色): <b>${f('Color')}</b></div>
+            <div>P.O/Lot No(订单号码): <b>${f('POLotNo')}</b></div>
+            <div>PO Quantity(订单数量): <b>${f('POQuantity')}</b></div>
+            <div>Send by (提供方): <b>${f('SendBy')}</b></div>
           </div>
           <div>
             <div class="pf-p-radios">
-              ${r("Prod. Material","Prod.Material (量产材料)",o)}${r("Prod. Re-test","Prod.Re-test 量产重测",o)}
-              ${r("New/Development","New/Development 开发新材料",o)}${r("Trial Test","Trial Test 试胶测试",o)}
-              ${r("Sales Sample","Sales Sample (销售样品)",o)}
+              ${radio('Prod. Material', 'Prod.Material (量产材料)', ms)}${radio('Prod. Re-test', 'Prod.Re-test 量产重测', ms)}
+              ${radio('New/Development', 'New/Development 开发新材料', ms)}${radio('Trial Test', 'Trial Test 试胶测试', ms)}
+              ${radio('Sales Sample', 'Sales Sample (销售样品)', ms)}
             </div>
-            <div class="pf-p-radios pf-p-techs">${["Tech 1","Tech 2","Tech 3","Tech 4"].map(f=>r(f,f,n)).join("")}</div>
-            <div>Received Date(收到日期): <b>${e("ReceivedDate")}</b></div>
-            <div>Tested Date(测试日期): <b>${e("TestedDate")}</b></div>
-            <div>Finished Date(完成日期): <b>${e("FinishedDate")}</b></div>
-            <div>Technician(技术员): <b>${e("Technician")}</b></div>
+            <div class="pf-p-radios pf-p-techs">${['Tech 1', 'Tech 2', 'Tech 3', 'Tech 4'].map((t) => radio(t, t, tech)).join('')}</div>
+            <div>Received Date(收到日期): <b>${f('ReceivedDate')}</b></div>
+            <div>Tested Date(测试日期): <b>${f('TestedDate')}</b></div>
+            <div>Finished Date(完成日期): <b>${f('FinishedDate')}</b></div>
+            <div>Technician(技术员): <b>${f('Technician')}</b></div>
           </div>
         </div>
         <div class="pf-p-sec">Closures - Eyelet , D-ring , Hook , Webbing Pull Strength</div>
@@ -85,126 +1763,422 @@
             <tr><th>Lateral side:</th><th>Medial side:</th></tr>
           </thead>
           <tbody>
-            ${d("left",6,l[0]||"")}
-            ${d("right",6,l[1]||"")}
+            ${group('left', 6, sketches[0] || '')}
+            ${group('right', 6, sketches[1] || '')}
             <tr><td colspan="10" class="pf-p-oth">Other Types of Pull Test</td></tr>
-            ${i}
+            ${otherRows}
           </tbody>
         </table>
         <div class="pf-p-foot">
-          <div>Comments 备注 : ${e("Comments")}</div>
+          <div>Comments 备注 : ${f('Comments')}</div>
           <div>
-            <div>Reviewed by 检查: <b>${e("ReviewedBy")}</b></div>
-            <div>Approved by 核准: <b>${e("ApprovedBy")}</b></div>
-            <div>Overall Result: <b>${e("Result")}</b></div>
+            <div>Reviewed by 检查: <b>${f('ReviewedBy')}</b></div>
+            <div>Approved by 核准: <b>${f('ApprovedBy')}</b></div>
+            <div>Overall Result: <b>${f('Result')}</b></div>
           </div>
         </div>
       </div>
-    `;t("#dtr-print-modal-title").textContent=`Pull Footwear Test Report — ${m}`,t("#dtr-print-sheet-container").innerHTML=u,(P=t("#dtr-print-modal-backdrop"))==null||P.classList.remove("hidden")},Me=e=>{const a=e==="pull",s=t("#dtr-report-kind");s&&s.value!==e&&(s.value=e);const l=t("#dtr-bonding-form"),o=t("#dtr-pull-form");l&&(l.hidden=a),o&&(o.hidden=!a),k(".dtr-only-bonding").forEach(r=>{r.hidden=a});const n=t("#btn-bond-recalc-txt");n&&(n.textContent=a?"Recalculate Results":"Recalculate Spots & Result")};(Ba=t("#dtr-report-kind"))==null||Ba.addEventListener("change",e=>{Me(e.target.value),e.target.value==="pull"?ia():la()});const ca=()=>{var vt,nt,it,ct,Lt,yt,Ct,wt,It,Ut,Ht,Vt,St,mt,ht,bt,Rt,Bt,xt,At,Et,Mt,Ot,kt,Pt,Nt,Dt;const e=parseFloat(((vt=t("#calc_raw_w1"))==null?void 0:vt.value)??"0")||0,a=parseFloat(((nt=t("#calc_raw_w2"))==null?void 0:nt.value)??"0")||0,s=parseFloat(((it=t("#calc_raw_w3"))==null?void 0:it.value)??"0")||0,l=R(e/100*1e4,2),o=R(a/100*1e4,2),n=R(s/100*1e4,2),r=R((l+o+n)/3,2);t("#calc_res_w1")&&(t("#calc_res_w1").value=l),t("#calc_res_w2")&&(t("#calc_res_w2").value=o),t("#calc_res_w3")&&(t("#calc_res_w3").value=n),t("#calc_res_wave")&&(t("#calc_res_wave").textContent=r);const d=parseFloat(((ct=t("#calc_sg_w1"))==null?void 0:ct.value)??"0")||0,i=parseFloat(((Lt=t("#calc_sg_w2"))==null?void 0:Lt.value)??"0")||0,m=parseFloat(((yt=t("#calc_sg_w3"))==null?void 0:yt.value)??"0")||0,u=parseFloat(((Ct=t("#calc_sg_t1"))==null?void 0:Ct.value)??"1")||1,v=parseFloat(((wt=t("#calc_sg_t2"))==null?void 0:wt.value)??"1")||1,x=parseFloat(((It=t("#calc_sg_t3"))==null?void 0:It.value)??"1")||1,L=R(d/(100*(u/10)),3),P=R(i/(100*(v/10)),3),f=R(m/(100*(x/10)),3),g=R((L+P+f)/3,3);t("#calc_res_sg_ave")&&(t("#calc_res_sg_ave").textContent=`${L}, ${P}, ${f} (Ave: ${g})`);const N=parseFloat(((Ut=t("#calc_cp_b1"))==null?void 0:Ut.value)??"10")||10,G=parseFloat(((Ht=t("#calc_cp_a1"))==null?void 0:Ht.value)??"9")||9,E=parseFloat(((Vt=t("#calc_cp_b2"))==null?void 0:Vt.value)??"10")||10,et=parseFloat(((St=t("#calc_cp_a2"))==null?void 0:St.value)??"9")||9,at=parseFloat(((mt=t("#calc_cp_a3"))==null?void 0:mt.value)??"9")||9,Y=parseFloat(((ht=t("#calc_cp_sp"))==null?void 0:ht.value)??"0")||0,y=N-Y!==0?N-Y:1,C=E-Y!==0?E-Y:1,T=R((N-G)/y*100,1),M=R((E-et)/C*100,1),F=R((N-at)/y*100,1),D=R((T+M+F)/3,1);t("#calc_res_cp_ave")&&(t("#calc_res_cp_ave").textContent=`${D}% (${T}%, ${M}%, ${F}%)`);const U=parseFloat(((bt=t("#calc_din_wb"))==null?void 0:bt.value)??"0")||0,B=parseFloat(((Rt=t("#calc_din_wa"))==null?void 0:Rt.value)??"0")||0,Q=parseFloat(((Bt=t("#calc_din_sg"))==null?void 0:Bt.value)??"1")||1,Z=parseFloat(((xt=t("#calc_din_sa"))==null?void 0:xt.value)??"200")||200,z=R((U-B)/Q*(200/Z)*1e3,2);t("#calc_res_din")&&(t("#calc_res_din").textContent=z);const tt=parseFloat(((At=t("#calc_rf_li1"))==null?void 0:At.value)??"2.5")||2.5,dt=parseFloat(((Et=t("#calc_rf_lf1"))==null?void 0:Et.value)??"2.5")||2.5,ut=parseFloat(((Mt=t("#calc_rf_li2"))==null?void 0:Mt.value)??"2.5")||2.5,Ft=parseFloat(((Ot=t("#calc_rf_lf2"))==null?void 0:Ot.value)??"2.5")||2.5,$=R((dt-tt)/tt*100,2),O=R((Ft-ut)/ut*100,2);t("#calc_res_rf")&&(t("#calc_res_rf").textContent=`${$}% / ${O}%`);const W=parseFloat(((kt=t("#calc_sh_lb"))==null?void 0:kt.value)??"100")||100,K=parseFloat(((Pt=t("#calc_sh_la"))==null?void 0:Pt.value)??"100")||100,lt=parseFloat(((Nt=t("#calc_sh_wb"))==null?void 0:Nt.value)??"100")||100,ft=parseFloat(((Dt=t("#calc_sh_wa"))==null?void 0:Dt.value)??"100")||100,rt=R((W-K)/W*100,2),A=R((lt-ft)/lt*100,2);t("#calc_res_sh")&&(t("#calc_res_sh").textContent=`L: ${rt}% / W: ${A}%`)};k("#dtr-panel-calculators input").forEach(e=>{e.addEventListener("input",ca)}),(ja=t("#btn-apply-calc-weight"))==null||ja.addEventListener("click",()=>{var e,a,s;t("#mf_Weight1")&&(t("#mf_Weight1").value=((e=t("#calc_res_w1"))==null?void 0:e.value)||""),t("#mf_Weight2")&&(t("#mf_Weight2").value=((a=t("#calc_res_w2"))==null?void 0:a.value)||""),t("#mf_Weight3")&&(t("#mf_Weight3").value=((s=t("#calc_res_w3"))==null?void 0:s.value)||""),Tt(),ot(),gt("material"),I("✓ Applied calculated Weight 1..3 and WAve to Material Form.")}),(Ga=t("#btn-apply-calc-sg"))==null||Ga.addEventListener("click",()=>{var r,d,i,m,u,v;const e=parseFloat(((r=t("#calc_sg_w1"))==null?void 0:r.value)??"0")||0,a=parseFloat(((d=t("#calc_sg_w2"))==null?void 0:d.value)??"0")||0,s=parseFloat(((i=t("#calc_sg_w3"))==null?void 0:i.value)??"0")||0,l=parseFloat(((m=t("#calc_sg_t1"))==null?void 0:m.value)??"1")||1,o=parseFloat(((u=t("#calc_sg_t2"))==null?void 0:u.value)??"1")||1,n=parseFloat(((v=t("#calc_sg_t3"))==null?void 0:v.value)??"1")||1;t("#mf_SG1")&&(t("#mf_SG1").value=R(e/(100*(l/10)),3)),t("#mf_SG2")&&(t("#mf_SG2").value=R(a/(100*(o/10)),3)),t("#mf_SG3")&&(t("#mf_SG3").value=R(s/(100*(n/10)),3)),Tt(),ot(),gt("material"),I("✓ Applied Specific Gravity SG1..3 and SG_Ave to Material Form.")}),(za=t("#btn-apply-calc-din"))==null||za.addEventListener("click",()=>{var a;const e=((a=t("#calc_res_din"))==null?void 0:a.textContent)||"";t("#mf_DIN_1")&&(t("#mf_DIN_1").value=e),Tt(),ot(),gt("material"),I("✓ Applied DIN Abrasion value to Material Form.")}),(qa=t("#btn-apply-calc-ross"))==null||qa.addEventListener("click",()=>{var o,n,r,d;const e=parseFloat(((o=t("#calc_rf_li1"))==null?void 0:o.value)??"2.5")||2.5,a=parseFloat(((n=t("#calc_rf_lf1"))==null?void 0:n.value)??"2.5")||2.5,s=parseFloat(((r=t("#calc_rf_li2"))==null?void 0:r.value)??"2.5")||2.5,l=parseFloat(((d=t("#calc_rf_lf2"))==null?void 0:d.value)??"2.5")||2.5;t("#mf_RossFlex_1")&&(t("#mf_RossFlex_1").value=R((a-e)/e*100,2)),t("#mf_RossFlex_2")&&(t("#mf_RossFlex_2").value=R((l-s)/s*100,2)),Tt(),ot(),gt("material"),I("✓ Applied Ross Flex 1 & 2 to Material Form.")}),(Qa=t("#btn-apply-calc-shrink"))==null||Qa.addEventListener("click",()=>{var o,n,r,d;const e=parseFloat(((o=t("#calc_sh_lb"))==null?void 0:o.value)??"100")||100,a=parseFloat(((n=t("#calc_sh_la"))==null?void 0:n.value)??"100")||100,s=parseFloat(((r=t("#calc_sh_wb"))==null?void 0:r.value)??"100")||100,l=parseFloat(((d=t("#calc_sh_wa"))==null?void 0:d.value)??"100")||100;t("#mf_ShrinkageL")&&(t("#mf_ShrinkageL").value=R((e-a)/e*100,2)),t("#mf_ShrinkageW")&&(t("#mf_ShrinkageW").value=R((s-l)/s*100,2)),Tt(),ot(),gt("material"),I("✓ Applied Shrinkage L & W to Material Form.")});const Qe=async()=>{var s,l;const e=((s=t("#exp_mat_type"))==null?void 0:s.value)||"Canvas",a=((l=t("#exp_t_ave"))==null?void 0:l.value)||"1.25";try{const o=await J(`dtr/standards?material_type=${encodeURIComponent(e)}&t_ave=${encodeURIComponent(a)}`),n=t("#exp-standards-tbody");if(!n||!o.standards)return;n.innerHTML=o.standards.map(r=>`
+    `;
+    $('#dtr-print-modal-title').textContent = `Pull Footwear Test Report — ${labRef}`;
+    $('#dtr-print-sheet-container').innerHTML = html;
+    $('#dtr-print-modal-backdrop')?.classList.remove('hidden');
+  };
+
+  // Report type picker (Bonding Report / Pull Test Report) in the Shoe Bonding toolbar
+  const setReportKind = (kind) => {
+    const pull = kind === 'pull';
+    const sel = $('#dtr-report-kind');
+    if (sel && sel.value !== kind) sel.value = kind;
+    const bf = $('#dtr-bonding-form');
+    const pf = $('#dtr-pull-form');
+    if (bf) bf.hidden = pull;
+    if (pf) pf.hidden = !pull;
+    $$('.dtr-only-bonding').forEach((el) => { el.hidden = pull; });
+    const t = $('#btn-bond-recalc-txt');
+    if (t) t.textContent = pull ? 'Recalculate Results' : 'Recalculate Spots & Result';
+  };
+  $('#dtr-report-kind')?.addEventListener('change', (e) => {
+    setReportKind(e.target.value);
+    if (e.target.value === 'pull') newPullRecord();
+    else newBondingRecord();
+  });
+
+  // =========================================================================
+  // 6. BUILT-IN LAB CALCULATORS (EXACT VBA FORMULAS)
+  // =========================================================================
+  const updateCalculators = () => {
+    // 1. Weight Calculator: Round((Raw / 100) * 10000, 2)
+    const rw1 = parseFloat($('#calc_raw_w1')?.value ?? '0') || 0;
+    const rw2 = parseFloat($('#calc_raw_w2')?.value ?? '0') || 0;
+    const rw3 = parseFloat($('#calc_raw_w3')?.value ?? '0') || 0;
+    const w1 = roundTo((rw1 / 100) * 10000, 2);
+    const w2 = roundTo((rw2 / 100) * 10000, 2);
+    const w3 = roundTo((rw3 / 100) * 10000, 2);
+    const wave = roundTo((w1 + w2 + w3) / 3, 2);
+    if ($('#calc_res_w1')) $('#calc_res_w1').value = w1;
+    if ($('#calc_res_w2')) $('#calc_res_w2').value = w2;
+    if ($('#calc_res_w3')) $('#calc_res_w3').value = w3;
+    if ($('#calc_res_wave')) $('#calc_res_wave').textContent = wave;
+
+    // 2. Specific Gravity Calculator: Round(RawW / ((10 * 10) * (Thickness / 10)), 3)
+    const sgW1 = parseFloat($('#calc_sg_w1')?.value ?? '0') || 0;
+    const sgW2 = parseFloat($('#calc_sg_w2')?.value ?? '0') || 0;
+    const sgW3 = parseFloat($('#calc_sg_w3')?.value ?? '0') || 0;
+    const sgT1 = parseFloat($('#calc_sg_t1')?.value ?? '1') || 1;
+    const sgT2 = parseFloat($('#calc_sg_t2')?.value ?? '1') || 1;
+    const sgT3 = parseFloat($('#calc_sg_t3')?.value ?? '1') || 1;
+    const sg1 = roundTo(sgW1 / (100 * (sgT1 / 10)), 3);
+    const sg2 = roundTo(sgW2 / (100 * (sgT2 / 10)), 3);
+    const sg3 = roundTo(sgW3 / (100 * (sgT3 / 10)), 3);
+    const sgAve = roundTo((sg1 + sg2 + sg3) / 3, 3);
+    if ($('#calc_res_sg_ave')) $('#calc_res_sg_ave').textContent = `${sg1}, ${sg2}, ${sg3} (Ave: ${sgAve})`;
+
+    // 3. Compression Set Calculator: Round(((Before - After) / (Before - Spacer)) * 100, 1)
+    const cpB1 = parseFloat($('#calc_cp_b1')?.value ?? '10') || 10;
+    const cpA1 = parseFloat($('#calc_cp_a1')?.value ?? '9') || 9;
+    const cpB2 = parseFloat($('#calc_cp_b2')?.value ?? '10') || 10;
+    const cpA2 = parseFloat($('#calc_cp_a2')?.value ?? '9') || 9;
+    const cpA3 = parseFloat($('#calc_cp_a3')?.value ?? '9') || 9;
+    const cpSp = parseFloat($('#calc_cp_sp')?.value ?? '0') || 0;
+    const denom1 = (cpB1 - cpSp) !== 0 ? (cpB1 - cpSp) : 1;
+    const denom2 = (cpB2 - cpSp) !== 0 ? (cpB2 - cpSp) : 1;
+    const cp1 = roundTo(((cpB1 - cpA1) / denom1) * 100, 1);
+    const cp2 = roundTo(((cpB2 - cpA2) / denom2) * 100, 1);
+    const cp3 = roundTo(((cpB1 - cpA3) / denom1) * 100, 1);
+    const cpAve = roundTo((cp1 + cp2 + cp3) / 3, 1);
+    if ($('#calc_res_cp_ave')) $('#calc_res_cp_ave').textContent = `${cpAve}% (${cp1}%, ${cp2}%, ${cp3}%)`;
+
+    // 4. DIN Abrasion Calculator: Round((((Wb - Wa) / SG) * (200 / SA)) * 1000, 2)
+    const dinWb = parseFloat($('#calc_din_wb')?.value ?? '0') || 0;
+    const dinWa = parseFloat($('#calc_din_wa')?.value ?? '0') || 0;
+    const dinSg = parseFloat($('#calc_din_sg')?.value ?? '1') || 1;
+    const dinSa = parseFloat($('#calc_din_sa')?.value ?? '200') || 200;
+    const dinVal = roundTo((((dinWb - dinWa) / dinSg) * (200 / dinSa)) * 1000, 2);
+    if ($('#calc_res_din')) $('#calc_res_din').textContent = dinVal;
+
+    // 5. Ross Flex Calculator: Round(((Lf - Li) / Li) * 100, 2)
+    const rfLi1 = parseFloat($('#calc_rf_li1')?.value ?? '2.5') || 2.5;
+    const rfLf1 = parseFloat($('#calc_rf_lf1')?.value ?? '2.5') || 2.5;
+    const rfLi2 = parseFloat($('#calc_rf_li2')?.value ?? '2.5') || 2.5;
+    const rfLf2 = parseFloat($('#calc_rf_lf2')?.value ?? '2.5') || 2.5;
+    const rf1 = roundTo(((rfLf1 - rfLi1) / rfLi1) * 100, 2);
+    const rf2 = roundTo(((rfLf2 - rfLi2) / rfLi2) * 100, 2);
+    if ($('#calc_res_rf')) $('#calc_res_rf').textContent = `${rf1}% / ${rf2}%`;
+
+    // 6. Shrinkage Calculator: Round(((Before - After) / Before) * 100, 2)
+    const shLb = parseFloat($('#calc_sh_lb')?.value ?? '100') || 100;
+    const shLa = parseFloat($('#calc_sh_la')?.value ?? '100') || 100;
+    const shWb = parseFloat($('#calc_sh_wb')?.value ?? '100') || 100;
+    const shWa = parseFloat($('#calc_sh_wa')?.value ?? '100') || 100;
+    const shL = roundTo(((shLb - shLa) / shLb) * 100, 2);
+    const shW = roundTo(((shWb - shWa) / shWb) * 100, 2);
+    if ($('#calc_res_sh')) $('#calc_res_sh').textContent = `L: ${shL}% / W: ${shW}%`;
+  };
+
+  $$('#dtr-panel-calculators input').forEach((inp) => {
+    inp.addEventListener('input', updateCalculators);
+  });
+
+  $('#btn-apply-calc-weight')?.addEventListener('click', () => {
+    if ($('#mf_Weight1')) $('#mf_Weight1').value = $('#calc_res_w1')?.value || '';
+    if ($('#mf_Weight2')) $('#mf_Weight2').value = $('#calc_res_w2')?.value || '';
+    if ($('#mf_Weight3')) $('#mf_Weight3').value = $('#calc_res_w3')?.value || '';
+    computeWeightAndPhysicals();
+    evaluateMaterialOverallRatings();
+    switchTab('material');
+    showToast('✓ Applied calculated Weight 1..3 and WAve to Material Form.');
+  });
+
+  $('#btn-apply-calc-sg')?.addEventListener('click', () => {
+    const sgW1 = parseFloat($('#calc_sg_w1')?.value ?? '0') || 0;
+    const sgW2 = parseFloat($('#calc_sg_w2')?.value ?? '0') || 0;
+    const sgW3 = parseFloat($('#calc_sg_w3')?.value ?? '0') || 0;
+    const sgT1 = parseFloat($('#calc_sg_t1')?.value ?? '1') || 1;
+    const sgT2 = parseFloat($('#calc_sg_t2')?.value ?? '1') || 1;
+    const sgT3 = parseFloat($('#calc_sg_t3')?.value ?? '1') || 1;
+    if ($('#mf_SG1')) $('#mf_SG1').value = roundTo(sgW1 / (100 * (sgT1 / 10)), 3);
+    if ($('#mf_SG2')) $('#mf_SG2').value = roundTo(sgW2 / (100 * (sgT2 / 10)), 3);
+    if ($('#mf_SG3')) $('#mf_SG3').value = roundTo(sgW3 / (100 * (sgT3 / 10)), 3);
+    computeWeightAndPhysicals();
+    evaluateMaterialOverallRatings();
+    switchTab('material');
+    showToast('✓ Applied Specific Gravity SG1..3 and SG_Ave to Material Form.');
+  });
+
+  $('#btn-apply-calc-din')?.addEventListener('click', () => {
+    const val = $('#calc_res_din')?.textContent || '';
+    if ($('#mf_DIN_1')) $('#mf_DIN_1').value = val;
+    computeWeightAndPhysicals();
+    evaluateMaterialOverallRatings();
+    switchTab('material');
+    showToast('✓ Applied DIN Abrasion value to Material Form.');
+  });
+
+  $('#btn-apply-calc-ross')?.addEventListener('click', () => {
+    const rfLi1 = parseFloat($('#calc_rf_li1')?.value ?? '2.5') || 2.5;
+    const rfLf1 = parseFloat($('#calc_rf_lf1')?.value ?? '2.5') || 2.5;
+    const rfLi2 = parseFloat($('#calc_rf_li2')?.value ?? '2.5') || 2.5;
+    const rfLf2 = parseFloat($('#calc_rf_lf2')?.value ?? '2.5') || 2.5;
+    if ($('#mf_RossFlex_1')) $('#mf_RossFlex_1').value = roundTo(((rfLf1 - rfLi1) / rfLi1) * 100, 2);
+    if ($('#mf_RossFlex_2')) $('#mf_RossFlex_2').value = roundTo(((rfLf2 - rfLi2) / rfLi2) * 100, 2);
+    computeWeightAndPhysicals();
+    evaluateMaterialOverallRatings();
+    switchTab('material');
+    showToast('✓ Applied Ross Flex 1 & 2 to Material Form.');
+  });
+
+  $('#btn-apply-calc-shrink')?.addEventListener('click', () => {
+    const shLb = parseFloat($('#calc_sh_lb')?.value ?? '100') || 100;
+    const shLa = parseFloat($('#calc_sh_la')?.value ?? '100') || 100;
+    const shWb = parseFloat($('#calc_sh_wb')?.value ?? '100') || 100;
+    const shWa = parseFloat($('#calc_sh_wa')?.value ?? '100') || 100;
+    if ($('#mf_ShrinkageL')) $('#mf_ShrinkageL').value = roundTo(((shLb - shLa) / shLb) * 100, 2);
+    if ($('#mf_ShrinkageW')) $('#mf_ShrinkageW').value = roundTo(((shWb - shWa) / shWb) * 100, 2);
+    computeWeightAndPhysicals();
+    evaluateMaterialOverallRatings();
+    switchTab('material');
+    showToast('✓ Applied Shrinkage L & W to Material Form.');
+  });
+
+  // Live Standards & Lookup Explorer
+  const runStandardsExplorer = async () => {
+    const mt = $('#exp_mat_type')?.value || 'Canvas';
+    const tAve = $('#exp_t_ave')?.value || '1.25';
+    try {
+      const res = await apiFetch(`dtr/standards?material_type=${encodeURIComponent(mt)}&t_ave=${encodeURIComponent(tAve)}`);
+      const tbody = $('#exp-standards-tbody');
+      if (!tbody || !res.standards) return;
+      tbody.innerHTML = res.standards.map((s) => `
         <tr>
-          <td><b>${c(r.MaterialType)}</b></td>
-          <td class="mono"><code>${c(r.TestMethod)}</code></td>
-          <td class="mono"><b>${c(r.StandardValue??"-")}</b></td>
-          <td class="mono">${c(r.Tolerance??"-")}</td>
-          <td class="mono">${c(r.TMinC??"-")}</td>
-          <td class="mono">${c(r.TMaxC??"-")}</td>
+          <td><b>${escHtml(s.MaterialType)}</b></td>
+          <td class="mono"><code>${escHtml(s.TestMethod)}</code></td>
+          <td class="mono"><b>${escHtml(s.StandardValue ?? '-')}</b></td>
+          <td class="mono">${escHtml(s.Tolerance ?? '-')}</td>
+          <td class="mono">${escHtml(s.TMinC ?? '-')}</td>
+          <td class="mono">${escHtml(s.TMaxC ?? '-')}</td>
         </tr>
-      `).join("")}catch(o){console.error(o)}};(Ja=t("#btn-exp-run"))==null||Ja.addEventListener("click",Qe),(Ka=t("#exp_mat_type"))==null||Ka.addEventListener("change",Qe);const us=()=>{var B,Q,Z,z,tt,dt,ut,Ft,$,O,W,K,lt,ft,rt,A,vt,nt,it,ct,Lt,yt,Ct,wt,It,Ut,Ht,Vt,St,mt,ht,bt,Rt,Bt,xt,At,Et,Mt,Ot,kt,Pt,Nt,Dt,zt,qt,Qt,Jt,Kt,Xt,Yt,Zt,te,ee,ae,se,oe,le,re,ne,ie,ce,de,fe,pe,ue,ve,me,he,be,_e,ge,Te,ye,Se,$e;const e=((B=t("#mf_LabRefNo"))==null?void 0:B.value)||"DTP-LAB-PREVIEW",a=((Q=t("#mf_TR"))==null?void 0:Q.value)||"-",s=((Z=t("#mf_MaterialType"))==null?void 0:Z.value)||"Material",l=((z=t("#mf_MaterialCode"))==null?void 0:z.value)||"-",o=((tt=t("#mf_MaterialDescription"))==null?void 0:tt.value)||"-",n=((dt=t("#mf_SupplierFactory"))==null?void 0:dt.value)||"DATIAN SUBIC SHOES INC.",r=((ut=t("#mf_ModelNoStyle"))==null?void 0:ut.value)||"-",d=((Ft=t("#mf_Color"))==null?void 0:Ft.value)||"-",i=(($=t("#mf_POLotNo"))==null?void 0:$.value)||"-",m=((O=t("#mf_MTL"))==null?void 0:O.value)||"-",u=Object.assign({},Pe||{});k("[data-raw-col]").forEach(q=>{u[q.dataset.rawCol]=q.value});const v=(...q)=>{var p;for(const b of q){const _=(p=t("#mf_"+b))==null?void 0:p.value;if(_!==void 0&&String(_).trim()!=="")return String(_).trim();const S=u[b];if(S!=null&&String(S).trim()!=="")return String(S).trim()}return""},x=q=>String(q||"").replace(/ 00:00:00$/,""),L=x(v("TestedDate","Tested Date"))||new Date().toISOString().slice(0,10),P=v("Technician","TestedBy"),f=v("Supplier's Country","SupplierCountry","Country"),g=v("Quantity","PO/LotQuantity"),N=v("SendBy","Send by"),G=x(v("RecievedDate","ReceivedDate")),E=x(v("FinishedDate")),et=v("MaterialSource"),at=[["Prod. Material","Prod. Material 量产材料"],["Prod. Re-test","Prod. Re-test 量产重测"],["New/Development","New/Development 开发按新材料"],["Sales Sample","Sales Sample (销售样品)"]].map(([q,p])=>`<span style="white-space:nowrap;margin-right:14px"><b style="color:${et===q?"#1d4ed8":"#94a3b8"}">${et===q?"●":"○"}</b> ${et===q?'<b style="color:#1d4ed8">'+c(p)+"</b>":c(p)}</span>`).join(""),Y=[1,2,3,4].map(q=>`<span style="margin-right:12px"><b style="color:#94a3b8">○</b> Tech ${q}</span>`).join(""),y=v("AuthorizedBy","ReviewedBy"),C=x(v("AuthorizedDate")),T=(v("Remarks")||"PASS").toUpperCase(),M=T==="PASS"?"":T==="TOLERABLE"?"stamp-tol":"stamp-fail",F=[],D=(q,p,b,_,S,w,H,V)=>{(b||w)&&F.push(`
+      `).join('');
+    } catch (err) {
+      console.error(err);
+    }
+  };
+  $('#btn-exp-run')?.addEventListener('click', runStandardsExplorer);
+  $('#exp_mat_type')?.addEventListener('change', runStandardsExplorer);
+
+  // =========================================================================
+  // 7. PRINT PREVIEW & PDF EXPORT MODAL (ACCESS REPORT PARITY)
+  // =========================================================================
+  const openMaterialPrintPreview = () => {
+    const labRef = $('#mf_LabRefNo')?.value || 'DTP-LAB-PREVIEW';
+    const tr = $('#mf_TR')?.value || '-';
+    const matType = $('#mf_MaterialType')?.value || 'Material';
+    const matCode = $('#mf_MaterialCode')?.value || '-';
+    const matDesc = $('#mf_MaterialDescription')?.value || '-';
+    const supplier = $('#mf_SupplierFactory')?.value || 'DATIAN SUBIC SHOES INC.';
+    const modelStyle = $('#mf_ModelNoStyle')?.value || '-';
+    const color = $('#mf_Color')?.value || '-';
+    const poLot = $('#mf_POLotNo')?.value || '-';
+    const mtl = $('#mf_MTL')?.value || '-';
+    // the loaded record (plus anything edited in the field editor): not every column has its own input on the form
+    const rec = Object.assign({}, activeRecord || {});
+    $$('[data-raw-col]').forEach((i) => { rec[i.dataset.rawCol] = i.value; });
+    const pick = (...names) => {
+      for (const n of names) {
+        const v = $('#mf_' + n)?.value;
+        if (v !== undefined && String(v).trim() !== '') return String(v).trim();
+        const r = rec[n];
+        if (r !== undefined && r !== null && String(r).trim() !== '') return String(r).trim();
+      }
+      return '';
+    };
+    const fmtDate = (v) => String(v || '').replace(/ 00:00:00$/, '');
+    const testedDate = fmtDate(pick('TestedDate', 'Tested Date')) || new Date().toISOString().slice(0, 10);
+    const tech = pick('Technician', 'TestedBy');
+    // the rest of the form's header block: country, quantity, who sent it, received / finished dates, and where the sample comes from
+    const country = pick("Supplier's Country", 'SupplierCountry', 'Country');
+    const qty = pick('Quantity', 'PO/LotQuantity');
+    const sendBy = pick('SendBy', 'Send by');
+    const recDate = fmtDate(pick('RecievedDate', 'ReceivedDate'));
+    const finDate = fmtDate(pick('FinishedDate'));
+    const source = pick('MaterialSource');
+    const srcOpts = [['Prod. Material', 'Prod. Material 量产材料'], ['Prod. Re-test', 'Prod. Re-test 量产重测'], ['New/Development', 'New/Development 开发按新材料'], ['Sales Sample', 'Sales Sample (销售样品)']]
+      .map(([k, label]) => `<span style="white-space:nowrap;margin-right:14px"><b style="color:${source === k ? '#1d4ed8' : '#94a3b8'}">${source === k ? '●' : '○'}</b> ${source === k ? '<b style="color:#1d4ed8">' + escHtml(label) + '</b>' : escHtml(label)}</span>`).join('');
+    const techOpts = [1, 2, 3, 4].map((n) => `<span style="margin-right:12px"><b style="color:#94a3b8">○</b> Tech ${n}</span>`).join('');
+    const reviewer = pick('AuthorizedBy', 'ReviewedBy');
+    const revDate = fmtDate(pick('AuthorizedDate'));
+    const overall = (pick('Remarks') || 'PASS').toUpperCase();
+
+    const stampCls = overall === 'PASS' ? '' : (overall === 'TOLERABLE' ? 'stamp-tol' : 'stamp-fail');
+
+    // Build Test Items Rows
+    const items = [];
+    const addDirRow = (name, unit, lAve, lStd, lRate, wAve, wStd, wRate) => {
+      if (lAve || wAve) {
+        items.push(`
           <tr>
-            <td class="text-left"><b>${q} — Length (L)</b></td>
-            <td>${p}</td>
-            <td><b>${b||"-"}</b></td>
-            <td>${_||"-"}</td>
-            <td><b class="${S==="PASS"?"dtr-rate-pass":S==="TOLERABLE"?"dtr-rate-warn":"dtr-rate-fail"}">${S||"-"}</b></td>
+            <td class="text-left"><b>${name} — Length (L)</b></td>
+            <td>${unit}</td>
+            <td><b>${lAve || '-'}</b></td>
+            <td>${lStd || '-'}</td>
+            <td><b class="${lRate === 'PASS' ? 'dtr-rate-pass' : (lRate === 'TOLERABLE' ? 'dtr-rate-warn' : 'dtr-rate-fail')}">${lRate || '-'}</b></td>
           </tr>
           <tr>
-            <td class="text-left"><b>${q} — Width (W)</b></td>
-            <td>${p}</td>
-            <td><b>${w||"-"}</b></td>
-            <td>${H||"-"}</td>
-            <td><b class="${V==="PASS"?"dtr-rate-pass":V==="TOLERABLE"?"dtr-rate-warn":"dtr-rate-fail"}">${V||"-"}</b></td>
+            <td class="text-left"><b>${name} — Width (W)</b></td>
+            <td>${unit}</td>
+            <td><b>${wAve || '-'}</b></td>
+            <td>${wStd || '-'}</td>
+            <td><b class="${wRate === 'PASS' ? 'dtr-rate-pass' : (wRate === 'TOLERABLE' ? 'dtr-rate-warn' : 'dtr-rate-fail')}">${wRate || '-'}</b></td>
           </tr>
-        `)};D("Tensile Strength","kg",(W=t("#mf_TensileLAve"))==null?void 0:W.value,(K=t("#mf_Tensile_L"))==null?void 0:K.value,(lt=t("#mf_TensileLRating"))==null?void 0:lt.value,(ft=t("#mf_TensileWAve"))==null?void 0:ft.value,(rt=t("#mf_Tensile_W"))==null?void 0:rt.value,(A=t("#mf_TensileWRating"))==null?void 0:A.value),D("Elongation","%",(vt=t("#mf_ElongationLAve"))==null?void 0:vt.value,(nt=t("#mf_Elongation_L"))==null?void 0:nt.value,(it=t("#mf_ElongationLRating"))==null?void 0:it.value,(ct=t("#mf_ElongationWAve"))==null?void 0:ct.value,(Lt=t("#mf_Elongation_W"))==null?void 0:Lt.value,(yt=t("#mf_ElongationWRating"))==null?void 0:yt.value),D("Trouser / Wing Tear","kg",(Ct=t("#mf_TrouserTearLAve"))==null?void 0:Ct.value,(wt=t("#mf_TrouserTear_L"))==null?void 0:wt.value,(It=t("#mf_TrouserTearLRating"))==null?void 0:It.value,(Ut=t("#mf_TrouserTearWAve"))==null?void 0:Ut.value,(Ht=t("#mf_TrouserTear_W"))==null?void 0:Ht.value,(Vt=t("#mf_TrouserTearWRating"))==null?void 0:Vt.value),D("Stitch Tear","kg",(St=t("#mf_StitchTearLAve"))==null?void 0:St.value,(mt=t("#mf_StitchTear_L"))==null?void 0:mt.value,(ht=t("#mf_StitchTearLRating"))==null?void 0:ht.value,(bt=t("#mf_StitchTearWAve"))==null?void 0:bt.value,(Rt=t("#mf_StitchTear_W"))==null?void 0:Rt.value,(Bt=t("#mf_StitchTearWRating"))==null?void 0:Bt.value),(xt=t("#mf_Text3977"))!=null&&xt.value&&F.push(`
+        `);
+      }
+    };
+
+    addDirRow('Tensile Strength', 'kg', $('#mf_TensileLAve')?.value, $('#mf_Tensile_L')?.value, $('#mf_TensileLRating')?.value, $('#mf_TensileWAve')?.value, $('#mf_Tensile_W')?.value, $('#mf_TensileWRating')?.value);
+    addDirRow('Elongation', '%', $('#mf_ElongationLAve')?.value, $('#mf_Elongation_L')?.value, $('#mf_ElongationLRating')?.value, $('#mf_ElongationWAve')?.value, $('#mf_Elongation_W')?.value, $('#mf_ElongationWRating')?.value);
+    addDirRow('Trouser / Wing Tear', 'kg', $('#mf_TrouserTearLAve')?.value, $('#mf_TrouserTear_L')?.value, $('#mf_TrouserTearLRating')?.value, $('#mf_TrouserTearWAve')?.value, $('#mf_TrouserTear_W')?.value, $('#mf_TrouserTearWRating')?.value);
+    addDirRow('Stitch Tear', 'kg', $('#mf_StitchTearLAve')?.value, $('#mf_StitchTear_L')?.value, $('#mf_StitchTearLRating')?.value, $('#mf_StitchTearWAve')?.value, $('#mf_StitchTear_W')?.value, $('#mf_StitchTearWRating')?.value);
+
+    if ($('#mf_Text3977')?.value) {
+      items.push(`
         <tr>
           <td class="text-left"><b>Mullen Bursting Strength</b></td>
           <td>kg/cm²</td>
-          <td><b>${(At=t("#mf_Text3977"))==null?void 0:At.value}</b></td>
-          <td>${((Et=t("#mf_MullenBurst"))==null?void 0:Et.value)||"-"}</td>
-          <td><b>${((Mt=t("#mf_MullenBurstRating"))==null?void 0:Mt.value)||"-"}</b></td>
+          <td><b>${$('#mf_Text3977')?.value}</b></td>
+          <td>${$('#mf_MullenBurst')?.value || '-'}</td>
+          <td><b>${$('#mf_MullenBurstRating')?.value || '-'}</b></td>
         </tr>
-      `),(Ot=t("#mf_DieC_Ave"))!=null&&Ot.value&&F.push(`
+      `);
+    }
+    if ($('#mf_DieC_Ave')?.value) {
+      items.push(`
         <tr>
           <td class="text-left"><b>Die C Tear / Edge Crush</b></td>
           <td>kg</td>
-          <td><b>${(kt=t("#mf_DieC_Ave"))==null?void 0:kt.value}</b></td>
-          <td>${((Pt=t("#mf_DieC_Std"))==null?void 0:Pt.value)||"-"}</td>
-          <td><b>${((Nt=t("#mf_DieC_Rate"))==null?void 0:Nt.value)||"-"}</b></td>
+          <td><b>${$('#mf_DieC_Ave')?.value}</b></td>
+          <td>${$('#mf_DieC_Std')?.value || '-'}</td>
+          <td><b>${$('#mf_DieC_Rate')?.value || '-'}</b></td>
         </tr>
-      `),(Dt=t("#mf_WAve"))!=null&&Dt.value&&F.push(`
+      `);
+    }
+    if ($('#mf_WAve')?.value) {
+      items.push(`
         <tr>
           <td class="text-left"><b>Fabric Weight (Grammage)</b></td>
           <td>g/m²</td>
-          <td><b>${(zt=t("#mf_WAve"))==null?void 0:zt.value}</b></td>
-          <td>${((qt=t("#mf_W_Std"))==null?void 0:qt.value)||"-"}</td>
-          <td><b>${((Qt=t("#mf_WRating"))==null?void 0:Qt.value)||"-"}</b></td>
+          <td><b>${$('#mf_WAve')?.value}</b></td>
+          <td>${$('#mf_W_Std')?.value || '-'}</td>
+          <td><b>${$('#mf_WRating')?.value || '-'}</b></td>
         </tr>
-      `),(Jt=t("#mf_CTPRating"))!=null&&Jt.value&&F.push(`
+      `);
+    }
+
+    // Colorfastness
+    if ($('#mf_CTPRating')?.value) {
+      items.push(`
         <tr>
           <td class="text-left"><b>Colorfastness to Perspiration (Face)</b></td>
           <td>Grade</td>
-          <td>W:${((Kt=t("#mf_CtPWool"))==null?void 0:Kt.value)||"-"} A:${((Xt=t("#mf_CtPAcrylic"))==null?void 0:Xt.value)||"-"} P:${((Yt=t("#mf_CtPPolyester"))==null?void 0:Yt.value)||"-"} N:${((Zt=t("#mf_CtPNylon"))==null?void 0:Zt.value)||"-"} C:${((te=t("#mf_CtPCotton"))==null?void 0:te.value)||"-"} Ac:${((ee=t("#mf_CtPAcetate"))==null?void 0:ee.value)||"-"}</td>
-          <td>${((ae=t("#mf_CTP"))==null?void 0:ae.value)||"4.0"}</td>
-          <td><b>${(se=t("#mf_CTPRating"))==null?void 0:se.value}</b></td>
+          <td>W:${$('#mf_CtPWool')?.value||'-'} A:${$('#mf_CtPAcrylic')?.value||'-'} P:${$('#mf_CtPPolyester')?.value||'-'} N:${$('#mf_CtPNylon')?.value||'-'} C:${$('#mf_CtPCotton')?.value||'-'} Ac:${$('#mf_CtPAcetate')?.value||'-'}</td>
+          <td>${$('#mf_CTP')?.value || '4.0'}</td>
+          <td><b>${$('#mf_CTPRating')?.value}</b></td>
         </tr>
-      `),(oe=t("#mf_CTWRating"))!=null&&oe.value&&F.push(`
+      `);
+    }
+    if ($('#mf_CTWRating')?.value) {
+      items.push(`
         <tr>
           <td class="text-left"><b>Colorfastness to Water (Face)</b></td>
           <td>Grade</td>
-          <td>W:${((le=t("#mf_CtWWool"))==null?void 0:le.value)||"-"} A:${((re=t("#mf_CtWAcrylic"))==null?void 0:re.value)||"-"} P:${((ne=t("#mf_CtWPolyester"))==null?void 0:ne.value)||"-"} N:${((ie=t("#mf_CtWNylon"))==null?void 0:ie.value)||"-"} C:${((ce=t("#mf_CtWCotton"))==null?void 0:ce.value)||"-"} Ac:${((de=t("#mf_CtWAcetate"))==null?void 0:de.value)||"-"}</td>
-          <td>${((fe=t("#mf_CTW"))==null?void 0:fe.value)||"4.0"}</td>
-          <td><b>${(pe=t("#mf_CTWRating"))==null?void 0:pe.value}</b></td>
+          <td>W:${$('#mf_CtWWool')?.value||'-'} A:${$('#mf_CtWAcrylic')?.value||'-'} P:${$('#mf_CtWPolyester')?.value||'-'} N:${$('#mf_CtWNylon')?.value||'-'} C:${$('#mf_CtWCotton')?.value||'-'} Ac:${$('#mf_CtWAcetate')?.value||'-'}</td>
+          <td>${$('#mf_CTW')?.value || '4.0'}</td>
+          <td><b>${$('#mf_CTWRating')?.value}</b></td>
         </tr>
-      `),(ue=t("#mf_CTCDRYRating"))!=null&&ue.value&&F.push(`
+      `);
+    }
+    if ($('#mf_CTCDRYRating')?.value) {
+      items.push(`
         <tr>
           <td class="text-left"><b>Colorfastness to Crocking (Dry)</b></td>
           <td>Grade</td>
-          <td><b>${((ve=t("#mf_CtCDry"))==null?void 0:ve.value)||"-"}</b></td>
-          <td>${((me=t("#mf_CtCDry_S"))==null?void 0:me.value)||"4.0"}</td>
-          <td><b>${(he=t("#mf_CTCDRYRating"))==null?void 0:he.value}</b></td>
+          <td><b>${$('#mf_CtCDry')?.value || '-'}</b></td>
+          <td>${$('#mf_CtCDry_S')?.value || '4.0'}</td>
+          <td><b>${$('#mf_CTCDRYRating')?.value}</b></td>
         </tr>
-      `),(be=t("#mf_CTCWETRating"))!=null&&be.value&&F.push(`
+      `);
+    }
+    if ($('#mf_CTCWETRating')?.value) {
+      items.push(`
         <tr>
           <td class="text-left"><b>Colorfastness to Crocking (Wet)</b></td>
           <td>Grade</td>
-          <td><b>${((_e=t("#mf_CtCWet"))==null?void 0:_e.value)||"-"}</b></td>
-          <td>${((ge=t("#mf_CtCWet_S"))==null?void 0:ge.value)||"3.0"}</td>
-          <td><b>${(Te=t("#mf_CTCWETRating"))==null?void 0:Te.value}</b></td>
+          <td><b>${$('#mf_CtCWet')?.value || '-'}</b></td>
+          <td>${$('#mf_CtCWet_S')?.value || '3.0'}</td>
+          <td><b>${$('#mf_CTCWETRating')?.value}</b></td>
         </tr>
-      `),(()=>{const q=F.length?/^(tensile|elongation|trousertear|stitchtear|mullen|diec|ctp|ctw|ctcdry|ctcwet)/i:/^$/,p={heataging:"Heat Aging (72 hrs, 70°C)",corrosion:"Corrosion Resistance",hydrolysis:"Hydrolysis (7 days, 60°C, 95% RH)",uv:"UV Light (24 hrs, 50°C)",ctcdry:"Colorfastness to Crocking (Dry)",ctcwet:"Colorfastness to Crocking (Wet)",ctw:"Colorfastness to Water",ctp:"Colorfastness to Perspiration",shrinkage12:"Shrinkage (1 hr, 70°C) 1-2",shrinkage34:"Shrinkage (1 hr, 70°C) 3-4",tensile:"Tensile",elongation:"Elongation",stitchtear:"Stitch Tear",peelstrength:"Peel Strength",shearstrength:"Shear Strength",laceTipRet:"Lace Tip Retention",knotslip:"Knot Slip",laceabrasion:"Lace Abrasion",hardness:"Hardness",sg:"Specific Gravity",pvc:"PVC Contact Discoloration"},b={corrosion:["CorrosionRes"],ctcdry:["CtCDry"],ctcwet:["CtCWet"],shrinkage12:["Shrinkageave12"],shrinkage34:["Shrinkageave34"]},_=H=>H.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),S=H=>{const V=String(H).trim().toUpperCase();return["P","PASS"].includes(V)?"PASS":["F","FAIL","FAILED"].includes(V)?"FAIL":V==="T"?"TOLERABLE":V},w=new Set;Object.keys(u).forEach(H=>{const V=H.match(/^(.+?)(?:_R|_?Rating|_?rating)$/),jt=V&&String(u[H]??"").trim();if(!jt)return;const X=V[1].replace(/txt/i,""),_t=X.toLowerCase();if(X.length<3||w.has(_t)||q.test(X))return;const Fe=[X,...b[_t]||[]],_s=pt=>/(_S|_std|Std|_Std|_R|Rating|_rating)$/.test(pt),ss=Object.keys(u).filter(pt=>!_s(pt)&&Fe.some(Xe=>new RegExp("^"+_(Xe)+"(?:txt)?(\\d*|_?ave)$","i").test(pt))).map(pt=>String(u[pt]??"").trim()).filter(pt=>pt!==""&&!/^0(\.0+)?$/.test(pt));if(!ss.length)return;w.add(_t);const os=Object.keys(u).find(pt=>Fe.some(Xe=>new RegExp("^"+_(Xe)+"(?:txt)?(_S|_std|Std|_Std)$","i").test(pt))&&String(u[pt]??"").trim()!==""),gs=p[_t]||X.replace(/([a-z])([A-Z0-9])/g,"$1 $2"),Ke=S(jt);F.push(`
+      `);
+    }
+
+    // Tests this form stores under its own names (Hardware: heat aging, corrosion, hydrolysis ...): every rated test that
+    // the fixed rows above did not list is listed from the record, so a recorded test is never missing from the sheet.
+    // A test with no reading (blank or 0, as in the Access report) is left out.
+    (() => {
+      const covered = items.length ? /^(tensile|elongation|trousertear|stitchtear|mullen|diec|ctp|ctw|ctcdry|ctcwet)/i : /^$/;
+      const NAMES = {
+        heataging: 'Heat Aging (72 hrs, 70°C)', corrosion: 'Corrosion Resistance', hydrolysis: 'Hydrolysis (7 days, 60°C, 95% RH)', uv: 'UV Light (24 hrs, 50°C)',
+        ctcdry: 'Colorfastness to Crocking (Dry)', ctcwet: 'Colorfastness to Crocking (Wet)', ctw: 'Colorfastness to Water', ctp: 'Colorfastness to Perspiration',
+        shrinkage12: 'Shrinkage (1 hr, 70°C) 1-2', shrinkage34: 'Shrinkage (1 hr, 70°C) 3-4', tensile: 'Tensile', elongation: 'Elongation', stitchtear: 'Stitch Tear',
+        peelstrength: 'Peel Strength', shearstrength: 'Shear Strength', laceTipRet: 'Lace Tip Retention', knotslip: 'Knot Slip', laceabrasion: 'Lace Abrasion',
+        hardness: 'Hardness', sg: 'Specific Gravity', pvc: 'PVC Contact Discoloration',
+      };
+      const ALIAS = { corrosion: ['CorrosionRes'], ctcdry: ['CtCDry'], ctcwet: ['CtCWet'], shrinkage12: ['Shrinkageave12'], shrinkage34: ['Shrinkageave34'] };
+      const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const norm = (v) => { const u = String(v).trim().toUpperCase(); return ['P', 'PASS'].includes(u) ? 'PASS' : ['F', 'FAIL', 'FAILED'].includes(u) ? 'FAIL' : u === 'T' ? 'TOLERABLE' : u; };
+      const seen = new Set();
+      Object.keys(rec).forEach((key) => {
+        const m = key.match(/^(.+?)(?:_R|_?Rating|_?rating)$/);
+        const rating = m && String(rec[key] ?? '').trim();
+        if (!rating) return;
+        const base = m[1].replace(/txt/i, '');
+        const lb = base.toLowerCase();
+        if (base.length < 3 || seen.has(lb) || covered.test(base)) return;
+        const prefixes = [base, ...(ALIAS[lb] || [])];
+        const isMeta = (k) => /(_S|_std|Std|_Std|_R|Rating|_rating)$/.test(k);
+        const reads = Object.keys(rec).filter((k) => !isMeta(k) && prefixes.some((pf) => new RegExp('^' + esc(pf) + '(?:txt)?(\\d*|_?ave)$', 'i').test(k)))
+          .map((k) => String(rec[k] ?? '').trim()).filter((v) => v !== '' && !/^0(\.0+)?$/.test(v));
+        if (!reads.length) return;
+        seen.add(lb);
+        const stdKey = Object.keys(rec).find((k) => prefixes.some((pf) => new RegExp('^' + esc(pf) + '(?:txt)?(_S|_std|Std|_Std)$', 'i').test(k)) && String(rec[k] ?? '').trim() !== '');
+        const label = NAMES[lb] || base.replace(/([a-z])([A-Z0-9])/g, '$1 $2');
+        const r = norm(rating);
+        items.push(`
           <tr>
-            <td class="text-left"><b>${c(gs)}</b></td>
+            <td class="text-left"><b>${escHtml(label)}</b></td>
             <td>-</td>
-            <td><b>${ss.map(c).join(" &nbsp; ")}</b></td>
-            <td>${c(os?u[os]:"-")}</td>
-            <td><b class="${Ke==="PASS"?"dtr-rate-pass":Ke==="TOLERABLE"?"dtr-rate-warn":"dtr-rate-fail"}">${c(Ke)}</b></td>
+            <td><b>${reads.map(escHtml).join(' &nbsp; ')}</b></td>
+            <td>${escHtml(stdKey ? rec[stdKey] : '-')}</td>
+            <td><b class="${r === 'PASS' ? 'dtr-rate-pass' : (r === 'TOLERABLE' ? 'dtr-rate-warn' : 'dtr-rate-fail')}">${escHtml(r)}</b></td>
           </tr>
-        `)})})();const U=`
+        `);
+      });
+    })();
+
+    const html = `
       <div class="dtr-report-sheet">
         <div class="rpt-logo-row">
-          <img class="rpt-logo-vf" src="${st}assets/images/vf-logo.webp" alt="VF">
-          <img class="rpt-logo-satra" src="${st}assets/images/satra-accredited.png" alt="SATRA Accredited Laboratory No. 08A03">
+          <img class="rpt-logo-vf" src="${BASE_URL}assets/images/vf-logo.webp" alt="VF">
+          <img class="rpt-logo-satra" src="${BASE_URL}assets/images/satra-accredited.png" alt="SATRA Accredited Laboratory No. 08A03">
         </div>
         <div class="dtr-sheet-header">
           <div class="dtr-sheet-title">
             <h2>DATIAN SUBIC SHOES INC. (DTP)</h2>
-            <h4>PHYSICAL TEST REPORT — ${c(s.toUpperCase())}</h4>
+            <h4>PHYSICAL TEST REPORT — ${escHtml(matType.toUpperCase())}</h4>
             <div style="font-size:11px;color:#64748b;margin-top:2px">Lot 1P7-A, Phase 2, Subic Bay Gateway Park, Subic Bay Freeport Zone</div>
           </div>
           <div class="dtr-sheet-meta">
-            <div>Lab Ref: <b>${c(e)}</b></div>
-            <div>TR #: <b>${c(a)}</b></div>
+            <div>Lab Ref: <b>${escHtml(labRef)}</b></div>
+            <div>TR #: <b>${escHtml(tr)}</b></div>
             <div style="margin-top:6px">
-              <span class="dtr-sheet-stamp-box ${M}">${c(T)}</span>
+              <span class="dtr-sheet-stamp-box ${stampCls}">${escHtml(overall)}</span>
             </div>
           </div>
         </div>
@@ -212,51 +2186,51 @@
         <table class="dtr-sheet-info-grid">
           <tr>
             <td class="label-cell">Material Code</td>
-            <td><b>${c(l)}</b></td>
+            <td><b>${escHtml(matCode)}</b></td>
             <td class="label-cell">Material Type</td>
-            <td>${c(s)}</td>
+            <td>${escHtml(matType)}</td>
             <td class="label-cell">Tested Date</td>
-            <td>${c(L)}</td>
+            <td>${escHtml(testedDate)}</td>
           </tr>
           <tr>
             <td class="label-cell">Description</td>
-            <td colspan="3">${c(o)}</td>
+            <td colspan="3">${escHtml(matDesc)}</td>
             <td class="label-cell">PO / Lot No.</td>
-            <td>${c(i)}</td>
+            <td>${escHtml(poLot)}</td>
           </tr>
           <tr>
             <td class="label-cell">Supplier / Factory</td>
-            <td>${c(n)}</td>
+            <td>${escHtml(supplier)}</td>
             <td class="label-cell">Model / Style</td>
-            <td>${c(r)}</td>
+            <td>${escHtml(modelStyle)}</td>
             <td class="label-cell">Color / MTL</td>
-            <td>${c(d)} / ${c(m)}</td>
+            <td>${escHtml(color)} / ${escHtml(mtl)}</td>
           </tr>
           <tr>
             <td class="label-cell">Thickness (TAve)</td>
-            <td><b>${((ye=t("#mf_TAve"))==null?void 0:ye.value)||"-"} mm</b></td>
+            <td><b>${$('#mf_TAve')?.value || '-'} mm</b></td>
             <td class="label-cell">Weight (WAve)</td>
-            <td><b>${((Se=t("#mf_WAve"))==null?void 0:Se.value)||"-"} g/m²</b></td>
+            <td><b>${$('#mf_WAve')?.value || '-'} g/m²</b></td>
             <td class="label-cell">Technician</td>
-            <td>${c(P||"-")}</td>
+            <td>${escHtml(tech || '-')}</td>
           </tr>
           <tr>
             <td class="label-cell">Supplier's Country</td>
-            <td>${c(f||"-")}</td>
+            <td>${escHtml(country || '-')}</td>
             <td class="label-cell">Quantity</td>
-            <td>${c(g||"-")}</td>
+            <td>${escHtml(qty || '-')}</td>
             <td class="label-cell">Received Date</td>
-            <td>${c(G||"-")}</td>
+            <td>${escHtml(recDate || '-')}</td>
           </tr>
           <tr>
             <td class="label-cell">Material Source</td>
-            <td colspan="3" style="line-height:1.9">${at}<br>${Y}</td>
+            <td colspan="3" style="line-height:1.9">${srcOpts}<br>${techOpts}</td>
             <td class="label-cell">Finished Date</td>
-            <td>${c(E||"-")}</td>
+            <td>${escHtml(finDate || '-')}</td>
           </tr>
           <tr>
             <td class="label-cell">Send by</td>
-            <td colspan="5">${c(N||"-")}</td>
+            <td colspan="5">${escHtml(sendBy || '-')}</td>
           </tr>
         </table>
 
@@ -271,7 +2245,7 @@
             </tr>
           </thead>
           <tbody>
-            ${F.length?F.join(""):'<tr><td colspan="5" class="muted">No test items recorded for this report.</td></tr>'}
+            ${items.length ? items.join('') : '<tr><td colspan="5" class="muted">No test items recorded for this report.</td></tr>'}
           </tbody>
         </table>
 
@@ -279,62 +2253,451 @@
           <div class="dtr-sheet-sign-box">
             <div>Prepared by (Testing Technician):</div>
             <div class="dtr-sheet-sign-line">
-              <span>${c(P)}</span>
-              <span class="muted">${c(L)}</span>
+              <span>${escHtml(tech)}</span>
+              <span class="muted">${escHtml(testedDate)}</span>
             </div>
           </div>
           <div class="dtr-sheet-sign-box">
             <div>Reviewed &amp; Approved by (QA Lab Head):</div>
             <div class="dtr-sheet-sign-line">
-              <span>${c(y)}</span>
-              <span class="muted">${c(C||L)}</span>
+              <span>${escHtml(reviewer)}</span>
+              <span class="muted">${escHtml(revDate || testedDate)}</span>
             </div>
           </div>
         </div>
       </div>
-    `;t("#dtr-print-modal-title").textContent=`Official Test Report Sheet — ${e}`,t("#dtr-print-sheet-container").innerHTML=U,($e=t("#dtr-print-modal-backdrop"))==null||$e.classList.remove("hidden")};let Oe=null;const da=async()=>{if(Oe)return Oe;try{const e=await fetch(st+"assets/images/bonding_sketches/sketch_configs.json");if(e.ok)return Oe=await e.json(),Oe}catch(e){console.warn("Failed to load sketch_configs.json",e)}return null};var fa=null,pa=0;function ke(){clearTimeout(fa),fa=setTimeout(vs,120)}async function vs(){var G,E,et,at,Y;const e=t("#vf-diag-left"),a=t("#vf-diag-right");if(!e||!a)return;const s=++pa,l=(((G=t("#bf_Side"))==null?void 0:G.value)||"Left").toLowerCase()==="left",o=parseFloat(((E=t("#bf_STD"))==null?void 0:E.value)||"2.5")||2.5,n=st+"assets/images/bonding_sketches/",r={},d={};let i=0;for(let y=1;y<=35;y++)r[y]=((et=t("#bp_UTFpoint"+y))==null?void 0:et.value)||"",d[y]=((at=t("#bp_FTOpoint"+y))==null?void 0:at.value)||"",(parseFloat(r[y])>0||parseFloat(d[y])>0)&&(i=y);const m=`<img src="${n}blank.png" class="vf-shoe-img" style="left:12%;top:8%;width:76%;height:84%;opacity:.85" alt="Shoe contour">`;let u="";const v=await da(),x=(((Y=t("#bf_AgeCategory"))==null?void 0:Y.value)||"ADULT").toUpperCase(),L=oa[x]||35;let P=L;v&&!v[P]&&(P=[26,27,28,29,30,31,32,33,34].reduce((C,T)=>Math.abs(T-P)<Math.abs(C-P)?T:C,27));let f=v?v[P]:null,g=null;if(f)try{const y=await J("dtr/layout?slug=bonding&variant="+encodeURIComponent(P)),C=y&&y.layout;C&&(f=JSON.parse(JSON.stringify(f)),C.image&&Object.assign(f.image,C.image),["utf","fto"].forEach(T=>{Object.keys(C[T]||{}).forEach(M=>{C[T][M].hidden?delete f[T][M]:f[T][M]=C[T][M]})}),(C.vector||C.start)&&(g=C),C.vector&&(f.image.file=C.imageFile||"blank.png"))}catch{}if(s!==pa)return;if(f&&g&&g.vector&&L!==f.pointsCount){const y=M=>{const F=Object.keys(g.dots[M]||{}).map(Number).filter($=>f[M][$]).sort(($,O)=>$-O);if(F.length<3)return null;const D=F.map($=>({x:g.dots[M][$].x,y:g.dots[M][$].y,i:$})),U=D.reduce(($,O)=>$+O.x,0)/D.length,B=D.reduce(($,O)=>$+O.y,0)/D.length;let Q=0;D.forEach($=>{const O=f[M][$.i],W=$.x-U,K=$.y-B,lt=Math.hypot(W,K)||1;Q+=((O.pctLeft+O.pctWidth/2-$.x)*W+(O.pctTop+O.pctHeight/2-$.y)*K)/lt}),Q/=D.length;const Z=f[M][D[0].i],z=D.concat([D[0]]),tt=[];let dt=0;for(let $=0;$<z.length-1;$++){const O=Math.hypot(z[$+1].x-z[$].x,z[$+1].y-z[$].y);tt.push(O),dt+=O}const ut={},Ft={};for(let $=0;$<L;$++){let O=$*dt/L,W=0;for(;W<tt.length-1&&O>tt[W];)O-=tt[W],W++;const K=tt[W]?O/tt[W]:0,lt=z[W].x+(z[W+1].x-z[W].x)*K,ft=z[W].y+(z[W+1].y-z[W].y)*K,rt=lt-U,A=ft-B,vt=Math.hypot(rt,A)||1,nt=lt+rt/vt*Q,it=ft+A/vt*Q;ut[$+1]={pctLeft:Math.min(100-Z.pctWidth,Math.max(0,nt-Z.pctWidth/2)),pctTop:Math.min(100-Z.pctHeight,Math.max(0,it-Z.pctHeight/2)),pctWidth:Z.pctWidth,pctHeight:Z.pctHeight},Ft[$+1]={x:lt,y:ft}}return{boxes:ut,dots:Ft}},C=y("utf"),T=y("fto");C&&T&&(f.utf=C.boxes,f.fto=T.boxes,g.dots={utf:C.dots,fto:T.dots},f.pointsCount=L)}const N=y=>{const C=He(parseFloat(y),o);return C?C==="FAIL"?"color:#dc2626;font-weight:800;":C==="TOLERABLE"?"color:#d97706;font-weight:800;":"color:#1d4ed8;font-weight:800;":"color:#94a3b8"};if(f){const y=f.image;u+=`<img src="${n}${y.file}" class="vf-shoe-img" style="left:${y.pctLeft}%;top:${y.pctTop}%;width:${y.pctWidth}%;height:${y.pctHeight}%" alt="Shoe sketch">`;const C=(T,M,F,D,U)=>{const B=parseFloat(F),Q=Number.isFinite(B)&&B>0;return`<div class="vf-point-box ${T}" style="left:${M.pctLeft}%;top:${M.pctTop}%;width:${M.pctWidth}%;height:${M.pctHeight}%;${N(F)}" title="${D} Point ${U}: ${Q?B.toFixed(2):"-"}">${Q?B.toFixed(2):""}</div>`};for(let T=1;T<=f.pointsCount;T++)f.utf[T]&&(u+=C("vf-point-utf",f.utf[T],r[T],"UTF",T)),f.fto[T]&&(u+=C("vf-point-fto",f.fto[T],d[T],"FTO",T));if(g){let T='<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none">',M="";if(g.vector&&["utf","fto"].forEach(F=>Object.keys(f[F]).forEach(D=>{const U=f[F][D],B=((g.dots||{})[F]||{})[D];if(!B)return;const Q=U.pctLeft+U.pctWidth,Z=U.pctTop+U.pctHeight/2,z=B.x<U.pctLeft?U.pctLeft:B.x>Q?Q:U.pctLeft+U.pctWidth/2,tt=z===U.pctLeft||z===Q?Z:B.y<U.pctTop?U.pctTop:U.pctTop+U.pctHeight,dt=F==="utf"?"#2563eb":"#7c3aed";T+=`<line x1="${z}" y1="${tt}" x2="${B.x}" y2="${B.y}" stroke="${dt}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`,M+=`<div style="position:absolute;left:${B.x}%;top:${B.y}%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border-radius:50%;background:${dt}"></div>`})),g.start){const F=g.start;M+=`<div style="position:absolute;left:${F.x}%;top:${F.y}%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:3px;white-space:nowrap;color:#b91c1c;font:800 9px sans-serif"><i style="display:block;width:9px;height:9px;background:#dc2626;transform:rotate(45deg)"></i>${c(F.label||"START")}</div>`}u+=T+"</svg>"+M}}else u='<div style="padding:20px;text-align:center;color:#64748b">Shoe sketch unavailable</div>';e.innerHTML=l?u:m,a.innerHTML=l?m:u}const ms=async()=>{var xt,At,Et,Mt,Ot,kt,Pt,Nt,Dt,zt,qt,Qt,Jt,Kt,Xt,Yt,Zt,te,ee,ae,se,oe,le,re,ne,ie,ce,de,fe,pe,ue,ve,me,he,be,_e,ge,Te,ye,Se,$e,q;const e=parseInt(((xt=t("#bf_BondingTestID"))==null?void 0:xt.value)||(h==null?void 0:h.BondingTestID)||0)||0,a=((At=t("#bf_LabRefNo"))==null?void 0:At.value)||"DTP-BOND-PREVIEW",s=((Et=t("#bf_ETRFNo"))==null?void 0:Et.value)||"-",l=((Mt=t("#bf_ModelStyle"))==null?void 0:Mt.value)||"-",o=((Ot=t("#bf_Color"))==null?void 0:Ot.value)||"-",n=((kt=t("#bf_Side"))==null?void 0:kt.value)||"Left",r=n.toLowerCase()==="left",d=(((Pt=t("#bf_AgeCategory"))==null?void 0:Pt.value)||"ADULT").toUpperCase(),i=parseFloat(((Nt=t("#bf_STD"))==null?void 0:Nt.value)||"2.5")||2.5,m=((Dt=t("#bf_POLotNO"))==null?void 0:Dt.value)||"-",u=((zt=t("#bf_POQuantity"))==null?void 0:zt.value)||"-",v=((qt=t("#bf_Factory"))==null?void 0:qt.value)||"DATIAN SUBIC SHOES INC. (DTP)",x=((Qt=t("#bf_AdhesiveSupplier"))==null?void 0:Qt.value)||"-",L=((Jt=t("#bf_ShippedDate"))==null?void 0:Jt.value)||"-",P=((Kt=t("#bf_ProductionDate"))==null?void 0:Kt.value)||"-",f=((Xt=t("#bf_Sendby"))==null?void 0:Xt.value)||"-",g=((Yt=t("#bf_MaterialSource"))==null?void 0:Yt.value)||"Prod. Shoes",N=((Zt=t("#bf_ModeOfFailure"))==null?void 0:Zt.value)||"-",G=((te=t("#bf_PossibleCause"))==null?void 0:te.value)||"-",E=((ee=t("#bf_Remarks"))==null?void 0:ee.value)||((ae=t("#bf_LabNotesComments"))==null?void 0:ae.value)||"",et=((se=t("#bf_ReceivedDate"))==null?void 0:se.value)||"-",at=((oe=t("#bf_TestedDate"))==null?void 0:oe.value)||new Date().toISOString().slice(0,10),Y=((le=t("#bf_FinishedDate"))==null?void 0:le.value)||at,y=((re=t("#bf_Technician"))==null?void 0:re.value)||"L. Aquidado",C=((ne=t("#bf_ReviewedBy"))==null?void 0:ne.value)||"QA Lead",T=(((ie=t("#bf_Result"))==null?void 0:ie.value)||"").toUpperCase(),M=T==="PASS"||!T?"":T==="TOLERABLE"?"stamp-tol":"stamp-fail",F=((ce=t("#bp_UTFMin"))==null?void 0:ce.value)||(h==null?void 0:h.UTFMin)||"-",D=((de=t("#bp_UTFMax"))==null?void 0:de.value)||(h==null?void 0:h.UTFMax)||"-",U=((fe=t("#bp_UTFAverage"))==null?void 0:fe.value)||(h==null?void 0:h.UTFAverage)||"-",B=(((pe=t("#bp_UTF_Result"))==null?void 0:pe.value)||(h==null?void 0:h.UTF_Result)||"-").toUpperCase(),Q=((ue=t("#bp_FTOMin"))==null?void 0:ue.value)||(h==null?void 0:h.FTOMin)||"-",Z=((ve=t("#bp_FTOMax"))==null?void 0:ve.value)||(h==null?void 0:h.FTOMax)||"-",z=((me=t("#bp_FTOAverage"))==null?void 0:me.value)||(h==null?void 0:h.FTOAverage)||"-",tt=(((he=t("#bp_FTO_Result"))==null?void 0:he.value)||(h==null?void 0:h.FTO_Result)||"-").toUpperCase(),dt=((be=t("#bp_FiTOMin"))==null?void 0:be.value)||(h==null?void 0:h.FiTOMin)||"-",ut=((_e=t("#bp_FiTOMax"))==null?void 0:_e.value)||(h==null?void 0:h.FiTOMax)||"-",Ft=((ge=t("#bp_FiTOAverage"))==null?void 0:ge.value)||(h==null?void 0:h.FiTOAverage)||"-",$=(((Te=t("#bp_FiTO_Result"))==null?void 0:Te.value)||(h==null?void 0:h.FiTO_Result)||"-").toUpperCase(),O={},W={},K={};let lt=0;for(let p=1;p<=35;p++){const b=((ye=t("#bp_UTFpoint"+p))==null?void 0:ye.value)||(h==null?void 0:h["UTFpoint"+p])||"",_=((Se=t("#bp_FTOpoint"+p))==null?void 0:Se.value)||(h==null?void 0:h["FTOpoint"+p])||"";O[p]=b,W[p]=_,(parseFloat(b)>0||parseFloat(_)>0)&&(lt=p),p<=13&&(K[p]=(($e=t("#bp_FiTO"+p))==null?void 0:$e.value)||(h==null?void 0:h["FiTO"+p])||"")}const ft=await da();let rt=parseInt((h==null?void 0:h.MaxPoints)||lt||27);(!ft||!ft[rt])&&(rt=[26,27,28,29,30,31,32,33,34].reduce((b,_)=>Math.abs(_-rt)<Math.abs(b-rt)?_:b,27));let A=ft?ft[rt]:null,vt=[],nt=null;if(A)try{const p=await J("dtr/layout?slug=bonding&variant="+encodeURIComponent(rt)),b=p&&p.layout;b&&(A=JSON.parse(JSON.stringify(A)),b.image&&Object.assign(A.image,b.image),["utf","fto"].forEach(_=>{Object.keys(b[_]||{}).forEach(S=>{b[_][S].hidden?delete A[_][S]:A[_][S]=b[_][S]})}),vt=b.extras||[],(b.vector||b.start)&&(nt=b),b.vector&&(A.image.file=b.imageFile||"blank.png"))}catch{}const it=(p,b,_=!1)=>{const S=He(parseFloat(p),_?xe:b);return S?S==="FAIL"?"color:#dc2626;font-weight:800;":S==="TOLERABLE"?"color:#d97706;font-weight:800;":"color:#1d4ed8;font-weight:800;":"color:#94a3b8"};let ct="";if(A){ct+=`
-        <img src="${st}assets/images/bonding_sketches/${A.image.file}" 
+    `;
+
+    $('#dtr-print-modal-title').textContent = `Official Test Report Sheet — ${labRef}`;
+    $('#dtr-print-sheet-container').innerHTML = html;
+    $('#dtr-print-modal-backdrop')?.classList.remove('hidden');
+  };
+
+  let sketchConfigsCache = null;
+  const loadSketchConfigs = async () => {
+    if (sketchConfigsCache) return sketchConfigsCache;
+    try {
+      const res = await fetch(BASE_URL + 'assets/images/bonding_sketches/sketch_configs.json');
+      if (res.ok) {
+        sketchConfigsCache = await res.json();
+        return sketchConfigsCache;
+      }
+    } catch (e) {
+      console.warn('Failed to load sketch_configs.json', e);
+    }
+    return null;
+  };
+
+  // Live shoe sketch inside the form (same layout the report preview uses: contour, spot boxes, leader lines, START)
+  var formSketchTimer = null;
+  var formSketchSeq = 0;
+  function scheduleFormSketch() {
+    clearTimeout(formSketchTimer);
+    formSketchTimer = setTimeout(renderFormSketch, 120);
+  }
+  async function renderFormSketch() {
+    const leftEl = $('#vf-diag-left');
+    const rightEl = $('#vf-diag-right');
+    if (!leftEl || !rightEl) return;
+    const seq = ++formSketchSeq;
+    const isLeft = (($('#bf_Side')?.value || 'Left').toLowerCase() === 'left');
+    const std = parseFloat($('#bf_STD')?.value || '2.5') || 2.5;
+    const IMG = BASE_URL + 'assets/images/bonding_sketches/';
+
+    const utfVals = {}; const ftoVals = {};
+    let highest = 0;
+    for (let i = 1; i <= 35; i++) {
+      utfVals[i] = $('#bp_UTFpoint' + i)?.value || '';
+      ftoVals[i] = $('#bp_FTOpoint' + i)?.value || '';
+      if (parseFloat(utfVals[i]) > 0 || parseFloat(ftoVals[i]) > 0) highest = i;
+    }
+
+    const blank = `<img src="${IMG}blank.png" class="vf-shoe-img" style="left:12%;top:8%;width:76%;height:84%;opacity:.85" alt="Shoe contour">`;
+    let active = '';
+    const configs = await loadSketchConfigs();
+    // Spot count follows the Age Category (Adult 35 / Children 24 / Kids 16 / Toddler 14)
+    const ageKey = ($('#bf_AgeCategory')?.value || 'ADULT').toUpperCase();
+    const spotCount = AGE_SPOT_LIMITS[ageKey] || 35;
+    let numPts = spotCount;
+    if (configs && !configs[numPts]) {
+      const available = [26, 27, 28, 29, 30, 31, 32, 33, 34];
+      numPts = available.reduce((p, c) => Math.abs(c - numPts) < Math.abs(p - numPts) ? c : p, 27);
+    }
+    let cfg = configs ? configs[numPts] : null;
+    let vec = null;
+    if (cfg) {
+      try {
+        const lj = await apiFetch('dtr/layout?slug=bonding&variant=' + encodeURIComponent(numPts));
+        const L = lj && lj.layout;
+        if (L) {
+          cfg = JSON.parse(JSON.stringify(cfg));
+          if (L.image) Object.assign(cfg.image, L.image);
+          ['utf', 'fto'].forEach((k) => {
+            Object.keys(L[k] || {}).forEach((i) => {
+              if (L[k][i].hidden) delete cfg[k][i];
+              else cfg[k][i] = L[k][i];
+            });
+          });
+          if (L.vector || L.start) vec = L;
+          if (L.vector) cfg.image.file = L.imageFile || 'blank.png';
+        }
+      } catch (e) { /* default layout */ }
+    }
+    if (seq !== formSketchSeq) return;
+
+    // Re-space the spots around the contour so exactly `spotCount` are drawn (needs the vector layout)
+    if (cfg && vec && vec.vector && spotCount !== cfg.pointsCount) {
+      const resample = (k) => {
+        const idx = Object.keys(vec.dots[k] || {}).map(Number).filter((i) => cfg[k][i]).sort((a, b) => a - b);
+        if (idx.length < 3) return null;
+        const pts = idx.map((i) => ({ x: vec.dots[k][i].x, y: vec.dots[k][i].y, i }));
+        const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+        const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+        // signed offset of the value box from its dot, along the outward direction
+        let off = 0;
+        pts.forEach((p) => {
+          const b = cfg[k][p.i];
+          const dx = p.x - cx; const dy = p.y - cy; const len = Math.hypot(dx, dy) || 1;
+          off += ((b.pctLeft + b.pctWidth / 2 - p.x) * dx + (b.pctTop + b.pctHeight / 2 - p.y) * dy) / len;
+        });
+        off /= pts.length;
+        const b0 = cfg[k][pts[0].i];
+        const ring = pts.concat([pts[0]]);
+        const seg = []; let total = 0;
+        for (let j = 0; j < ring.length - 1; j++) {
+          const d = Math.hypot(ring[j + 1].x - ring[j].x, ring[j + 1].y - ring[j].y);
+          seg.push(d); total += d;
+        }
+        const boxes = {}; const dots = {};
+        for (let n = 0; n < spotCount; n++) {
+          let s = (n * total) / spotCount; let j = 0;
+          while (j < seg.length - 1 && s > seg[j]) { s -= seg[j]; j++; }
+          const t = seg[j] ? s / seg[j] : 0;
+          const x = ring[j].x + (ring[j + 1].x - ring[j].x) * t;
+          const y = ring[j].y + (ring[j + 1].y - ring[j].y) * t;
+          const dx = x - cx; const dy = y - cy; const len = Math.hypot(dx, dy) || 1;
+          const bx = x + (dx / len) * off; const by = y + (dy / len) * off;
+          boxes[n + 1] = {
+            pctLeft: Math.min(100 - b0.pctWidth, Math.max(0, bx - b0.pctWidth / 2)),
+            pctTop: Math.min(100 - b0.pctHeight, Math.max(0, by - b0.pctHeight / 2)),
+            pctWidth: b0.pctWidth, pctHeight: b0.pctHeight,
+          };
+          dots[n + 1] = { x, y };
+        }
+        return { boxes, dots };
+      };
+      const u = resample('utf'); const f = resample('fto');
+      if (u && f) {
+        cfg.utf = u.boxes; cfg.fto = f.boxes;
+        vec.dots = { utf: u.dots, fto: f.dots };
+        cfg.pointsCount = spotCount;
+      }
+    }
+
+    const colour = (val) => {
+      const v = evaluateSpotVerdict(parseFloat(val), std);
+      if (!v) return 'color:#94a3b8';
+      if (v === 'FAIL') return 'color:#dc2626;font-weight:800;';
+      if (v === 'TOLERABLE') return 'color:#d97706;font-weight:800;';
+      return 'color:#1d4ed8;font-weight:800;';
+    };
+
+    if (cfg) {
+      const im = cfg.image;
+      active += `<img src="${IMG}${im.file}" class="vf-shoe-img" style="left:${im.pctLeft}%;top:${im.pctTop}%;width:${im.pctWidth}%;height:${im.pctHeight}%" alt="Shoe sketch">`;
+      const box = (cls, c, val, label, i) => {
+        const n = parseFloat(val);
+        const has = Number.isFinite(n) && n > 0;
+        return `<div class="vf-point-box ${cls}" style="left:${c.pctLeft}%;top:${c.pctTop}%;width:${c.pctWidth}%;height:${c.pctHeight}%;${colour(val)}" title="${label} Point ${i}: ${has ? n.toFixed(2) : '-'}">${has ? n.toFixed(2) : ''}</div>`;
+      };
+      for (let i = 1; i <= cfg.pointsCount; i++) {
+        if (cfg.utf[i]) active += box('vf-point-utf', cfg.utf[i], utfVals[i], 'UTF', i);
+        if (cfg.fto[i]) active += box('vf-point-fto', cfg.fto[i], ftoVals[i], 'FTO', i);
+      }
+      if (vec) {
+        let svg = '<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none">';
+        let dots = '';
+        if (vec.vector) {
+          ['utf', 'fto'].forEach((k) => Object.keys(cfg[k]).forEach((i) => {
+            const b = cfg[k][i]; const d = ((vec.dots || {})[k] || {})[i];
+            if (!d) return;
+            const r = b.pctLeft + b.pctWidth; const cy = b.pctTop + b.pctHeight / 2;
+            const x = d.x < b.pctLeft ? b.pctLeft : d.x > r ? r : b.pctLeft + b.pctWidth / 2;
+            const y = (x === b.pctLeft || x === r) ? cy : (d.y < b.pctTop ? b.pctTop : b.pctTop + b.pctHeight);
+            const col = k === 'utf' ? '#2563eb' : '#7c3aed';
+            svg += `<line x1="${x}" y1="${y}" x2="${d.x}" y2="${d.y}" stroke="${col}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`;
+            dots += `<div style="position:absolute;left:${d.x}%;top:${d.y}%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border-radius:50%;background:${col}"></div>`;
+          }));
+        }
+        if (vec.start) {
+          const st = vec.start;
+          dots += `<div style="position:absolute;left:${st.x}%;top:${st.y}%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:3px;white-space:nowrap;color:#b91c1c;font:800 9px sans-serif"><i style="display:block;width:9px;height:9px;background:#dc2626;transform:rotate(45deg)"></i>${escHtml(st.label || 'START')}</div>`;
+        }
+        active += svg + '</svg>' + dots;
+      }
+    } else {
+      active = '<div style="padding:20px;text-align:center;color:#64748b">Shoe sketch unavailable</div>';
+    }
+
+    leftEl.innerHTML = isLeft ? active : blank;
+    rightEl.innerHTML = !isLeft ? active : blank;
+  }
+  const openBondingPrintPreview = async () => {
+    const bondingTestId = parseInt($('#bf_BondingTestID')?.value || activeBondingPoints?.BondingTestID || 0) || 0;
+    const labRef = $('#bf_LabRefNo')?.value || 'DTP-BOND-PREVIEW';
+    const etrf = $('#bf_ETRFNo')?.value || '-';
+    const shoeName = $('#bf_ModelStyle')?.value || '-';
+    const color = $('#bf_Color')?.value || '-';
+    const side = $('#bf_Side')?.value || 'Left';
+    const isLeft = side.toLowerCase() === 'left';
+    const age = ($('#bf_AgeCategory')?.value || 'ADULT').toUpperCase();
+    const std = parseFloat($('#bf_STD')?.value || '2.5') || 2.5;
+    const poLot = $('#bf_POLotNO')?.value || '-';
+    const poQty = $('#bf_POQuantity')?.value || '-';
+    const factory = $('#bf_Factory')?.value || 'DATIAN SUBIC SHOES INC. (DTP)';
+    const adhesive = $('#bf_AdhesiveSupplier')?.value || '-';
+    const shippedDate = $('#bf_ShippedDate')?.value || '-';
+    const productionDate = $('#bf_ProductionDate')?.value || '-';
+    const sendBy = $('#bf_Sendby')?.value || '-';
+    const materialSource = $('#bf_MaterialSource')?.value || 'Prod. Shoes';
+    const modeOfFailure = $('#bf_ModeOfFailure')?.value || '-';
+    const possibleCause = $('#bf_PossibleCause')?.value || '-';
+    const remarks = $('#bf_Remarks')?.value || $('#bf_LabNotesComments')?.value || '';
+    const receivedDate = $('#bf_ReceivedDate')?.value || '-';
+    const testedDate = $('#bf_TestedDate')?.value || new Date().toISOString().slice(0, 10);
+    const finishedDate = $('#bf_FinishedDate')?.value || testedDate;
+    const tech = $('#bf_Technician')?.value || 'L. Aquidado';
+    const reviewer = $('#bf_ReviewedBy')?.value || 'QA Lead';
+    const overall = ($('#bf_Result')?.value || '').toUpperCase();
+
+    const stampCls = (overall === 'PASS' || !overall) ? '' : (overall === 'TOLERABLE' ? 'stamp-tol' : 'stamp-fail');
+
+    // Section Statistics (UTF, FTO, FiTO)
+    const utfMin = $('#bp_UTFMin')?.value || activeBondingPoints?.UTFMin || '-';
+    const utfMax = $('#bp_UTFMax')?.value || activeBondingPoints?.UTFMax || '-';
+    const utfAve = $('#bp_UTFAverage')?.value || activeBondingPoints?.UTFAverage || '-';
+    const utfRes = ($('#bp_UTF_Result')?.value || activeBondingPoints?.UTF_Result || '-').toUpperCase();
+
+    const ftoMin = $('#bp_FTOMin')?.value || activeBondingPoints?.FTOMin || '-';
+    const ftoMax = $('#bp_FTOMax')?.value || activeBondingPoints?.FTOMax || '-';
+    const ftoAve = $('#bp_FTOAverage')?.value || activeBondingPoints?.FTOAverage || '-';
+    const ftoRes = ($('#bp_FTO_Result')?.value || activeBondingPoints?.FTO_Result || '-').toUpperCase();
+
+    const fitoMin = $('#bp_FiTOMin')?.value || activeBondingPoints?.FiTOMin || '-';
+    const fitoMax = $('#bp_FiTOMax')?.value || activeBondingPoints?.FiTOMax || '-';
+    const fitoAve = $('#bp_FiTOAverage')?.value || activeBondingPoints?.FiTOAverage || '-';
+    const fitoRes = ($('#bp_FiTO_Result')?.value || activeBondingPoints?.FiTO_Result || '-').toUpperCase();
+
+    // Read spot points
+    const utfVals = {};
+    const ftoVals = {};
+    const fitoVals = {};
+    let highestPoint = 0;
+    for (let i = 1; i <= 35; i++) {
+      const u = $('#bp_UTFpoint' + i)?.value || activeBondingPoints?.['UTFpoint' + i] || '';
+      const f = $('#bp_FTOpoint' + i)?.value || activeBondingPoints?.['FTOpoint' + i] || '';
+      utfVals[i] = u;
+      ftoVals[i] = f;
+      if (parseFloat(u) > 0 || parseFloat(f) > 0) highestPoint = i;
+      if (i <= 13) {
+        fitoVals[i] = $('#bp_FiTO' + i)?.value || activeBondingPoints?.['FiTO' + i] || '';
+      }
+    }
+
+    // Determine sketch config
+    const configs = await loadSketchConfigs();
+    let numPts = parseInt(activeBondingPoints?.MaxPoints || highestPoint || 27);
+    if (!configs || !configs[numPts]) {
+      const available = [26, 27, 28, 29, 30, 31, 32, 33, 34];
+      numPts = available.reduce((prev, curr) => Math.abs(curr - numPts) < Math.abs(prev - numPts) ? curr : prev, 27);
+    }
+    let cfg = configs ? configs[numPts] : null;
+
+    // Admin-designed layout (Report Designer): moved / hidden points and extra items
+    let layoutExtras = [];
+    let layoutVec = null;
+    if (cfg) {
+      try {
+        const lj = await apiFetch('dtr/layout?slug=bonding&variant=' + encodeURIComponent(numPts));
+        const L = lj && lj.layout;
+        if (L) {
+          cfg = JSON.parse(JSON.stringify(cfg));
+          if (L.image) Object.assign(cfg.image, L.image);
+          ['utf', 'fto'].forEach((k) => {
+            Object.keys(L[k] || {}).forEach((i) => {
+              if (L[k][i].hidden) delete cfg[k][i];
+              else cfg[k][i] = L[k][i];
+            });
+          });
+          layoutExtras = L.extras || [];
+          if (L.vector || L.start) layoutVec = L;
+          if (L.vector) cfg.image.file = L.imageFile || 'blank.png';
+        }
+      } catch (e) { /* default layout */ }
+    }
+
+    // Spot Color logic
+    // blue = pass, amber = tolerable, red = fail (same rules as the result)
+    const getValColorStyle = (val, threshold, isFiTO = false) => {
+      const verdict = evaluateSpotVerdict(parseFloat(val), isFiTO ? FITO_STD : threshold);
+      if (!verdict) return 'color:#94a3b8';
+      if (verdict === 'FAIL') return 'color:#dc2626;font-weight:800;';
+      if (verdict === 'TOLERABLE') return 'color:#d97706;font-weight:800;';
+      return 'color:#1d4ed8;font-weight:800;';
+    };
+
+    // Active shoe overlay
+    let activeShoePointsHtml = '';
+    if (cfg) {
+      activeShoePointsHtml += `
+        <img src="${BASE_URL}assets/images/bonding_sketches/${cfg.image.file}" 
              class="vf-shoe-img" 
-             style="left:${A.image.pctLeft}%; top:${A.image.pctTop}%; width:${A.image.pctWidth}%; height:${A.image.pctHeight}%;" 
-             alt="${n} Shoe Sketch">
-      `;for(let p=1;p<=A.pointsCount;p++){const b=A.utf[p];if(b){const S=O[p],w=parseFloat(S),H=Number.isFinite(w)&&w>0,V=it(S,i,!1);ct+=`
+             style="left:${cfg.image.pctLeft}%; top:${cfg.image.pctTop}%; width:${cfg.image.pctWidth}%; height:${cfg.image.pctHeight}%;" 
+             alt="${side} Shoe Sketch">
+      `;
+      for (let i = 1; i <= cfg.pointsCount; i++) {
+        const uCoord = cfg.utf[i];
+        if (uCoord) {
+          const val = utfVals[i];
+          const num = parseFloat(val);
+          const hasVal = Number.isFinite(num) && num > 0;
+          const colStyle = getValColorStyle(val, std, false);
+          activeShoePointsHtml += `
             <div class="vf-point-box vf-point-utf" 
-                 style="left:${b.pctLeft}%; top:${b.pctTop}%; width:${b.pctWidth}%; height:${b.pctHeight}%; ${V}" 
-                 title="UTF Point ${p}: ${H?w.toFixed(2):"-"}">
-              ${H?w.toFixed(2):""}
+                 style="left:${uCoord.pctLeft}%; top:${uCoord.pctTop}%; width:${uCoord.pctWidth}%; height:${uCoord.pctHeight}%; ${colStyle}" 
+                 title="UTF Point ${i}: ${hasVal ? num.toFixed(2) : '-'}">
+              ${hasVal ? num.toFixed(2) : ''}
             </div>
-          `}const _=A.fto[p];if(_){const S=W[p],w=parseFloat(S),H=Number.isFinite(w)&&w>0,V=it(S,i,!1);ct+=`
+          `;
+        }
+        const fCoord = cfg.fto[i];
+        if (fCoord) {
+          const val = ftoVals[i];
+          const num = parseFloat(val);
+          const hasVal = Number.isFinite(num) && num > 0;
+          const colStyle = getValColorStyle(val, std, false);
+          activeShoePointsHtml += `
             <div class="vf-point-box vf-point-fto" 
-                 style="left:${_.pctLeft}%; top:${_.pctTop}%; width:${_.pctWidth}%; height:${_.pctHeight}%; ${V}" 
-                 title="FTO Point ${p}: ${H?w.toFixed(2):"-"}">
-              ${H?w.toFixed(2):""}
+                 style="left:${fCoord.pctLeft}%; top:${fCoord.pctTop}%; width:${fCoord.pctWidth}%; height:${fCoord.pctHeight}%; ${colStyle}" 
+                 title="FTO Point ${i}: ${hasVal ? num.toFixed(2) : '-'}">
+              ${hasVal ? num.toFixed(2) : ''}
             </div>
-          `}}if(nt){let p='<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none">',b="";if(nt.vector&&["utf","fto"].forEach(_=>Object.keys(A[_]).forEach(S=>{const w=A[_][S],H=((nt.dots||{})[_]||{})[S];if(!H)return;const V=w.pctLeft+w.pctWidth,jt=w.pctTop+w.pctHeight/2,X=H.x<w.pctLeft?w.pctLeft:H.x>V?V:w.pctLeft+w.pctWidth/2,_t=X===w.pctLeft||X===V?jt:H.y<w.pctTop?w.pctTop:w.pctTop+w.pctHeight,Fe=_==="utf"?"#2563eb":"#7c3aed";p+=`<line x1="${X}" y1="${_t}" x2="${H.x}" y2="${H.y}" stroke="${Fe}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`,b+=`<div style="position:absolute;left:${H.x}%;top:${H.y}%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border-radius:50%;background:${Fe}"></div>`})),nt.start){const _=nt.start;b+=`<div style="position:absolute;left:${_.x}%;top:${_.y}%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:3px;white-space:nowrap;color:#b91c1c;font:800 9px sans-serif"><i style="display:block;width:9px;height:9px;background:#dc2626;transform:rotate(45deg)"></i>${c(_.label||"START")}</div>`}ct+=p+"</svg>"+b}vt.forEach(p=>{var H;const b=`left:${p.pctLeft}%; top:${p.pctTop}%; width:${p.pctWidth}%; height:${p.pctHeight}%;`,_=`color:${c(p.color||"#111")}; font-size:${Number(p.size)||12}px; font-weight:${p.bold?700:400};`;let S="";if(p.type==="text")S=c(p.text);else if(p.type==="field")S=c(((H=t("#bf_"+p.field))==null?void 0:H.value)||"");else if(p.type==="image"&&p.src)S=`<img src="${st}${c(p.src)}" style="max-width:100%;max-height:100%" alt="">`;else if(p.type==="chart"){let V=0;for(let X=1;X<=A.pointsCount;X++)V=Math.max(V,parseFloat(O[X])||0);let jt="";for(let X=1;X<=A.pointsCount;X++){const _t=parseFloat(O[X])||0;jt+=`<i style="flex:1;display:block;min-height:1px;height:${V?_t/V*100:0}%;background:${_t<2?"#dc2626":_t<3?"#d97706":"#1d4ed8"}"></i>`}S=`<div style="display:flex;align-items:flex-end;gap:1px;width:100%;height:100%">${jt}</div>`}const w=p.type==="line"?`background:${c(p.color||"#111")};`:"";ct+=`<div style="position:absolute;display:flex;align-items:center;overflow:hidden;${b}${_}${w}">${S}</div>`})}else ct='<div style="padding:20px;text-align:center;color:#64748b">Shoe sketch unavailable</div>';const Lt=`
-      <img src="${st}assets/images/bonding_sketches/blank.png" 
+          `;
+        }
+      }
+      if (layoutVec) {
+        let svg = '<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none">';
+        let dots = '';
+        if (layoutVec.vector) {
+          ['utf', 'fto'].forEach((k) => Object.keys(cfg[k]).forEach((i) => {
+            const b = cfg[k][i]; const d = ((layoutVec.dots || {})[k] || {})[i];
+            if (!d) return;
+            const r = b.pctLeft + b.pctWidth; const cy = b.pctTop + b.pctHeight / 2;
+            const x = d.x < b.pctLeft ? b.pctLeft : d.x > r ? r : b.pctLeft + b.pctWidth / 2;
+            const y = (x === b.pctLeft || x === r) ? cy : (d.y < b.pctTop ? b.pctTop : b.pctTop + b.pctHeight);
+            const col = k === 'utf' ? '#2563eb' : '#7c3aed';
+            svg += `<line x1="${x}" y1="${y}" x2="${d.x}" y2="${d.y}" stroke="${col}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`;
+            dots += `<div style="position:absolute;left:${d.x}%;top:${d.y}%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border-radius:50%;background:${col}"></div>`;
+          }));
+        }
+        if (layoutVec.start) {
+          const st = layoutVec.start;
+          dots += `<div style="position:absolute;left:${st.x}%;top:${st.y}%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:3px;white-space:nowrap;color:#b91c1c;font:800 9px sans-serif"><i style="display:block;width:9px;height:9px;background:#dc2626;transform:rotate(45deg)"></i>${escHtml(st.label || 'START')}</div>`;
+        }
+        activeShoePointsHtml += svg + '</svg>' + dots;
+      }
+      layoutExtras.forEach((e) => {
+        const pos = `left:${e.pctLeft}%; top:${e.pctTop}%; width:${e.pctWidth}%; height:${e.pctHeight}%;`;
+        const txt = `color:${escHtml(e.color || '#111')}; font-size:${Number(e.size) || 12}px; font-weight:${e.bold ? 700 : 400};`;
+        let inner = '';
+        if (e.type === 'text') inner = escHtml(e.text);
+        else if (e.type === 'field') inner = escHtml($('#bf_' + e.field)?.value || '');
+        else if (e.type === 'image' && e.src) inner = `<img src="${BASE_URL}${escHtml(e.src)}" style="max-width:100%;max-height:100%" alt="">`;
+        else if (e.type === 'chart') {
+          let max = 0;
+          for (let i = 1; i <= cfg.pointsCount; i++) max = Math.max(max, parseFloat(utfVals[i]) || 0);
+          let bars = '';
+          for (let i = 1; i <= cfg.pointsCount; i++) {
+            const v = parseFloat(utfVals[i]) || 0;
+            bars += `<i style="flex:1;display:block;min-height:1px;height:${max ? (v / max) * 100 : 0}%;background:${v < 2 ? '#dc2626' : v < 3 ? '#d97706' : '#1d4ed8'}"></i>`;
+          }
+          inner = `<div style="display:flex;align-items:flex-end;gap:1px;width:100%;height:100%">${bars}</div>`;
+        }
+        const bg = e.type === 'line' ? `background:${escHtml(e.color || '#111')};` : '';
+        activeShoePointsHtml += `<div style="position:absolute;display:flex;align-items:center;overflow:hidden;${pos}${txt}${bg}">${inner}</div>`;
+      });
+    } else {
+      activeShoePointsHtml = `<div style="padding:20px;text-align:center;color:#64748b">Shoe sketch unavailable</div>`;
+    }
+
+    const blankShoeHtml = `
+      <img src="${BASE_URL}assets/images/bonding_sketches/blank.png" 
            class="vf-shoe-img" 
            style="left:12%; top:8%; width:76%; height:84%; opacity:0.85;" 
            alt="Unmeasured Shoe Contour">
-    `;let yt="";for(let p=1;p<=13;p++){const b=K[p],_=parseFloat(b),S=Number.isFinite(_)&&_>0,w=it(b,1,!0);yt+=`
-        <div class="vf-center-item" style="${w}">
-          ${S?_.toFixed(2):"&nbsp;"}
+    `;
+
+    // Center FiTO column items
+    let fitoItemsHtml = '';
+    for (let i = 1; i <= 13; i++) {
+      const val = fitoVals[i];
+      const num = parseFloat(val);
+      const hasVal = Number.isFinite(num) && num > 0;
+      const colStyle = getValColorStyle(val, 1.0, true);
+      fitoItemsHtml += `
+        <div class="vf-center-item" style="${colStyle}">
+          ${hasVal ? num.toFixed(2) : '&nbsp;'}
         </div>
-      `}const Ct='<div class="vf-center-line"></div>'.repeat(6),wt=Array.from({length:13},(p,b)=>parseFloat(K[b+1])).some(p=>Number.isFinite(p)&&p>0),It=r?ct:Lt,Ut=r?Lt:ct,Ht=r&&wt?yt:Ct,Vt=!r&&wt?yt:Ct,St=p=>p==="PASS"?{pass:"PASS",fail:"",passCls:"vf-rate-pass",failCls:""}:p==="TOLERABLE"?{pass:"TOLE",fail:"",passCls:"vf-rate-tol",failCls:""}:p==="FAIL"||p==="FAILED"?{pass:"",fail:"FAIL",passCls:"",failCls:"vf-rate-fail"}:{pass:"-",fail:"",passCls:"",failCls:""},mt=St(B),ht=St(tt),bt=St($);let Rt="";for(let p=1;p<=(A?A.pointsCount:27);p++){const b=O[p]?parseFloat(O[p]).toFixed(2):"-",_=W[p]?parseFloat(W[p]).toFixed(2):"-",S=p<=13&&K[p]?parseFloat(K[p]).toFixed(2):"-";Rt+=`
+      `;
+    }
+
+    // Empty write-in lines (black) for a center box that has no FiTO readings
+    const centerLinesHtml = '<div class="vf-center-line"></div>'.repeat(6);
+    const anyFito = Array.from({ length: 13 }, (_, k) => parseFloat(fitoVals[k + 1])).some((n) => Number.isFinite(n) && n > 0);
+
+    const leftShoeCardHtml = isLeft ? activeShoePointsHtml : blankShoeHtml;
+    const rightShoeCardHtml = !isLeft ? activeShoePointsHtml : blankShoeHtml;
+    const leftCenterHtml = isLeft && anyFito ? fitoItemsHtml : centerLinesHtml;
+    const rightCenterHtml = !isLeft && anyFito ? fitoItemsHtml : centerLinesHtml;
+
+    // Status evaluation helpers
+    const getEvalStatus = (res) => {
+      if (res === 'PASS') return { pass: 'PASS', fail: '', passCls: 'vf-rate-pass', failCls: '' };
+      if (res === 'TOLERABLE') return { pass: 'TOLE', fail: '', passCls: 'vf-rate-tol', failCls: '' };
+      if (res === 'FAIL' || res === 'FAILED') return { pass: '', fail: 'FAIL', passCls: '', failCls: 'vf-rate-fail' };
+      return { pass: '-', fail: '', passCls: '', failCls: '' };
+    };
+
+    const utfStat = getEvalStatus(utfRes);
+    const ftoStat = getEvalStatus(ftoRes);
+    const fitoStat = getEvalStatus(fitoRes);
+
+    // Build raw spots rows for collapsible table
+    let rawSpotRows = '';
+    for (let i = 1; i <= (cfg ? cfg.pointsCount : 27); i++) {
+      const uVal = utfVals[i] ? parseFloat(utfVals[i]).toFixed(2) : '-';
+      const fVal = ftoVals[i] ? parseFloat(ftoVals[i]).toFixed(2) : '-';
+      const fiVal = i <= 13 && fitoVals[i] ? parseFloat(fitoVals[i]).toFixed(2) : '-';
+      rawSpotRows += `
         <tr>
-          <td><b>Point ${p}</b></td>
-          <td style="${it(O[p],i,!1)}">${b}</td>
-          <td style="${it(W[p],i,!1)}">${_}</td>
-          <td style="${p<=13?it(K[p],1,!0):"color:#94a3b8"}">${S}</td>
+          <td><b>Point ${i}</b></td>
+          <td style="${getValColorStyle(utfVals[i], std, false)}">${uVal}</td>
+          <td style="${getValColorStyle(ftoVals[i], std, false)}">${fVal}</td>
+          <td style="${i <= 13 ? getValColorStyle(fitoVals[i], 1.0, true) : 'color:#94a3b8'}">${fiVal}</td>
         </tr>
-      `}const Bt=`
+      `;
+    }
+
+    const html = `
       <div class="vf-report-sheet">
         <!-- Row 1: VF logo | test method name | SATRA logo, all on one line -->
         <div class="rpt-top">
-          <img class="rpt-logo-vf" src="${st}assets/images/vf-logo.webp" alt="VF">
+          <img class="rpt-logo-vf" src="${BASE_URL}assets/images/vf-logo.webp" alt="VF">
           <div class="rpt-top-title">
             <h1 class="vf-title-en">Bonding Test Results</h1>
             <h2 class="vf-title-cn">胶着力测试</h2>
           </div>
-          <img class="rpt-logo-satra" src="${st}assets/images/satra-accredited.png" alt="SATRA Accredited Laboratory No. 08A03">
+          <img class="rpt-logo-satra" src="${BASE_URL}assets/images/satra-accredited.png" alt="SATRA Accredited Laboratory No. 08A03">
         </div>
 
         <!-- Row 2: form no / ETRF / lab ref + sample category (left), result + dates (right) -->
@@ -343,41 +2706,41 @@
             <div class="vf-form-no rpt-formno">Form # : Lab VF 001</div>
             <div class="vf-etrf-row">
               <span>ETRF No:</span>
-              <span class="vf-val-underlined">${c(s)}</span>
+              <span class="vf-val-underlined">${escHtml(etrf)}</span>
             </div>
             <div class="vf-labref-row">
               <span>Lab Ref.No:</span>
-              <span class="vf-labref-val">${c(a)}</span>
+              <span class="vf-labref-val">${escHtml(labRef)}</span>
             </div>
             <div class="vf-test-categories">
               <div>
-                <span class="vf-radio ${g==="Prod. Shoes"||g==="Prod. Material"||!g?"checked":""}"></span> Pro. Shoes 量产鞋
+                <span class="vf-radio ${materialSource === 'Prod. Shoes' || materialSource === 'Prod. Material' || !materialSource ? 'checked' : ''}"></span> Pro. Shoes 量产鞋
                 <span style="display:inline-block;width:8px"></span>
-                <span class="vf-radio ${g==="Pro. Re-test"?"checked":""}"></span> Pro. Re-test 量产重测
+                <span class="vf-radio ${materialSource === 'Pro. Re-test' ? 'checked' : ''}"></span> Pro. Re-test 量产重测
               </div>
               <div style="margin-top:2px">
-                <span class="vf-radio ${g==="NewDevelopment"?"checked":""}"></span> NewDevelopment 开发
+                <span class="vf-radio ${materialSource === 'NewDevelopment' ? 'checked' : ''}"></span> NewDevelopment 开发
               </div>
               <div class="vf-tech-subradios">
                 <span>○ Tech 1</span> <span>○ Tech 2</span> <span>○ Tech 3</span> <span>○ Tech 4</span>
               </div>
               <div style="margin-top:2px">
-                <span class="vf-radio ${g==="Sales Sample"?"checked":""}"></span> Sales Sample 销样
+                <span class="vf-radio ${materialSource === 'Sales Sample' ? 'checked' : ''}"></span> Sales Sample 销样
                 <span style="display:inline-block;width:8px"></span>
-                <span class="vf-radio ${g==="Trial experiment"?"checked":""}"></span> 试胶试验
+                <span class="vf-radio ${materialSource === 'Trial experiment' ? 'checked' : ''}"></span> 试胶试验
               </div>
             </div>
           </div>
 
           <div class="rpt-sub-right">
             <div class="vf-stamp-area">
-              <span class="vf-stamp ${M}">${c(T)}</span>
+              <span class="vf-stamp ${stampCls}">${escHtml(overall)}</span>
             </div>
             <table class="vf-dates-table">
-              <tr><td>Received Date 收到日期:</td><td class="vf-date-val">${c(et)}</td></tr>
-              <tr><td>Tested Date 测试日期:</td><td class="vf-date-val">${c(at)}</td></tr>
-              <tr><td>Finished Date 完成日期:</td><td class="vf-date-val">${c(Y)}</td></tr>
-              <tr><td>Technician 技术员:</td><td class="vf-date-val">${c(y)}</td></tr>
+              <tr><td>Received Date 收到日期:</td><td class="vf-date-val">${escHtml(receivedDate)}</td></tr>
+              <tr><td>Tested Date 测试日期:</td><td class="vf-date-val">${escHtml(testedDate)}</td></tr>
+              <tr><td>Finished Date 完成日期:</td><td class="vf-date-val">${escHtml(finishedDate)}</td></tr>
+              <tr><td>Technician 技术员:</td><td class="vf-date-val">${escHtml(tech)}</td></tr>
             </table>
           </div>
         </div>
@@ -386,31 +2749,31 @@
         <table class="vf-meta-grid">
           <tr>
             <td class="vf-lbl">Factory (工厂):</td>
-            <td class="vf-val" colspan="3">${c(v)}</td>
+            <td class="vf-val" colspan="3">${escHtml(factory)}</td>
           </tr>
           <tr>
             <td class="vf-lbl">Adhesive supplier 胶水供应商:</td>
-            <td class="vf-val">${c(x)}</td>
+            <td class="vf-val">${escHtml(adhesive)}</td>
             <td class="vf-lbl">Shipped Date (出货日期):</td>
-            <td class="vf-val">${c(L)}</td>
+            <td class="vf-val">${escHtml(shippedDate)}</td>
           </tr>
           <tr>
             <td class="vf-lbl">Model/Style/PGSC (英文鞋型):</td>
-            <td class="vf-val">${c(l)}</td>
+            <td class="vf-val">${escHtml(shoeName)}</td>
             <td class="vf-lbl">Color (颜色):</td>
-            <td class="vf-val">${c(o)}</td>
+            <td class="vf-val">${escHtml(color)}</td>
           </tr>
           <tr>
             <td class="vf-lbl">Production Date (生产日期):</td>
-            <td class="vf-val">${c(P!=="-"?P:at)}</td>
+            <td class="vf-val">${escHtml(productionDate !== '-' ? productionDate : testedDate)}</td>
             <td class="vf-lbl">PO/Lot No (订单号码):</td>
-            <td class="vf-val">${c(m)}</td>
+            <td class="vf-val">${escHtml(poLot)}</td>
           </tr>
           <tr>
             <td class="vf-lbl">PO Quantity (订单数量):</td>
-            <td class="vf-val">${c(u)}</td>
+            <td class="vf-val">${escHtml(poQty)}</td>
             <td class="vf-lbl">Send by (送达):</td>
-            <td class="vf-val">${c(f)}</td>
+            <td class="vf-val">${escHtml(sendBy)}</td>
           </tr>
         </table>
 
@@ -437,11 +2800,11 @@
             <tr>
               <td class="text-left font-bold">Upper/Foxing Tape<br>(鞋面/围条)</td>
               <td>VF-F01<br><span style="font-size:9.5px">(2019/05)</span></td>
-              <td class="font-bold text-blue">${i}<br><span class="vf-tol">(≥ ${Ae(i)})</span></td>
-              <td class="font-bold text-blue">${F!=="-"?Number(F).toFixed(2):"-"}</td>
-              <td class="font-bold text-blue">${D!=="-"?Number(D).toFixed(2):"-"}</td>
-              <td><span class="${mt.passCls}">${mt.pass}</span></td>
-              <td><span class="${mt.failCls}">${mt.fail}</span></td>
+              <td class="font-bold text-blue">${std}<br><span class="vf-tol">(≥ ${bondingTolerance(std)})</span></td>
+              <td class="font-bold text-blue">${utfMin !== '-' ? Number(utfMin).toFixed(2) : '-'}</td>
+              <td class="font-bold text-blue">${utfMax !== '-' ? Number(utfMax).toFixed(2) : '-'}</td>
+              <td><span class="${utfStat.passCls}">${utfStat.pass}</span></td>
+              <td><span class="${utfStat.failCls}">${utfStat.fail}</span></td>
               <td rowspan="3" class="text-left vf-mode-cell">
                 <b>AF</b>= Failure at the adhesive/substrate interface or the adhesive/primer interface<br>
                 <b>CF</b>= Cohesive Failure of the adhesive (failure within the adhesive or between the two layers of adhesive)<br>
@@ -465,20 +2828,20 @@
             <tr>
               <td class="text-left font-bold">Foxing Tape / OS<br>(围条/橡胶大底)</td>
               <td>VF-F01<br><span style="font-size:9.5px">(2019/05)</span></td>
-              <td class="font-bold text-blue">${i}<br><span class="vf-tol">(≥ ${Ae(i)})</span></td>
-              <td class="font-bold text-blue">${Q!=="-"?Number(Q).toFixed(2):"-"}</td>
-              <td class="font-bold text-blue">${Z!=="-"?Number(Z).toFixed(2):"-"}</td>
-              <td><span class="${ht.passCls}">${ht.pass}</span></td>
-              <td><span class="${ht.failCls}">${ht.fail}</span></td>
+              <td class="font-bold text-blue">${std}<br><span class="vf-tol">(≥ ${bondingTolerance(std)})</span></td>
+              <td class="font-bold text-blue">${ftoMin !== '-' ? Number(ftoMin).toFixed(2) : '-'}</td>
+              <td class="font-bold text-blue">${ftoMax !== '-' ? Number(ftoMax).toFixed(2) : '-'}</td>
+              <td><span class="${ftoStat.passCls}">${ftoStat.pass}</span></td>
+              <td><span class="${ftoStat.failCls}">${ftoStat.fail}</span></td>
             </tr>
             <tr>
               <td class="text-left font-bold">Center : IS/OS<br>(中插 / 大底)</td>
               <td>VF-F01<br><span style="font-size:9.5px">(2019/05)</span></td>
-              <td class="font-bold text-blue">${xe}<br><span class="vf-tol">(≥ ${Ae(xe)})</span></td>
-              <td class="font-bold text-blue">${dt!=="-"?Number(dt).toFixed(2):"-"}</td>
-              <td class="font-bold text-blue">${ut!=="-"?Number(ut).toFixed(2):"-"}</td>
-              <td><span class="${bt.passCls}">${bt.pass}</span></td>
-              <td><span class="${bt.failCls}">${bt.fail}</span></td>
+              <td class="font-bold text-blue">${FITO_STD}<br><span class="vf-tol">(≥ ${bondingTolerance(FITO_STD)})</span></td>
+              <td class="font-bold text-blue">${fitoMin !== '-' ? Number(fitoMin).toFixed(2) : '-'}</td>
+              <td class="font-bold text-blue">${fitoMax !== '-' ? Number(fitoMax).toFixed(2) : '-'}</td>
+              <td><span class="${fitoStat.passCls}">${fitoStat.pass}</span></td>
+              <td><span class="${fitoStat.failCls}">${fitoStat.fail}</span></td>
             </tr>
           </tbody>
         </table>
@@ -492,8 +2855,8 @@
           <div class="vf-sketch-header-center">
             <div>Center: Fabric / PU / EVA kgf/cm</div>
             <div class="vf-sketch-sublabel-row">
-              <span style="${r?"color:#1d4ed8;font-weight:800":""}">Left</span>
-              <span style="${r?"":"color:#1d4ed8;font-weight:800"}">Right</span>
+              <span style="${isLeft ? 'color:#1d4ed8;font-weight:800' : ''}">Left</span>
+              <span style="${!isLeft ? 'color:#1d4ed8;font-weight:800' : ''}">Right</span>
             </div>
           </div>
           <div class="vf-sketch-header-col" style="text-align:right">
@@ -505,31 +2868,31 @@
         <div class="vf-sketch-body-row">
           <!-- Left Shoe Card -->
           <div class="vf-shoe-card">
-            ${It}
+            ${leftShoeCardHtml}
           </div>
 
           <!-- Center Boxes -->
           <div class="vf-center-card">
             <div class="vf-center-cols">
-              <div class="vf-center-box" style="${r?"border-color:#1d4ed8;background:#f8fafc":"border-color:#cbd5e1"}">
-                ${Ht}
+              <div class="vf-center-box" style="${isLeft ? 'border-color:#1d4ed8;background:#f8fafc' : 'border-color:#cbd5e1'}">
+                ${leftCenterHtml}
               </div>
-              <div class="vf-center-box" style="${r?"border-color:#cbd5e1":"border-color:#1d4ed8;background:#f8fafc"}">
-                ${Vt}
+              <div class="vf-center-box" style="${!isLeft ? 'border-color:#1d4ed8;background:#f8fafc' : 'border-color:#cbd5e1'}">
+                ${rightCenterHtml}
               </div>
             </div>
           </div>
 
           <!-- Right Shoe Card -->
           <div class="vf-shoe-card">
-            ${Ut}
+            ${rightShoeCardHtml}
           </div>
         </div>
 
         <!-- Optional Collapsible Data Table -->
         <details class="no-print" style="margin-top:8px;font-size:11px;border:1px solid #cbd5e1;border-radius:4px;padding:6px 10px;background:#f8fafc">
           <summary style="cursor:pointer;font-weight:700;color:#334155">
-            <svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg> View Tabular Spot Values (${A?A.pointsCount:27} Points)
+            <svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg> View Tabular Spot Values (${cfg ? cfg.pointsCount : 27} Points)
           </summary>
           <table class="dtr-sheet-results-table" style="margin-top:8px;margin-bottom:0">
             <thead>
@@ -541,7 +2904,7 @@
               </tr>
             </thead>
             <tbody>
-              ${Rt}
+              ${rawSpotRows}
             </tbody>
           </table>
         </details>
@@ -551,13 +2914,13 @@
           <div>
             Comments 备注:
             <div style="font-weight:normal;color:#334155;margin-top:4px;font-size:10.5px">
-              ${c(E||"Tested in accordance with VF Laboratory Standards.")}
+              ${escHtml(remarks || 'Tested in accordance with VF Laboratory Standards.')}
             </div>
           </div>
           <div>
             Reviewed by 审查:
             <div class="vf-sign-line">
-              <span>${c(C)}</span>
+              <span>${escHtml(reviewer)}</span>
             </div>
           </div>
           <div>
@@ -568,4 +2931,1132 @@
           </div>
         </div>
       </div>
-    `;t("#dtr-print-modal-title").textContent=`Whole Shoe Bonding Test Report — ${a} (${n})`,t("#dtr-print-sheet-container").innerHTML=Bt,(q=t("#dtr-print-modal-backdrop"))==null||q.classList.remove("hidden")},Je=e=>{const a=748.3464566929134,s=285/25.4*96,l=document.createElement("div");l.className="dtr-fit-probe",l.style.cssText="position:absolute;left:-99999px;top:0;visibility:hidden;",document.body.appendChild(l);let o=1;for(let n=0;n<4;n++){l.style.width=a/o+"px",l.innerHTML=e;const r=l.scrollHeight*o,d=Math.min(1,o*(s/Math.max(r,1))*.985);if(Math.abs(d-o)<.005){o=d;break}o=d}return l.remove(),Math.max(.4,Math.round(o*1e3)/1e3)};(Xa=t("#btn-dtr-print-preview"))==null||Xa.addEventListener("click",us),(Ya=t("#btn-bond-print-preview"))==null||Ya.addEventListener("click",()=>ze()?ps():ms()),(Za=t("#btn-dtr-close-print-modal"))==null||Za.addEventListener("click",()=>{var e;(e=t("#dtr-print-modal-backdrop"))==null||e.classList.add("hidden")}),(ts=t("#btn-dtr-cancel-print"))==null||ts.addEventListener("click",()=>{var e;(e=t("#dtr-print-modal-backdrop"))==null||e.classList.add("hidden")}),(es=t("#btn-dtr-download-pdf"))==null||es.addEventListener("click",async()=>{var l,o,n;const e=t("#btn-dtr-download-pdf"),a=t("#dtr-print-sheet-container");if(!a||!e)return;const s=e.textContent;e.disabled=!0,e.textContent="Creating PDF...";try{const r=await fetch(st+"dtr/sheet-pdf",{method:"POST",headers:{"Content-Type":"application/json","X-Requested-With":"XMLHttpRequest","X-CSRF-TOKEN":((l=document.querySelector('meta[name="X-CSRF-TOKEN"]'))==null?void 0:l.content)||""},body:JSON.stringify({scale:Je(a.innerHTML),html:a.innerHTML,name:(((o=t("#dtr-print-modal-title"))==null?void 0:o.textContent)||"Report").replace(/[^A-Za-z0-9._ -]+/g,"_")})});if(!r.ok)throw new Error((await r.text()).slice(0,200)||"PDF failed");const d=await r.blob(),i=document.createElement("a");i.href=URL.createObjectURL(d),i.download=((((n=t("#dtr-print-modal-title"))==null?void 0:n.textContent)||"Report").replace(/[^A-Za-z0-9._ -]+/g,"_").trim()||"Report")+".pdf",document.body.appendChild(i),i.click(),i.remove(),setTimeout(()=>URL.revokeObjectURL(i.href),4e3)}catch(r){nxToast("Could not create the PDF: "+r.message,"error",7e3)}e.disabled=!1,e.textContent=s}),(as=t("#btn-dtr-do-print"))==null||as.addEventListener("click",()=>{const e=t("#dtr-print-sheet-container");if(!e){window.print();return}const a=document.createElement("div");a.id="dtr-print-root",a.innerHTML=e.innerHTML,a.style.zoom=String(Je(e.innerHTML)),document.body.appendChild(a),document.body.classList.add("dtr-printing");const s=()=>{document.body.classList.remove("dtr-printing"),a.remove(),window.removeEventListener("afterprint",s)};window.addEventListener("afterprint",s),window.print()});const hs=async()=>{var e,a;try{const s=await J("dtr/layout?slug=bonding&variant=form"),l=s&&s.layout,o=t("#dtr-bonding-form");if(!l||!o)return;const n=d=>{var i;return(i=o.querySelector(`[name="${d}"]`))==null?void 0:i.closest(".dtr-field")};(l.customFields||[]).forEach(d=>{var u,v;if(o.querySelector(`[name="${d.key}"]`))return;const i=(v=(u=t("#bf_LabRefNo"))==null?void 0:u.closest(".dtr-field"))==null?void 0:v.parentElement;if(!i)return;const m=document.createElement("div");m.className="dtr-field",m.innerHTML=`<label>${c(d.label)}</label><input type="text" name="${c(d.key)}" id="bf_${c(d.key)}">`,i.appendChild(m)}),Object.entries(l.labels||{}).forEach(([d,i])=>{const m=n(d),u=m&&m.querySelector("label");u&&i&&(u.textContent=i)});const r=(a=(e=t("#bf_LabRefNo"))==null?void 0:e.closest(".dtr-field"))==null?void 0:a.parentElement;r&&(l.order||[]).length&&(l.order.forEach(d=>{const i=n(d);i&&i.parentElement===r&&r.appendChild(i)}),(l.customFields||[]).forEach(d=>{const i=n(d.key);i&&r.appendChild(i)})),(l.hiddenFields||[]).forEach(d=>{const i=n(d);i&&(i.style.display="none")})}catch{}};ca(),Ue(!1),ia(!1),Me("bonding"),we("fabric");const bs=hs().then(()=>{la(!1),Ve()});Qe(),(()=>{const e=new URLSearchParams(location.search),[a,s]=String(e.get("open")||"").split(":");!a||!/^[a-z]+$/.test(a)||!/^\d+$/.test(s||"")||setTimeout(async()=>{var n,r;await bs;const l=t("#dtr-tracker-tbody")||document.body,o=document.createElement("button");if(o.type="button",o.hidden=!0,o.dataset.openRecord=a,o.dataset.sourceId=s,l.appendChild(o),o.click(),o.remove(),e.get("preview")==="1"&&(await new Promise(d=>setTimeout(d,2200)),(n=t(a==="bonding"||a==="pull"?"#btn-bond-print-preview":"#btn-dtr-print-preview"))==null||n.click()),e.get("export")==="1"&&window.parent!==window){const d=i=>window.parent.postMessage(Object.assign({type:"NXL_REPORT_PDF"},i),location.origin);try{await new Promise(x=>setTimeout(x,800));const i=t("#dtr-print-sheet-container");if(!i||!i.innerHTML.trim())throw new Error("The report sheet could not be prepared.");const m=await fetch(st+"dtr/sheet-pdf",{method:"POST",headers:{"Content-Type":"application/json","X-Requested-With":"XMLHttpRequest","X-CSRF-TOKEN":((r=document.querySelector('meta[name="X-CSRF-TOKEN"]'))==null?void 0:r.content)||""},body:JSON.stringify({scale:Je(i.innerHTML),html:i.innerHTML,name:"Report"})});if(!m.ok)throw new Error((await m.text()).slice(0,200)||"PDF failed");const u=new Uint8Array(await m.arrayBuffer());let v="";for(let x=0;x<u.length;x+=32768)v+=String.fromCharCode.apply(null,u.subarray(x,x+32768));d({ok:!0,b64:btoa(v)})}catch(i){d({ok:!1,error:i.message})}}if(e.get("export")==="html"&&window.parent!==window){const d=i=>window.parent.postMessage(Object.assign({type:"NXL_REPORT_HTML"},i),location.origin);try{await new Promise(m=>setTimeout(m,1200));const i=t("#dtr-print-sheet-container");if(!i||!i.innerHTML.trim())throw new Error("The report sheet could not be prepared.");d({ok:!0,html:i.innerHTML})}catch(i){d({ok:!1,error:i.message})}}},900)})()})();
+    `;
+
+    $('#dtr-print-modal-title').textContent = `Whole Shoe Bonding Test Report — ${labRef} (${side})`;
+    $('#dtr-print-sheet-container').innerHTML = html;
+
+    $('#dtr-print-modal-backdrop')?.classList.remove('hidden');
+  };
+
+
+
+  // Scale that makes the sheet fit ONE A4 page (210x297 mm, 6 mm margins): measures the sheet at the page width
+  const fitOnePageScale = (html) => {
+    const PAGE_W = 198 / 25.4 * 96;   // printable width  (px at 96 dpi)
+    const PAGE_H = 285 / 25.4 * 96;   // printable height
+    const probe = document.createElement('div');
+    probe.className = 'dtr-fit-probe';
+    probe.style.cssText = 'position:absolute;left:-99999px;top:0;visibility:hidden;';
+    document.body.appendChild(probe);
+    let scale = 1;
+    for (let i = 0; i < 4; i++) {
+      probe.style.width = (PAGE_W / scale) + 'px';
+      probe.innerHTML = html;
+      const h = probe.scrollHeight * scale;
+      const next = Math.min(1, scale * (PAGE_H / Math.max(h, 1)) * 0.985);
+      if (Math.abs(next - scale) < 0.005) { scale = next; break; }
+      scale = next;
+    }
+    probe.remove();
+    return Math.max(0.4, Math.round(scale * 1000) / 1000);
+  };
+
+  $('#btn-dtr-print-preview')?.addEventListener('click', openMaterialPrintPreview);
+  $('#btn-bond-print-preview')?.addEventListener('click', () => (isPull() ? openPullPrintPreview() : openBondingPrintPreview()));
+  $('#btn-dtr-close-print-modal')?.addEventListener('click', () => {
+    $('#dtr-print-modal-backdrop')?.classList.add('hidden');
+  });
+  $('#btn-dtr-cancel-print')?.addEventListener('click', () => {
+    $('#dtr-print-modal-backdrop')?.classList.add('hidden');
+  });
+  $('#btn-dtr-download-pdf')?.addEventListener('click', async () => {
+    const btn = $('#btn-dtr-download-pdf');
+    const src = $('#dtr-print-sheet-container');
+    if (!src || !btn) return;
+    const label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Creating PDF...';
+    try {
+      const res = await fetch(BASE_URL + 'dtr/sheet-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name="X-CSRF-TOKEN"]')?.content || '' },
+        body: JSON.stringify({ scale: fitOnePageScale(src.innerHTML), html: src.innerHTML, name: ($('#dtr-print-modal-title')?.textContent || 'Report').replace(/[^A-Za-z0-9._ -]+/g, '_') }),
+      });
+      if (!res.ok) throw new Error((await res.text()).slice(0, 200) || 'PDF failed');
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = (($('#dtr-print-modal-title')?.textContent || 'Report').replace(/[^A-Za-z0-9._ -]+/g, '_').trim() || 'Report') + '.pdf';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    } catch (e) { nxToast('Could not create the PDF: ' + e.message, 'error', 7000); }
+    btn.disabled = false; btn.textContent = label;
+  });
+  $('#btn-dtr-do-print')?.addEventListener('click', () => {
+    // Print a clean copy of the sheet attached to <body>: the app layout (fixed height / overflow) would clip it
+    const src = $('#dtr-print-sheet-container');
+    if (!src) { window.print(); return; }
+    const root = document.createElement('div');
+    root.id = 'dtr-print-root';
+    root.innerHTML = src.innerHTML;
+    root.style.zoom = String(fitOnePageScale(src.innerHTML));
+    document.body.appendChild(root);
+    document.body.classList.add('dtr-printing');
+    const done = () => {
+      document.body.classList.remove('dtr-printing');
+      root.remove();
+      window.removeEventListener('afterprint', done);
+    };
+    window.addEventListener('afterprint', done);
+    window.print();
+  });
+
+  // =========================================================================
+  // 7b. ADMIN FORM LAYOUT (Report Designer): hidden / renamed / reordered fields + custom fields
+  // =========================================================================
+  const applyBondingFormLayout = async () => {
+    try {
+      const j = await apiFetch('dtr/layout?slug=bonding&variant=form');
+      const L = j && j.layout;
+      const form = $('#dtr-bonding-form');
+      if (!L || !form) return;
+
+      const wrapOf = (name) => form.querySelector(`[name="${name}"]`)?.closest('.dtr-field');
+
+      // custom fields are added at the end of the info grid, then ordered together with the rest
+      (L.customFields || []).forEach((c) => {
+        if (form.querySelector(`[name="${c.key}"]`)) return;
+        const host = $('#bf_LabRefNo')?.closest('.dtr-field')?.parentElement;
+        if (!host) return;
+        const d = document.createElement('div');
+        d.className = 'dtr-field';
+        d.innerHTML = `<label>${escHtml(c.label)}</label><input type="text" name="${escHtml(c.key)}" id="bf_${escHtml(c.key)}">`;
+        host.appendChild(d);
+      });
+
+      Object.entries(L.labels || {}).forEach(([n, t]) => {
+        const w = wrapOf(n);
+        const lab = w && w.querySelector('label');
+        if (lab && t) lab.textContent = t;
+      });
+      const host = $('#bf_LabRefNo')?.closest('.dtr-field')?.parentElement;
+      if (host && (L.order || []).length) {
+        L.order.forEach((n) => { const w = wrapOf(n); if (w && w.parentElement === host) host.appendChild(w); });
+        (L.customFields || []).forEach((c) => { const w = wrapOf(c.key); if (w) host.appendChild(w); });
+      }
+      (L.hiddenFields || []).forEach((n) => {
+        const w = wrapOf(n);
+        if (w) w.style.display = 'none';
+      });
+    } catch (e) { /* default form */ }
+  };
+
+  // =========================================================================
+  // 8. INITIALIZE ON PAGE LOAD
+  // =========================================================================
+  updateCalculators();
+  // both forms open as a blank new report; the record lists stay available to load one
+  newMaterialRecord(false);
+  newPullRecord(false);
+  setReportKind('bonding');
+  loadMaterialRecordList('fabric');
+  const bondingReady = applyBondingFormLayout().then(() => { newBondingRecord(false); loadBondingRecordList(); });
+  runStandardsExplorer();
+
+  // deep link from the assistant: ?open=<slug>:<id>  (+ &preview=1 opens the print preview)
+  (() => {
+    const q = new URLSearchParams(location.search);
+    const [slug, id] = String(q.get('open') || '').split(':');
+    if (!slug || !/^[a-z]+$/.test(slug) || !/^\d+$/.test(id || '')) return;
+    setTimeout(async () => {
+      await bondingReady; // the blank form must not overwrite the linked report
+      const host = $('#dtr-tracker-tbody') || document.body;
+      const b = document.createElement('button');
+      b.type = 'button'; b.hidden = true; b.dataset.openRecord = slug; b.dataset.sourceId = id;
+      host.appendChild(b); b.click(); b.remove();
+      if (q.get('preview') === '1') {
+        await new Promise((r) => setTimeout(r, 2200));
+        (slug === 'bonding' || slug === 'pull' ? $('#btn-bond-print-preview') : $('#btn-dtr-print-preview'))?.click();
+      }
+      // &export=1 inside the InterLink sender's hidden frame: hand the finished report PDF (as base64) to the parent page
+      if (q.get('export') === '1' && window.parent !== window) {
+        const reply = (m) => window.parent.postMessage(Object.assign({ type: 'NXL_REPORT_PDF' }, m), location.origin);
+        try {
+          await new Promise((r) => setTimeout(r, 800));
+          const src = $('#dtr-print-sheet-container');
+          if (!src || !src.innerHTML.trim()) throw new Error('The report sheet could not be prepared.');
+          const res = await fetch(BASE_URL + 'dtr/sheet-pdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name="X-CSRF-TOKEN"]')?.content || '' },
+            body: JSON.stringify({ scale: fitOnePageScale(src.innerHTML), html: src.innerHTML, name: 'Report' }),
+          });
+          if (!res.ok) throw new Error((await res.text()).slice(0, 200) || 'PDF failed');
+          const buf = new Uint8Array(await res.arrayBuffer());
+          let bin = '';
+          for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+          reply({ ok: true, b64: btoa(bin) });
+        } catch (e) { reply({ ok: false, error: e.message }); }
+      }
+      // &export=html: hand the finished report sheet itself (what the approver reads) to the parent page
+      if (q.get('export') === 'html' && window.parent !== window) {
+        const reply = (m) => window.parent.postMessage(Object.assign({ type: 'NXL_REPORT_HTML' }, m), location.origin);
+        try {
+          await new Promise((r) => setTimeout(r, 1200));
+          const src = $('#dtr-print-sheet-container');
+          if (!src || !src.innerHTML.trim()) throw new Error('The report sheet could not be prepared.');
+          reply({ ok: true, html: src.innerHTML });
+        } catch (e) { reply({ ok: false, error: e.message }); }
+      }
+    }, 900);
+  })();
+
+
+  // =========================================================================
+  // WHOLE SHOE TEST SUITE ENGINE & LIVE TELEMETRY (MARC)
+  // =========================================================================
+  let currentWstCategory = 'bally-flex';
+  let currentWstTestId = null;
+  let activeWstGroup = 'dry';
+
+  // Modal open / close handlers for "Create New Test" popup
+  const openWstNewModal = () => {
+    refreshNextLabref();
+    $('#wst-new-modal-backdrop')?.classList.remove('hidden');
+  };
+
+  const closeWstNewModal = () => {
+    $('#wst-new-modal-backdrop')?.classList.add('hidden');
+  };
+
+  $('#btn-wst-open-new-modal')?.addEventListener('click', openWstNewModal);
+  $('#btn-wst-trigger-new')?.addEventListener('click', openWstNewModal);
+  $('#btn-wst-close-new-modal')?.addEventListener('click', closeWstNewModal);
+  $('#btn-wst-new-cancel')?.addEventListener('click', closeWstNewModal);
+
+  // Fetch list of records from dbnexus
+  const loadWstRecords = async (category = currentWstCategory, q = '') => {
+    const tbody = $('#wst-list-tbody');
+    const cntBadge = $('#wst-record-count');
+    if (!tbody) return;
+
+    tbody.innerHTML = '<tr><td colspan="8" class="muted" style="text-align:center;padding:24px"><svg class="ic animate-spin" aria-hidden="true" style="margin-right:6px"><use href="#i-sync"/></svg> Loading test sessions from dbnexus...</td></tr>';
+    try {
+      const res = await apiFetch(`wst/records?category=${encodeURIComponent(category)}&q=${encodeURIComponent(q)}`);
+      if (!res.success || !res.records || res.records.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="muted" style="text-align:center;padding:28px">No test sessions found for this category. Click "+ NEW TEST" to create one.</td></tr>';
+        if (cntBadge) cntBadge.textContent = 'Showing 0 records';
+        $('#wst-kpi-total') && ($('#wst-kpi-total').textContent = '0');
+        $('#wst-kpi-running') && ($('#wst-kpi-running').textContent = '0');
+        $('#wst-kpi-completed') && ($('#wst-kpi-completed').textContent = '0');
+        $('#wst-kpi-pending') && ($('#wst-kpi-pending').textContent = '0');
+        return;
+      }
+
+      // Compute quick KPIs
+      let runCount = 0;
+      let doneCount = 0;
+      let pendCount = 0;
+      res.records.forEach((r) => {
+        if (r.is_running == 1 || r.status === 'RUNNING') runCount++;
+        else if (r.status === 'COMPLETED') doneCount++;
+        else pendCount++;
+      });
+
+      $('#wst-kpi-total') && ($('#wst-kpi-total').textContent = res.records.length.toLocaleString());
+      $('#wst-kpi-running') && ($('#wst-kpi-running').textContent = runCount.toLocaleString());
+      $('#wst-kpi-completed') && ($('#wst-kpi-completed').textContent = doneCount.toLocaleString());
+      $('#wst-kpi-pending') && ($('#wst-kpi-pending').textContent = pendCount.toLocaleString());
+
+      if (cntBadge) cntBadge.textContent = `Showing ${res.records.length} record(s)`;
+      tbody.innerHTML = res.records.map((r, i) => {
+        const isRun = r.is_running == 1 || r.status === 'RUNNING';
+        const isDone = r.status === 'COMPLETED';
+        const pillClass = isRun ? 'dtr-pill-blue' : (isDone ? 'dtr-pill-pass' : 'dtr-pill-warn');
+        const targetCycles = Number(r.target_cycles || 100000);
+        const currCycles = Number(r.current_cycles || 0);
+        const pct = Math.min(100, Math.round((currCycles / targetCycles) * 100));
+
+        return `
+          <tr class="clickable-row wst-row" data-id="${r.id}" style="cursor:pointer">
+            <td class="mono">${i + 1}</td>
+            <td><b class="mono" style="color:var(--brand,#2563eb);font-size:13.5px">${esc(r.labreference)}</b></td>
+            <td>${esc(r.testdate || '—')}</td>
+            <td><span style="font-weight:600">${esc(r.type || 'Standard')}</span></td>
+            <td><span class="mono sm muted">${esc(r.machine_number || 'MC-01')} &bull; ${esc(r.technician || r.operator || 'QC')}</span></td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="flex:1;background:rgba(255,255,255,0.06);height:6px;border-radius:3px;overflow:hidden;min-width:70px">
+                  <div style="background:${isDone ? '#22c55e' : '#3b82f6'};width:${pct}%;height:100%"></div>
+                </div>
+                <span class="mono sm" style="white-space:nowrap">${currCycles.toLocaleString()} / ${targetCycles.toLocaleString()}</span>
+              </div>
+            </td>
+            <td><span class="dtr-pill ${pillClass}">${esc(r.status || 'PENDING')}</span></td>
+            <td style="text-align:right">
+              <button type="button" class="dtr-btn-xs dtr-btn-primary wst-open-record-btn" data-id="${r.id}" style="box-shadow:0 1px 4px rgba(37,99,235,0.25)">
+                <svg class="ic" aria-hidden="true" style="margin-right:2px"><use href="#i-grid"/></svg> Open Monitor
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      tbody.querySelectorAll('.wst-open-record-btn, .wst-row').forEach((el) => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const tr = el.closest('tr');
+          const id = tr?.dataset.id;
+          if (id) openWstMonitorModal(id);
+        });
+      });
+    } catch (err) {
+      console.error('loadWstRecords failed:', err);
+      tbody.innerHTML = `<tr><td colspan="8" style="color:#ef4444;text-align:center;padding:24px">Failed to load test sessions from dbnexus: ${esc(err.message)}<br><button type="button" class="dtr-btn-xs dtr-btn-outline" id="btn-wst-retry-load" style="margin-top:10px;display:inline-flex;align-items:center;gap:4px"><svg class="ic" aria-hidden="true"><use href="#i-sync"/></svg> Retry</button></td></tr>`;
+      $('#btn-wst-retry-load')?.addEventListener('click', () => loadWstRecords(category, q));
+    }
+  };
+
+  // Search filter
+  let wstSearchDebounce = null;
+  $('#wst-list-search')?.addEventListener('input', (e) => {
+    clearTimeout(wstSearchDebounce);
+    wstSearchDebounce = setTimeout(() => {
+      loadWstRecords(currentWstCategory, e.target.value.trim());
+    }, 250);
+  });
+
+  // Switch category tabs
+  $$('.wst-cat-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      $$('.wst-cat-tab').forEach((t) => t.classList.remove('active'));
+      tab.classList.add('active');
+      currentWstCategory = tab.dataset.wstCat;
+      const title = tab.textContent.trim().toUpperCase();
+      if ($('#wst-modal-title')) $('#wst-modal-title').textContent = `${title} MONITORING`;
+      if ($('#wst-new-cat')) $('#wst-new-cat').value = currentWstCategory;
+      refreshNextLabref();
+      loadWstRecords(currentWstCategory);
+      showToast(`Category: ${tab.textContent.trim()}`);
+    });
+  });
+
+  let wstCatalogData = {};
+
+  const refreshNextLabref = async () => {
+    const typeSelect = $('#wst-new-type');
+    const type = typeSelect?.value || '';
+    const date = $('#wst-new-date')?.value || new Date().toISOString().slice(0, 10);
+    try {
+      const res = await apiFetch(`wst/next-labref?category=${encodeURIComponent(currentWstCategory)}&type=${encodeURIComponent(type)}&date=${encodeURIComponent(date)}`);
+      if (res.success) {
+        wstCatalogData = res.catalog || {};
+
+        if (res.materials && typeSelect) {
+          const currentVal = typeSelect.value;
+          typeSelect.innerHTML = res.materials.map((m) => `<option value="${esc(m)}" ${m === currentVal ? 'selected' : ''}>${esc(m)}</option>`).join('');
+          if (!typeSelect.value && res.materials.length > 0) {
+            typeSelect.value = res.materials[0];
+          }
+        }
+        if (res.labref && $('#wst-new-labref')) {
+          $('#wst-new-labref').value = res.labref;
+        }
+
+        const defaultMachines = {
+          'hydrolysis': 'CH-HYDRO-01',
+          'heat-aging': 'OVEN-01',
+          'washing': 'WASH-MC-01',
+          'uv-light': 'UV-CHAMBER-01',
+          'flexing': 'MC-FLEX-01',
+          'bally-flex': 'MC-FLEX-01',
+        };
+        if ($('#wst-new-machine') && defaultMachines[currentWstCategory]) {
+          $('#wst-new-machine').value = defaultMachines[currentWstCategory];
+        }
+
+        syncNewSampleGroups();
+      }
+    } catch (_) {}
+  };
+
+    // Calculate LMS batch breakdown helper
+    const batchSummary = (count, batchSize) => {
+      const batches = [];
+      for (let remaining = count; remaining > 0; remaining -= batchSize) {
+        batches.push(Math.min(remaining, batchSize));
+      }
+      return batches.map((size, index) => `Batch ${index + 1}: ${size}`).join(' · ');
+    };
+
+    const syncNewSampleGroups = (resetCounts = false) => {
+      const type = $('#wst-new-type')?.value;
+      const mat = wstCatalogData[type];
+      const groups = mat?.groups || {};
+
+      ['dry', 'wet', 'hydro'].forEach((g) => {
+        const check = $(`#wst-check-${g}`);
+        const input = $(`#wst-count-${g}`);
+        const prev = $(`#wst-preview-${g}`);
+        const opt = $(`#wst-option-${g}`);
+        if (!check || !input || !prev || !opt) return;
+
+        const ok = Boolean(groups[g]);
+        check.disabled = !ok;
+        opt.classList.toggle('is-disabled', !ok);
+
+        if (!ok) {
+          check.checked = false;
+          input.disabled = true;
+          prev.textContent = '';
+        } else {
+          if (resetCounts) {
+            check.checked = true;
+            input.value = String(groups[g].count || 4);
+          }
+          input.disabled = !check.checked;
+        }
+
+        const standardCount = Number(groups[g]?.count || 0);
+        const count = check.checked ? Number(input.value) || 0 : 0;
+        if (standardCount && count) {
+          prev.textContent = batchSummary(count, standardCount);
+        } else if (standardCount) {
+          prev.textContent = `Standard batch: ${standardCount}`;
+        } else {
+          prev.textContent = '';
+        }
+      });
+
+      // Keep at least one selected if available
+      const anyChecked = ['dry', 'wet', 'hydro'].some((g) => $(`#wst-check-${g}`)?.checked);
+      if (!anyChecked) {
+        const dry = $('#wst-check-dry');
+        if (dry && !dry.disabled) {
+          dry.checked = true;
+          const dryInput = $('#wst-count-dry');
+          if (dryInput) dryInput.disabled = false;
+        }
+      }
+
+      // Update trigger button label e.g. "4D / 4W"
+      const shortLabels = { dry: 'D', wet: 'W', hydro: 'H' };
+      const selectedParts = [];
+      ['dry', 'wet', 'hydro'].forEach((g) => {
+        const check = $(`#wst-check-${g}`);
+        const input = $(`#wst-count-${g}`);
+        if (check?.checked) {
+          const val = Number(input?.value) || 0;
+          if (val > 0) selectedParts.push(`${val}${shortLabels[g]}`);
+        }
+      });
+      const trigger = $('#wst-new-samples-trigger');
+      if (trigger) {
+        trigger.textContent = selectedParts.length ? selectedParts.join(' / ') : 'Choose sample types and amount';
+      }
+    };
+
+    // Modal open / close handlers for sample modal
+    const openSampleModal = () => {
+      syncNewSampleGroups(false);
+      $('#wst-sample-modal-backdrop')?.classList.remove('hidden');
+    };
+    const closeSampleModal = () => {
+      $('#wst-sample-modal-backdrop')?.classList.add('hidden');
+    };
+
+    $('#wst-new-samples-trigger')?.addEventListener('click', openSampleModal);
+    $('#btn-wst-open-sample-modal')?.addEventListener('click', openSampleModal);
+    $('#btn-wst-close-sample-modal')?.addEventListener('click', closeSampleModal);
+    $('#btn-wst-done-sample-modal')?.addEventListener('click', () => {
+      syncNewSampleGroups(false);
+      closeSampleModal();
+    });
+    $('#wst-sample-modal-backdrop')?.addEventListener('click', (e) => {
+      if (e.target.id === 'wst-sample-modal-backdrop') closeSampleModal();
+    });
+
+    ['dry', 'wet', 'hydro'].forEach((g) => {
+      $(`#wst-check-${g}`)?.addEventListener('change', () => syncNewSampleGroups(false));
+      $(`#wst-count-${g}`)?.addEventListener('input', () => syncNewSampleGroups(false));
+    });
+
+    $('#btn-wst-regen-labref')?.addEventListener('click', refreshNextLabref);
+    $('#wst-new-type')?.addEventListener('change', () => {
+      syncNewSampleGroups(true);
+      refreshNextLabref();
+    });
+    $('#wst-new-date')?.addEventListener('change', refreshNextLabref);
+    $('#wst-new-cat')?.addEventListener('change', (e) => {
+      currentWstCategory = e.target.value;
+      $$('.wst-cat-tab').forEach((t) => t.classList.toggle('active', t.dataset.wstCat === currentWstCategory));
+      refreshNextLabref();
+    });
+
+  // Cached state for active monitor test
+  let currentWstGroups = {};
+  let currentWstState = {};
+
+  // Live monitor modal renderer
+  const openWstMonitorModal = async (testId) => {
+    currentWstTestId = testId;
+    const tableWrap = $('.wst-monitoring-container .dtr-table-wrap');
+    if (tableWrap) {
+      tableWrap.innerHTML = '<div style="text-align:center;padding:24px;color:#64748b"><svg class="ic animate-spin" aria-hidden="true" style="margin-right:6px"><use href="#i-sync"/></svg> Loading checkpoint matrix...</div>';
+    }
+    $('#wst-monitor-modal-backdrop')?.classList.remove('hidden');
+
+    try {
+      const res = await apiFetch(`wst/record/${testId}`);
+      if (!res.success || !res.record) {
+        showToast('Failed to load test record.');
+        return;
+      }
+
+      const r = res.record;
+      currentWstGroups = res.groups || {};
+      currentWstState = res.state || {};
+
+      if ($('#wst-modal-dt-labref')) $('#wst-modal-dt-labref').value = r.labreference;
+      if ($('#wst-card-dt-labref')) $('#wst-card-dt-labref').textContent = r.labreference;
+      if ($('#wst-modal-labref-badge')) $('#wst-modal-labref-badge').textContent = r.labreference;
+      if ($('#wst-modal-dt-date')) $('#wst-modal-dt-date').value = r.testdate || '';
+      if ($('#wst-card-dt-date')) $('#wst-card-dt-date').textContent = r.testdate || '—';
+      const sampleSummary = `${r.samplecountdry}D / ${r.samplecountwet}W / ${r.samplecounthydro}H`;
+      if ($('#wst-modal-dt-samples')) $('#wst-modal-dt-samples').value = sampleSummary;
+      if ($('#wst-card-dt-samples')) $('#wst-card-dt-samples').textContent = sampleSummary;
+      if ($('#wst-modal-dt-type')) $('#wst-modal-dt-type').value = r.type || 'Standard';
+      if ($('#wst-card-dt-type')) $('#wst-card-dt-type').textContent = r.type || 'Standard Whole Shoe Flexing';
+
+      if ($('#wst-view-op')) $('#wst-view-op').textContent = r.technician || r.operator || 'QC Specialist';
+      if ($('#wst-view-mc')) $('#wst-view-mc').textContent = r.machine_number || 'MC-FLEX-01';
+      if ($('#wst-view-temp')) $('#wst-view-temp').innerHTML = `${Number(r.temperature || 23.0).toFixed(1)} &deg;C`;
+      if ($('#wst-view-hum')) $('#wst-view-hum').textContent = `${Number(r.humidity || 50.0).toFixed(1)} %RH`;
+      if ($('#wst-view-note')) $('#wst-view-note').textContent = r.remarks || (r.status === 'COMPLETED' ? 'Session Completed' : 'In Progress');
+
+      const isRun = r.is_running == 1 || r.status === 'RUNNING';
+      const isDone = r.status === 'COMPLETED' || res.isCompleted;
+      
+      // Update dynamic status badge and pulsing dot
+      const badge = $('#wst-modal-status-badge');
+      const badgeText = $('#wst-modal-status-text');
+      const pulseDot = $('#wst-modal-pulse-dot');
+      if (badge) {
+        const statusStr = isDone ? 'COMPLETED' : (isRun ? 'RUNNING' : (r.status || 'PENDING'));
+        if (badgeText) badgeText.textContent = statusStr;
+        else badge.textContent = statusStr;
+        badge.className = `dtr-pill ${isRun ? 'dtr-pill-pass' : (isDone ? 'dtr-pill-blue' : 'dtr-pill-warn')}`;
+      }
+      if (pulseDot) {
+        pulseDot.className = `wst-pulse-dot ${isRun ? 'wst-pulse-dot-green' : (isDone ? 'wst-pulse-dot-blue' : 'wst-pulse-dot-amber')}`;
+      }
+
+      // State-Aware Action Rail: Toggle RUN vs Active indicator vs Disabled on Complete
+      const startBtn = $('#btn-wst-modal-start');
+      const runningBar = $('#wst-running-indicator-bar');
+      const findingsBtn = $('#btn-wst-modal-findings');
+      const stopSampleBtn = $('#btn-wst-modal-stop-sample');
+      const stopTestBtn = $('#btn-wst-modal-stop');
+
+      if (isRun && !isDone) {
+        startBtn?.classList.add('hidden');
+        runningBar?.classList.remove('hidden');
+      } else {
+        startBtn?.classList.remove('hidden');
+        runningBar?.classList.add('hidden');
+        if (startBtn) {
+          startBtn.disabled = isDone;
+          startBtn.style.opacity = isDone ? '0.45' : '1';
+          startBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
+        }
+      }
+
+      // When test is completed (all samples finished or stop test triggered)
+      if (findingsBtn) {
+        findingsBtn.disabled = isDone;
+        findingsBtn.style.opacity = isDone ? '0.45' : '1';
+        findingsBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
+      }
+      if (stopSampleBtn) {
+        stopSampleBtn.disabled = isDone;
+        stopSampleBtn.style.opacity = isDone ? '0.45' : '1';
+        stopSampleBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
+      }
+      if (stopTestBtn) {
+        stopTestBtn.disabled = isDone;
+        stopTestBtn.style.opacity = isDone ? '0.45' : '1';
+        stopTestBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
+      }
+
+      renderMonitoringTable(res.groups, res.state);
+      showToast(`Loaded monitor: ${r.labreference}`);
+    } catch (err) {
+      showToast(`Error opening monitor: ${err.message}`);
+    }
+  };
+
+  const closeWstMonitorModal = () => {
+    $('#wst-monitor-modal-backdrop')?.classList.add('hidden');
+    loadWstRecords(currentWstCategory);
+  };
+
+  $('#btn-wst-open-modal-monitor')?.addEventListener('click', () => {
+    const firstRow = $('#wst-list-tbody tr.wst-row');
+    if (firstRow?.dataset.id) openWstMonitorModal(firstRow.dataset.id);
+    else showToast('Please select a test from the queue first.');
+  });
+  $('#btn-wst-close-monitor-modal')?.addEventListener('click', closeWstMonitorModal);
+  $('#btn-wst-cancel-monitor-modal')?.addEventListener('click', closeWstMonitorModal);
+
+  // Render monitoring cycle grid
+  const renderMonitoringTable = (groups, state) => {
+    const groupTabsContainer = $('.wst-monitoring-container .wst-group-tabs');
+    const tableWrap = $('.wst-monitoring-container .dtr-table-wrap');
+    if (!groupTabsContainer || !tableWrap) return;
+
+    const availableGroups = Object.keys(groups || {});
+    if (availableGroups.length === 0) {
+      tableWrap.innerHTML = '<p class="muted" style="padding:16px;text-align:center">No sample groups configured for this test.</p>';
+      return;
+    }
+
+    if (!availableGroups.includes(activeWstGroup)) {
+      activeWstGroup = availableGroups[0];
+    }
+
+    // Populate the findings modal cycle dropdown with current category's exact cycles
+    const findingsCycleSelect = $('#wst-findings-cycle');
+    if (findingsCycleSelect && groups[activeWstGroup]?.cycles) {
+      findingsCycleSelect.innerHTML = groups[activeWstGroup].cycles.map((c) => {
+        return `<option value="${c}">${Number(c).toLocaleString()} Cycles</option>`;
+      }).join('');
+    }
+
+    groupTabsContainer.innerHTML = availableGroups.map((gKey) => {
+      const g = groups[gKey];
+      return `<button type="button" class="wst-gt-btn wst-modal-gt-btn ${gKey === activeWstGroup ? 'active' : ''}" data-modal-gt="${gKey}">${g.label} (${g.count})</button>`;
+    }).join('');
+
+    groupTabsContainer.querySelectorAll('.wst-modal-gt-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        activeWstGroup = btn.dataset.modalGt;
+        renderMonitoringTable(groups, state);
+      });
+    });
+
+    const curr = groups[activeWstGroup];
+    if (!curr) return;
+
+    const cycles = curr.cycles || [];
+    const count = curr.count || 1;
+    const recordedMap = state?.recorded?.[activeWstGroup] || {};
+    const stoppedMap = state?.stopped?.[activeWstGroup] || {};
+
+    // Determine currently active target cycle (the lowest cycle with unrecorded running samples)
+    let activeCycle = null;
+    let maxRecordedCycle = 0;
+    for (const c of cycles) {
+      let cycleHasUnrecorded = false;
+      for (let s = 1; s <= count; s++) {
+        const isStopped = stoppedMap[s];
+        const isRecorded = (recordedMap[s] || []).includes(c);
+        if (isRecorded && c > maxRecordedCycle) maxRecordedCycle = c;
+        if (!isStopped && !isRecorded) {
+          cycleHasUnrecorded = true;
+        }
+      }
+      if (cycleHasUnrecorded && activeCycle === null) {
+        activeCycle = c;
+      }
+    }
+
+    // Update Overall Test Progress Bar
+    const targetCycleLimit = cycles[cycles.length - 1] || 100000;
+    const pct = Math.min(100, Math.round((maxRecordedCycle / targetCycleLimit) * 100));
+    if ($('#wst-progress-cycles')) $('#wst-progress-cycles').textContent = maxRecordedCycle.toLocaleString();
+    if ($('#wst-progress-target')) $('#wst-progress-target').textContent = targetCycleLimit.toLocaleString();
+    if ($('#wst-progress-pct')) $('#wst-progress-pct').textContent = `${pct}%`;
+    if ($('#wst-progress-bar-fill')) $('#wst-progress-bar-fill').style.width = `${pct}%`;
+
+    let html = `
+      <table class="dtr-table wst-cycle-table">
+        <thead>
+          <tr>
+            <th style="min-width:110px">SPECIMEN</th>
+            ${cycles.map((c) => {
+              const isActive = c === activeCycle;
+              return `<th class="${isActive ? 'wst-cell-active' : ''}" style="${isActive ? 'border-top:2px solid #3b82f6;' : ''}">${Number(c).toLocaleString()}</th>`;
+            }).join('')}
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    const batchSize = Number(curr?.batchSize || curr?.standardCount || 4);
+
+    for (let s = 1; s <= count; s++) {
+      const rec = recordedMap[s] || [];
+      const isStopped = Boolean(stoppedMap[s]);
+      const batch = Math.floor((s - 1) / batchSize) + 1;
+      const isBatchStart = (s - 1) % batchSize === 0;
+      const rowClass = isBatchStart ? 'sample-batch-start' : '';
+      const specimenLabel = isBatchStart
+        ? `${s}-${curr.prefix}<span class="sample-batch-label">Batch ${batch}</span>`
+        : `${s}-${curr.prefix}`;
+
+      html += `<tr class="${rowClass}"><td class="mono sample-label" style="font-weight:700">${specimenLabel}</td>`;
+      cycles.forEach((c) => {
+        const isRecorded = rec.includes(c);
+        let cellClass = 'cycle-cell';
+
+        // LMS Matching Display:
+        // 1. isRecorded -> soft green background (#86efac)
+        // 2. isStopped (and not recorded) -> diagonal grey stripe pattern
+        // 3. pending -> blank cell
+        if (isRecorded) {
+          cellClass += ' is-recorded';
+        } else if (isStopped) {
+          cellClass += ' is-stopped';
+        }
+
+        html += `<td class="${cellClass}" data-group="${activeWstGroup}" data-sample="${s}" data-cycle="${c}"></td>`;
+      });
+      html += `</tr>`;
+    }
+
+    html += `</tbody></table>`;
+    tableWrap.innerHTML = html;
+  };
+
+  // Findings modal controls
+  const openFindingsModal = () => {
+    const curr = currentWstGroups[activeWstGroup];
+    const count = curr?.count || 4;
+    const groupName = curr?.label || `${activeWstGroup.toUpperCase()} SAMPLES`;
+    const cycles = curr?.cycles || [];
+    const recordedMap = currentWstState?.recorded?.[activeWstGroup] || {};
+    const stoppedMap = currentWstState?.stopped?.[activeWstGroup] || {};
+
+    // Auto-detect next cycle (LMS behavior): lowest cycle that has unrecorded running specimens
+    let nextUnrecordedCycle = cycles[cycles.length - 1] || 25000;
+    for (const c of cycles) {
+      let allDone = true;
+      for (let s = 1; s <= count; s++) {
+        const isStopped = Boolean(stoppedMap[s]);
+        const isRecorded = (recordedMap[s] || []).includes(c);
+        if (!isStopped && !isRecorded) {
+          allDone = false;
+          break;
+        }
+      }
+      if (!allDone) {
+        nextUnrecordedCycle = c;
+        break;
+      }
+    }
+
+    if ($('#wst-findings-cycle')) {
+      $('#wst-findings-cycle').value = nextUnrecordedCycle;
+    }
+
+    // Set remark placeholder and text based on category mode (LMS parity)
+    const isFlexCategory = ['bally-flex', 'ross-flex'].includes(currentWstCategory);
+    if ($('#wst-findings-text')) {
+      if (isFlexCategory) {
+        $('#wst-findings-text').value = 'NO DAMAGE OF COATING';
+        $('#wst-findings-text').placeholder = 'No cracking, peeling, or delamination observed.';
+      } else {
+        $('#wst-findings-text').value = 'No noticeable abrasion or surface damage.';
+        $('#wst-findings-text').placeholder = 'Enter inspection details (e.g. slight color transfer, minor wear, acceptable)...';
+      }
+    }
+
+    if ($('#wst-findings-group-display')) $('#wst-findings-group-display').value = groupName;
+    if ($('#wst-findings-start')) {
+      $('#wst-findings-start').value = 1;
+      $('#wst-findings-start').max = count;
+    }
+    if ($('#wst-findings-end')) {
+      $('#wst-findings-end').value = count;
+      $('#wst-findings-end').max = count;
+    }
+
+    // Render batch & all preset range buttons (LMS Parity)
+    const presetsContainer = $('#wst-findings-presets');
+    if (presetsContainer) {
+      const batchSize = Number(curr?.batchSize || curr?.standardCount || 4);
+      let presetBtns = '';
+      for (let bStart = 1, bNum = 1; bStart <= count; bStart += batchSize, bNum++) {
+        const bEnd = Math.min(count, bStart + batchSize - 1);
+        presetBtns += `<button type="button" class="lf-range-preset" data-first="${bStart}" data-last="${bEnd}">Batch ${bNum} (${bStart}–${bEnd})</button>`;
+      }
+      presetBtns += `<button type="button" class="lf-range-preset is-active" data-first="1" data-last="${count}">All (1–${count})</button>`;
+      presetsContainer.innerHTML = presetBtns;
+
+      presetsContainer.querySelectorAll('.lf-range-preset').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          if ($('#wst-findings-start')) $('#wst-findings-start').value = btn.dataset.first;
+          if ($('#wst-findings-end')) $('#wst-findings-end').value = btn.dataset.last;
+          presetsContainer.querySelectorAll('.lf-range-preset').forEach((p) => p.classList.toggle('is-active', p === btn));
+          updateFindingsRangeLabel();
+        });
+      });
+    }
+
+    updateFindingsRangeLabel();
+    $('#wst-findings-modal-backdrop')?.classList.remove('hidden');
+  };
+
+  const closeFindingsModal = () => {
+    $('#wst-findings-modal-backdrop')?.classList.add('hidden');
+  };
+
+  const updateFindingsRangeLabel = () => {
+    const s = parseInt($('#wst-findings-start')?.value || '1', 10);
+    const e = parseInt($('#wst-findings-end')?.value || '1', 10);
+    const minS = Math.min(s, e);
+    const maxS = Math.max(s, e);
+    const stoppedMap = currentWstState?.stopped?.[activeWstGroup] || {};
+
+    let totalSelected = 0;
+    let runningSelected = 0;
+    let stoppedSelected = 0;
+
+    for (let i = minS; i <= maxS; i++) {
+      totalSelected++;
+      if (stoppedMap[i]) {
+        stoppedSelected++;
+      } else {
+        runningSelected++;
+      }
+    }
+
+    if ($('#wst-findings-range-info')) {
+      const parts = [`${runningSelected} running specimen(s)`];
+      if (stoppedSelected > 0) parts.push(`${stoppedSelected} stopped (will be skipped)`);
+      $('#wst-findings-range-info').textContent = parts.join(' · ');
+    }
+  };
+
+  $('#wst-findings-start')?.addEventListener('input', updateFindingsRangeLabel);
+  $('#wst-findings-end')?.addEventListener('input', updateFindingsRangeLabel);
+
+  $('#btn-wst-action-monitored')?.addEventListener('click', openFindingsModal);
+  $('#btn-wst-modal-findings')?.addEventListener('click', openFindingsModal);
+  $('#btn-wst-close-findings-modal')?.addEventListener('click', closeFindingsModal);
+  $('#btn-wst-cancel-findings')?.addEventListener('click', closeFindingsModal);
+
+  $('#btn-wst-save-findings')?.addEventListener('click', async () => {
+    if (!currentWstTestId) {
+      showToast('No active test selected.');
+      return;
+    }
+    const cycle = parseInt($('#wst-findings-cycle')?.value || '25000', 10);
+    const findings = $('#wst-findings-text')?.value.trim() || 'Passed inspection';
+    const pass = $('#wst-findings-pass')?.checked;
+
+    const startNum = parseInt($('#wst-findings-start')?.value || '1', 10);
+    const endNum = parseInt($('#wst-findings-end')?.value || '1', 10);
+    const stoppedMap = currentWstState?.stopped?.[activeWstGroup] || {};
+    const sampleArr = [];
+    for (let i = Math.min(startNum, endNum); i <= Math.max(startNum, endNum); i++) {
+      if (!stoppedMap[i]) {
+        sampleArr.push(i);
+      }
+    }
+
+    if (sampleArr.length === 0) {
+      showToast('All specimens in the selected range are stopped. No specimens to record.');
+      return;
+    }
+
+    try {
+      const res = await apiFetch(`wst/log-findings/${currentWstTestId}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          cycle,
+          group: activeWstGroup,
+          findings,
+          pass,
+          samples: sampleArr,
+        }),
+      });
+
+      if (res.success) {
+        closeFindingsModal();
+        openWstMonitorModal(currentWstTestId);
+        showToast(res.message || 'Saved checkpoint findings.', 'success');
+      } else {
+        showToast(res.message || 'Failed to save findings.', 'error');
+      }
+    } catch (err) {
+      showToast(`Error: ${err.message}`, 'error');
+    }
+  });
+
+  // =========================================================================
+  // STOP SAMPLE MODAL CONTROLS (LMS PARITY)
+  // =========================================================================
+  const openStopSampleModal = () => {
+    const list = $('#wst-stop-sample-list');
+    if (!list) return;
+
+    const curr = currentWstGroups[activeWstGroup];
+    const count = curr?.count || 4;
+    const stoppedMap = currentWstState?.stopped?.[activeWstGroup] || {};
+    const recordedMap = currentWstState?.recorded?.[activeWstGroup] || {};
+    const cycles = curr?.cycles || [];
+    const lastCycle = cycles.length > 0 ? cycles[cycles.length - 1] : 0;
+
+    let itemsHtml = '';
+    let runningCount = 0;
+
+    for (let s = 1; s <= count; s++) {
+      const isStopped = Boolean(stoppedMap[s]);
+      const isComplete = lastCycle > 0 && (recordedMap[s] || []).includes(lastCycle);
+      const isFinished = isStopped || isComplete;
+      if (!isFinished) runningCount++;
+
+      itemsHtml += `
+        <label style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:8px;background:rgba(255,255,255,${isFinished ? '0.01' : '0.04'});border:1px solid rgba(148,163,184,${isFinished ? '0.08' : '0.2'});cursor:${isFinished ? 'default' : 'pointer'};opacity:${isFinished ? '0.5' : '1'}">
+          <div style="display:flex;align-items:center;gap:10px">
+            <input type="checkbox" class="wst-stop-sample-chk" value="${s}" ${isStopped ? 'checked disabled' : (isComplete ? 'disabled' : '')} style="width:16px;height:16px">
+            <span class="mono" style="font-weight:700;font-size:13.5px">${s}-${curr.prefix}</span>
+          </div>
+          <span class="sm mono" style="color:${isStopped ? '#ef4444' : (isComplete ? '#22c55e' : '#38bdf8')}">
+            ${isStopped ? 'STOPPED' : (isComplete ? 'COMPLETED' : 'RUNNING')}
+          </span>
+        </label>
+      `;
+    }
+
+    if (runningCount === 0) {
+      itemsHtml += `<p class="muted" style="text-align:center;padding:16px">No running specimens remaining for this group.</p>`;
+    }
+
+    list.innerHTML = itemsHtml;
+    $('#wst-stop-sample-modal-backdrop')?.classList.remove('hidden');
+  };
+
+  const closeStopSampleModal = () => {
+    $('#wst-stop-sample-modal-backdrop')?.classList.add('hidden');
+  };
+
+  $('#btn-wst-modal-stop-sample')?.addEventListener('click', openStopSampleModal);
+  $('#btn-wst-close-stop-sample')?.addEventListener('click', closeStopSampleModal);
+  $('#btn-wst-cancel-stop-sample')?.addEventListener('click', closeStopSampleModal);
+
+  $('#btn-wst-confirm-stop-sample')?.addEventListener('click', async () => {
+    if (!currentWstTestId) return;
+
+    const checked = $$('#wst-stop-sample-list .wst-stop-sample-chk:checked:not(:disabled)');
+    const samplesToStop = Array.from(checked).map((c) => ({
+      group: activeWstGroup,
+      sample: parseInt(c.value, 10),
+    }));
+
+    if (samplesToStop.length === 0) {
+      showToast('Please select at least one running sample to stop.');
+      return;
+    }
+
+    try {
+      const res = await apiFetch(`wst/stop-sample/${currentWstTestId}`, {
+        method: 'POST',
+        body: JSON.stringify({ samples: samplesToStop }),
+      });
+
+      if (res.success) {
+        closeStopSampleModal();
+        openWstMonitorModal(currentWstTestId);
+        showToast(res.message || 'Specimen stopped successfully.');
+      } else {
+        showToast(res.message || 'Failed to stop specimen.');
+      }
+    } catch (err) {
+      showToast(`Error: ${err.message}`);
+    }
+  });
+
+  // Modal actions (Start / Stop)
+  $('#btn-wst-modal-start')?.addEventListener('click', async () => {
+    if (!currentWstTestId) return;
+    try {
+      const res = await apiFetch(`wst/start/${currentWstTestId}`, { method: 'POST' });
+      if (res.success) {
+        openWstMonitorModal(currentWstTestId);
+        showToast('Started test session.');
+      }
+    } catch (err) {
+      showToast(`Error: ${err.message}`);
+    }
+  });
+
+  // Dedicated Stop Entire Test Modal Handlers
+  const openStopTestModal = () => {
+    $('#wst-stop-test-modal-backdrop')?.classList.remove('hidden');
+  };
+  const closeStopTestModal = () => {
+    $('#wst-stop-test-modal-backdrop')?.classList.add('hidden');
+  };
+
+  $('#btn-wst-modal-stop')?.addEventListener('click', openStopTestModal);
+  $('#btn-wst-close-stop-test')?.addEventListener('click', closeStopTestModal);
+  $('#btn-wst-cancel-stop-test')?.addEventListener('click', closeStopTestModal);
+
+  $('#btn-wst-confirm-stop-test')?.addEventListener('click', async () => {
+    if (!currentWstTestId) return;
+    const confirmBtn = $('#btn-wst-confirm-stop-test');
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Stopping...';
+    }
+
+    try {
+      const res = await apiFetch(`wst/stop/${currentWstTestId}`, { method: 'POST' });
+      if (res.success) {
+        closeStopTestModal();
+        openWstMonitorModal(currentWstTestId);
+        showToast(res.message || 'Entire test session stopped and marked COMPLETED.');
+      } else {
+        showToast(res.message || 'Failed to stop test session.');
+      }
+    } catch (err) {
+      showToast(`Error: ${err.message}`);
+    } finally {
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-close"/></svg> Stop Entire Test';
+      }
+    }
+  });
+
+  // Create new test submit handler
+  $('#btn-wst-create-submit')?.addEventListener('click', async () => {
+    const category = $('#wst-new-cat')?.value || currentWstCategory;
+    const type = $('#wst-new-type')?.value || 'Standard Flexing';
+    const date = $('#wst-new-date')?.value || new Date().toISOString().slice(0, 10);
+    const labreference = $('#wst-new-labref')?.value.trim();
+    const machine = $('#wst-new-machine')?.value.trim() || 'MC-FLEX-01';
+    const dry = $('#wst-check-dry')?.checked ? parseInt($('#wst-count-dry')?.value || '0', 10) : 0;
+    const wet = $('#wst-check-wet')?.checked ? parseInt($('#wst-count-wet')?.value || '0', 10) : 0;
+    const hydro = $('#wst-check-hydro')?.checked ? parseInt($('#wst-count-hydro')?.value || '0', 10) : 0;
+
+    try {
+      const res = await apiFetch('wst/create', {
+        method: 'POST',
+        body: JSON.stringify({
+          category,
+          type,
+          date,
+          labreference,
+          machine_number: machine,
+          dry,
+          wet,
+          hydro,
+          target_cycles: 100000,
+        }),
+      });
+
+      if (res.success && res.id) {
+        closeWstNewModal();
+        loadWstRecords(currentWstCategory);
+        openWstMonitorModal(res.id);
+        showToast(res.message || 'Created new Whole Shoe test session!');
+      } else {
+        showToast(res.message || 'Could not create test session.');
+      }
+    } catch (err) {
+      showToast(`Creation error: ${err.message}`);
+    }
+  });
+
+  $('#btn-wst-refresh-queue')?.addEventListener('click', () => {
+    loadWstRecords(currentWstCategory);
+    showToast('Refreshed test queue.');
+  });
+
+  // Print summary button inside modal
+  $('#btn-wst-modal-print')?.addEventListener('click', () => {
+    window.print();
+  });
+
+  // Background Live State Polling (Matches LMS 8s sync)
+  let wstSyncInterval = null;
+  const startWstLivePolling = () => {
+    if (wstSyncInterval) clearInterval(wstSyncInterval);
+    wstSyncInterval = setInterval(async () => {
+      // Only poll when modal is visible and test is active
+      const modal = $('#wst-monitor-modal-backdrop');
+      if (!modal || modal.classList.contains('hidden') || !currentWstTestId) return;
+
+      try {
+        const res = await apiFetch(`wst/state/${currentWstTestId}`);
+        if (res.success) {
+          currentWstState.recorded = res.recorded || {};
+          currentWstState.stopped = res.stopped || {};
+
+          const isRun = res.is_running === 1;
+          const isDone = res.completed || res.status === 'COMPLETED';
+          
+          const badge = $('#wst-modal-status-badge');
+          const badgeText = $('#wst-modal-status-text');
+          const pulseDot = $('#wst-modal-pulse-dot');
+          if (badge) {
+            const statusStr = isDone ? 'COMPLETED' : (isRun ? 'RUNNING' : (res.status || 'PENDING'));
+            if (badgeText) badgeText.textContent = statusStr;
+            else badge.textContent = statusStr;
+            badge.className = `dtr-pill ${isRun ? 'dtr-pill-pass' : (isDone ? 'dtr-pill-blue' : 'dtr-pill-warn')}`;
+          }
+          if (pulseDot) {
+            pulseDot.className = `wst-pulse-dot ${isRun ? 'wst-pulse-dot-green' : (isDone ? 'wst-pulse-dot-blue' : 'wst-pulse-dot-amber')}`;
+          }
+
+          const startBtn = $('#btn-wst-modal-start');
+          const runningBar = $('#wst-running-indicator-bar');
+          const findingsBtn = $('#btn-wst-modal-findings');
+          const stopSampleBtn = $('#btn-wst-modal-stop-sample');
+          const stopTestBtn = $('#btn-wst-modal-stop');
+
+          if (isRun && !isDone) {
+            startBtn?.classList.add('hidden');
+            runningBar?.classList.remove('hidden');
+          } else {
+            startBtn?.classList.remove('hidden');
+            runningBar?.classList.add('hidden');
+            if (startBtn) {
+              startBtn.disabled = isDone;
+              startBtn.style.opacity = isDone ? '0.45' : '1';
+              startBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
+            }
+          }
+
+          if (findingsBtn) {
+            findingsBtn.disabled = isDone;
+            findingsBtn.style.opacity = isDone ? '0.45' : '1';
+            findingsBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
+          }
+          if (stopSampleBtn) {
+            stopSampleBtn.disabled = isDone;
+            stopSampleBtn.style.opacity = isDone ? '0.45' : '1';
+            stopSampleBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
+          }
+          if (stopTestBtn) {
+            stopTestBtn.disabled = isDone;
+            stopTestBtn.style.opacity = isDone ? '0.45' : '1';
+            stopTestBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
+          }
+
+          renderMonitoringTable(currentWstGroups, currentWstState);
+        }
+      } catch (_) {}
+    }, 8000);
+  };
+  startWstLivePolling();
+
+  // Trigger initial list load if active tab is Whole Shoe Test
+  loadWstRecords(currentWstCategory);
+  $('[data-dtr-tab="wholeshoetest"]')?.addEventListener('click', () => {
+    loadWstRecords(currentWstCategory);
+  });
+
+})();

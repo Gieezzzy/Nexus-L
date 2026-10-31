@@ -266,41 +266,10 @@ class BotController extends BaseController
         }
 
         // 3. Check for test name keywords if accompanied by "test", "method", "standard", "how to", "vf", "illustrated", "pdf"
-        $isTestQuery = (bool) preg_match('/\b(test|testing|method|standard|vf|illustrated|procedure|apparatus|spec|specification|pdf|how to|guide|measure|check|problem|failure|defect|issue|evaluate|inspect)\b/i', $text);
+        $isTestQuery = (bool) preg_match('/\b(test|method|standard|vf|illustrated|procedure|apparatus|spec|specification|pdf|how to|guide|measure|check)\b/i', $text);
         if (! $code && $isTestQuery) {
             $keywordMap = [
-                // Soling, Foxing & Bonding Failures
-                'sole com out' => 'VF-F01',
-                'sole com off' => 'VF-F01',
-                'sole fall off' => 'VF-F01',
-                'sole separating' => 'VF-F01',
-                'sole separated' => 'VF-F01',
-                'sole peel' => 'VF-F01',
-                'foxing peel' => 'VF-F01',
-                'foxing delamination' => 'VF-F01',
-                'sole bond' => 'VF-F01',
-                'glue failure' => 'VF-F01',
-                'sole adhesion' => 'VF-F01',
-                'footwear adhesion' => 'VF-F01',
-                'peel strength' => 'VF-F02',
-                'finish adhesion' => 'VF-F03',
-                'laminar peel' => 'VF-F04',
-                'cross-hatch' => 'VF-F05',
-                'cross hatch' => 'VF-F05',
-                'ink adhesion' => 'VF-F05',
-                'tape test' => 'VF-F05',
-                'screen print peel' => 'VF-F05',
-                'strap pulling' => 'VF-F06',
-                'strap pull' => 'VF-F06',
-                'heel attachment' => 'VF-F09',
-                'top lift' => 'VF-F10',
-                'cardboard adhesion' => 'VF-F11',
-
-                // Physical & Dimensional
                 'hardness' => 'VF-A01',
-                'durometer' => 'VF-A01',
-                'shore a' => 'VF-A01',
-                'shore c' => 'VF-A01',
                 'weight' => 'VF-A02',
                 'thickness' => 'VF-A03',
                 'specific gravity' => 'VF-A04',
@@ -309,92 +278,53 @@ class BotController extends BaseController
                 'yarn count' => 'VF-A07',
                 'non-volatile' => 'VF-A08',
                 'solids content' => 'VF-H04',
-
-                // Mechanical & Strength
                 'tensile' => 'VF-B01',
                 'elongation' => 'VF-B01',
-                'rubber stretch' => 'VF-B01',
                 'bursting' => 'VF-B02',
                 'peel and shear' => 'VF-B03',
-                'velcro' => 'VF-B03',
                 'hardware attachment' => 'VF-B04',
                 'lace holder' => 'VF-B04',
-                'eyelet pull' => 'VF-B04',
                 'die c' => 'VF-B05',
                 'die-c' => 'VF-B05',
-                'tear initiation' => 'VF-B05',
                 'split tear' => 'VF-B06',
                 'trouser tear' => 'VF-B07',
                 'stitch tear' => 'VF-B08',
                 'baumann tear' => 'VF-B09',
                 'compression set' => 'VF-B10',
-                'foam squished' => 'VF-B10',
                 'crush strength' => 'VF-B12',
                 'james slip' => 'VF-B15',
-                'slip resistance' => 'VF-B15',
-                'slippery' => 'VF-B15',
                 'friction coefficient' => 'VF-B25',
-                'traction' => 'VF-B25',
+                'slip resistance' => 'VF-B15',
                 'rebound' => 'VF-B16',
                 'resiliency' => 'VF-B16',
-                'cushion bounce' => 'VF-B16',
                 'zipper' => 'VF-B17',
                 'knot slip' => 'VF-B23',
-                'lace untying' => 'VF-B23',
-                'laces untie' => 'VF-B23',
-                'shoelace slipping' => 'VF-B23',
                 'lace tip' => 'VF-B24',
                 'aglet' => 'VF-B24',
-                'repeated opening' => 'VF-B26',
                 'edgewise crush' => 'VF-B27',
-                'box crush' => 'VF-B27',
                 'toecap' => 'VF-B28',
-
-                // Abrasion
                 'din abrasion' => 'VF-C01',
                 'rotary drum abrasion' => 'VF-C01',
-                'sole wear out' => 'VF-C01',
-                'volume loss' => 'VF-C01',
                 'martindale' => 'VF-C04',
-                'collar lining' => 'VF-C04',
-                'lining wear' => 'VF-C04',
-                'pilling' => 'VF-C04',
                 'taber' => 'VF-C05',
                 'lace abrasion' => 'VF-C09',
-
-                // Flexing & Fatigue
                 'bally flex' => 'VF-D01',
-                'upper crease' => 'VF-D01',
-                'upper cracking' => 'VF-D01',
                 'ross flex' => 'VF-D02',
-                'cut growth' => 'VF-D02',
                 'bata belt' => 'VF-D03',
                 'stretch and flex' => 'VF-D06',
-                'elastic gore' => 'VF-D06',
-
-                // Chemical & Fastness
                 'color fastness to water' => 'VF-E01',
                 'water fastness' => 'VF-E01',
-                'dye bleed' => 'VF-E01',
                 'crocking' => 'VF-E02',
                 'rub fastness' => 'VF-E02',
-                'color rubbing' => 'VF-E02',
                 'uv discoloration' => 'VF-E03',
                 'yellowing' => 'VF-E03',
-                'uv aging' => 'VF-E03',
                 'perspiration' => 'VF-E16',
-                'sweat stain' => 'VF-E16',
                 'blooming' => 'VF-E17',
-                'sulfur bloom' => 'VF-E17',
-                'white haze' => 'VF-E17',
                 'water swelling' => 'VF-E18',
                 'hydrolysis' => 'VF-E19',
                 'jungle test' => 'VF-E19',
-                'pu crumble' => 'VF-E19',
                 'ph extract' => 'VF-E20',
                 'non-marking' => 'VF-E21',
-                'scuff mark' => 'VF-E21',
-                'black mark' => 'VF-E21',
                 'vapor permeability' => 'VF-E25',
                 'breathability' => 'VF-E25',
                 'dip test' => 'VF-E26',
@@ -402,35 +332,36 @@ class BotController extends BaseController
                 'spray rating' => 'VF-E27',
                 'glow in the dark' => 'VF-E28',
                 'photoluminescence' => 'VF-E28',
-
-                // Assembled Footwear
+                'footwear adhesion' => 'VF-F01',
+                'sole adhesion' => 'VF-F01',
+                'peel strength' => 'VF-F02',
+                'finish adhesion' => 'VF-F03',
+                'laminar peel' => 'VF-F04',
+                'ink adhesion' => 'VF-F05',
+                'cross-hatch' => 'VF-F05',
+                'cross hatch' => 'VF-F05',
+                'strap pulling' => 'VF-F06',
+                'heel attachment' => 'VF-F09',
+                'top lift' => 'VF-F10',
+                'cardboard adhesion' => 'VF-F11',
                 'assembled footwear' => 'VF-G01',
                 'whole shoe flex' => 'VF-G02',
-                'walking flex' => 'VF-G02',
                 'wash test' => 'VF-G03',
                 'whole shoe wash' => 'VF-G03',
-                'shoe shrinkage' => 'VF-G03',
                 'flex waterproof' => 'VF-G04',
-                'shoe leak' => 'VF-G04',
                 'china gb' => 'VF-G05',
-                'gb t 3903' => 'VF-G05',
                 'water absorption' => 'VF-G06',
                 'static waterproof' => 'VF-G07',
                 'hydrostatic' => 'VF-G08',
                 'centrifuge' => 'VF-G09',
-
-                // Sampling, Chemical & Electrical
                 'conditioning' => 'VF-H01',
                 'leather sampling' => 'VF-H02',
                 'midsole sampling' => 'VF-H03',
                 'oil content' => 'VF-I01',
                 'fiber identification' => 'VF-I02',
                 'oil resistant' => 'VF-I05',
-                'oil swelling' => 'VF-I05',
                 'electric shock' => 'VF-J01',
-                'dielectric' => 'VF-J01',
                 'thermal conductivity' => 'VF-J02',
-                'thermal insulation' => 'VF-J02',
             ];
 
             foreach ($keywordMap as $kw => $c) {
@@ -438,244 +369,6 @@ class BotController extends BaseController
                     $code = $c;
                     break;
                 }
-            }
-        }
-
-        // 3b. Guided Non-Technical & Disambiguation Selectors for Non-Knowledgeable Users
-        if (! $code) {
-            // Beginner / Confused Prompts
-            if (preg_match('/\b(i\s*don\'?t\s*know|which\s*test|what\s*test\s*(?:should|to|can|do|pick)|help\s*me\s*(?:find|choose|pick)|recommend|selector|where\s*to\s*start|how\s*to\s*test\s*shoe|confused)\b/i', $text)) {
-                return [
-                    'text' => "### 🧭 VF Laboratory Test Selector Guide\n\n"
-                            . "Not sure which test method you need? Select the material, shoe component, or quality failure you want to evaluate:\n\n"
-                            . "• **👟 Sole & Foxing Separation:** VF-F01 Sole Adhesion / VF-G02 Whole Shoe Flex\n"
-                            . "• **🧪 Rubber Outsole Durability:** VF-C01 DIN Abrasion / VF-B01 Tensile / VF-B05 Die C Tear\n"
-                            . "• **🧽 Midsole Foam Cushioning:** VF-B10 Compression Set / VF-B16 Rebound / VF-E19 PU Hydrolysis\n"
-                            . "• **🌧️ Waterproofing & Rain Seepage:** VF-G04 Dynamic Waterproof Flex / VF-G08 Hydrostatic Head\n"
-                            . "• **🪢 Shoelaces, Eyelets & Zippers:** VF-B23 Knot Slip / VF-B24 Lace Tip / VF-B04 Hardware\n"
-                            . "• **☀️ Yellowing & Color Fastness:** VF-E03 UV Discoloration / VF-E02 Crocking / VF-E01 Water Bleed\n\n"
-                            . "Click any button below to open the test standard or view the complete manual:",
-                    'steps' => [
-                        'Step 1: Choose the shoe part or material you need to test from the buttons below.',
-                        'Step 2: Review the official standard operating procedure, pull speed, and conditioning time.',
-                        'Step 3: Open the Material Tests or Shoe Bonding form in DTR to record machine readings.'
-                    ],
-                    'actions' => [
-                        ['type' => 'open', 'label' => '👟 Sole Adhesion (VF-F01)', 'url' => site_url('uploads/vf_test_methods/VF%20-%20F01%20Footwear%20Adhesion%20-%20May%202019.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => '🧪 Rubber Tensile (VF-B01)', 'url' => site_url('uploads/vf_test_methods/VF%20-%20B01%20Tensile%20Properties%20Nov%202022.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => '🧽 Foam Compression (VF-B10)', 'url' => site_url('uploads/vf_test_methods/VF%20-%20B10%20Compression%20Set%20(%20Static)%20-%20May%202017%20.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => '🌧️ Waterproof Flex (VF-G04)', 'url' => site_url('uploads/vf_test_methods/VF%20-%20G04%20Whole%20Shoe%20Flex%20Water%20Proof%20Test%20-REV%20-%20May%202016.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => '📘 VANS Testing Manual 2026', 'url' => site_url('uploads/vf_test_methods/VANS%20%20Footwear%20Performance%20Testing%20Manual%202026.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => '📋 List of All VF Test Methods', 'url' => site_url('uploads/vf_test_methods/List%20of%20Test%20Methods.xlsx'), 'target' => '_blank'],
-                    ],
-                    'files' => [],
-                    'title' => 'VF Test Method Selector Guide',
-                    'confidence' => 100,
-                    'related' => [
-                        ['id' => 0, 'title' => 'VF-F01: Whole Footwear Sole Adhesion'],
-                        ['id' => 0, 'title' => 'VF-B01: Tensile Strength and Elongation'],
-                    ],
-                    'diagnosis' => null,
-                    'knowledge_id' => null,
-                    'suggest_admin' => false,
-                ];
-            }
-
-            // Material: Rubber / Outsole
-            if (preg_match('/\b(rubber|soling|outsole|foxing\s*band)\b/i', $text) && ! preg_match('/\b(bonding|glue|cement|peel)\b/i', $text)) {
-                return [
-                    'text' => "### 🧪 VF Rubber & Outsole Test Methods\n\n"
-                            . "Here are the official VF standards for vulcanized rubber, outsoles, waffle bottoms, and foxing tapes:\n\n"
-                            . "• **VF-B01 Tensile Properties:** Tensile strength & elongation at break (500 mm/min)\n"
-                            . "• **VF-B05 Die C Tear:** 90° angle tear initiation resistance (ASTM D624)\n"
-                            . "• **VF-C01 DIN Abrasion:** Rotary drum volume loss wear resistance (ISO 4649)\n"
-                            . "• **VF-D02 Ross Flex:** Flex fatigue and 2mm cut growth resistance over mandrel\n"
-                            . "• **VF-A01 Hardness:** Shore A durometer hardness measurement (ASTM D2240)\n"
-                            . "• **VF-I05 Oil Resistance:** Hydrocarbon mineral oil swelling resistance (max +12%)\n"
-                            . "• **VF-E21 Non-Marking:** Absence of scuff marks on gym and court floors",
-                    'steps' => ['Select any rubber standard below to view the official PDF or illustrated guide.'],
-                    'actions' => [
-                        ['type' => 'open', 'label' => 'VF-B01 Tensile PDF', 'url' => site_url('uploads/vf_test_methods/VF%20-%20B01%20Tensile%20Properties%20Nov%202022.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'VF-B05 Die C Tear PDF', 'url' => site_url('uploads/vf_test_methods/VF%20-%20B05%20Die%20C%20Tear%20Nov%202022.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'VF-C01 DIN Abrasion PDF', 'url' => site_url('uploads/vf_test_methods/VF%20-%20C01%20DIN%20Abrasion%20Nov%202022.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'VF-D02 Ross Flex PDF', 'url' => site_url('uploads/vf_test_methods/VF%20-%20D02%20Ross%20Flex%20-%20June%202019.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'VF-A01 Hardness PDF', 'url' => site_url('uploads/vf_test_methods/VF%20-%20A01%20Hardness%20Dec%202016.pdf'), 'target' => '_blank'],
-                    ],
-                    'files' => [],
-                    'title' => 'VF Rubber Testing Standards',
-                    'confidence' => 100,
-                    'related' => [['id' => 0, 'title' => 'VF Test Methods Series B'], ['id' => 0, 'title' => 'VF Test Methods Series C']],
-                    'diagnosis' => null,
-                    'knowledge_id' => null,
-                    'suggest_admin' => false,
-                ];
-            }
-
-            // Material: Leather / Upper
-            if (preg_match('/\b(leather|suede|nubuck|upper\s*material)\b/i', $text) && ! preg_match('/\b(sole|peel|bond)\b/i', $text)) {
-                return [
-                    'text' => "### 👞 VF Leather & Upper Testing Standards\n\n"
-                            . "Here are the official VF laboratory standards for upper leathers, suede, and linings:\n\n"
-                            . "• **VF-D01 Bally Flex:** V-crease repeated bending fatigue (100,000 cycles dry / 20,000 wet)\n"
-                            . "• **VF-B07 Trouser Tear:** Tear propagation strength on leather (ASTM D2261)\n"
-                            . "• **VF-B01 Tensile Strength:** Breaking strength and elongation of leather\n"
-                            . "• **VF-A06 Softness:** Circular plunger deflection softness test (ISO 17235)\n"
-                            . "• **VF-F03 Finish Adhesion:** Polyurethane/acrylic topcoat finish bond strength\n"
-                            . "• **VF-H02 Leather Sampling:** Official sampling location (butt region, 50mm from backbone)",
-                    'steps' => ['Select any leather testing standard below to view the PDF.'],
-                    'actions' => [
-                        ['type' => 'open', 'label' => 'VF-D01 Bally Flex PDF', 'url' => site_url('uploads/vf_test_methods/VF%20-%20D01%20Bally%20Flex%20-%20Nov%202018.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'VF-B07 Trouser Tear PDF', 'url' => site_url('uploads/vf_test_methods/VF%20-%20B07%20Trouser%20Tear%20Nov%202022.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'VF-B01 Tensile PDF', 'url' => site_url('uploads/vf_test_methods/VF%20-%20B01%20Tensile%20Properties%20Nov%202022.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'VF-A06 Softness Guide', 'url' => site_url('uploads/vf_test_methods/Illustrated%20Test%20Methods/Illustrated%20VF-A06%20Softness.pdf'), 'target' => '_blank'],
-                    ],
-                    'files' => [],
-                    'title' => 'VF Leather Testing Standards',
-                    'confidence' => 100,
-                    'related' => [['id' => 0, 'title' => 'VF-D01: Bally Flexing Resistance'], ['id' => 0, 'title' => 'VF-H02: Leather Sampling Protocol']],
-                    'diagnosis' => null,
-                    'knowledge_id' => null,
-                    'suggest_admin' => false,
-                ];
-            }
-
-            // Material: Foam / EVA / Midsole
-            if (preg_match('/\b(foam|midsole|eva|cushion|insole\s*foam)\b/i', $text)) {
-                return [
-                    'text' => "### 🧽 VF Foam & Midsole Testing Standards\n\n"
-                            . "Here are the official VF standards for EVA midsoles, molded PU foam, and cushion insoles:\n\n"
-                            . "• **VF-B10 Static Compression Set:** Permanent deformation after 6h @ 50°C (ASTM D395)\n"
-                            . "• **VF-B16 Rebound Resiliency:** Vertical ball rebound bounce percentage (ASTM D2632)\n"
-                            . "• **VF-B06 Split Tear:** Internal split tear resistance of cellular foam (ASTM D3574)\n"
-                            . "• **VF-A04 Specific Gravity:** Compound density via water displacement (ASTM D792)\n"
-                            . "• **VF-E19 Hydrolysis Jungle Test:** Warm humid aging resistance for PU midsoles (70°C, 95% RH)",
-                    'steps' => ['Select any midsole foam standard below to view the official PDF.'],
-                    'actions' => [
-                        ['type' => 'open', 'label' => 'VF-B10 Compression Set PDF', 'url' => site_url('uploads/vf_test_methods/VF%20-%20B10%20Compression%20Set%20(%20Static)%20-%20May%202017%20.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'VF-B16 Rebound Bounce PDF', 'url' => site_url('uploads/vf_test_methods/VF%20-%20B16%20Rebound%20Resiliency%20-%20April%202011.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'VF-B06 Split Tear PDF', 'url' => site_url('uploads/vf_test_methods/VF%20-%20B06%20Split%20Tear%20Nov%202022.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'VF-E19 PU Hydrolysis PDF', 'url' => site_url('uploads/vf_test_methods/VF%20-%20E19%20Hydrolysis%20Test%20Dec%202024.pdf'), 'target' => '_blank'],
-                    ],
-                    'files' => [],
-                    'title' => 'VF Foam & Midsole Standards',
-                    'confidence' => 100,
-                    'related' => [['id' => 0, 'title' => 'VF-B10: Static Compression Set'], ['id' => 0, 'title' => 'VF-B16: Rebound Resiliency']],
-                    'diagnosis' => null,
-                    'knowledge_id' => null,
-                    'suggest_admin' => false,
-                ];
-            }
-
-            // Material: Laces, Aglets & Hardware
-            if (preg_match('/\b(laces?|shoelaces?|aglet|eyelet|d-ring|buckle)\b/i', $text)) {
-                return [
-                    'text' => "### 🪢 VF Shoelace & Hardware Testing Standards\n\n"
-                            . "Here are the official VF standards for shoe laces, plastic aglets, and eyelets:\n\n"
-                            . "• **VF-B23 Knot Slip Resistance:** Tendency of laces to untie or slip loose (SATRA TM153)\n"
-                            . "• **VF-B24 Lace Tip Retention:** Retention force to pull aglet off lace (SATRA TM154)\n"
-                            . "• **VF-B01 Tensile Strength:** Breaking strength and elongation of shoelaces\n"
-                            . "• **VF-C09 Lace Abrasion:** Durability against eyelet and lace-to-lace friction\n"
-                            . "• **VF-B04 Hardware Attachment:** Pull-out detachment force for eyelets & D-rings",
-                    'steps' => ['Select any shoelace or hardware standard below to view the PDF.'],
-                    'actions' => [
-                        ['type' => 'open', 'label' => 'VF-B23 Knot Slip PDF', 'url' => site_url('uploads/vf_test_methods/VF%20-%20B23%20Knot%20Slip%20Resistance%20-%20May%202019.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'VF-B24 Lace Tip Aglet PDF', 'url' => site_url('uploads/vf_test_methods/VF%20-%20B24%20Lace%20Tip%20Retention%20-%20May%202019.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'VF-C09 Lace Abrasion PDF', 'url' => site_url('uploads/vf_test_methods/Illustrated%20Test%20Methods/Illustrated%20VF-C09%20Lace%20Abrasion.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'VF-B04 Eyelet Hardware PDF', 'url' => site_url('uploads/vf_test_methods/VF%20-%20B04%20Hardware%20Attachment%20and%20Lace%20Holder%20%20Strength%20-%20May%202019.pdf'), 'target' => '_blank'],
-                    ],
-                    'files' => [],
-                    'title' => 'VF Shoelace & Hardware Standards',
-                    'confidence' => 100,
-                    'related' => [['id' => 0, 'title' => 'VF-B23: Knot Slip Resistance'], ['id' => 0, 'title' => 'VF-B24: Lace Tip Retention']],
-                    'diagnosis' => null,
-                    'knowledge_id' => null,
-                    'suggest_admin' => false,
-                ];
-            }
-
-            // Material: Waterproof / Rain / Seepage
-            if (preg_match('/\b(waterproof|rain|puddle|leak|water\s*enter|water\s*wet|hydrostatic)\b/i', $text) && ! preg_match('/\b(colorfastness|crock)\b/i', $text)) {
-                return [
-                    'text' => "### 🌧️ VF Waterproofing & Moisture Resistance Standards\n\n"
-                            . "Here are the official VF standards for waterproof footwear and seam integrity:\n\n"
-                            . "• **VF-G04 Whole Shoe Flex Waterproof:** Dynamic water immersion flex (SATRA TM230)\n"
-                            . "• **VF-G07 Whole Shoe Static Waterproof:** Still water tank immersion leak test (SATRA TM77)\n"
-                            . "• **VF-G08 Hydrostatic Waterproofness:** Water column pressure head on membranes (AATCC 127)\n"
-                            . "• **VF-G09 Centrifuge Leak Test:** High-speed centrifugal spin leak test (SATRA TM358)\n"
-                            . "• **VF-E27 Spray Rating:** Surface water repellency wetting spray (AATCC 22)\n"
-                            . "• **VF-G06 Whole Shoe Water Absorption:** Total weight gain percentage when submerged",
-                    'steps' => ['Select any waterproof standard below to view the official PDF.'],
-                    'actions' => [
-                        ['type' => 'open', 'label' => 'VF-G04 Dynamic Flex Waterproof', 'url' => site_url('uploads/vf_test_methods/VF%20-%20G04%20Whole%20Shoe%20Flex%20Water%20Proof%20Test%20-REV%20-%20May%202016.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'VF-G08 Hydrostatic Head PDF', 'url' => site_url('uploads/vf_test_methods/VF%20-%20G08%20Hydrostatic%20Water%20Proofness%20-%20August%202014.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'VF-G07 Static Waterproof PDF', 'url' => site_url('uploads/vf_test_methods/VF%20-%20G07%20%20Water%20Proof%20%20Whole%20Shoe%20-%20Static%20-%20March%202014.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'VF-G09 Centrifuge Leak PDF', 'url' => site_url('uploads/vf_test_methods/VF%20-%20G09%20Centrifuge%20Test%20-%20September%202014.pdf'), 'target' => '_blank'],
-                    ],
-                    'files' => [],
-                    'title' => 'VF Waterproofing Standards',
-                    'confidence' => 100,
-                    'related' => [['id' => 0, 'title' => 'VF-G04: Whole Shoe Flexing Waterproof Test'], ['id' => 0, 'title' => 'VF-G08: Hydrostatic Water Proofness']],
-                    'diagnosis' => null,
-                    'knowledge_id' => null,
-                    'suggest_admin' => false,
-                ];
-            }
-
-            // Defect Diagnosis / Customer Complaints
-            if (preg_match('/\b(defect|broken|customer\s*return|fail|damaged|complain|issue\s*with\s*shoe)\b/i', $text)) {
-                return [
-                    'text' => "### 🔍 Footwear Defect Diagnostic Test Selector\n\n"
-                            . "Identify the specific failure or defect to view the required VF test method:\n\n"
-                            . "• **Sole / Foxing Separation:** VF-F01 Footwear Adhesion (100 mm/min peel)\n"
-                            . "• **Upper Crease Cracking:** VF-D01 Bally Flex (100,000 cycles dry)\n"
-                            . "• **Sole Flex Cracking:** VF-D02 Ross Flex (2mm cut growth @ -10°C & 23°C)\n"
-                            . "• **White Foxing Turned Yellow:** VF-E03 UV Light Discoloration / Yellowing\n"
-                            . "• **PU Foam Crumbled to Dust:** VF-E19 Hydrolysis Jungle Test (70°C, 95% RH)\n"
-                            . "• **Slippery Bottom Sole:** VF-B15 James Slip / VF-B25 SATRA TM144 Traction\n"
-                            . "• **Screen Print Peeling:** VF-F05 Ink Adhesion (Cross-hatch 3M 610 tape test)",
-                    'steps' => ['Select the matching failure symptom below to view the official PDF standard.'],
-                    'actions' => [
-                        ['type' => 'open', 'label' => 'Sole Separation (VF-F01)', 'url' => site_url('uploads/vf_test_methods/VF%20-%20F01%20Footwear%20Adhesion%20-%20May%202019.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'Sole Flex Crack (VF-D02)', 'url' => site_url('uploads/vf_test_methods/VF%20-%20D02%20Ross%20Flex%20-%20June%202019.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'UV Yellowing (VF-E03)', 'url' => site_url('uploads/vf_test_methods/VF%20-%20E03%20Ultraviolet%20light%20Discoloration%20-%20May%202019.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'PU Hydrolysis (VF-E19)', 'url' => site_url('uploads/vf_test_methods/VF%20-%20E19%20Hydrolysis%20Test%20Dec%202024.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'Print Peeling (VF-F05)', 'url' => site_url('uploads/vf_test_methods/VF-%20%20F05%20Ink%20Adhesion%20On%20Substrate%20-%20July%202014.pdf'), 'target' => '_blank'],
-                    ],
-                    'files' => [],
-                    'title' => 'Footwear Defect Diagnostic Selector',
-                    'confidence' => 100,
-                    'related' => [['id' => 0, 'title' => 'VF-F01: Whole Footwear Sole Adhesion'], ['id' => 0, 'title' => 'VF-D02: Ross Flexing Resistance']],
-                    'diagnosis' => null,
-                    'knowledge_id' => null,
-                    'suggest_admin' => false,
-                ];
-            }
-
-            // Audit & Document Inquiries
-            if (preg_match('/\b(audit|auditor|compliance|certificate|dtp-lab-101)\b/i', $text)) {
-                $manualRow = $this->db()->table('tbl_vf_test_methods')->like('file_name', 'Manual')->get()->getRowArray();
-                return [
-                    'text' => "### 📋 VF Quality & Laboratory Audit Reference Package\n\n"
-                            . "For ISO 17025 accreditation, VF brand audits, and laboratory compliance inspections, all official master specifications and testing parameters are active in NEXUS-L:\n\n"
-                            . "• **VANS Footwear Performance Testing Manual 2026 (Global Standard DTP-Lab-101)**\n"
-                            . "• **Universal Machine Test Parameters (UTM Pull Rates & Grip Fixtures)**\n"
-                            . "• **Laboratory Material Conditioning Standards (VF-H01: 23±2°C, 50±5% RH for 24h)**\n"
-                            . "• **Complete Schedule of Test Methods (Excel Index)**",
-                    'steps' => ['Click the buttons below to open or download the official audit documentation.'],
-                    'actions' => [
-                        ['type' => 'open', 'label' => 'VANS Performance Manual 2026 (PDF)', 'url' => site_url($manualRow ? $manualRow['url_path'] : 'uploads/vf_test_methods/VANS  Footwear Performance Testing Manual 2026.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'VF-H01 Conditioning Protocol (PDF)', 'url' => site_url('uploads/vf_test_methods/VF%20-%20H01%20Material%20Conditioning%20-%20May%202008.pdf'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'UTM Machine Parameters (Excel)', 'url' => site_url('uploads/vf_test_methods/UNIVERSAL%20MACHINE%20TEST%20PARAMETERS.xlsx'), 'target' => '_blank'],
-                        ['type' => 'open', 'label' => 'List of All Test Methods (Excel)', 'url' => site_url('uploads/vf_test_methods/List%20of%20Test%20Methods.xlsx'), 'target' => '_blank'],
-                    ],
-                    'files' => [],
-                    'title' => 'VF Quality & Audit Reference Package',
-                    'confidence' => 100,
-                    'related' => [['id' => 0, 'title' => 'VANS Footwear Performance Testing Manual 2026 (Global Standard)']],
-                    'diagnosis' => null,
-                    'knowledge_id' => null,
-                    'suggest_admin' => false,
-                ];
             }
         }
 

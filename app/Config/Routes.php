@@ -34,6 +34,7 @@ $routes->get('interlink/service/verify', 'InterlinkServiceController::verify');
 // ---------------------------------------------------------------------
 $routes->group('', ['filter' => 'auth'], static function (RouteCollection $routes): void {
     $routes->get('dashboard', 'DashboardController::index', ['as' => 'dashboard']);
+    $routes->get('analytics', 'AnalyticsController::index', ['as' => 'analytics']);
     $routes->get('help', 'HelpController::index', ['as' => 'help']);
     $routes->get('/', static fn () => redirect()->route('dashboard'));
     $routes->post('logout', 'AuthController::logout', ['as' => 'logout']);
@@ -92,9 +93,43 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->get('dtr/bonding-labrefs', 'DtrController::bondingLabRefs');
     $routes->get('dtr/standards', 'DtrController::standards');
     $routes->get('dtr/lookup', 'DtrController::lookup');
+    $routes->get('dtr/shoe-lookup', 'DtrController::shoeLookup');
+    $routes->get('dtr/shoe-search', 'DtrController::shoeSearch');
+    $routes->get('dtr/retest-list', 'DtrController::retestList');
+    $routes->post('dtr/wholeshoe-save', 'DtrController::wholeShoeSave');
+    $routes->post('dtr/intake-save', 'DtrController::intakeSave');
+    $routes->post('dtr/material-receive-save', 'DtrController::materialReceiveSave');
     $routes->post('dtr/load-machine', 'DtrController::loadMachine');
     $routes->post('dtr/save', 'DtrController::save');
     $routes->post('dtr/sheet-pdf', 'DtrController::sheetPdf');
+    $routes->get('dtr/bonding-machine-pdf', 'DtrController::bondingMachinePdf');
+    $routes->get('dtr/bonding-access-pdf', 'DtrController::bondingAccessPdf');
+    $routes->get('dtr/wholeshoe-report-pdf', 'DtrController::wholeShoeReportPdf');
+    $routes->get('dtr/wholeshoe-labrefs', 'DtrController::wholeShoeLabRefs');
+    $routes->get('dtr/wholeshoe-report', 'DtrController::wholeShoeReport');
+    $routes->post('dtr/wholeshoe-report-save', 'DtrController::wholeShoeReportSave');
+
+    // Physical & Mechanical Testing Suite (Marc)
+    $routes->get('materials', 'WstController::materials', ['as' => 'materials']);
+    $routes->get('material-testing', 'WstController::materials');
+    $routes->get('wholeshoe', 'WstController::wholeshoe', ['as' => 'wholeshoe']);
+    $routes->get('whole-shoe-test', 'WstController::wholeshoe');
+    $routes->get('test-summary', 'WstController::summary', ['as' => 'test-summary']);
+    $routes->get('tests-summary', 'WstController::summary');
+    $routes->get('test-results', 'WstController::summary');
+    $routes->get('wst/summary-data', 'WstController::summaryData');
+    $routes->get('wst/export-summary', 'WstController::exportSummary');
+
+    // Whole Shoe Cyclic Test Execution & Monitoring API (Marc)
+    $routes->get('wst/records', 'WstController::records');
+    $routes->get('wst/record/(:num)', 'WstController::record/$1');
+    $routes->get('wst/state/(:num)', 'WstController::state/$1');
+    $routes->get('wst/next-labref', 'WstController::nextLabref');
+    $routes->post('wst/create', 'WstController::create');
+    $routes->post('wst/start/(:num)', 'WstController::start/$1');
+    $routes->post('wst/stop/(:num)', 'WstController::stop/$1');
+    $routes->post('wst/stop-sample/(:num)', 'WstController::stopSample/$1');
+    $routes->post('wst/log-findings/(:num)', 'WstController::logFindings/$1');
     // report sign-off before InterLink (QR approval by a registered Manager / Supervisor)
     $routes->get('dtr/report-pdf', 'ApprovalController::reportPdf');
     $routes->get('dtr/approval/status', 'ApprovalController::status');

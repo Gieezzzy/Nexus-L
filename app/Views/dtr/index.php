@@ -1,14 +1,25 @@
-<?php $dtrIsAdmin = strcasecmp((string) (service('auth')->user()['role'] ?? ''), 'admin') === 0; ?>
+<?php
+$dtrIsAdmin = strcasecmp((string) (service('auth')->user()['role'] ?? ''), 'admin') === 0;
+$bondingShoes = $bondingShoes ?? [];
+$wholeShoes = $wholeShoes ?? [];
+$bondingTotal = $bondingTotal ?? 0;
+$shoeTotal = $shoeTotal ?? 0;
+$containers = $containers ?? [];
+$materialsMaster = $materialsMaster ?? [];
+$recentReports = $recentReports ?? [];
+$catRows = $catRows ?? [];
+$totalReports = $totalReports ?? 0;
+$totalPass = $totalPass ?? 0;
+$totalFail = $totalFail ?? 0;
+$totalTol = $totalTol ?? 0;
+$standardMatTypes = $standardMatTypes ?? [];
+$activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'tracker');
+?>
 <?php
 /**
  * NEXUS-L QC Lab Digital Test Reports (#Digital Test Report & Bonding LIS System)
  * Migrated 100% from MS Access & VB.NET into MySQL dbnexus (367,333 rows across 31 tables).
  */
-$bondingShoes = $bondingShoes ?? [];
-$wholeShoes = $wholeShoes ?? [];
-$bondingTotal = $bondingTotal ?? count($bondingShoes);
-$shoeTotal = $shoeTotal ?? count($wholeShoes);
-$subTab = $subTab ?? 'bonding';
 ?>
 
 <!-- Top Summary KPI Bar -->
@@ -56,7 +67,7 @@ $subTab = $subTab ?? 'bonding';
 </div>
 
 <!-- Toolbar of the open panel (the sidebar switches panels) -->
-<div class="card glass dtr-nav-bar">
+<div id="dtr-nav-bar" class="card glass dtr-nav-bar" <?= $activeTab === 'labtracker' ? 'hidden' : '' ?>>
     <div class="dtr-nav-actions" data-dtr-for="tracker" <?= $activeTab === 'tracker' ? '' : 'hidden' ?>>
         <select id="dtr-tracker-cat" class="dtr-tracker-cat" aria-label="Report category">
             <option value="all">All Reports (<?= number_format((int) $totalReports) ?>)</option>
@@ -69,7 +80,8 @@ $subTab = $subTab ?? 'bonding';
             <button type="button" id="dtr-tracker-btn-search" class="dtr-btn dtr-btn-primary">Search</button>
         </div>
     </div>
-    <div class="dtr-nav-actions dtr-form-actions" data-dtr-for="material" <?= $activeTab === 'material' ? '' : 'hidden' ?>>
+    <div class="dtr-nav-actions" data-dtr-for="labtracker" <?= $activeTab === 'labtracker' ? '' : 'hidden' ?>></div>
+    <div class="dtr-nav-actions dtr-form-actions" data-dtr-for="material"<?= $activeTab === 'material' ? '' : 'hidden' ?>>
         <button type="button" id="btn-dtr-new" class="dtr-btn dtr-btn-outline">+ New Record</button>
         <button type="button" id="btn-dtr-load-machine" class="dtr-btn dtr-btn-amber" title="Reads the machine result file (.xlsx / .csv) for this Lab Ref No. The source file is never modified.">
             <svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> Load Machine Results
@@ -104,6 +116,22 @@ $subTab = $subTab ?? 'bonding';
             <svg class="ic" aria-hidden="true"><use href="#i-save"/></svg> Save Report
         </button>
     </div>
+    <div class="dtr-nav-actions dtr-form-actions" data-dtr-for="wholeshoe" <?= $activeTab === 'wholeshoe' ? '' : 'hidden' ?>>
+        <button type="button" id="btn-ws-preview" class="dtr-btn dtr-btn-purple" title="View, print or save the Whole Footwear Test Results sheet">
+            <svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg> Print / Preview Report
+        </button>
+        <button type="button" id="btn-ws-save" class="dtr-btn dtr-btn-primary">
+            <svg class="ic" aria-hidden="true"><use href="#i-save"/></svg> Save Report
+        </button>
+    </div>
+    <div class="dtr-nav-actions dtr-form-actions" data-dtr-for="wholeshoetest" <?= in_array($activeTab, ['wholeshoetest', 'Whole Shoe Test'], true) ? '' : 'hidden' ?>>
+        <a href="<?= site_url('wholeshoe') ?>" class="dtr-btn dtr-btn-primary" target="_blank">
+            <svg class="ic" aria-hidden="true"><use href="#i-shoe"/></svg> Open Whole Shoe Test Workspace
+        </a>
+        <a href="<?= site_url('test-summary') ?>" class="dtr-btn dtr-btn-outline" target="_blank">
+            <svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg> View Test Results Summary
+        </a>
+    </div>
     <div class="dtr-nav-actions dtr-form-actions" data-dtr-for="calculators" <?= $activeTab === 'calculators' ? '' : 'hidden' ?>>
         <?php if (! empty($dtrIsAdmin)): ?>
         <a class="dtr-btn dtr-btn-purple" href="<?= site_url('designer') ?>?tab=diagram" title="Admin: match the shoe lines and results">Shoe diagram &amp; points</a>
@@ -124,13 +152,6 @@ $subTab = $subTab ?? 'bonding';
 <section id="dtr-panel-tracker" class="dtr-panel <?= $activeTab === 'tracker' ? '' : 'hidden' ?>">
     <!-- Category Pills -->
     <div class="card glass dtr-section-card">
-        <div class="dtr-card-head">
-            <div>
-                <h3>Digital Test Report Master Tracker (All 11 Lab Report Types)</h3>
-                <p class="muted sm">Pick a category above to filter or click <b>Open in Form</b> to view/edit full test readings and automatic calculations.</p>
-            </div>
-        </div>
-
         <div class="dtr-table-wrap">
             <table class="dtr-table" id="dtr-tracker-table">
                 <thead>
@@ -187,14 +208,27 @@ $subTab = $subTab ?? 'bonding';
         </div>
     </div>
 
+</section>
+
+<!-- =======================================================================
+     TAB: LAB TRACKER (IQC CONTAINER / MATERIAL RECEIVING LOG)
+     ======================================================================= -->
+<section id="dtr-panel-labtracker" class="dtr-panel <?= $activeTab === 'labtracker' ? '' : 'hidden' ?>">
     <!-- IQC Container & Material Receiving Log (tbl_dtr_containers & tbl_dtr_materials_master) -->
-    <div class="dtr-grid-2">
-        <div class="card glass dtr-section-card">
+    <?php $subTab = in_array($subTab ?? '', ['containers', 'materials', 'bonding', 'shoes'], true) ? $subTab : 'bonding'; ?>
+    <div class="dtr-subtabs" role="tablist">
+        <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'bonding' ? 'active' : '' ?>" data-subtab="bonding"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> Bonding Shoe Collection</button>
+        <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'shoes' ? 'active' : '' ?>" data-subtab="shoes"><svg class="ic" aria-hidden="true"><use href="#i-database"/></svg> Whole Shoe Collection</button>
+        <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'containers' ? 'active' : '' ?>" data-subtab="containers"><svg class="ic" aria-hidden="true"><use href="#i-box"/></svg> IQC Container Receiving Log</button>
+        <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'materials' ? 'active' : '' ?>" data-subtab="materials"><svg class="ic" aria-hidden="true"><use href="#i-clipboard"/></svg> IQC Materials Master Queue</button>
+        <a href="<?= site_url('interlink') ?>" class="dtr-btn dtr-btn-outline dtr-subtabs-right">
+            <svg class="ic" aria-hidden="true"><use href="#i-link"/></svg> InterLink Sync
+        </a>
+    </div>
+    <div>
+        <div class="card glass dtr-section-card dtr-subpanel <?= $subTab === 'containers' ? '' : 'hidden' ?>" data-subpanel="containers">
             <div class="dtr-card-head">
-                <div>
-                    <h3><svg class="ic" aria-hidden="true"><use href="#i-box"/></svg> IQC Container Receiving Log </h3>
-                    <p class="muted sm">Container receiving log (129 containers).</p>
-                </div>
+                <button type="button" class="dtr-btn dtr-btn-primary" style="margin-left:auto" data-add-record="containers">+ Material Receive</button>
             </div>
             <div class="dtr-table-wrap" style="max-height:290px">
                 <table class="dtr-table">
@@ -224,13 +258,7 @@ $subTab = $subTab ?? 'bonding';
             </div>
         </div>
 
-        <div class="card glass dtr-section-card">
-            <div class="dtr-card-head">
-                <div>
-                    <h3><svg class="ic" aria-hidden="true"><use href="#i-clipboard"/></svg> IQC Materials Master Queue </h3>
-                    <p class="muted sm">Material receiving queue (778 material batches).</p>
-                </div>
-            </div>
+        <div class="card glass dtr-section-card dtr-subpanel <?= $subTab === 'materials' ? '' : 'hidden' ?>" data-subpanel="materials">
             <div class="dtr-table-wrap" style="max-height:290px">
                 <table class="dtr-table">
                     <thead>
@@ -254,6 +282,87 @@ $subTab = $subTab ?? 'bonding';
                                 <td><?= esc($mm['Supplier'] ?? '') ?></td>
                                 <td><?= esc($mm['TestingStatus'] ?? '') ?></td>
                                 <td><span class="badge b-ok"><?= esc($mm['FinalStatus'] ?? 'Done') ?></span></td>
+                            </tr>
+                        <?php endforeach ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card glass dtr-section-card dtr-subpanel <?= $subTab === 'bonding' ? '' : 'hidden' ?>" data-subpanel="bonding">
+            <div class="dtr-card-head">
+                <button type="button" class="dtr-btn dtr-btn-primary" style="margin-left:auto" data-add-record="bonding">+ Bonding Shoe Collected</button>
+            </div>
+            <div class="dtr-table-wrap" style="max-height:420px">
+                <table class="dtr-table">
+                    <thead>
+                        <tr>
+                            <th>LabRefNo</th>
+                            <th>Model / Style</th>
+                            <th>Color</th>
+                            <th>Side</th>
+                            <th>Factory</th>
+                            <th>Production Date</th>
+                            <th>Tested Date</th>
+                            <th>Technician</th>
+                            <th>Result</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($bondingShoes as $b): ?>
+                            <?php $bRes = strtoupper((string) ($b['Result'] ?? '')); $bCls = $bRes === 'FAIL' ? 'b-err' : ($bRes === 'TOLERABLE' ? 'b-warn' : 'b-ok'); ?>
+                            <tr>
+                                <td class="mono"><button type="button" class="dtr-dl-btn" data-dl-labref="<?= esc($b['LabRefNo'] ?? '', 'attr') ?>" title="Download Bonding Test-VF report" aria-label="Download report"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 11v6"/><path d="m9 14 3 3 3-3"/></svg></button> <b><?= esc($b['LabRefNo'] ?? '') ?></b></td>
+                                <td><?= esc($b['ModelStyle'] ?? '') ?></td>
+                                <td><?= esc($b['Color'] ?? '') ?></td>
+                                <td><?= esc($b['Side'] ?? '') ?></td>
+                                <td><?= esc($b['Factory'] ?? '') ?></td>
+                                <td><?= esc(substr((string) ($b['ProductionDate'] ?? ''), 0, 10)) ?></td>
+                                <td><?= esc(substr((string) ($b['TestedDate'] ?? ''), 0, 10)) ?></td>
+                                <td><?= esc($b['Technician'] ?? '') ?></td>
+                                <td><?= $bRes !== '' ? '<span class="badge ' . $bCls . '">' . esc($bRes) . '</span>' : '-' ?></td>
+                            </tr>
+                        <?php endforeach ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card glass dtr-section-card dtr-subpanel <?= $subTab === 'shoes' ? '' : 'hidden' ?>" data-subpanel="shoes">
+            <div class="dtr-card-head">
+                <button type="button" class="dtr-btn dtr-btn-primary" style="margin-left:auto" data-add-record="shoes">+ Whole Shoe Collected</button>
+            </div>
+            <div class="dtr-table-wrap" style="max-height:420px">
+                <table class="dtr-table">
+                    <thead>
+                        <tr>
+                            <th>LabRefNo</th>
+                            <th>Production Code</th>
+                            <th>Style No.</th>
+                            <th>Colorway</th>
+                            <th>MTL #</th>
+                            <th>Line</th>
+                            <th>No. of Shoes</th>
+                            <th>Test Type</th>
+                            <th>Collection Date</th>
+                            <th>Production Date</th>
+                            <th>Encoded By</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($wholeShoes as $s): ?>
+                            <tr>
+                                <td class="mono"><?php if (! empty($s['LabRefNo'])): ?><button type="button" class="dtr-dl-btn" data-dl-labref="<?= esc($s['LabRefNo'], 'attr') ?>" data-dl-route="dtr/wholeshoe-report-pdf" data-dl-suffix="Whole-Footwear-Test-Results" title="Download Whole Footwear Test Results" aria-label="Download report"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 11v6"/><path d="m9 14 3 3 3-3"/></svg></button> <b><?= esc($s['LabRefNo']) ?></b><?php endif ?></td>
+                                <td class="mono"><b><?= esc($s['ProdCode'] ?? '') ?></b></td>
+                                <td><?= esc($s['StyleNo'] ?? '') ?></td>
+                                <td><?= esc($s['Colorway'] ?? '') ?></td>
+                                <td class="mono"><?= esc($s['MTL'] ?? '') ?></td>
+                                <td><?= esc(trim(($s['Building'] ?? '') !== '' && ($s['Building'] ?? null) !== null ? 'Bldg ' . $s['Building'] . ' / ' . ($s['LineNo'] ?? '') : '')) ?></td>
+                                <td><?= isset($s['NoOfShoes']) ? (int) $s['NoOfShoes'] : '' ?></td>
+                                <td><?= esc($s['TestTypes'] ?? '') ?></td>
+                                <td><?= esc(substr((string) ($s['CollectionDate'] ?? ''), 0, 10)) ?></td>
+                                <td><?= esc(substr((string) ($s['IntakeProductionDate'] ?? ''), 0, 10)) ?></td>
+                                <td><?= esc($s['EncodedBy'] ?? '') ?></td>
                             </tr>
                         <?php endforeach ?>
                     </tbody>
@@ -404,7 +513,7 @@ $subTab = $subTab ?? 'bonding';
                     </div>
                     <div class="dtr-field">
                         <label>Tested By / Technician</label>
-                        <input type="text" name="Tested by" id="mf_TestedBy" placeholder="Technician">
+                        <input type="text" name="Tested by" id="mf_TestedBy" list="dtr-tech-list" autocomplete="off" placeholder="Technician">
                     </div>
                     <div class="dtr-field">
                         <label>Status (Complete sets the rating)</label>
@@ -839,7 +948,7 @@ $subTab = $subTab ?? 'bonding';
                             <div class="vf-tpl-line"><label for="bf_ReceivedDate">Received Date 收到日期:</label><input type="text" name="ReceivedDate" id="bf_ReceivedDate"></div>
                             <div class="vf-tpl-line"><label for="bf_TestedDate">Tested Date 测试日期:</label><input type="text" name="TestedDate" id="bf_TestedDate"></div>
                             <div class="vf-tpl-line"><label for="bf_FinishedDate">Finished Date 完成日期:</label><input type="text" name="FinishedDate" id="bf_FinishedDate"></div>
-                            <div class="vf-tpl-line"><label for="bf_Technician">Technician 技术员:</label><input type="text" name="Technician" id="bf_Technician"></div>
+                            <div class="vf-tpl-line"><label for="bf_Technician">Technician 技术员:</label><input type="text" name="Technician" id="bf_Technician" list="dtr-tech-list" autocomplete="off"></div>
                         </div>
                     </div>
 
@@ -893,9 +1002,8 @@ $subTab = $subTab ?? 'bonding';
                     })();
                     </script>
                 </div>
-            </div>
 
-            <!-- Results table / shoe diagram / sign-off — mirrors the VF-F01 template body -->
+            <!-- Results table / shoe diagram / sign-off — mirrors the VF-F01 template body (same box as the info sheet above, no gap) -->
             <div class="vf-sheet vf-body" id="vf-body">
                 <table class="vf-res">
                     <thead>
@@ -987,8 +1095,8 @@ $subTab = $subTab ?? 'bonding';
                     <div class="vf-diag-row">
                         <div id="vf-diag-left" class="vf-shoe-card vf-diag-card"><img src="<?= base_url('assets/images/bonding_sketches/blank.png') ?>" class="vf-shoe-img" style="left:12%;top:8%;width:76%;height:84%" alt="Left shoe"></div>
                         <div class="vf-diag-strips">
-                            <div><span>Left</span><div class="vf-diag-strip"></div></div>
-                            <div><span>Right</span><div class="vf-diag-strip"></div></div>
+                            <div><span class="vf-diag-lbl is-active">Left</span><div class="vf-diag-strip is-active"><?= str_repeat('<i class="vf-diag-line"></i>', 6) ?></div></div>
+                            <div><span class="vf-diag-lbl">Right</span><div class="vf-diag-strip"><?= str_repeat('<i class="vf-diag-line"></i>', 6) ?></div></div>
                         </div>
                         <div id="vf-diag-right" class="vf-shoe-card vf-diag-card"><img src="<?= base_url('assets/images/bonding_sketches/blank.png') ?>" class="vf-shoe-img" style="left:12%;top:8%;width:76%;height:84%" alt="Right shoe"></div>
                     </div>
@@ -1046,6 +1154,7 @@ $subTab = $subTab ?? 'bonding';
                     }
                 })();
                 </script>
+            </div>
             </div>
 
             <!-- 35-Spot Interactive Grid -->
@@ -1154,7 +1263,7 @@ $subTab = $subTab ?? 'bonding';
                         <div class="vf-tpl-line"><label for="pf_ReceivedDate">Received Date 收到日期:</label><input type="text" name="ReceivedDate" id="pf_ReceivedDate"></div>
                         <div class="vf-tpl-line"><label for="pf_TestedDate">Tested Date 测试日期:</label><input type="text" name="TestedDate" id="pf_TestedDate"></div>
                         <div class="vf-tpl-line"><label for="pf_FinishedDate">Finished Date 完成日期:</label><input type="text" name="FinishedDate" id="pf_FinishedDate"></div>
-                        <div class="vf-tpl-line"><label for="pf_Technician">Technician 技术员:</label><input type="text" name="Technician" id="pf_Technician"></div>
+                        <div class="vf-tpl-line"><label for="pf_Technician">Technician 技术员:</label><input type="text" name="Technician" id="pf_Technician" list="dtr-tech-list" autocomplete="off"></div>
                         <div class="vf-tpl-line pf-result"><label for="pf_Result">* Overall Result:</label><input type="text" name="Result" id="pf_Result" class="bold mono dtr-rate-inp" readonly></div>
                     </div>
                 </div>
@@ -1227,7 +1336,142 @@ $subTab = $subTab ?? 'bonding';
 <!-- =======================================================================
      TAB 4: BUILT-IN LAB CALCULATORS & STANDARDS / DSR LOOKUP EXPLORER
      ======================================================================= -->
-<section id="dtr-panel-calculators" class="dtr-panel <?= $activeTab === 'calculators' ? '' : 'hidden' ?>">
+<!-- =======================================================================
+     WHOLE SHOE REPORT (Whole Footwear Test Results, Form # Lab VF 002)
+     ======================================================================= -->
+<section id="dtr-panel-wholeshoe" class="dtr-panel <?= $activeTab === 'wholeshoe' ? '' : 'hidden' ?>">
+    <div class="card glass dtr-section-card">
+        <div class="wsf">
+            <div class="wsf-head">
+                <img src="<?= base_url('assets/images/vf-logo.webp') ?>" class="wsf-vf" alt="VF">
+                <div class="wsf-title"><h2>Whole Footwear Test Results</h2><h3>整鞋测试报告</h3></div>
+                <img src="<?= base_url('assets/images/satra-accredited.png') ?>" class="wsf-satra" alt="SATRA Accredited Laboratory">
+            </div>
+            <table class="wsf-t wsf-ref"><tr><td class="wsf-frm">Form # : Lab VF 002</td><td class="wsf-rf"><div>ETRF. No :</div><div class="wsf-lr">Lab Ref. No : <select id="ws-labref" aria-label="Lab Ref No"><option value="">Loading...</option></select></div></td></tr></table>
+            <table class="wsf-t wsf-info">
+                <tr><td>Supplier/Factory(厂商) :</td><td><b>DATIAN SUBIC SHOES INC.</b></td><td>O Prod.Material (量产材料)</td><td>O Prod.Re-test量产重测</td></tr>
+                <tr><td>Supplier's country(国家):</td><td><b>Philippines</b></td><td>O New/Development 开发段新材料</td><td>O Trial Test 试用测试</td></tr>
+                <tr><td>Material Description(材料):</td><td></td><td colspan="2">o Tech 1 &nbsp;&nbsp;&nbsp; Tech 2 &nbsp;&nbsp;&nbsp; Tech 3 &nbsp;&nbsp;&nbsp; Tech 4</td></tr>
+                <tr><td>Model No./Style(型体):</td><td><input type="text" id="ws-style" readonly></td><td colspan="2">O Sales Sample (销售样品)</td></tr>
+                <tr><td>Color (颜色):</td><td><input type="text" id="ws-color" readonly></td><td>Received Date(收到日) :</td><td><input type="text" id="ws-received" readonly></td></tr>
+                <tr><td>P.O/Lot No(编号):</td><td><input type="text" id="ws-po" readonly></td><td>Tested Date(测试时间) :</td><td><input type="date" id="ws-tested"></td></tr>
+                <tr><td>Quantity(数量):</td><td><input type="text" id="ws-qty" readonly></td><td>Finished Date(完成时间) :</td><td><input type="date" id="ws-finished"></td></tr>
+                <tr><td>Send by (提供方):</td><td><input type="hidden" id="ws-tests"></td><td>Technician(技术人员) :</td><td><input type="text" id="ws-tech" list="dtr-tech-list" autocomplete="off"></td></tr>
+            </table>
+
+            <div id="ws-sections"></div>
+
+            <table class="wsf-t wsf-foot"><tr>
+                <td class="wsf-cm">Comments备注 :<textarea id="ws-comments" rows="3"></textarea></td>
+                <td class="wsf-sg">
+                    <div>Reviewed by 检查: <input type="text" id="ws-reviewed"></div>
+                    <div>Approved by核准: <input type="text" id="ws-approved"></div>
+                </td>
+            </tr></table>
+        </div>
+        <p id="ws-msg" class="muted sm" style="margin:10px 0 0"></p>
+    </div>
+</section>
+
+<!-- =======================================================================
+     TAB: WHOLE SHOE TEST (LABORATORY MONITORING WORKFLOW - MARC)
+     ======================================================================= -->
+<section id="dtr-panel-wholeshoetest" class="dtr-panel <?= in_array($activeTab, ['wholeshoetest', 'Whole Shoe Test'], true) ? '' : 'hidden' ?>">
+    <!-- Top Sub-Nav & Category Selection -->
+    <div class="card glass dtr-section-card" style="margin-bottom:16px">
+        <div class="wst-header-banner">
+            <div class="wst-banner-left">
+                <span class="wst-badge">WHOLE SHOE TEST SUITE</span>
+                <h3 style="margin-top:4px">Whole Shoe Testing &amp; Monitoring</h3>
+                <p class="muted sm">Whole shoe hydrolysis, heat aging, washing, UV light exposure, and flexing monitoring workflow.</p>
+            </div>
+        </div>
+
+        <!-- Category Tabs -->
+        <div class="wst-category-tabs" role="tablist">
+            <button type="button" class="wst-cat-tab active" data-wst-cat="hydrolysis">Hydrolysis</button>
+            <button type="button" class="wst-cat-tab" data-wst-cat="heat-aging">Heat Aging</button>
+            <button type="button" class="wst-cat-tab" data-wst-cat="washing">Washing</button>
+            <button type="button" class="wst-cat-tab" data-wst-cat="uv-light">UV Light</button>
+            <button type="button" class="wst-cat-tab" data-wst-cat="flexing">Flexing</button>
+        </div>
+    </div>
+
+    <!-- SUB-VIEW 1: TEST LIST / QUEUE -->
+    <div id="wst-view-list" class="wst-subview">
+        <!-- Quick KPI Summary Strip -->
+        <div class="wst-kpi-strip" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px">
+            <div class="card glass wst-kpi-card" style="padding:14px 18px;display:flex;align-items:center;justify-content:space-between">
+                <div>
+                    <small class="muted uppercase" style="font-size:11px;font-weight:700">Active Running</small>
+                    <b id="wst-kpi-running" style="display:block;font-size:22px;color:#38bdf8;margin-top:2px">0</b>
+                </div>
+                <div class="wst-kpi-ico" style="background:rgba(56,189,248,0.15);color:#38bdf8;width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center">
+                    <svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg>
+                </div>
+            </div>
+            <div class="card glass wst-kpi-card" style="padding:14px 18px;display:flex;align-items:center;justify-content:space-between">
+                <div>
+                    <small class="muted uppercase" style="font-size:11px;font-weight:700">Completed</small>
+                    <b id="wst-kpi-completed" style="display:block;font-size:22px;color:#4ade80;margin-top:2px">0</b>
+                </div>
+                <div class="wst-kpi-ico" style="background:rgba(34,197,94,0.15);color:#22c55e;width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center">
+                    <svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>
+                </div>
+            </div>
+            <div class="card glass wst-kpi-card" style="padding:14px 18px;display:flex;align-items:center;justify-content:space-between">
+                <div>
+                    <small class="muted uppercase" style="font-size:11px;font-weight:700">Pending</small>
+                    <b id="wst-kpi-pending" style="display:block;font-size:22px;color:#fbbf24;margin-top:2px">0</b>
+                </div>
+                <div class="wst-kpi-ico" style="background:rgba(245,158,11,0.15);color:#f59e0b;width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center">
+                    <svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg>
+                </div>
+            </div>
+        </div>
+
+        <div class="card glass dtr-section-card">
+            <div class="dtr-card-head" style="margin-bottom:14px">
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                    <div style="position:relative;display:flex;align-items:center">
+                        <input type="text" id="wst-list-search" class="dtr-input" placeholder="Search Lab Reference, Operator, Machine..." style="min-width:320px;padding:8px 14px">
+                    </div>
+                    <span class="muted sm" id="wst-record-count">Loading records...</span>
+                </div>
+            </div>
+
+            <div class="dtr-table-wrap">
+                <table class="dtr-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 50px;">NO</th>
+                            <th>LAB REFERENCE</th>
+                            <th>TEST DATE</th>
+                            <th>SPECIFICATION / MATERIAL</th>
+                            <th>MACHINE / TECHNICIAN</th>
+                            <th>CYCLE PROGRESS</th>
+                            <th>STATUS</th>
+                            <th style="text-align:right">ACTION</th>
+                        </tr>
+                    </thead>
+                    <tbody id="wst-list-tbody">
+                        <tr><td colspan="8" class="muted" style="text-align:center;padding:24px">Loading test sessions...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:10px;border-top:1px solid rgba(148,163,184,0.18)">
+                <span class="muted sm" id="wst-pagination-info">Showing active records</span>
+                <div style="display:flex;gap:6px">
+                    <button class="dtr-btn-xs dtr-btn-outline" id="btn-wst-prev-page" disabled>&lt;</button>
+                    <button class="dtr-btn-xs dtr-btn-outline" id="btn-wst-next-page" disabled>&gt;</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="dtr-panel-calculators"class="dtr-panel <?= $activeTab === 'calculators' ? '' : 'hidden' ?>">
     <div class="dtr-grid-3">
         <!-- 1. Weight Calculator -->
         <div class="card glass dtr-section-card" id="calc-card-weight">
@@ -1382,6 +1626,457 @@ $subTab = $subTab ?? 'bonding';
 </section>
 
 <!-- =======================================================================
+     SPECIMEN INTAKE MODAL (+ Shoe Collected: Building A / Building B)
+     ======================================================================= -->
+<div id="dtr-intake-backdrop" class="dtr-modal-backdrop hidden">
+    <div class="dtr-modal-dialog dtr-intake-dialog">
+        <div class="dtr-modal-header dtr-intake-head">
+            <div>
+                <h3>Specimen Intake</h3>
+                <small>Enter every specimen collected per line, including mixed tests and retests.</small>
+            </div>
+            <div class="dtr-intake-batch">
+                <b id="dtr-intake-batch-label">A &bull; <?= date('Y-m-d') ?></b>
+                <button type="button" id="btn-intake-close" class="dtr-btn-xs" style="background:transparent;color:#fff;border:none;font-size:20px;cursor:pointer" aria-label="Close">&times;</button>
+            </div>
+        </div>
+        <div class="dtr-intake-bar">
+            <div class="dtr-intake-field">
+                <label>Building</label>
+                <div class="dtr-intake-toggle" id="dtr-intake-building">
+                    <button type="button" class="active" data-building="A">Bldg A</button>
+                    <button type="button" data-building="B">Bldg B</button>
+                </div>
+            </div>
+            <div class="dtr-intake-field">
+                <label for="dtr-intake-collection">Collection Date</label>
+                <input type="date" id="dtr-intake-collection" value="<?= date('Y-m-d') ?>">
+            </div>
+            <div class="dtr-intake-field">
+                <label for="dtr-intake-production">Production Date</label>
+                <input type="date" id="dtr-intake-production" value="<?= date('Y-m-d') ?>">
+            </div>
+            <label class="dtr-intake-match"><input type="checkbox" id="dtr-intake-match" checked> Match collection date</label>
+            <div class="dtr-intake-field" style="margin-left:auto">
+                <label for="dtr-intake-encoder">Encoded By</label>
+                <input type="text" id="dtr-intake-encoder" value="<?= esc((string) (service('auth')->user()['name'] ?? ''), 'attr') ?>" placeholder="Name of encoder" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;min-width:220px">
+            </div>
+        </div>
+        <div class="dtr-modal-body dtr-intake-body">
+            <table class="dtr-table dtr-intake-table">
+                <thead>
+                    <tr>
+                        <th>Active</th><th>Line</th><th>Side</th><th>Lab Ref No</th><th>Production Code</th><th>Style</th><th>Colorway</th><th>MTL #</th>
+                        <th>Shoe Master</th><th>Laboratory Test</th><th>Size</th><th>Test Type</th><th>Lacking</th><th>Retest Details</th>
+                    </tr>
+                </thead>
+                <tbody id="dtr-intake-tbody"></tbody>
+            </table>
+        </div>
+        <div class="dtr-modal-footer">
+            <span id="dtr-intake-msg" class="muted sm" style="margin-right:auto"></span>
+            <button type="button" id="btn-intake-cancel" class="dtr-btn dtr-btn-outline">Cancel</button>
+            <button type="button" id="btn-intake-save" class="dtr-btn dtr-btn-primary">Save Batch</button>
+        </div>
+    </div>
+</div>
+
+<!-- =======================================================================
+     WHOLE SHOE INTAKE MODAL (+ Whole Shoe Collected -> tbl_dtr_shoe_list)
+     ======================================================================= -->
+<div id="dtr-wshoe-backdrop" class="dtr-modal-backdrop hidden">
+    <div class="dtr-modal-dialog dtr-intake-dialog dtr-wshoe-dialog">
+        <div class="dtr-modal-header dtr-intake-head">
+            <div>
+                <h3>Whole Shoe Intake</h3>
+                <small>Enter every whole shoe collected, one per line. Existing Production Codes are skipped.</small>
+            </div>
+            <button type="button" id="btn-wshoe-close" class="dtr-btn-xs" style="background:transparent;color:#fff;border:none;font-size:20px;cursor:pointer" aria-label="Close">&times;</button>
+        </div>
+        <div class="dtr-intake-bar">
+            <div class="dtr-intake-field">
+                <label>Building</label>
+                <div class="dtr-intake-toggle" id="dtr-wshoe-building">
+                    <button type="button" class="active" data-building="A">Bldg A</button>
+                    <button type="button" data-building="B">Bldg B</button>
+                </div>
+            </div>
+            <div class="dtr-intake-field">
+                <label for="dtr-wshoe-date">Collection Date</label>
+                <input type="date" id="dtr-wshoe-date" value="<?= date('Y-m-d') ?>">
+            </div>
+            <div class="dtr-intake-field">
+                <label for="dtr-wshoe-production">Production Date</label>
+                <input type="date" id="dtr-wshoe-production" value="<?= date('Y-m-d') ?>" disabled>
+            </div>
+            <label class="dtr-intake-match"><input type="checkbox" id="dtr-wshoe-match" checked> Match collection date</label>
+            <div class="dtr-intake-field" style="margin-left:auto">
+                <label for="dtr-wshoe-encoder">Encoded By</label>
+                <input type="text" id="dtr-wshoe-encoder" value="<?= esc((string) (service('auth')->user()['name'] ?? ''), 'attr') ?>" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;min-width:220px">
+            </div>
+        </div>
+        <div class="dtr-modal-body dtr-intake-body">
+            <table class="dtr-table dtr-intake-table dtr-wshoe-table">
+                <thead>
+                    <tr><th>Active</th><th>Line</th><th>Lab Ref No</th><th>Production Code</th><th>Style No.</th><th>Colorway</th><th>MTL #</th><th>Shoe Master</th><th>No. of Shoes</th><th>Test Type</th></tr>
+                </thead>
+                <tbody id="dtr-wshoe-tbody"></tbody>
+            </table>
+        </div>
+        <div class="dtr-modal-footer">
+            <span id="dtr-wshoe-msg" class="muted sm" style="margin-right:auto"></span>
+            <button type="button" id="btn-wshoe-cancel" class="dtr-btn dtr-btn-outline">Cancel</button>
+            <button type="button" id="btn-wshoe-save" class="dtr-btn dtr-btn-primary">Save Batch</button>
+        </div>
+    </div>
+</div>
+
+<!-- =======================================================================
+     MATERIAL RECEIVE MODAL (+ Material Receive -> IQC Container Receiving Log)
+     ======================================================================= -->
+<div id="dtr-mrec-backdrop" class="dtr-modal-backdrop hidden">
+    <div class="dtr-modal-dialog dtr-intake-dialog dtr-mrec-dialog">
+        <div class="dtr-modal-header dtr-intake-head">
+            <div>
+                <h3>Material Receive</h3>
+                <small>Enter every material received, one per line. Use + Add line for more than 10.</small>
+            </div>
+            <button type="button" id="btn-mrec-close" class="dtr-btn-xs" style="background:transparent;color:#fff;border:none;font-size:20px;cursor:pointer" aria-label="Close">&times;</button>
+        </div>
+        <div class="dtr-intake-bar">
+            <div class="dtr-intake-field">
+                <label for="dtr-mrec-arrived">Date Arrived</label>
+                <input type="date" id="dtr-mrec-arrived" value="<?= date('Y-m-d') ?>">
+            </div>
+            <div class="dtr-intake-field">
+                <label for="dtr-mrec-date">Lab. Received Date</label>
+                <input type="date" id="dtr-mrec-date" value="<?= date('Y-m-d') ?>">
+            </div>
+            <button type="button" id="btn-mrec-addrow" class="dtr-btn dtr-btn-outline" style="margin-bottom:2px">+ Add line</button>
+            <div class="dtr-intake-field" style="margin-left:auto">
+                <label for="dtr-mrec-encoder">Encoded By</label>
+                <input type="text" id="dtr-mrec-encoder" value="<?= esc((string) (service('auth')->user()['name'] ?? ''), 'attr') ?>" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;min-width:220px">
+            </div>
+        </div>
+        <div class="dtr-modal-body dtr-intake-body">
+            <table class="dtr-table dtr-intake-table dtr-mrec-table">
+                <thead>
+                    <tr><th>Type of Materials</th><th>Material Name</th><th>Container No.</th><th>Prod Code</th><th>Processing No.</th><th>Quantity (Materials Received)</th><th>Estimated Timeline (Finish Testing)</th></tr>
+                </thead>
+                <tbody id="dtr-mrec-tbody"></tbody>
+            </table>
+        </div>
+        <div class="dtr-modal-footer">
+            <span id="dtr-mrec-msg" class="muted sm" style="margin-right:auto"></span>
+            <button type="button" id="btn-mrec-cancel" class="dtr-btn dtr-btn-outline">Cancel</button>
+            <button type="button" id="btn-mrec-save" class="dtr-btn dtr-btn-primary">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Retest picker: failed Lab Ref Nos that need a retest, with the analysis / reason -->
+<div id="dtr-retest-backdrop" class="dtr-modal-backdrop hidden" style="z-index:10020">
+    <div class="dtr-modal-dialog" style="max-width:1100px">
+        <div class="dtr-modal-header">
+            <h3>Retest needed &mdash; select the Lab Ref No.</h3>
+            <button type="button" id="btn-retest-close" class="dtr-btn-xs" style="background:transparent;color:#fff;border:none;font-size:20px;cursor:pointer" aria-label="Close">&times;</button>
+        </div>
+        <div class="dtr-modal-body" style="padding:0;background:#fff">
+            <div style="padding:12px 16px;border-bottom:1px solid #e2e8f0">
+                <input type="text" id="dtr-retest-search" placeholder="Search Lab Ref No., style or color…" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #cbd5e1;border-radius:4px;font-size:13px">
+            </div>
+            <table class="dtr-table" style="width:100%">
+                <thead><tr><th>Lab Ref No.</th><th>Style</th><th>Color</th><th>Result</th><th>Mode of Failure</th><th>Analysis / Reason</th><th>Tested</th><th></th></tr></thead>
+                <tbody id="dtr-retest-tbody"></tbody>
+            </table>
+        </div>
+        <div class="dtr-modal-footer">
+            <button type="button" id="btn-retest-cancel" class="dtr-btn dtr-btn-outline">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- =======================================================================
+     PRINT PREVIEW / PDF REPORT MODAL (ACCESS PARITY)
+     ======================================================================= -->
+
+
+<div id="wst-monitor-modal-backdrop" class="dtr-modal-backdrop hidden">
+    <div class="dtr-modal-dialog wst-theme-modal" style="max-width:1380px;width:97%">
+        <!-- Modal Header: Crisp Hierarchy & Pulsing Dot Indicator -->
+        <div class="dtr-modal-header" style="padding:16px 24px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
+            <div>
+                <div style="display:flex;align-items:center;gap:10px">
+                    <h3 id="wst-modal-title" style="margin:0;font-size:17px;font-weight:700;color:#0f172a;letter-spacing:-0.01em">WHOLE SHOE FLEXING MONITORING</h3>
+                    <span class="dtr-pill dtr-pill-pass" id="wst-modal-status-badge" style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;padding:3px 10px">
+                        <span class="wst-pulse-dot wst-pulse-dot-green" id="wst-modal-pulse-dot"></span>
+                        <span id="wst-modal-status-text">RUNNING</span>
+                    </span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:3px">
+                    <span class="mono sm text-slate-500" style="color:#64748b;font-size:12px">Test ID:</span>
+                    <span class="mono bold" id="wst-modal-labref-badge" style="color:#0f172a;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;padding:1px 7px;font-size:12px">DTP20261028WSF01</span>
+                </div>
+            </div>
+            <button type="button" id="btn-wst-close-monitor-modal" class="dtr-modal-close" title="Close Monitor" style="font-size:22px">&times;</button>
+        </div>
+
+        <div class="dtr-modal-body" style="padding:22px 24px;max-height:calc(90vh - 120px);overflow-y:auto;background:#ffffff">
+            <!-- Modal Grid: Monitor View on Left, Actions on Right -->
+            <div class="wst-details-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:20px;align-items:start">
+                <div>
+                    <!-- Read-Only Key-Value Stat Cards (Modern Telemetry Cards) -->
+                    <div class="dtr-grid-4" style="gap:12px;margin-bottom:18px">
+                        <div class="wst-meta-card">
+                            <span class="wst-meta-label">Lab Reference</span>
+                            <span class="wst-meta-val mono" id="wst-card-dt-labref" style="color:var(--brand,#2563eb)">DTP20261028WSF01</span>
+                        </div>
+                        <div class="wst-meta-card">
+                            <span class="wst-meta-label">Test Date</span>
+                            <span class="wst-meta-val" id="wst-card-dt-date">2026-10-28</span>
+                        </div>
+                        <div class="wst-meta-card">
+                            <span class="wst-meta-label">Samples Configured</span>
+                            <span class="wst-meta-val" id="wst-card-dt-samples">4D / 4W / 0H</span>
+                        </div>
+                        <div class="wst-meta-card">
+                            <span class="wst-meta-label">Material / Type</span>
+                            <span class="wst-meta-val" id="wst-card-dt-type" title="Standard Whole Shoe Flexing">Standard Whole Shoe Flexing</span>
+                        </div>
+                    </div>
+
+                    <!-- Overall Completion Progress Bar -->
+                    <div style="margin-bottom:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                            <span style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#475569">
+                                Overall Test Progress (<span id="wst-progress-cycles">0</span> / <span id="wst-progress-target">100,000</span> cycles)
+                            </span>
+                            <span class="mono bold" id="wst-progress-pct" style="font-size:12px;color:var(--brand,#2563eb)">0%</span>
+                        </div>
+                        <div class="wst-progress-rail">
+                            <div class="wst-progress-fill" id="wst-progress-bar-fill" style="width:0%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Monitoring Sub-tabs (Dry / Wet / Hydro) -->
+                    <div class="wst-monitoring-container">
+                        <div class="wst-group-tabs" role="tablist">
+                            <button type="button" class="wst-gt-btn active wst-modal-gt-btn" data-modal-gt="dry">DRY SAMPLES</button>
+                            <button type="button" class="wst-gt-btn wst-modal-gt-btn" data-modal-gt="wet">WET SAMPLES</button>
+                        </div>
+
+                        <!-- Monitoring Cycle Table -->
+                        <div class="dtr-table-wrap" style="overflow-x:auto;margin-top:10px;border-radius:8px;border:1px solid #e2e8f0;background:#ffffff">
+                            <table class="dtr-table wst-cycle-table">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width:110px">SPECIMEN</th>
+                                        <th>CYCLES</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="2" class="muted" style="text-align:center;padding:16px">Loading specimen monitoring grid...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Collapsible Drawer: Environmental & Station Specs -->
+                    <details style="margin-top:16px;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;background:#f8fafc">
+                        <summary style="cursor:pointer;font-weight:600;font-size:12.5px;color:var(--brand,#2563eb);user-select:none;display:flex;align-items:center;gap:6px">
+                            <span>&#9660;</span> View Full Test Parameter Specs &amp; Environmental Conditions
+                        </summary>
+                        <div style="margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0" class="dtr-grid-3">
+                            <div><small class="wst-meta-label">Technician:</small> <div class="mono bold" id="wst-view-op" style="font-size:13px;color:#0f172a">Lab QC Specialist</div></div>
+                            <div><small class="wst-meta-label">Machine Station:</small> <div class="mono bold" id="wst-view-mc" style="font-size:13px;color:#0f172a">MC-FLEX-01</div></div>
+                            <div><small class="wst-meta-label">Ambient Temp:</small> <div class="mono bold" id="wst-view-temp" style="font-size:13px;color:#0f172a">23.0 &deg;C</div></div>
+                            <div><small class="wst-meta-label">Ambient Humidity:</small> <div class="mono bold" id="wst-view-hum" style="font-size:13px;color:#0f172a">50.0 %RH</div></div>
+                            <div><small class="wst-meta-label">Standard Spec:</small> <div class="mono bold" style="font-size:13px;color:#0f172a">&ge; 100,000 cycles without cracking</div></div>
+                            <div><small class="wst-meta-label">Status Note:</small> <div class="mono bold" style="font-size:13px;color:#16a34a" id="wst-view-note">In Progress</div></div>
+                        </div>
+                    </details>
+                </div>
+
+                <!-- Right Action Rail: State-Aware Controls & Distinct Safety Actions -->
+                <div class="wst-actions-card" style="padding:16px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc">
+                    <h4 style="margin:0 0 12px;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;font-weight:700;border-bottom:1px solid #e2e8f0;padding-bottom:8px">
+                        CONTROL ACTIONS
+                    </h4>
+                    <div class="wst-actions-rail">
+                        <!-- State-Aware Primary CTA: Run vs Paused vs Start -->
+                        <div id="wst-primary-action-wrap">
+                            <button type="button" class="dtr-btn dtr-btn-primary" id="btn-wst-modal-start" style="width:100%;background:#16a34a;border-color:#16a34a;justify-content:center;font-weight:700">
+                                <svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> RUN / START
+                            </button>
+                            <div id="wst-running-indicator-bar" class="dtr-btn wst-btn-running-state hidden" style="width:100%">
+                                <span class="wst-pulse-dot wst-pulse-dot-green"></span>
+                                <span>Running</span>
+                                <span class="wst-runtime-timer" id="wst-modal-runtime-clock">Active</span>
+                            </div>
+                        </div>
+
+                        <!-- Secondary Operational Actions -->
+                        <button type="button" class="dtr-btn wst-btn-secondary" id="btn-wst-modal-findings" style="width:100%">
+                            <svg class="ic" aria-hidden="true"><use href="#i-check"/></svg> Log Findings
+                        </button>
+                        <button type="button" class="dtr-btn wst-btn-secondary" id="btn-wst-modal-stop-sample" style="width:100%">
+                            <svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg> Stop Sample...
+                        </button>
+
+                        <hr style="border:none;border-top:1px solid #e2e8f0;margin:6px 0">
+
+                        <!-- Destructive / Safety Action (Red Outline with Distinct Separation) -->
+                        <button type="button" class="dtr-btn wst-btn-danger-outline" id="btn-wst-modal-stop" style="width:100%">
+                            <svg class="ic" aria-hidden="true"><use href="#i-close"/></svg> Stop Entire Test
+                        </button>
+
+                        <hr style="border:none;border-top:1px solid #e2e8f0;margin:6px 0">
+
+                        <!-- Report Action -->
+                        <button type="button" class="dtr-btn wst-btn-secondary" id="btn-wst-modal-print" style="width:100%">
+                            <svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg> Print Summary
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal Footer: Clear Breadcrumbs & Background Execution Caption -->
+        <div class="dtr-modal-footer" style="padding:12px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between">
+            <span class="muted sm" style="color:#64748b;font-size:12px">Whole Shoe Monitoring System &bull; dbnexus</span>
+            <div style="display:flex;align-items:center;gap:12px">
+                <span class="muted sm" style="color:#94a3b8;font-size:11.5px">Runs in background while closed</span>
+                <button type="button" id="btn-wst-cancel-monitor-modal" class="dtr-btn wst-btn-secondary" style="padding:6px 18px">Close Monitor</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- =======================================================================
+     POPUP MODAL: LOG FINDINGS DIALOG (LMS PARITY MODAL)
+     ======================================================================= -->
+<div id="wst-findings-modal-backdrop" class="dtr-modal-backdrop hidden" style="z-index:10050">
+    <div class="dtr-modal-dialog wst-theme-modal" style="max-width:760px;width:94%">
+        <div class="dtr-modal-header">
+            <div style="display:flex;align-items:center;gap:10px">
+                <span class="dtr-pill dtr-pill-blue">LOG FINDINGS</span>
+                <h3 style="margin:0;font-size:16px;font-weight:700">Record Checkpoint Observation</h3>
+            </div>
+            <button type="button" id="btn-wst-close-findings-modal" class="dtr-modal-close">&times;</button>
+        </div>
+        <div class="dtr-modal-body" style="padding:22px 24px">
+            <div class="dtr-grid-2" style="gap:14px;margin-bottom:14px">
+                <div class="dtr-field">
+                    <label>Active Specimen Group</label>
+                    <input type="text" id="wst-findings-group-display" class="bold mono" value="DRY SAMPLES" readonly style="color:var(--brand,#2563eb);background:#f8fafc">
+                </div>
+                <div class="dtr-field">
+                    <label>Checkpoint Cycle</label>
+                    <select id="wst-findings-cycle">
+                        <option value="25000">25,000 Cycles</option>
+                        <option value="35000">35,000 Cycles</option>
+                        <option value="45000">45,000 Cycles</option>
+                        <option value="55000">55,000 Cycles</option>
+                        <option value="65000">65,000 Cycles</option>
+                        <option value="75000">75,000 Cycles</option>
+                        <option value="100000">100,000 Cycles</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- LMS Specimen Range selector -->
+            <div class="dtr-subcard" style="margin-bottom:14px;padding:12px 14px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc">
+                <div class="lf-range-presets" id="wst-findings-presets" style="margin-bottom:8px"></div>
+                <div style="display:flex;align-items:center;gap:8px">
+                    <span class="muted sm" style="font-weight:600">Specimens:</span>
+                    <input type="number" id="wst-findings-start" min="1" max="20" value="1" style="width:65px;padding:5px 8px;text-align:center">
+                    <span class="muted sm" style="font-weight:600">to through:</span>
+                    <input type="number" id="wst-findings-end" min="1" max="20" value="4" style="width:65px;padding:5px 8px;text-align:center">
+                    <span class="muted sm" id="wst-findings-range-info" style="color:var(--brand,#2563eb);margin-left:auto;font-weight:600">4 selected</span>
+                </div>
+                <p class="lf-help" style="margin:8px 0 0 0;font-size:11.5px;color:#64748b">Choosing a later cycle also records all earlier checkpoints for the selected specimens.</p>
+            </div>
+
+            <div class="dtr-field" style="margin-bottom:14px">
+                <label>Observation / Defect Assessment</label>
+                <textarea class="dtr-input" id="wst-findings-text" rows="3" placeholder="Enter findings (e.g. No peeling, slight wrinkle on vamp fold, acceptable)...">No peeling or delamination observed. Vamp flex crease normal.</textarea>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center">
+                <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:#1e293b;cursor:pointer">
+                    <input type="checkbox" checked id="wst-findings-pass" style="width:16px;height:16px"> Pass Checkpoint Criteria (No Delamination)
+                </label>
+            </div>
+        </div>
+        <div class="dtr-modal-footer">
+            <button type="button" class="dtr-btn dtr-btn-outline" id="btn-wst-cancel-findings" style="padding:8px 18px">Cancel</button>
+            <button type="button" class="dtr-btn dtr-btn-primary" id="btn-wst-save-findings" style="padding:8px 22px;font-weight:700">
+                <svg class="ic" aria-hidden="true"><use href="#i-check"/></svg> Save Checkpoint Findings
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- =======================================================================
+     POPUP MODAL: STOP TEST CONFIRMATION MODAL (LMS PARITY SAFEGUARD)
+     ======================================================================= -->
+<div id="wst-stop-test-modal-backdrop" class="dtr-modal-backdrop hidden" style="z-index:10070">
+    <div class="dtr-modal-dialog wst-theme-modal" style="max-width:480px;width:92%">
+        <div class="dtr-modal-header" style="border-bottom:1px solid #fee2e2">
+            <div style="display:flex;align-items:center;gap:10px">
+                <span class="dtr-pill dtr-pill-fail" style="font-weight:700">EMERGENCY STOP</span>
+                <h3 style="margin:0;font-size:15px;font-weight:700;color:#991b1b">Stop Entire Test Session</h3>
+            </div>
+            <button type="button" id="btn-wst-close-stop-test" class="dtr-modal-close">&times;</button>
+        </div>
+        <div class="dtr-modal-body" style="padding:20px">
+            <p style="font-size:13.5px;color:#334155;line-height:1.5;margin:0 0 14px">
+                Are you sure you want to stop this test session?
+            </p>
+            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:12px;font-size:12.5px;color:#991b1b;margin-bottom:12px">
+                <strong>Warning:</strong> All running specimens will be halted and the test status will immediately be marked as <strong>COMPLETED (STOPPED)</strong>. Further automatic cyclic telemetry will cease.
+            </div>
+        </div>
+        <div class="dtr-modal-footer" style="padding:12px 20px;display:flex;justify-content:flex-end;gap:10px">
+            <button type="button" class="dtr-btn wst-btn-secondary" id="btn-wst-cancel-stop-test" style="padding:7px 18px">Cancel</button>
+            <button type="button" class="dtr-btn wst-btn-danger-outline" id="btn-wst-confirm-stop-test" style="background:#dc2626 !important;color:#ffffff !important;border-color:#dc2626 !important;padding:7px 20px;font-weight:700">
+                <svg class="ic" aria-hidden="true"><use href="#i-close"/></svg> Stop Entire Test
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- =======================================================================
+     POPUP MODAL: STOP SAMPLE SELECTOR (LMS PARITY MODAL)
+     ======================================================================= -->
+<div id="wst-stop-sample-modal-backdrop" class="dtr-modal-backdrop hidden" style="z-index:10060">
+    <div class="dtr-modal-dialog wst-theme-modal" style="max-width:520px;width:90%">
+        <div class="dtr-modal-header">
+            <div style="display:flex;align-items:center;gap:10px">
+                <span class="dtr-pill dtr-pill-warn" style="font-weight:700">STOP SPECIMEN</span>
+                <h3 style="margin:0;font-size:15px;font-weight:700">Select Specimens to Stop</h3>
+            </div>
+            <button type="button" id="btn-wst-close-stop-sample" class="dtr-modal-close">&times;</button>
+        </div>
+        <div class="dtr-modal-body" style="padding:18px 20px">
+            <p class="muted sm" style="margin-bottom:12px">
+                Select individual specimen(s) to halt due to damage or early test completion.
+            </p>
+            <div id="wst-stop-sample-list" style="display:flex;flex-direction:column;gap:8px;max-height:240px;overflow-y:auto;padding-right:2px">
+                <!-- Dynamically filled with specimen items -->
+            </div>
+        </div>
+        <div class="dtr-modal-footer">
+            <button type="button" class="dtr-btn dtr-btn-outline" id="btn-wst-cancel-stop-sample" style="padding:8px 18px">Cancel</button>
+            <button type="button" class="dtr-btn dtr-btn-outline" id="btn-wst-confirm-stop-sample" style="border-color:#d97706;color:#d97706;padding:8px 20px;font-weight:700">
+                <svg class="ic" aria-hidden="true"><use href="#i-close"/></svg> Stop Selected Specimen(s)
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- =======================================================================
      PRINT PREVIEW / PDF REPORT MODAL (ACCESS PARITY)
      ======================================================================= -->
 <div id="dtr-print-modal-backdrop" class="dtr-modal-backdrop hidden">
@@ -1397,6 +2092,9 @@ $subTab = $subTab ?? 'bonding';
         </div>
         <div class="dtr-modal-footer">
             <button type="button" id="btn-dtr-cancel-print" class="dtr-btn dtr-btn-outline">Close</button>
+                        <a id="btn-dtr-download-access-pdf" href="#" target="_blank" class="dtr-btn dtr-btn-outline hidden" style="border-color:#16a34a;color:#16a34a;text-decoration:none">
+                <svg class="ic" aria-hidden="true"><use href="#i-download"/></svg> Download Official PDF
+            </a>
             <button type="button" id="btn-dtr-download-pdf" class="dtr-btn dtr-btn-outline" style="border-color:#2563eb;color:#2563eb">
                 <svg class="ic" aria-hidden="true"><use href="#i-file"/></svg> Download PDF
             </button>
@@ -1410,3 +2108,12 @@ $subTab = $subTab ?? 'bonding';
 
 <!-- Toast Notification -->
 <div id="dtr-toast" class="dtr-toast hidden"></div>
+<!-- Technicians with their machine no. (machine - name): used by the Technician fields -->
+<datalist id="dtr-tech-list">
+    <option value="DTP-QC-048 - L. Aquidado"></option>
+    <option value="DTP-QC-002 - S. Aquino"></option>
+    <option value="DTP-QC-001 - L. Tuddao"></option>
+    <option value="DTP-QC-064 - J. Barrera"></option>
+    <option value="DTP-QC-066 - J. Parrilla"></option>
+    <option value="DTP-QC-067 - R. Cabiga"></option>
+</datalist>

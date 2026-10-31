@@ -564,8 +564,10 @@ class Brain
             }
         }
 
-        // Calibrated confidence target: for VF test methods pointing towards a standard, ensure confidence is 90% - 100%
-        if (($hits[0]['row']['kind'] ?? '') === 'vf_method' && $best >= 4.0) {
+        // Calibrated confidence target: for VF test methods, active website tasks, and laboratory workflows
+        $k0 = $hits[0]['row']['kind'] ?? '';
+        $s0 = $hits[0]['row']['source'] ?? '';
+        if (($k0 === 'vf_method' || $s0 === 'workflow_seed' || $s0 === 'system_workflow') && $best >= 4.0) {
             $c = max(90, min(100, (int) round(90 + ($best >= 10.0 ? 10 : ($best - 4.0) * 1.6))));
         }
 

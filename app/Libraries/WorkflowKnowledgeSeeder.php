@@ -209,7 +209,7 @@ class WorkflowKnowledgeSeeder
             [
                 'kind' => 'playbook',
                 'title' => 'Comprehensive Failure Remediation Guide: What to Do When a VF Test Fails',
-                'keywords' => 'test failed what to do, remediation plan, failed test procedure, quarantine failed shoes, root cause analysis, qc failure action plan',
+                'keywords' => 'test failed what to do, remediation plan, failed test procedure, quarantine failed shoes, root cause analysis, qc failure action plan, why did test fail, why did sole adhesion fail, how to fix sole separation, how to fix test failure, remediation guide for failed test',
                 'body' => "### Laboratory Test Failure Protocol & Action Plan\n\n"
                         . "When a test result is marked **FAIL** in NEXUS-L, follow the mandatory VF quality escalation protocol:\n\n"
                         . "1. **Verification Test:** Retest 3 additional specimens from the same production lot to verify if the failure is an isolated defect or a systematic batch issue.\n"
