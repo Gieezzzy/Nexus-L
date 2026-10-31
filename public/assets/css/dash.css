@@ -9,8 +9,8 @@ a{color:var(--brand);text-decoration:none}a:hover{text-decoration:underline}
 /* Glass surface: single static blur layer, solid fallback */
 .glass{background:#f4f7fb;border:1px solid var(--line);box-shadow:0 4px 14px rgba(30,41,59,.1)}
 @supports ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){
-  .glass{background:linear-gradient(135deg,rgba(226,232,242,.55),rgba(226,232,242,.22));
-    -webkit-backdrop-filter:blur(14px) saturate(1.5);backdrop-filter:blur(14px) saturate(1.5);
+  .glass{background:linear-gradient(135deg,rgba(236,240,247,.97),rgba(228,234,244,.93));
+    /* no backdrop-filter here: a live blur on every card and on the fixed sidebar is re-drawn on each scroll frame */
     border:1px solid rgba(148,163,184,.35);
     box-shadow:0 4px 18px rgba(30,41,59,.12),inset 1px 1px 1px rgba(255,255,255,.95),inset -1px -1px 1px rgba(255,255,255,.6)}
 }
@@ -133,7 +133,7 @@ td{padding:9px 12px 9px 0;border-top:1px solid rgba(148,163,184,.3)}
 .nexus-notif-prompt.nb-fade-out {
   opacity: 0;
   transform: translateY(-12px) scale(0.97);
-  transition: all 0.25s ease-out;
+  transition: background-color 0.25s ease-out, border-color 0.25s ease-out, color 0.25s ease-out, box-shadow 0.25s ease-out, transform 0.25s ease-out, opacity 0.25s ease-out;
 }
 .nb-icon {
   position: relative;
@@ -216,7 +216,7 @@ td{padding:9px 12px 9px 0;border-top:1px solid rgba(148,163,184,.3)}
   border-radius: 8px;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -437,3 +437,7 @@ button .ic,.dsg-btn .ic,.sc-btn .ic,.il-btn .ic{margin-right:4px}
 }
 #nx-slow.show { opacity: 1; transform: translate(-50%, 0); }
 @media (prefers-reduced-motion: reduce) { .nx-shimmer { animation: none; } }
+/* ---- smoothness hygiene ---- */
+a, button, [role=button], input, select, textarea, label, summary { touch-action: manipulation; }
+html { -webkit-tap-highlight-color: transparent; }
+img, video { max-width: 100%; }

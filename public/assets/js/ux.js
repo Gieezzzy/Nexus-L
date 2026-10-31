@@ -262,8 +262,27 @@
     });
     (root || document).querySelectorAll('img:not([alt])').forEach((i) => i.setAttribute('alt', ''));
   };
+  // Only the NEW parts of the page are scanned, when the browser is idle: re-scanning the whole document after every change
+  // (a clock ticking, a list refreshing, a chat poll) kept the main thread busy and showed up as stutter while scrolling.
   let timer = null;
-  const later = () => { clearTimeout(timer); timer = setTimeout(() => enhance(document), 250); };
+  const fresh = new Set();
+  const flush = () => {
+    timer = null;
+    const roots = [...fresh];
+    fresh.clear();
+    roots.forEach((r) => { if (r.isConnected) enhance(r); });
+  };
+  const later = (muts) => {
+    for (const m of muts) {
+      for (const node of m.addedNodes) {
+        if (node.nodeType !== 1) continue;                       // text changes (a ticking clock) never matter here
+        const p = node.parentElement;
+        fresh.add(p && p !== document.body && p.id !== 'main-content' ? p : node);   // the parent: a label and its control are siblings
+      }
+    }
+    if (!fresh.size || timer) return;
+    timer = setTimeout(() => (window.requestIdleCallback ? window.requestIdleCallback(flush, { timeout: 800 }) : flush()), 150);
+  };
   const start = () => { enhance(document); new MutationObserver(later).observe(document.body, { childList: true, subtree: true }); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })();

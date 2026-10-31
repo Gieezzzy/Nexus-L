@@ -863,7 +863,7 @@
   };
   document.addEventListener('mousedown', (e) => { if (![el.ctx, el.attMenu, el.emojiPop, $('msgr-attach'), $('msgr-emoji')].some((n) => n.contains(e.target))) closePops(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closePops(); closeDlg(); } });
-  el.msgs.addEventListener('scroll', closePops);
+  el.msgs.addEventListener('scroll', closePops, { passive: true });
 
   $('msgr-attach').addEventListener('click', (e) => {
     const was = !el.attMenu.classList.contains('hidden'); closePops(); if (was) return;
