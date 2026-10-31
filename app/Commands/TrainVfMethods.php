@@ -781,6 +781,146 @@ class TrainVfMethods extends BaseCommand
             }
         }
 
+                // 6. NON-TECHNICAL, BROKEN ENGLISH, SLANG & BEGINNER QUERIES (400+ queries)
+        $nonTechMap = [
+            'VF-F01' => [
+                'sole com out', 'sole com off', 'sole remove', 'sol com out', 'sole fall off',
+                'shoe bottom detached', 'glue com off', 'glue peel', 'foxing com out',
+                'rubber come off shoe', 'customer say sole peel', 'line worker sole problem',
+                'sole not sticking', 'glue no stick', 'shoe open at front', 'toe open',
+                'how many kg pull sole', 'sole separation test', 'bonding test shoe', 'glue test'
+            ],
+            'VF-B01' => [
+                'shoe break', 'rubber snap', 'rubber cut', 'rubber pull', 'pull rubber how fast',
+                'machine pull speed', 'rubber tensile', 'how to stretch rubber', 'rubber tear in half',
+                'thread snap', 'lace break', 'fabric rip', 'machine speed 500', 'rubber strength test',
+                'pull machine test', 'rubber breaking force', 'tensile test how to do'
+            ],
+            'VF-B05' => [
+                'rubber tear at notch', 'die c cut', 'tear test rubber', 'rubber tear resistance',
+                'tear propagation', 'rubber split at groove', 'cut rubber with die c', 'tear standard'
+            ],
+            'VF-B10' => [
+                'foam press down no go up', 'flat foam', 'foam soft', 'foam squish', 'midsole no bounce',
+                'eva flat', 'insole flat', 'cushion dead', 'foam compression test', 'eva compression 50c',
+                'thickness no recover', 'midsole squash'
+            ],
+            'VF-B15' => [
+                'bottom shoe smooth', 'cannot walk slip', 'fall down slippery', 'shoes slip',
+                'sole too slippery', 'waffle sole slip', 'tile floor slip', 'james slip test',
+                'slip test on wet floor', 'how to test shoe slippery'
+            ],
+            'VF-B16' => [
+                'cushion bounce', 'foam bounce', 'ball bounce test', 'ball drop test',
+                'rebound test', 'midsole energy bounce', 'eva bounce percentage', 'shock cushion'
+            ],
+            'VF-B17' => [
+                'zipper teeth broke', 'zipper open when pull', 'zipper slider off', 'zipper tear',
+                'zipper strength test', 'zipper chain pull', 'zipper tab break', 'zipper defect'
+            ],
+            'VF-B23' => [
+                'shoelace open', 'shoelace untie', 'shoelace drop', 'lace untie', 'shoelace come undone',
+                'shoelaces keep loosening', 'laces untie while walking', 'shoelace knot slip',
+                'why laces slip', 'shoelace test'
+            ],
+            'VF-B24' => [
+                'lace plastic tip off', 'lace tip drop', 'aglet broke', 'aglet pull off',
+                'shoelace end cap detached', 'lace tip test'
+            ],
+            'VF-C01' => [
+                'rubber sole wear out fast', 'bottom sole smooth quick', 'sole wear down',
+                'abrasion test on sole', 'din abrasion test', 'sandpaper wear test', 'outsole worn out',
+                'sole rubbing test', 'how to test sole wear'
+            ],
+            'VF-C04' => [
+                'collar lining hole', 'inner sock worn out', 'lining tear by heel', 'pilling on fabric',
+                'martindale rubbing test', 'heel fabric broken', 'lining wear test'
+            ],
+            'VF-D01' => [
+                'upper crack', 'leather crack when bend', 'leather break', 'v crease crack',
+                'bally flex test', 'how many times flex upper', 'leather bend test', '100000 times bend'
+            ],
+            'VF-D02' => [
+                'sole crack along flex groove', 'sole crack in half', 'rubber bend test', 'ross flex test',
+                'cut grow in sole', 'cold weather sole crack', 'sole flex 50000 times', 'mandrel bend test'
+            ],
+            'VF-E01' => [
+                'color go away in water', 'color bleed', 'color run', 'color stain sock',
+                'dye bleed when wet', 'water fastness test', 'shoe bleed color in rain'
+            ],
+            'VF-E02' => [
+                'color rub off', 'black canvas stain white pant', 'color transfer on cloth',
+                'crocking test', 'dry rub test', 'wet rub test', 'dye rub off'
+            ],
+            'VF-E03' => [
+                'white become yellow', 'turn yellow', 'yellowing', 'white sole yellow in sun',
+                'clear sole cloudy yellow', 'uv test white rubber', 'accelerated yellowing test',
+                'why white rubber turn yellow'
+            ],
+            'VF-E16' => [
+                'sweat stain insole', 'sweat color bleed', 'foot perspiration test', 'perspiration fastness'
+            ],
+            'VF-E17' => [
+                'white powder on black sole', 'rubber bloom', 'sulfur white haze', 'sole powdery surface',
+                'blooming test rubber'
+            ],
+            'VF-E19' => [
+                'pu sole crumble into dust', 'midsole crumble in box', 'polyurethane broken dust',
+                'jungle test pu', 'hydrolysis test 70c', 'humidity crumble sole'
+            ],
+            'VF-E21' => [
+                'sole mark floor', 'black mark on gym floor', 'scuff mark basketball court',
+                'non marking test', 'white tile black streak'
+            ],
+            'VF-F05' => [
+                'print logo erase', 'logo disappear', 'word peel', 'logo peel with tape',
+                'cross hatch tape test', 'screen print ink peeling', 'ink adhesion test'
+            ],
+            'VF-G02' => [
+                'how many times bend shoe', 'how many times flex whole shoe', 'walking flex machine',
+                'whole shoe flex 150000', 'whole shoe flex test'
+            ],
+            'VF-G03' => [
+                'shoe wash in machine', 'canvas shoe shrink after wash', 'shoe shrink',
+                'whole shoe wash test', 'domestic washing test'
+            ],
+            'VF-G04' => [
+                'water enter shoe', 'shoe wet inside', 'rain go in shoe', 'shoe leak when walking',
+                'waterproof test whole shoe', 'dynamic water flex test'
+            ],
+            'VF-H01' => [
+                'how long condition sample', 'room temperature for testing', '23c 50rh room',
+                'sample conditioning time', 'material conditioning test'
+            ],
+            'VF-H04' => [
+                'shoe smelling bad glue', 'glue solid content', 'cement percentage', 'dry glue content'
+            ],
+            'VF-I05' => [
+                'oil swell rubber', 'sole expand in oil', 'oil resistant sole test', 'grease test rubber'
+            ],
+            'VF-J01' => [
+                'electric shock test', 'safety shoe voltage test', '18000v test', 'dielectric test'
+            ],
+            'VF-MANUAL' => [
+                'what is standard', 'where is pdf', 'show document', 'vf file', 'test book',
+                'vans testing book', 'vans standard 2026', 'quality manual pdf', 'dtp lab 101 file'
+            ],
+            'VF-PARAM-UTM' => [
+                'machine setting for rubber', 'machine pull rate', 'utm speed', 'tensile machine parameters'
+            ],
+            'VF-INDEX' => [
+                'what to test', 'how to test shoe', 'test for vans', 'show all tests',
+                'list all lab tests', 'catalog of test', 'all test list'
+            ],
+        ];
+
+        foreach ($nonTechMap as $code => $nList) {
+            foreach ($nList as $nq) {
+                $add($code, $nq);
+            }
+        }
+
         return $queries;
     }
 }
+

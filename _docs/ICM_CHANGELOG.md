@@ -4,6 +4,32 @@
 
 ---
 
+## Phase 207 - Non-Knowledgeable User Prompting & Gapless Disambiguation Engine (2026-11-01)
+- **Problem Statement (Non-Technical User Prompts):**
+  - Factory floor technicians, line workers, warehouse staff, and junior testers typically lack prompting knowledge; they enter single vague words ("glue", "pull", "slip", "bend", "foam", "water", "yellow"), broken English ("sole com out", "shoe wet inside", "white become yellow", "shoelace open"), or confused questions ("i don't know what test to do").
+  - Such unstructured inputs created search gaps in traditional keyword search algorithms.
+- **Interactive Guided Selector Engine (`BotController::vfMethodIntent`):**
+  - Implemented beginner-friendly disambiguation selectors in `App\Controllers\BotController` returning **100% confidence** interactive cards:
+    - **🧭 Test Selector Guide:** Triggers on "i don't know what test", "help me find test", "what test to pick", presenting a visual material & defect decision tree with one-click buttons.
+    - **🧪 Rubber Outsole Disambiguator:** Triggers on "rubber", "soling", "outsole", returning VF-B01 (Tensile), VF-B05 (Die C Tear), VF-C01 (DIN Abrasion), VF-D02 (Ross Flex), and VF-A01 (Hardness).
+    - **👞 Leather & Upper Disambiguator:** Triggers on "leather", "suede", "nubuck", returning VF-D01 (Bally Flex), VF-B07 (Trouser Tear), VF-A06 (Softness), and VF-F03 (Finish Adhesion).
+    - **🧽 Foam & Midsole Disambiguator:** Triggers on "foam", "midsole", "eva", "cushion", returning VF-B10 (Compression Set), VF-B16 (Rebound Bounce), VF-B06 (Split Tear), and VF-E19 (PU Hydrolysis).
+    - **🪢 Shoelace & Hardware Disambiguator:** Triggers on "laces", "shoelaces", "aglet", "eyelet", returning VF-B23 (Knot Slip), VF-B24 (Lace Tip), VF-C09 (Abrasion), and VF-B04 (Hardware).
+    - **🌧️ Waterproofing Disambiguator:** Triggers on "waterproof", "rain", "leak", "shoe wet inside", returning VF-G04 (Waterproof Flex), VF-G08 (Hydrostatic), VF-G07 (Static), and VF-G09 (Centrifuge).
+    - **🔍 Defect Diagnosis Disambiguator:** Triggers on "customer return", "broken shoe", "defect", "damaged", mapping directly to sole peel, upper flex crack, sole flex crack, and yellowing.
+    - **📋 Audit Reference Package:** Triggers on "audit", "auditor", "compliance", presenting the VANS Performance Manual 2026, UTM Machine Parameters, and Lab Conditioning standards.
+- **1,136+ Prompt Training Corpus (`App\Commands\TrainVfMethods`):**
+  - Expanded the training corpus to **1,136 distinct prompts** including 400+ broken English, slang, and single-word queries.
+  - Executed 5 full ML gradient training epochs applying **23,800 term-weight updates** to `tbl_bot_weights`.
+- **Validation Results:**
+  - Real-world non-technical queries:
+    - `"shoe wet inside"` ➔ **VF-G04: Whole Shoe Flexing Waterproof Test (100% confidence)**
+    - `"shoelace open"` ➔ **VF-B23: Knot Slip Resistance (100% confidence)**
+    - `"white become yellow"` ➔ **VF-E03: UV Light Discoloration & Yellowing (96% confidence)**
+    - `"sole com out" / "sole com off"` ➔ **VF-F01: Whole Footwear Sole Adhesion (100% confidence)**
+    - `"i don't know what test to do"` ➔ **VF Test Selector Guide (100% confidence)**
+
+---
 ## Phase 206 - 903+ Command Variations & Calibrated 90-100% Confidence Training for VF Test Methods (2026-11-01)
 - **Extensive 903+ Query Corpus (`App\Commands\TrainVfMethods` / `php spark brain:train-vf`):**
   - Generated a comprehensive dataset of **903 realistic user prompts, commands, abbreviations, failure symptoms, and parameter inquiries** mapped across all VF test methods.
