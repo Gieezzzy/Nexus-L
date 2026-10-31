@@ -137,6 +137,15 @@
     d.innerHTML = html;
     msgs.appendChild(d);
     scroll();
+    if (typeof window.anime === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      window.anime({
+        targets: d,
+        opacity: [0, 1],
+        translateY: [10, 0],
+        duration: 220,
+        easing: 'easeOutCubic'
+      });
+    }
     return d;
   };
 
@@ -200,8 +209,36 @@
     pollTimer = setInterval(() => { if (!document.hidden && (status === 'escalated' || !panel.hidden)) loadThread(); }, every);
   };
 
+  const renderChips = (items) => {
+    if (!items || !items.length) { chips.innerHTML = ''; return; }
+    chips.innerHTML = items.map((t) => `<button type="button" data-q="${esc(t)}">${esc(t)}</button>`).join('');
+    if (typeof window.anime === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      window.anime({
+        targets: chips.children,
+        opacity: [0, 1],
+        translateY: [6, 0],
+        scale: [0.93, 1],
+        delay: window.anime.stagger(28),
+        duration: 200,
+        easing: 'easeOutCubic'
+      });
+    }
+  };
+
   const open = async () => {
     panel.hidden = false; bubble.hidden = true; dot.hidden = true; fab.setAttribute('aria-expanded', 'true');
+    if (typeof window.anime === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      window.anime.remove(panel);
+      panel.style.transformOrigin = 'bottom right';
+      window.anime({
+        targets: panel,
+        opacity: [0, 1],
+        translateY: [22, 0],
+        scale: [0.93, 1],
+        duration: 260,
+        easing: 'easeOutBack(1.3)'
+      });
+    }
     if (!opened) {
       opened = true;
       await loadThread();
@@ -209,16 +246,53 @@
         add('bot', `<div class="nxbot-welcome"><img class="nxbot-wlogo" src="${BASE}assets/images/lexis-logo.png" alt="LEXIS AI"><p>Hello! I am <b>LEXIS AI</b> (Laboratory Execution Intelligence System). Ask how to do something in this system, calculate test results, or check report status and I will help you.</p></div>`);
         try {
           const s = await api('bot/suggest?page=' + encodeURIComponent(pagePath()));
-          chips.innerHTML = (s.items || []).map((t) => `<button type="button" data-q="${esc(t)}">${esc(t)}</button>`).join('');
+          renderChips(s.items || []);
         } catch (e) { /* none */ }
       }
     }
     startPolling();
     setTimeout(() => input.focus(), 50);
   };
-  const close = () => { panel.hidden = true; fab.setAttribute('aria-expanded', 'false'); fab.focus(); };
-  fab.addEventListener('click', () => (panel.hidden ? open() : close()));
+  const close = () => {
+    fab.setAttribute('aria-expanded', 'false');
+    fab.focus();
+    if (typeof window.anime === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      window.anime.remove(panel);
+      window.anime({
+        targets: panel,
+        opacity: [1, 0],
+        translateY: [0, 16],
+        scale: [1, 0.95],
+        duration: 180,
+        easing: 'easeInQuad',
+        complete: () => { panel.hidden = true; }
+      });
+    } else {
+      panel.hidden = true;
+    }
+  };
+  fab.addEventListener('click', () => {
+    if (typeof window.anime === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      window.anime({
+        targets: fab,
+        scale: [{ value: 0.91, duration: 70, easing: 'easeInQuad' }, { value: 1, duration: 180, easing: 'easeOutBack(2)' }]
+      });
+    }
+    panel.hidden ? open() : close();
+  });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panel.hidden) close(); });
+
+  // Ambient idle breathing reminder (very light pulse every 24s if closed)
+  setInterval(() => {
+    if (panel.hidden && !document.hidden && typeof window.anime === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      window.anime({
+        targets: fab,
+        scale: [1, 1.06, 1],
+        duration: 900,
+        easing: 'easeInOutQuad'
+      });
+    }
+  }, 24000);
 
   const ask = async (text) => {
     text = text.trim();
@@ -226,7 +300,7 @@
     chips.innerHTML = '';
     busy = true;
     const mine = add('user', `<p>${esc(text)}</p>`);
-    const wait = add('bot typing', '<p>Thinking…</p>');
+    const wait = add('bot typing', '<div class="nxbot-typing-dots"><span></span><span></span><span></span></div>');
     try {
       const j = await post('bot/ask', { message: text, thread_id: threadId, page: pagePath() });
       threadId = j.thread_id;

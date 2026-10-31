@@ -293,7 +293,7 @@ button .ic,.dsg-btn .ic,.sc-btn .ic,.il-btn .ic{margin-right:4px}
 @media (prefers-reduced-motion:reduce){.side,.shell{transition:none}}
 
 /* ---- NEXUS-L assistant widget (LEXIS AI) ---------------------------------------------------- */
-#nxbot-fab{position:fixed;right:18px;bottom:18px;z-index:9990;width:56px;height:56px;border-radius:50%;border:2px solid #bae6fd;background:#ffffff;color:#0f172a;cursor:pointer;box-shadow:0 10px 26px rgba(2,132,199,.28);display:flex;align-items:center;justify-content:center;transition:transform .2s ease,box-shadow .2s ease;padding:0;overflow:hidden}
+#nxbot-fab{position:fixed;right:18px;bottom:18px;z-index:9990;width:56px;height:56px;border-radius:50%;border:2px solid #bae6fd;background:#ffffff;color:#0f172a;cursor:pointer;box-shadow:0 10px 26px rgba(2,132,199,.28);display:flex;align-items:center;justify-content:center;transition:transform .2s ease,box-shadow .2s ease;padding:0;overflow:hidden;will-change:transform,opacity}
 #nxbot-fab:hover{transform:scale(1.08);box-shadow:0 12px 30px rgba(2,132,199,.42);border-color:#38bdf8}
 #nxbot-fab .nxbot-fab-icon{width:40px;height:40px;border-radius:50%;object-fit:contain;pointer-events:none;display:block}
 #nxbot-fab .ic{width:26px;height:26px}
@@ -301,7 +301,7 @@ button .ic,.dsg-btn .ic,.sc-btn .ic,.il-btn .ic{margin-right:4px}
 #nxbot-bubble{position:fixed;right:80px;bottom:26px;z-index:9990;background:#0f172a;color:#fff;border-radius:12px;padding:9px 12px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.28);display:flex;gap:10px;align-items:center;max-width:300px}
 #nxbot-bubble button{background:#fff;color:#0f172a;border:0;border-radius:6px;padding:3px 8px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;margin-left:4px}
 #nxbot-bubble i{font-style:normal;cursor:pointer;opacity:.7}
-#nxbot-panel{position:fixed;right:18px;bottom:82px;z-index:9991;width:380px;max-width:calc(100vw - 24px);height:min(600px,calc(100vh - 110px));background:#fff;color:#0f172a;border:1px solid #d6deea;border-radius:16px;box-shadow:0 18px 50px rgba(15,23,42,.28);display:flex;flex-direction:column;overflow:hidden}
+#nxbot-panel{position:fixed;right:18px;bottom:82px;z-index:9991;width:380px;max-width:calc(100vw - 24px);height:min(600px,calc(100vh - 110px));background:#fff;color:#0f172a;border:1px solid #d6deea;border-radius:16px;box-shadow:0 18px 50px rgba(15,23,42,.28);display:flex;flex-direction:column;overflow:hidden;will-change:transform,opacity}
 #nxbot-panel[hidden],#nxbot-bubble[hidden]{display:none}
 #nxbot-panel header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 14px;background:linear-gradient(135deg,#0c4a6e,#0284c7);color:#fff}
 .nxbot-hbrand{display:flex;align-items:center;gap:10px;min-width:0}
@@ -351,7 +351,7 @@ button .ic,.dsg-btn .ic,.sc-btn .ic,.il-btn .ic{margin-right:4px}
 .nxadm-item small{color:#64748b}
 .nxadm-item button{flex:none;border:0;background:#059669;color:#fff;border-radius:8px;padding:7px 11px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
 @keyframes nxadm-in{from{transform:translateY(-8px);opacity:0}to{transform:none;opacity:1}}
-#nxadm-chat{position:fixed;right:410px;bottom:18px;z-index:9991;width:360px;max-width:calc(100vw - 24px);height:min(520px,calc(100vh - 110px));background:#fff;color:#0f172a;border:1px solid #d6deea;border-radius:16px;box-shadow:0 18px 50px rgba(15,23,42,.28);display:flex;flex-direction:column;overflow:hidden}
+#nxadm-chat{position:fixed;right:410px;bottom:18px;z-index:9991;width:360px;max-width:calc(100vw - 24px);height:min(520px,calc(100vh - 110px));background:#fff;color:#0f172a;border:1px solid #d6deea;border-radius:16px;box-shadow:0 18px 50px rgba(15,23,42,.28);display:flex;flex-direction:column;overflow:hidden;will-change:transform,opacity}
 #nxadm-chat header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 14px;background:linear-gradient(135deg,#065f46,#059669);color:#fff}
 #nxadm-chat header small{display:block;font-size:12px;opacity:.85}
 #nxadm-chat.closed header{background:linear-gradient(135deg,#475569,#64748b)}
@@ -365,3 +365,18 @@ button .ic,.dsg-btn .ic,.sc-btn .ic,.il-btn .ic{margin-right:4px}
 @media print{#nxadm-card,#nxadm-chat{display:none!important}}
 @media (max-width:640px){#nxbot-panel{right:0;bottom:0;width:100vw;max-width:100vw;height:100vh;border-radius:0}#nxbot-fab{right:12px;bottom:12px}#nxbot-form input{font-size:16px}}
 @media print{#nxbot-fab,#nxbot-panel,#nxbot-bubble{display:none!important}}
+
+/* ---- LEXIS AI & UI Micro-Interactions (Anime.js / GPU accelerated) ---- */
+.nxbot-typing-dots{display:inline-flex;align-items:center;gap:5px;padding:4px 2px}
+.nxbot-typing-dots span{width:7px;height:7px;background:#0284c7;border-radius:50%;display:inline-block;animation:nxbotDotBounce 1.2s infinite ease-in-out both}
+.nxbot-typing-dots span:nth-child(1){animation-delay:-0.32s}
+.nxbot-typing-dots span:nth-child(2){animation-delay:-0.16s}
+@keyframes nxbotDotBounce{0%,80%,100%{transform:scale(0.6);opacity:0.35}40%{transform:scale(1.15);opacity:1}}
+
+button:active:not(:disabled), .nx-btn:active, .nav-link:active, .br-tab:active, .dtr-tab-btn:active{transform:scale(0.97);transition:transform .08s cubic-bezier(0.2,0,0,1)}
+.card.glass{transition:transform .2s cubic-bezier(0.16,1,0.3,1),box-shadow .2s cubic-bezier(0.16,1,0.3,1)}
+.card.glass:hover{box-shadow:0 6px 20px rgba(15,23,42,.08)}
+.stat{transition:transform .18s ease,box-shadow .18s ease}
+.stat:hover{transform:translateY(-2px);box-shadow:0 4px 14px rgba(2,132,199,.12)}
+.nav-link{transition:background-color .15s ease,transform .15s ease}
+.nav-link:hover{transform:translateX(3px)}

@@ -48,7 +48,31 @@
     t.className = 'nx-toast nx-toast-' + type;
     t.textContent = String(message);
     toastHost.appendChild(t);
-    setTimeout(() => { t.classList.add('nx-out'); setTimeout(() => t.remove(), 250); }, ms);
+    if (typeof window.anime === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      window.anime({
+        targets: t,
+        opacity: [0, 1],
+        translateY: [14, 0],
+        scale: [0.95, 1],
+        duration: 240,
+        easing: 'easeOutBack(1.4)'
+      });
+    }
+    setTimeout(() => {
+      if (typeof window.anime === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        window.anime({
+          targets: t,
+          opacity: [1, 0],
+          translateY: [0, 8],
+          duration: 180,
+          easing: 'easeInQuad',
+          complete: () => t.remove()
+        });
+      } else {
+        t.classList.add('nx-out');
+        setTimeout(() => t.remove(), 250);
+      }
+    }, ms);
   };
 
   // ---------------------------------------------------------------- confirm
@@ -62,7 +86,23 @@
           <button type="button" class="nx-btn" data-r="0">${esc(opts.cancelText || 'Cancel')}</button>
           <button type="button" class="nx-btn ${opts.danger === false ? 'nx-primary' : 'nx-danger'}" data-r="1">${esc(opts.okText || 'Yes, continue')}</button>
         </div></div>`;
-    const done = (v) => { back.remove(); document.removeEventListener('keydown', onKey, true); try { prev && prev.focus(); } catch (e) { /* gone */ } resolve(v); };
+    const done = (v) => {
+      const modal = back.querySelector('.nx-modal');
+      if (typeof window.anime === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches && modal) {
+        window.anime({
+          targets: [back, modal],
+          opacity: [1, 0],
+          duration: 140,
+          easing: 'easeInQuad',
+          complete: () => { back.remove(); }
+        });
+      } else {
+        back.remove();
+      }
+      document.removeEventListener('keydown', onKey, true);
+      try { prev && prev.focus(); } catch (e) { /* gone */ }
+      resolve(v);
+    };
     const onKey = (e) => {
       if (e.key === 'Escape') { e.preventDefault(); done(false); }
       if (e.key === 'Tab') { // keep focus inside the dialog
@@ -75,6 +115,11 @@
     back.addEventListener('click', (e) => { if (e.target === back) done(false); const r = e.target.dataset && e.target.dataset.r; if (r !== undefined) done(r === '1'); });
     document.addEventListener('keydown', onKey, true);
     document.body.appendChild(back);
+    const modalEl = back.querySelector('.nx-modal');
+    if (typeof window.anime === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches && modalEl) {
+      window.anime({ targets: back, opacity: [0, 1], duration: 160, easing: 'easeOutQuad' });
+      window.anime({ targets: modalEl, scale: [0.93, 1], opacity: [0, 1], duration: 220, easing: 'easeOutBack(1.4)' });
+    }
     back.querySelector('[data-r="0"]').focus();
   });
 
@@ -222,3 +267,86 @@ window.nxSignaturePad = (canvas) => {
   window.addEventListener('resize', fit);
   return pad;
 };
+
+// -----------------------------------------------------------------------------
+// NEXUS-L Animation Engine (Anime.js integration): Ultra-lightweight & GPU-accelerated
+// -----------------------------------------------------------------------------
+(() => {
+  const prefersReduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  window.nxMotion = {
+    reduced: prefersReduced,
+
+    // Safe execution wrapper for Anime.js
+    animate(opts) {
+      if (prefersReduced() || typeof window.anime !== 'function') {
+        if (opts.complete) opts.complete();
+        return null;
+      }
+      return window.anime(opts);
+    },
+
+    // Smooth staggered entrance for cards, stats, and sections on navigation
+    staggerIn(selectorOrEls, delay = 0) {
+      if (prefersReduced() || typeof window.anime !== 'function') return;
+      const targets = typeof selectorOrEls === 'string' ? [...document.querySelectorAll(selectorOrEls)] : (Array.isArray(selectorOrEls) ? selectorOrEls : [selectorOrEls]);
+      const valid = targets.filter((el) => el && !el.dataset.nxAnimated && !el.closest('[hidden]'));
+      if (!valid.length) return;
+      valid.forEach((el) => { el.dataset.nxAnimated = '1'; });
+      window.anime({
+        targets: valid,
+        opacity: [0, 1],
+        translateY: [10, 0],
+        delay: window.anime.stagger(25, { start: delay }),
+        duration: 260,
+        easing: 'easeOutCubic'
+      });
+    },
+
+    // Bouncy spring micro-pop for buttons, icons, and pills
+    pop(el) {
+      if (prefersReduced() || typeof window.anime !== 'function' || !el) return;
+      window.anime({
+        targets: el,
+        scale: [{ value: 0.94, duration: 60, easing: 'easeInQuad' }, { value: 1, duration: 160, easing: 'easeOutBack(2)' }]
+      });
+    },
+
+    // Smooth tab cross-fade and subtle slide
+    switchTab(pane) {
+      if (prefersReduced() || typeof window.anime !== 'function' || !pane) return;
+      window.anime({
+        targets: pane,
+        opacity: [0, 1],
+        translateX: [-6, 0],
+        duration: 200,
+        easing: 'easeOutCubic'
+      });
+    }
+  };
+
+  // Staggered card entrance on initial page load / navigation
+  const initPageEntrance = () => {
+    if (document.hidden) return;
+    requestAnimationFrame(() => {
+      window.nxMotion.staggerIn('main .card, main .stat, main .g-hero', 15);
+    });
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initPageEntrance);
+  } else {
+    initPageEntrance();
+  }
+
+  // Hook global tab clicks (.br-tab, .dtr-tab-btn, .st-tab) for smooth transitions
+  document.addEventListener('click', (e) => {
+    const tab = e.target.closest('.br-tab, .dtr-tab-btn, .st-tab, [data-tab]');
+    if (!tab) return;
+    window.nxMotion.pop(tab);
+    setTimeout(() => {
+      const activePane = document.querySelector('.br-pane:not([hidden]), .dtr-pane:not([hidden]), .st-pane:not([hidden])');
+      if (activePane) window.nxMotion.switchTab(activePane);
+    }, 10);
+  }, true);
+})();
