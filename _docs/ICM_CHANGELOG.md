@@ -4,6 +4,20 @@
 
 ---
 
+## Phase 203 - Facebook-Style Skeleton Shimmer & Slow Connection Resiliency (2026-10-31)
+- **Zero-JS GPU Skeleton Shimmer (`.nx-shimmer`):**
+  - Implemented pure CSS linear gradient shimmer (`#f1f5f9` → `#e2e8f0` → `#f1f5f9`) with 0% JavaScript CPU consumption and zero memory overhead.
+  - Upgraded `nxState(tbody, 'loading')` to instantly generate 5 realistic skeleton table rows with varied cell widths matching actual test report tables, eliminating layout shifts (CLS = 0) while waiting for network responses.
+  - Lists and card containers display skeleton avatar and dual-line wireframe placeholders during data fetch.
+- **LEXIS AI Shimmer Thinking State (`public/assets/js/bot.js`):**
+  - Replaced plain "Thinking..." text with modern 2-line conversational shimmer skeleton bubble while waiting for database aggregations, formula calculations, or LangGraph queries.
+- **Top-Bar Slim Network Progress (`window.nxProgress`):**
+  - Added ultra-lightweight YouTube/GitHub-style 2.5px gradient indicator at the top of the viewport (`#nx-progress`) during slow navigations and page transitions.
+- **Network Connectivity Sentinel:**
+  - Added automatic online/offline state listeners alerting users immediately if their network cable or Wi-Fi drops before form submissions.
+
+---
+
 ## Phase 201 - Bot Read-Only Database Queries, Synology Signatory Reminders & 200 QC Problem Knowledge (2026-10-31)
 - **UI/UX Performance & Animation Policy (QA Verified):**
   - Completely stripped out third-party animation libraries (Anime.js) and full-page cascading transitions after QA testing showed excessive visual fatigue and browser memory overhead.

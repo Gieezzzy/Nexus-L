@@ -226,7 +226,7 @@
     chips.innerHTML = '';
     busy = true;
     const mine = add('user', `<p>${esc(text)}</p>`);
-    const wait = add('bot typing', '<p>Thinking…</p>');
+    const wait = add('bot typing', '<div class="nxbot-skel"><span class="nx-shimmer" style="width:75%;height:13px;margin-bottom:6px;display:block"></span><span class="nx-shimmer" style="width:48%;height:13px;display:block"></span></div>');
     try {
       const j = await post('bot/ask', { message: text, thread_id: threadId, page: pagePath() });
       threadId = j.thread_id;

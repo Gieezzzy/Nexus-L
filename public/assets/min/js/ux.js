@@ -1,6 +1,296 @@
-(()=>{const t=o=>String(o??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"),r=".nx-modal-back, #nx-rv, #nx-ask, .il-modal-backdrop:not(.hidden), .dtr-modal-backdrop:not(.hidden), dialog[open]";let p=!1,c=0;const u=()=>{c=0;const o=!!document.querySelector(r);if(o===p)return;p=o;const e=document.documentElement;if(o){const n=window.innerWidth-e.clientWidth;e.dataset.nxScrollLock="1",e.style.overflow="hidden",n>0&&(e.style.paddingRight=n+"px")}else delete e.dataset.nxScrollLock,e.style.overflow="",e.style.paddingRight=""};new MutationObserver(()=>{c||(c=requestAnimationFrame(u))}).observe(document.documentElement,{childList:!0,subtree:!0,attributes:!0,attributeFilter:["class","open"]}),u();let l=null;window.nxToast=(o,e="info",n=4200)=>{l||(l=document.createElement("div"),l.className="nx-toasts",l.setAttribute("role","status"),l.setAttribute("aria-live","polite"),document.body.appendChild(l));const d=document.createElement("div");d.className="nx-toast nx-toast-"+e,d.textContent=String(o),l.appendChild(d),setTimeout(()=>{d.classList.add("nx-out"),setTimeout(()=>d.remove(),250)},n)},window.nxConfirm=(o,e={})=>new Promise(n=>{const d=document.activeElement,m=document.createElement("div");m.className="nx-modal-back",m.innerHTML=`<div class="nx-modal" role="alertdialog" aria-modal="true" aria-labelledby="nx-modal-msg">
-        <p id="nx-modal-msg">${t(o).replace(/\n/g,"<br>")}</p>
+/**
+ * NEXUS-L shared UX helpers (loaded on every signed-in page):
+ *  - nxToast(message, type)      in-app notification instead of alert()
+ *  - nxConfirm(message, options) in-app confirmation (Promise<boolean>) instead of confirm()
+ *  - nxState(el, kind, message)  loading / empty / error state for lists and tables
+ *  - labels are tied to their inputs automatically and icon-only buttons get an accessible name
+ */
+(() => {
+  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  // ------------------------------------------- page behind an open dialog
+  // While any dialog is open the page behind it does not scroll (the dialog itself still does).
+  const DIALOGS = '.nx-modal-back, #nx-rv, #nx-ask, .il-modal-backdrop:not(.hidden), .dtr-modal-backdrop:not(.hidden), dialog[open]';
+  let locked = false;
+  let lockTimer = 0;
+  const syncScrollLock = () => {
+    lockTimer = 0;
+    const open = !!document.querySelector(DIALOGS);
+    if (open === locked) return;
+    locked = open;
+    const root = document.documentElement;
+    if (open) {
+      const bar = window.innerWidth - root.clientWidth;               // keeps the page from jumping sideways when the scrollbar goes
+      root.dataset.nxScrollLock = '1';
+      root.style.overflow = 'hidden';
+      if (bar > 0) root.style.paddingRight = bar + 'px';
+    } else {
+      delete root.dataset.nxScrollLock;
+      root.style.overflow = '';
+      root.style.paddingRight = '';
+    }
+  };
+  new MutationObserver(() => { if (!lockTimer) lockTimer = requestAnimationFrame(syncScrollLock); })
+    .observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'open'] });
+  syncScrollLock();
+
+  // ------------------------------------------------------------------ toast
+  let toastHost = null;
+  window.nxToast = (message, type = 'info', ms = 4200) => {
+    if (!toastHost) {
+      toastHost = document.createElement('div');
+      toastHost.className = 'nx-toasts';
+      toastHost.setAttribute('role', 'status');
+      toastHost.setAttribute('aria-live', 'polite');
+      document.body.appendChild(toastHost);
+    }
+    const t = document.createElement('div');
+    t.className = 'nx-toast nx-toast-' + type;
+    t.textContent = String(message);
+    toastHost.appendChild(t);
+    setTimeout(() => { t.classList.add('nx-out'); setTimeout(() => t.remove(), 250); }, ms);
+  };
+
+  // ---------------------------------------------------------------- confirm
+  window.nxConfirm = (message, opts = {}) => new Promise((resolve) => {
+    const prev = document.activeElement;
+    const back = document.createElement('div');
+    back.className = 'nx-modal-back';
+    back.innerHTML = `<div class="nx-modal" role="alertdialog" aria-modal="true" aria-labelledby="nx-modal-msg">
+        <p id="nx-modal-msg">${esc(message).replace(/\n/g, '<br>')}</p>
         <div class="nx-modal-actions">
-          <button type="button" class="nx-btn" data-r="0">${t(e.cancelText||"Cancel")}</button>
-          <button type="button" class="nx-btn ${e.danger===!1?"nx-primary":"nx-danger"}" data-r="1">${t(e.okText||"Yes, continue")}</button>
-        </div></div>`;const w=g=>{m.remove(),document.removeEventListener("keydown",y,!0);try{d&&d.focus()}catch{}n(g)},y=g=>{if(g.key==="Escape"&&(g.preventDefault(),w(!1)),g.key==="Tab"){const b=[...m.querySelectorAll("button")],E=b.indexOf(document.activeElement);g.preventDefault(),b[(E+(g.shiftKey?-1:1)+b.length)%b.length].focus()}};m.addEventListener("click",g=>{g.target===m&&w(!1);const b=g.target.dataset&&g.target.dataset.r;b!==void 0&&w(b==="1")}),document.addEventListener("keydown",y,!0),document.body.appendChild(m),m.querySelector('[data-r="0"]').focus()}),window.nxState=(o,e,n,d)=>{if(!o)return;const m=n||{loading:"Loading…",empty:"Nothing to show yet.",error:"Something went wrong. Try again."}[e],w=`<div class="nx-state nx-state-${e}" role="${e==="error"?"alert":"status"}">${e==="loading"?'<span class="nx-spin" aria-hidden="true"></span>':""}${t(m)}</div>`;o.innerHTML=o.tagName==="TBODY"?`<tr><td colspan="${d||20}">${w}</td></tr>`:w};let f=0;const i=o=>{if(o.querySelector("input,select,textarea"))return null;let e=o.nextElementSibling;if(e&&/^(INPUT|SELECT|TEXTAREA)$/.test(e.tagName))return e;if(e){const m=e.querySelector&&e.querySelector("input:not([type=hidden]),select,textarea");if(m)return m}const n=o.parentElement;if(!n)return null;const d=n.querySelectorAll("input:not([type=hidden]):not([type=checkbox]):not([type=radio]),select,textarea");return d.length===1?d[0]:null},s=o=>{(o||document).querySelectorAll("label:not([for])").forEach(e=>{const n=i(e);n&&(n.id||(n.id="nx_f"+ ++f),e.htmlFor=n.id)}),(o||document).querySelectorAll("button:not([aria-label]),a.btn:not([aria-label])").forEach(e=>{const n=(e.textContent||"").replace(/\s+/g,"");n.length<=2&&!e.querySelector("img[alt]")&&e.setAttribute("aria-label",e.getAttribute("title")||(/[×✕x]/i.test(n)?"Close":"Action"))}),(o||document).querySelectorAll("input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([aria-label]):not([id]),select:not([aria-label]):not([id]),textarea:not([aria-label]):not([id])").forEach(e=>{if(e.closest("label"))return;const n=e.getAttribute("placeholder")||e.getAttribute("title")||e.dataset.col||e.name;n&&e.setAttribute("aria-label",n)}),(o||document).querySelectorAll("img:not([alt])").forEach(e=>e.setAttribute("alt",""))};let a=null;const h=()=>{clearTimeout(a),a=setTimeout(()=>s(document),250)},x=()=>{s(document),new MutationObserver(h).observe(document.body,{childList:!0,subtree:!0})};document.readyState==="loading"?document.addEventListener("DOMContentLoaded",x):x()})(),(()=>{const t=document.documentElement,r=document.getElementById("sidebar-toggle");if(!r)return;const p=()=>window.innerWidth>=1024,c=()=>{const u=t.classList.contains("side-collapsed");r.setAttribute("aria-expanded",String(!u)),r.setAttribute("aria-label",u?"Expand sidebar":"Collapse sidebar"),r.title=u?"Expand sidebar":"Collapse sidebar",document.querySelectorAll("#sidebar .nav-link").forEach(l=>{l.dataset.label||(l.dataset.label=(l.textContent||"").replace(/\s+/g," ").trim()),u?l.title=l.dataset.label:l.removeAttribute("title")})};r.addEventListener("click",u=>{if(p()){u.stopImmediatePropagation(),t.classList.toggle("side-collapsed");try{localStorage.setItem("nx.side",t.classList.contains("side-collapsed")?"1":"0")}catch{}c(),setTimeout(()=>window.dispatchEvent(new Event("resize")),260)}},!0),window.addEventListener("resize",()=>{if(!p())t.classList.remove("side-collapsed");else try{localStorage.getItem("nx.side")==="1"&&t.classList.add("side-collapsed")}catch{}c()}),c()})(),window.nxSignaturePad=t=>{const r=t.getContext("2d");let p=!1,c=!0;const u=()=>{const i=t.getBoundingClientRect();if(!i.width)return;const s=c?null:t.toDataURL();t.width=Math.round(i.width*(window.devicePixelRatio||1)),t.height=Math.round(i.height*(window.devicePixelRatio||1)),r.lineWidth=2.4*(window.devicePixelRatio||1),r.lineCap="round",r.lineJoin="round",r.strokeStyle="#1e3a8a",s&&f.load(s)},l=i=>{const s=t.getBoundingClientRect();return[(i.clientX-s.left)*(t.width/s.width),(i.clientY-s.top)*(t.height/s.height)]};t.addEventListener("pointerdown",i=>{p=!0,c=!1,t.setPointerCapture(i.pointerId),r.beginPath(),r.moveTo(...l(i))}),t.addEventListener("pointermove",i=>{p&&(r.lineTo(...l(i)),r.stroke())}),["pointerup","pointercancel"].forEach(i=>t.addEventListener(i,()=>{p=!1}));const f={clear:()=>{r.clearRect(0,0,t.width,t.height),c=!0},isEmpty:()=>c,toDataURL:()=>t.toDataURL("image/png"),load:i=>new Promise(s=>{const a=new Image;a.onload=()=>{r.clearRect(0,0,t.width,t.height);const h=Math.min(t.width/a.width,t.height/a.height);r.drawImage(a,(t.width-a.width*h)/2,(t.height-a.height*h)/2,a.width*h,a.height*h),c=!1,s()},a.src=i})};return f.loadFile=i=>new Promise((s,a)=>{if(!i||!/^image\/(png|jpeg)$/.test(i.type)){a(new Error("Choose a PNG or JPG picture of the signature."));return}if(i.size>2*1024*1024){a(new Error("The picture is larger than 2 MB."));return}const h=new FileReader;h.onerror=()=>a(new Error("The picture could not be read.")),h.onload=()=>{f.load(String(h.result)).then(()=>{const x=r.getImageData(0,0,t.width,t.height),o=x.data;let e=!1;for(let n=3;n<o.length;n+=4)if(o[n]<250){e=!0;break}if(!e){for(let n=0;n<o.length;n+=4){const d=(o[n]+o[n+1]+o[n+2])/3;d>240?o[n+3]=0:d>200&&(o[n+3]=Math.round((240-d)/40*255))}r.putImageData(x,0,0)}s()}).catch(()=>a(new Error("The picture could not be opened.")))},h.readAsDataURL(i)}),u(),window.addEventListener("resize",u),f};
+          <button type="button" class="nx-btn" data-r="0">${esc(opts.cancelText || 'Cancel')}</button>
+          <button type="button" class="nx-btn ${opts.danger === false ? 'nx-primary' : 'nx-danger'}" data-r="1">${esc(opts.okText || 'Yes, continue')}</button>
+        </div></div>`;
+    const done = (v) => { back.remove(); document.removeEventListener('keydown', onKey, true); try { prev && prev.focus(); } catch (e) { /* gone */ } resolve(v); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); done(false); }
+      if (e.key === 'Tab') { // keep focus inside the dialog
+        const b = [...back.querySelectorAll('button')];
+        const i = b.indexOf(document.activeElement);
+        e.preventDefault();
+        b[(i + (e.shiftKey ? -1 : 1) + b.length) % b.length].focus();
+      }
+    };
+    back.addEventListener('click', (e) => { if (e.target === back) done(false); const r = e.target.dataset && e.target.dataset.r; if (r !== undefined) done(r === '1'); });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(back);
+    back.querySelector('[data-r="0"]').focus();
+  });
+
+  // ---------------------------------------------------- loading / empty / error
+  /** nxState(tbodyOrList, 'loading'|'empty'|'error', 'text', colspan?) */
+  window.nxState = (el, kind, text, cols = 8) => {
+    if (!el) return;
+    if (kind === 'loading') {
+      if (el.tagName === 'TBODY') {
+        const widths = ['65px', '110px', '150px', '90px', '130px', '75px', '140px', '80px'];
+        let rows = '';
+        for (let r = 0; r < 5; r++) {
+          let tds = '';
+          const maxCols = Math.min(Number(cols) || 8, 12);
+          for (let c = 0; c < maxCols; c++) {
+            const w = widths[(r + c) % widths.length];
+            tds += '<td><span class="nx-shimmer nx-skel-cell" style="width:' + w + '"></span></td>';
+          }
+          rows += '<tr class="nx-skel-tr">' + tds + '</tr>';
+        }
+        el.innerHTML = rows;
+        return;
+      }
+      el.innerHTML = [1, 2, 3].map(() => '<div class="nx-skel-card"><span class="nx-shimmer nx-skel-avatar"></span><div class="nx-skel-lines"><span class="nx-shimmer" style="width: 55%; height: 14px;"></span><span class="nx-shimmer" style="width: 82%; height: 11px;"></span></div></div>').join('');
+      return;
+    }
+    const label = text || { empty: 'Nothing to show yet.', error: 'Something went wrong. Try again.' }[kind];
+    const cell = <div class="nx-state nx-state-" role=""></div>;
+    el.innerHTML = el.tagName === 'TBODY' ? <tr><td colspan=""></td></tr> : cell;
+  };
+
+  // ---------------------------------------------------- top progress bar for slow connections
+  let bar = null;
+  let barTimer = null;
+  window.nxProgress = {
+    start() {
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'nx-progress';
+        document.body.appendChild(bar);
+      }
+      clearTimeout(barTimer);
+      bar.classList.remove('done');
+      bar.style.opacity = '1';
+      bar.style.width = '25%';
+      barTimer = setTimeout(() => {
+        bar.style.width = '68%';
+        barTimer = setTimeout(() => { bar.style.width = '88%'; }, 1200);
+      }, 200);
+    },
+    done() {
+      clearTimeout(barTimer);
+      if (!bar) return;
+      bar.style.width = '100%';
+      setTimeout(() => {
+        bar.classList.add('done');
+        setTimeout(() => { bar.style.width = '0%'; }, 300);
+      }, 150);
+    }
+  };
+
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[href]:not([target]):not([download])');
+    if (!a || !a.href) return;
+    const href = a.getAttribute('href');
+    if (href.startsWith('#') || href.startsWith('javascript:')) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+    try {
+      const target = new URL(a.href, location.href);
+      if (target.origin === location.origin && target.pathname !== location.pathname) {
+        window.nxProgress.start();
+      }
+    } catch (_) {}
+  });
+  window.addEventListener('pageshow', () => { window.nxProgress?.done(); });
+
+  // ---------------------------------------------------- network connectivity sentinel
+  window.addEventListener('offline', () => {
+    window.nxToast?.('You are currently offline. Check your network connection.', 'error', 8000);
+  });
+  window.addEventListener('online', () => {
+    window.nxToast?.('Network connection restored.', 'success', 3000);
+  });
+
+  // --------------------------------------------- accessible names and labels
+  let n = 0;
+  const controlOf = (l) => {
+    if (l.querySelector('input,select,textarea')) return null; // already wraps its control
+    let c = l.nextElementSibling;
+    if (c && /^(INPUT|SELECT|TEXTAREA)$/.test(c.tagName)) return c;
+    if (c) { const inner = c.querySelector && c.querySelector('input:not([type=hidden]),select,textarea'); if (inner) return inner; }
+    const p = l.parentElement;
+    if (!p) return null;
+    const all = p.querySelectorAll('input:not([type=hidden]):not([type=checkbox]):not([type=radio]),select,textarea');
+    return all.length === 1 ? all[0] : null;
+  };
+  const enhance = (root) => {
+    (root || document).querySelectorAll('label:not([for])').forEach((l) => {
+      const c = controlOf(l);
+      if (!c) return;
+      if (!c.id) c.id = 'nx_f' + (++n);
+      l.htmlFor = c.id;
+    });
+    (root || document).querySelectorAll('button:not([aria-label]),a.btn:not([aria-label])').forEach((b) => {
+      const t = (b.textContent || '').replace(/\s+/g, '');
+      if (t.length <= 2 && !b.querySelector('img[alt]')) b.setAttribute('aria-label', b.getAttribute('title') || (/[×✕x]/i.test(t) ? 'Close' : 'Action'));
+    });
+    // controls with no label at all (e.g. grid filter boxes): use the placeholder / title / column name
+    (root || document).querySelectorAll('input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([aria-label]):not([id]),select:not([aria-label]):not([id]),textarea:not([aria-label]):not([id])').forEach((c) => {
+      if (c.closest('label')) return;
+      const t = c.getAttribute('placeholder') || c.getAttribute('title') || c.dataset.col || c.name;
+      if (t) c.setAttribute('aria-label', t);
+    });
+    (root || document).querySelectorAll('img:not([alt])').forEach((i) => i.setAttribute('alt', ''));
+  };
+  let timer = null;
+  const later = () => { clearTimeout(timer); timer = setTimeout(() => enhance(document), 250); };
+  const start = () => { enhance(document); new MutationObserver(later).observe(document.body, { childList: true, subtree: true }); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+})();
+
+// ---- collapsible sidebar on large screens (state is remembered per browser) --------------------------------
+(() => {
+  const root = document.documentElement;
+  const btn = document.getElementById('sidebar-toggle');
+  if (!btn) return;
+  const isDesktop = () => window.innerWidth >= 1024;
+  const sync = () => {
+    const c = root.classList.contains('side-collapsed');
+    btn.setAttribute('aria-expanded', String(!c));
+    btn.setAttribute('aria-label', c ? 'Expand sidebar' : 'Collapse sidebar');
+    btn.title = c ? 'Expand sidebar' : 'Collapse sidebar';
+    document.querySelectorAll('#sidebar .nav-link').forEach((a) => {
+      if (!a.dataset.label) a.dataset.label = (a.textContent || '').replace(/\s+/g, ' ').trim();
+      if (c) a.title = a.dataset.label; else a.removeAttribute('title');
+    });
+  };
+  btn.addEventListener('click', (e) => {
+    if (!isDesktop()) return;          // phones keep the slide-in menu
+    e.stopImmediatePropagation();
+    root.classList.toggle('side-collapsed');
+    try { localStorage.setItem('nx.side', root.classList.contains('side-collapsed') ? '1' : '0'); } catch (x) { /* private mode */ }
+    sync();
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 260); // let charts / the designer stage re-fit
+  }, true);
+  window.addEventListener('resize', () => { if (!isDesktop()) root.classList.remove('side-collapsed'); else { try { if (localStorage.getItem('nx.side') === '1') root.classList.add('side-collapsed'); } catch (x) { /* ignore */ } } sync(); });
+  sync();
+})();
+
+// Signature pad on a <canvas> (report approval page, Designer → Signatories). Returns {clear, isEmpty, toDataURL, load}.
+window.nxSignaturePad = (canvas) => {
+  const ctx = canvas.getContext('2d');
+  let drawing = false;
+  let empty = true;
+  const fit = () => {                       // keep the drawing sharp at the displayed size
+    const r = canvas.getBoundingClientRect();
+    if (!r.width) return;
+    const keep = empty ? null : canvas.toDataURL();
+    canvas.width = Math.round(r.width * (window.devicePixelRatio || 1));
+    canvas.height = Math.round(r.height * (window.devicePixelRatio || 1));
+    ctx.lineWidth = 2.4 * (window.devicePixelRatio || 1);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#1e3a8a';
+    if (keep) pad.load(keep);
+  };
+  const at = (e) => {
+    const r = canvas.getBoundingClientRect();
+    return [(e.clientX - r.left) * (canvas.width / r.width), (e.clientY - r.top) * (canvas.height / r.height)];
+  };
+  canvas.addEventListener('pointerdown', (e) => { drawing = true; empty = false; canvas.setPointerCapture(e.pointerId); ctx.beginPath(); ctx.moveTo(...at(e)); });
+  canvas.addEventListener('pointermove', (e) => { if (!drawing) return; ctx.lineTo(...at(e)); ctx.stroke(); });
+  ['pointerup', 'pointercancel'].forEach((t) => canvas.addEventListener(t, () => { drawing = false; }));
+  const pad = {
+    clear: () => { ctx.clearRect(0, 0, canvas.width, canvas.height); empty = true; },
+    isEmpty: () => empty,
+    toDataURL: () => canvas.toDataURL('image/png'),
+    load: (src) => new Promise((res) => {
+      const img = new Image();
+      img.onload = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const k = Math.min(canvas.width / img.width, canvas.height / img.height);
+        ctx.drawImage(img, (canvas.width - img.width * k) / 2, (canvas.height - img.height * k) / 2, img.width * k, img.height * k);
+        empty = false;
+        res();
+      };
+      img.src = src;
+    }),
+  };
+  // A picture of a signature (PNG / JPG, up to 2 MB) drawn into the box. A white or near-white background becomes
+  // transparent, so a scanned signature does not put a white block over the report when it is stamped.
+  pad.loadFile = (file) => new Promise((resolve, reject) => {
+    if (!file || !/^image\/(png|jpeg)$/.test(file.type)) { reject(new Error('Choose a PNG or JPG picture of the signature.')); return; }
+    if (file.size > 2 * 1024 * 1024) { reject(new Error('The picture is larger than 2 MB.')); return; }
+    const rd = new FileReader();
+    rd.onerror = () => reject(new Error('The picture could not be read.'));
+    rd.onload = () => {
+      pad.load(String(rd.result)).then(() => {
+        const px = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const d = px.data;
+        let hasAlpha = false;
+        for (let i = 3; i < d.length; i += 4) { if (d[i] < 250) { hasAlpha = true; break; } }
+        if (!hasAlpha) {
+          for (let i = 0; i < d.length; i += 4) {
+            const lum = (d[i] + d[i + 1] + d[i + 2]) / 3;
+            if (lum > 240) d[i + 3] = 0;
+            else if (lum > 200) d[i + 3] = Math.round(((240 - lum) / 40) * 255);
+          }
+          ctx.putImageData(px, 0, 0);
+        }
+        resolve();
+      }).catch(() => reject(new Error('The picture could not be opened.')));
+    };
+    rd.readAsDataURL(file);
+  });
+  fit();
+  window.addEventListener('resize', fit);
+  return pad;
+};

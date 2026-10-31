@@ -80,12 +80,84 @@
 
   // ---------------------------------------------------- loading / empty / error
   /** nxState(tbodyOrList, 'loading'|'empty'|'error', 'text', colspan?) */
-  window.nxState = (el, kind, text, cols) => {
+  window.nxState = (el, kind, text, cols = 8) => {
     if (!el) return;
-    const label = text || { loading: 'Loading…', empty: 'Nothing to show yet.', error: 'Something went wrong. Try again.' }[kind];
-    const cell = `<div class="nx-state nx-state-${kind}" role="${kind === 'error' ? 'alert' : 'status'}">${kind === 'loading' ? '<span class="nx-spin" aria-hidden="true"></span>' : ''}${esc(label)}</div>`;
-    el.innerHTML = el.tagName === 'TBODY' ? `<tr><td colspan="${cols || 20}">${cell}</td></tr>` : cell;
+    if (kind === 'loading') {
+      if (el.tagName === 'TBODY') {
+        const widths = ['65px', '110px', '150px', '90px', '130px', '75px', '140px', '80px'];
+        let rows = '';
+        for (let r = 0; r < 5; r++) {
+          let tds = '';
+          const maxCols = Math.min(Number(cols) || 8, 12);
+          for (let c = 0; c < maxCols; c++) {
+            const w = widths[(r + c) % widths.length];
+            tds += '<td><span class="nx-shimmer nx-skel-cell" style="width:' + w + '"></span></td>';
+          }
+          rows += '<tr class="nx-skel-tr">' + tds + '</tr>';
+        }
+        el.innerHTML = rows;
+        return;
+      }
+      el.innerHTML = [1, 2, 3].map(() => '<div class="nx-skel-card"><span class="nx-shimmer nx-skel-avatar"></span><div class="nx-skel-lines"><span class="nx-shimmer" style="width: 55%; height: 14px;"></span><span class="nx-shimmer" style="width: 82%; height: 11px;"></span></div></div>').join('');
+      return;
+    }
+    const label = text || { empty: 'Nothing to show yet.', error: 'Something went wrong. Try again.' }[kind];
+    const cell = <div class="nx-state nx-state-" role=""></div>;
+    el.innerHTML = el.tagName === 'TBODY' ? <tr><td colspan=""></td></tr> : cell;
   };
+
+  // ---------------------------------------------------- top progress bar for slow connections
+  let bar = null;
+  let barTimer = null;
+  window.nxProgress = {
+    start() {
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'nx-progress';
+        document.body.appendChild(bar);
+      }
+      clearTimeout(barTimer);
+      bar.classList.remove('done');
+      bar.style.opacity = '1';
+      bar.style.width = '25%';
+      barTimer = setTimeout(() => {
+        bar.style.width = '68%';
+        barTimer = setTimeout(() => { bar.style.width = '88%'; }, 1200);
+      }, 200);
+    },
+    done() {
+      clearTimeout(barTimer);
+      if (!bar) return;
+      bar.style.width = '100%';
+      setTimeout(() => {
+        bar.classList.add('done');
+        setTimeout(() => { bar.style.width = '0%'; }, 300);
+      }, 150);
+    }
+  };
+
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[href]:not([target]):not([download])');
+    if (!a || !a.href) return;
+    const href = a.getAttribute('href');
+    if (href.startsWith('#') || href.startsWith('javascript:')) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+    try {
+      const target = new URL(a.href, location.href);
+      if (target.origin === location.origin && target.pathname !== location.pathname) {
+        window.nxProgress.start();
+      }
+    } catch (_) {}
+  });
+  window.addEventListener('pageshow', () => { window.nxProgress?.done(); });
+
+  // ---------------------------------------------------- network connectivity sentinel
+  window.addEventListener('offline', () => {
+    window.nxToast?.('You are currently offline. Check your network connection.', 'error', 8000);
+  });
+  window.addEventListener('online', () => {
+    window.nxToast?.('Network connection restored.', 'success', 3000);
+  });
 
   // --------------------------------------------- accessible names and labels
   let n = 0;
