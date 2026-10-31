@@ -151,7 +151,7 @@
     if (chatId) h += `<div class="nxbot-fb"><button type="button" data-fb="1" data-chat="${chatId}">Helpful</button><button type="button" data-fb="-1" data-chat="${chatId}">Not helpful</button>${r.suggest_admin ? '<button type="button" data-a="admin" class="nxbot-esc">Talk to an administrator</button>' : ''}</div>`;
     // charts are drawn from a small spec; files are authenticated, expiring downloads
     if (r.chart && r.chart.labels && r.chart.series) h += '<div class="nxbot-chart"><canvas role="img" aria-label="' + esc(r.chart.title || 'Chart') + '"></canvas><div class="nxbot-chart-btns"><button type="button" data-chart="big">Enlarge</button><button type="button" data-chart="png">Image (PNG)</button><button type="button" data-chart="pdf">PDF</button></div></div>';
-    if (r.files && r.files.length) h += '<div class="nxbot-files">' + r.files.map((f) => `<a class="nxbot-file" href="${esc(f.url)}" download="${esc(f.name || '')}">${esc(f.label || f.name)}${f.size ? ' <small>' + (f.size > 1048576 ? (f.size / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(f.size / 1024)) + ' KB') + '</small>' : ''}</a>`).join('') + '</div>';
+    if (r.files && r.files.length) h += '<div class="nxbot-files">' + r.files.map((f) => `<a class="nxbot-file" href="${esc(f.url)}" target="_blank" download="${esc(f.name || '')}">${esc(f.label || f.name)}${f.size ? ' <small>' + (f.size > 1048576 ? (f.size / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(f.size / 1024)) + ' KB') + '</small>' : ''}</a>`).join('') + '</div>';
     const d = add('bot', h, chatId);
     d._actions = r.actions || [];
     if (r.chart && window.nxChart) {
@@ -319,7 +319,14 @@
     }
     if (b.dataset.act !== undefined) {
       const a = (b.closest('.nxbot-m')._actions || [])[Number(b.dataset.act)];
-      if (a && a.type === 'open' && a.url) { record('bot', { target: 'opened ' + a.label }); location.href = a.url; }
+      if (a && a.type === 'open' && a.url) {
+        record('bot', { target: 'opened ' + a.label });
+        if (a.target === '_blank' || /\.pdf($|\?)/i.test(a.url) || /\.xlsx($|\?)/i.test(a.url) || /\.docx($|\?)/i.test(a.url)) {
+          window.open(a.url, '_blank');
+        } else {
+          location.href = a.url;
+        }
+      }
     }
   });
 

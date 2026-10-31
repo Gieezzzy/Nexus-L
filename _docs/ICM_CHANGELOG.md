@@ -4,6 +4,36 @@
 
 ---
 
+## Phase 205 - Complete VF Test Methods Integration & AI Scanner/Viewer (2026-11-01)
+- **VF Test Methods Network Share Ingestion (`\\192.168.32.130`):**
+  - Copied all 161 laboratory files (78.26 MB) from network share `\\192.168.32.130\qc lab files\#Lab Documents\#DTP-Lab-101 VF Test Methods Updated 2025` directly into `public/uploads/vf_test_methods/`.
+  - Includes all official standard operating procedures (PDFs), universal machine parameter sheets (XLSX), test guidelines, and the full `Illustrated Test Methods` subcatalog (35 visual guide PDFs).
+- **Dedicated Database Catalog (`tbl_vf_test_methods`):**
+  - Created migration `2026-11-01-000001_CreateVfTestMethods.php` establishing `tbl_vf_test_methods` indexed by method code (`VF-A01`, `VF-B01`, `VF-G02`, etc.), category, file type, and illustrated flag.
+  - Built CLI cataloger and seeder (`App\Commands\VfMethodsSeed` / `php spark vf:seed`):
+    - Automatically scanned and parsed 162 total files into structured records with clean titles, revision dates, and procedural summaries.
+    - Categorized across 10 distinct VF test series:
+      - **Series A:** Physical & Dimensional Properties (Hardness, Weight, Thickness, Specific Gravity, Yarn Count, Non-Volatiles)
+      - **Series B:** Strength & Mechanical Properties (Tensile, Bursting, Hardware Attachment, Die C Tear, Split Tear, Trouser Tear, Stitch Tear, Baumann Tear, Compression Set, James Slip, TM144 Traction, Rebound, Zipper, Knot Slip, Lace Tip)
+      - **Series C:** Abrasion Resistance (DIN Rotary Drum Abrasion, Martindale, Taber, Lace Abrasion)
+      - **Series D:** Flexing & Fatigue Resistance (Bally Upper Flex, Ross Soling Flex, Bata Belt Flex, Stretch & Flex)
+      - **Series E:** Chemical, Aging & Environmental Fastness (Water Fastness, Crocking, UV Discoloration, Perspiration, Blooming, Water Swelling, Hydrolysis Jungle Test, pH Extract, Non-Marking, Breathability, Dip/Spray Tests, Photoluminescence)
+      - **Series F:** Adhesion & Bond Strength (Footwear Adhesion, Peel Strength, Finish Adhesion, Laminar Peel, Ink Adhesion Tape Test, Strap Pulling, Heel/Toplift Attachment, Cardboard Adhesion)
+      - **Series G:** Assembled Footwear Performance (Assembled Parameters, Whole Shoe Flex, Wash Test, Dynamic Waterproof Flex, China GB Flex, Water Absorption, Static Waterproof, Hydrostatic Head, Centrifuge Leak)
+      - **Series H:** Sampling & Conditioning Protocols (Material Conditioning VF-H01: 23±2°C / 50±5% RH, Leather/Midsole Sampling, Cement Solids)
+      - **Series I:** Chemical Analysis & Identification (Oil Content, Fiber ID, Dye Solvent Reaction, Oil Resistant Swelling)
+      - **Series J:** Electrical & Thermal Safety (Dielectric 18kV Shock Resistance, Thermal Insulation)
+      - **Manuals & Standards:** VANS Footwear Performance Testing Manual 2026, UTM Parameters, and Testing Parameters with Temperature.
+- **AI Brain Seeding & Vector Retraining:**
+  - Seeded **112 new comprehensive knowledge entries** into `tbl_bot_knowledge` with governing standards (ASTM, ISO, SATRA, GB), test scopes, operating procedures, and action buttons.
+  - Re-trained LEXIS AI Brain (`php spark brain:train`), expanding total approved answers to **1,610 knowledge entries** and syncing offline vector embeddings.
+- **Dedicated Bot Intent (`vfMethodIntent`):**
+  - Added native intent in `App\Controllers\BotController` recognizing specific VF codes (`VF-B01`, `VF-F01`), method names ("show tensile test method", "martindale abrasion", "ross flex"), and catalog requests ("list of vf test methods").
+  - Returns formatted cards with category, revision date, procedural summary, direct action buttons (`[Open Official PDF]`, `[Illustrated Guide]`, `[Create Test in DTR]`), and attached file chips (`r.files`).
+- **New-Tab Document Viewer (`public/assets/js/bot.js`):**
+  - Updated bot action and file handlers so PDF, XLSX, and DOCX documents open in fresh browser tabs without interrupting user chat sessions.
+
+---
 ## Phase 204 - LEXIS AI Brain Full Training Pipeline (`spark brain:train`) (2026-10-31)
 - **Unified Training Pipeline (`App\Commands\BrainTrain`):**
   - Added one-command CLI pipeline `php spark brain:train` that executes the full training, indexing, and backup workflow across all AI and Brain layers.

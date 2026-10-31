@@ -154,7 +154,7 @@ class BotController extends BaseController
         $prev = $this->db()->table('tbl_bot_chats')->select('message')->where(['thread_id' => (int) $thread['id'], 'sender' => 'user'])->where('id <', $userChatId)->orderBy('id', 'DESC')->get(1)->getRowArray();
         $prevUserMsg = (string) ($prev['message'] ?? '');
 
-        $intentReply = $this->artifactIntent($text, $uid, (int) $thread['id'], (array) $u) ?? $this->labRefIntent($text) ?? $this->approvalReminderIntent($text, $uid, (array) $u) ?? $this->dbSearchIntent($text) ?? $this->computeIntent($text, $prevUserMsg);
+        $intentReply = $this->artifactIntent($text, $uid, (int) $thread['id'], (array) $u) ?? $this->vfMethodIntent($text) ?? $this->labRefIntent($text) ?? $this->approvalReminderIntent($text, $uid, (array) $u) ?? $this->dbSearchIntent($text) ?? $this->computeIntent($text, $prevUserMsg);
         if ($intentReply !== null) {
             $reply = $intentReply;
         } else {
@@ -234,6 +234,303 @@ class BotController extends BaseController
         unset($reply['knowledge_id']);
 
         return $this->json(['ok' => true, 'thread_id' => (int) $thread['id'], 'user_chat_id' => $userChatId, 'escalated' => false, 'reply' => $reply]);
+    }
+
+    
+    /**
+     * VF Test Methods Intent: answers queries about VF test standards, methods, procedures, and parameters.
+     * Matches codes like VF-B01, VF-A01, VF-F01, or natural queries like "show tensile test method", "martindale abrasion",
+     * "vans testing manual", "illustrated VF-B05", "list of test methods".
+     */
+    private function vfMethodIntent(string $text): ?array
+    {
+        $low = mb_strtolower(trim($text));
+
+        // 1. Check for specific code like VF-B01, VF B01, VF-A04, etc.
+        $code = null;
+        if (preg_match('/\bVF\s*[-–]?\s*([A-J]\d{1,3}[A-Za-z]?)\b/i', $text, $m)) {
+            $code = 'VF-' . strtoupper(preg_replace('/\s+/', '', $m[1]));
+        }
+
+        // 2. Check for manual / parameters / guidelines keywords
+        if (! $code) {
+            if (preg_match('/\b(vans.*(?:manual|testing manual|performance testing)|footwear performance testing manual)\b/i', $text)) {
+                $code = 'VF-MANUAL';
+            } elseif (preg_match('/\b(universal machine|utm parameters|utm test parameters)\b/i', $text)) {
+                $code = 'VF-PARAM-UTM';
+            } elseif (preg_match('/\b(testing parameters|test parameters|parameters.*temp)\b/i', $text)) {
+                $code = 'VF-PARAM-TEMP';
+            } elseif (preg_match('/\b(guidelines for phy|phy prop guidelines|guidelines for physical|guidelines.*testing)\b/i', $text)) {
+                $code = 'VF-GUIDELINES';
+            }
+        }
+
+        // 3. Check for test name keywords if accompanied by "test", "method", "standard", "how to", "vf", "illustrated", "pdf"
+        $isTestQuery = (bool) preg_match('/\b(test|method|standard|vf|illustrated|procedure|apparatus|spec|specification|pdf|how to|guide|measure|check)\b/i', $text);
+        if (! $code && $isTestQuery) {
+            $keywordMap = [
+                'hardness' => 'VF-A01',
+                'weight' => 'VF-A02',
+                'thickness' => 'VF-A03',
+                'specific gravity' => 'VF-A04',
+                'density' => 'VF-A04',
+                'softness' => 'VF-A06',
+                'yarn count' => 'VF-A07',
+                'non-volatile' => 'VF-A08',
+                'solids content' => 'VF-H04',
+                'tensile' => 'VF-B01',
+                'elongation' => 'VF-B01',
+                'bursting' => 'VF-B02',
+                'peel and shear' => 'VF-B03',
+                'hardware attachment' => 'VF-B04',
+                'lace holder' => 'VF-B04',
+                'die c' => 'VF-B05',
+                'die-c' => 'VF-B05',
+                'split tear' => 'VF-B06',
+                'trouser tear' => 'VF-B07',
+                'stitch tear' => 'VF-B08',
+                'baumann tear' => 'VF-B09',
+                'compression set' => 'VF-B10',
+                'crush strength' => 'VF-B12',
+                'james slip' => 'VF-B15',
+                'friction coefficient' => 'VF-B25',
+                'slip resistance' => 'VF-B15',
+                'rebound' => 'VF-B16',
+                'resiliency' => 'VF-B16',
+                'zipper' => 'VF-B17',
+                'knot slip' => 'VF-B23',
+                'lace tip' => 'VF-B24',
+                'aglet' => 'VF-B24',
+                'edgewise crush' => 'VF-B27',
+                'toecap' => 'VF-B28',
+                'din abrasion' => 'VF-C01',
+                'rotary drum abrasion' => 'VF-C01',
+                'martindale' => 'VF-C04',
+                'taber' => 'VF-C05',
+                'lace abrasion' => 'VF-C09',
+                'bally flex' => 'VF-D01',
+                'ross flex' => 'VF-D02',
+                'bata belt' => 'VF-D03',
+                'stretch and flex' => 'VF-D06',
+                'color fastness to water' => 'VF-E01',
+                'water fastness' => 'VF-E01',
+                'crocking' => 'VF-E02',
+                'rub fastness' => 'VF-E02',
+                'uv discoloration' => 'VF-E03',
+                'yellowing' => 'VF-E03',
+                'perspiration' => 'VF-E16',
+                'blooming' => 'VF-E17',
+                'water swelling' => 'VF-E18',
+                'hydrolysis' => 'VF-E19',
+                'jungle test' => 'VF-E19',
+                'ph extract' => 'VF-E20',
+                'non-marking' => 'VF-E21',
+                'vapor permeability' => 'VF-E25',
+                'breathability' => 'VF-E25',
+                'dip test' => 'VF-E26',
+                'spray test' => 'VF-E27',
+                'spray rating' => 'VF-E27',
+                'glow in the dark' => 'VF-E28',
+                'photoluminescence' => 'VF-E28',
+                'footwear adhesion' => 'VF-F01',
+                'sole adhesion' => 'VF-F01',
+                'peel strength' => 'VF-F02',
+                'finish adhesion' => 'VF-F03',
+                'laminar peel' => 'VF-F04',
+                'ink adhesion' => 'VF-F05',
+                'cross-hatch' => 'VF-F05',
+                'cross hatch' => 'VF-F05',
+                'strap pulling' => 'VF-F06',
+                'heel attachment' => 'VF-F09',
+                'top lift' => 'VF-F10',
+                'cardboard adhesion' => 'VF-F11',
+                'assembled footwear' => 'VF-G01',
+                'whole shoe flex' => 'VF-G02',
+                'wash test' => 'VF-G03',
+                'whole shoe wash' => 'VF-G03',
+                'flex waterproof' => 'VF-G04',
+                'china gb' => 'VF-G05',
+                'water absorption' => 'VF-G06',
+                'static waterproof' => 'VF-G07',
+                'hydrostatic' => 'VF-G08',
+                'centrifuge' => 'VF-G09',
+                'conditioning' => 'VF-H01',
+                'leather sampling' => 'VF-H02',
+                'midsole sampling' => 'VF-H03',
+                'oil content' => 'VF-I01',
+                'fiber identification' => 'VF-I02',
+                'oil resistant' => 'VF-I05',
+                'electric shock' => 'VF-J01',
+                'thermal conductivity' => 'VF-J02',
+            ];
+
+            foreach ($keywordMap as $kw => $c) {
+                if (strpos($low, $kw) !== false) {
+                    $code = $c;
+                    break;
+                }
+            }
+        }
+
+        // 4. Check for listing / catalog query
+        $isCatalogQuery = (bool) preg_match('/\b(list of vf|all vf|vf catalog|vf test methods|vf standards|list test methods)\b/i', $text);
+
+        if (! $code && ! $isCatalogQuery) {
+            return null;
+        }
+
+        $db = $this->db();
+
+        // Handle Catalog Query
+        if ($isCatalogQuery && ! $code) {
+            $seriesCounts = $db->table('tbl_vf_test_methods')
+                ->select("SUBSTRING(code, 4, 1) as series, category, COUNT(*) as cnt")
+                ->where('code !=', 'MANUAL')
+                ->where('code !=', 'DOC')
+                ->groupBy("series, category")
+                ->orderBy("series", "ASC")
+                ->get()->getResultArray();
+
+            $replyText = "### 📚 VF Test Methods & Laboratory Standards Catalog\n\n"
+                       . "The complete VF Test Methods collection (**DTP-Lab-101 VF Test Methods Updated 2025**) contains 162 official methods and illustrated guides stored in the NEXUS-L database:\n\n";
+
+            $steps = [];
+            foreach ($seriesCounts as $sc) {
+                $sLetter = $sc['series'];
+                if ($sLetter === '') continue;
+                $replyText .= "• **Series {$sLetter} ({$sc['category']}):** {$sc['cnt']} documents\n";
+                $steps[] = "Series {$sLetter}: {$sc['category']} ({$sc['cnt']} files)";
+            }
+
+            $replyText .= "\n💡 *You can ask for any specific test method code (e.g., 'show VF-B01', 'VF-F01 sole adhesion', 'VF-A01 hardness') to instantly view the official standard PDF and illustrated setup guides.*";
+
+            $manualRow = $db->table('tbl_vf_test_methods')->like('file_name', 'Manual')->get()->getRowArray();
+            $actions = [
+                ['type' => 'open', 'label' => 'Open VANS Performance Manual 2026', 'url' => site_url($manualRow ? $manualRow['url_path'] : 'uploads/vf_test_methods/VANS  Footwear Performance Testing Manual 2026.pdf'), 'target' => '_blank'],
+                ['type' => 'open', 'label' => 'Open Lab Test Tracker', 'url' => site_url('dtr?tab=tracker')],
+                ['type' => 'open', 'label' => 'Create Material Test (DTR)', 'url' => site_url('dtr?tab=material')],
+            ];
+
+            return [
+                'text'          => $replyText,
+                'steps'         => $steps,
+                'actions'       => $actions,
+                'files'         => [],
+                'title'         => 'VF Test Methods Catalog',
+                'confidence'    => 100,
+                'related'       => [
+                    ['id' => 0, 'title' => 'VF-B01: Tensile Strength and Elongation'],
+                    ['id' => 0, 'title' => 'VF-F01: Whole Footwear Sole Adhesion'],
+                    ['id' => 0, 'title' => 'VF-C01: DIN Abrasion Resistance'],
+                    ['id' => 0, 'title' => 'VF-D02: Ross Flexing Resistance'],
+                ],
+                'diagnosis'     => null,
+                'knowledge_id'  => null,
+                'suggest_admin' => false,
+            ];
+        }
+
+        // Handle Specific Method Query
+        $records = $db->table('tbl_vf_test_methods')->where('code', $code)->orderBy('is_illustrated', 'ASC')->get()->getResultArray();
+        if (! $records) {
+            // Try LIKE
+            $records = $db->table('tbl_vf_test_methods')->like('code', $code)->orLike('title', str_replace('VF-', '', $code))->orderBy('is_illustrated', 'ASC')->get()->getResultArray();
+        }
+
+        if (! $records) {
+            return null;
+        }
+
+        $official = null;
+        $illustrated = [];
+        $files = [];
+
+        foreach ($records as $r) {
+            $files[] = [
+                'name'  => $r['file_name'],
+                'label' => ($r['is_illustrated'] ? '🎨 Illustrated: ' : '📄 Official: ') . $r['title'],
+                'url'   => site_url($r['url_path']),
+                'size'  => (int) $r['file_size'],
+            ];
+
+            if ($r['is_illustrated'] == 0 && $official === null) {
+                $official = $r;
+            } else {
+                $illustrated[] = $r;
+            }
+        }
+
+        if ($official === null && !empty($illustrated)) {
+            $official = $illustrated[0];
+        }
+
+        $kbRow = $db->table('tbl_bot_knowledge')->like('title', $code)->get()->getRowArray();
+        $titleStr = $official['code'] . ' - ' . $official['title'];
+        $catStr = $official['category'];
+        $revStr = $official['revision_date'] ? ' (Revision: ' . $official['revision_date'] . ')' : '';
+
+        $textOut = "### 📄 {$titleStr}\n\n"
+                 . "**Category:** {$catStr}{$revStr}  \n"
+                 . "**Description:**  \n" . $official['description'] . "\n\n";
+
+        if ($kbRow && !empty($kbRow['body'])) {
+            // Extract standard operating procedure if present in knowledge
+            if (preg_match('/Standard Operating Procedure:\*\*\s*\n*(.*?)(?=\n\nClick|\z)/s', $kbRow['body'], $pm)) {
+                $textOut .= "**Procedure & Parameters:**  \n" . trim($pm[1]) . "\n\n";
+            }
+        }
+
+        $textOut .= "You can view or download the complete official PDF method and any illustrated apparatus guides below:";
+
+        $actions = [];
+        if ($official && !empty($official['url_path'])) {
+            $actions[] = [
+                'type'   => 'open',
+                'label'  => 'Open Official PDF (' . $official['code'] . ')',
+                'url'    => site_url($official['url_path']),
+                'target' => '_blank',
+            ];
+        }
+
+        foreach ($illustrated as $ill) {
+            $actions[] = [
+                'type'   => 'open',
+                'label'  => 'Illustrated: ' . mb_substr($ill['title'], 0, 32),
+                'url'    => site_url($ill['url_path']),
+                'target' => '_blank',
+            ];
+        }
+
+        // Add DTR Test Navigation
+        $seriesChar = substr($official['code'], 3, 1);
+        if (in_array($seriesChar, ['A', 'B', 'C', 'D', 'E', 'H', 'I'], true)) {
+            $actions[] = ['type' => 'open', 'label' => 'Create Material Test in DTR', 'url' => site_url('dtr?tab=material')];
+        } elseif (in_array($seriesChar, ['F', 'G'], true)) {
+            $actions[] = ['type' => 'open', 'label' => 'Create Shoe Bonding Test in DTR', 'url' => site_url('dtr?tab=bonding')];
+        }
+
+        $steps = [
+            "Method: {$titleStr}",
+            "Category: {$catStr}",
+            "Conditioning: Store specimens at 23±2°C and 50±5% RH for at least 24 hours (VF-H01).",
+            "Verification: Check calibration of UTM, durometer, or flex apparatus before test run.",
+        ];
+
+        return [
+            'text'          => $textOut,
+            'steps'         => $steps,
+            'actions'       => $actions,
+            'files'         => $files,
+            'title'         => $titleStr,
+            'confidence'    => 100,
+            'related'       => [
+                ['id' => 0, 'title' => "VF Test Methods Series {$seriesChar}"],
+                ['id' => 0, 'title' => 'VANS Footwear Performance Testing Manual 2026'],
+            ],
+            'diagnosis'     => null,
+            'knowledge_id'  => $kbRow ? (int) $kbRow['id'] : null,
+            'suggest_admin' => false,
+        ];
     }
 
     /**

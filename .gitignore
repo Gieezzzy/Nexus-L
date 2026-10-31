@@ -67,6 +67,7 @@ Vagrantfile
 
 /writable/uploads/*
 !/writable/uploads/index.html
+public/uploads/**/*.zip
 
 /writable/debugbar/*
 !/writable/debugbar/index.html
