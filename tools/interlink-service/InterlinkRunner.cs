@@ -81,7 +81,7 @@ public sealed class InterlinkRunner : IAsyncDisposable
         if (!File.Exists(sessionFile))
             throw new SignInRequiredException("The InterLink service has no sign-in yet. On the service computer run: NexusInterlinkService --signin");
 
-        var minutes = _cfg.GetValue("Service:JobTimeoutMinutes", 8);
+        var minutes = _cfg.GetValue("Service:JobTimeoutMinutes", 20);
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(stop);
         cts.CancelAfter(TimeSpan.FromMinutes(minutes));
         var ct = cts.Token;

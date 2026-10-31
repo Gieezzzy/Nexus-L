@@ -98,7 +98,7 @@ class RmsStore extends ChatStore
     {
         $clean = static fn (string $s) => preg_replace('/[^a-zA-Z0-9_\-]/', '_', $s);
         $rel   = 'ImageMessageDirectory/' . $clean($me) . '/' . $clean($peer) . '/img_' . time() . '_' . random_int(1000, 9999) . '.jpg';
-        $abs   = 'D:\\html\\' . str_replace('/', '\\', $rel);
+        $abs   = 'E:\\html\\' . str_replace('/', '\\', $rel);
         if (! is_dir(dirname($abs)) && ! @mkdir(dirname($abs), 0755, true)) {
             throw new \RuntimeException('Could not create the image folder.');
         }

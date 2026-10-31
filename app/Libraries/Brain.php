@@ -12,7 +12,7 @@ namespace App\Libraries;
  *      events-YYYY-MM-DD.back   what users did and the errors they hit
  *      chats-YYYY-MM-DD.back    bot answers and the chats with administrators
  *      knowledge.back           every version of every knowledge entry (the bot's learned memory)
- *    Folders: D:\html\Brain (main) and C:\Brain (mirror). `restore()` rebuilds the knowledge table from knowledge.back.
+ *    Folders: E:\html\Brain (main) and C:\Brain (mirror). `restore()` rebuilds the knowledge table from knowledge.back.
  *
  * Search
  *  - FULLTEXT candidates from the database, re-ranked here with weighted keyword / title / body matches, synonyms,
@@ -20,7 +20,7 @@ namespace App\Libraries;
  */
 class Brain
 {
-    public const DIRS = ['D:\\html\\Brain', 'C:\\Brain'];
+    public const DIRS = ['E:\\html\\Brain', 'C:\\Brain'];
 
     private const STOP = ['a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'to', 'of', 'in', 'on', 'at', 'for', 'and', 'or', 'it', 'this', 'that', 'my', 'me', 'i', 'we', 'you', 'your', 'do', 'does', 'did', 'can', 'could', 'should', 'would', 'how', 'what', 'why', 'when', 'please', 'pls', 'help', 'with', 'there', 'about', 'mean', 'means', 'meaning', 'explain', 'tell', 'say', 'im', 'ive', 'its', 'as', 'by', 'from', 'have', 'has', 'had', 'get', 'got', 'need', 'want', 'like', 'any', 'some', 'but', 'so', 'if', 'then', 'just', 'now', 'still'];
 
@@ -503,9 +503,9 @@ class Brain
                 return ['ok' => $ev < 200, 'text' => $ev < 200 ? 'The background task that saves the assistant\'s memory is working (' . $ev . ' item(s) waiting).' : 'Many items are waiting to be saved to the Brain files (' . $ev . '). An administrator should check the scheduled task "NEXUS-L InterLink Worker".'];
 
             case 'disk':
-                $free = @disk_free_space('D:\\');
+                $free = @disk_free_space(substr(ROOTPATH, 0, 3));
 
-                return ['ok' => $free !== false && $free > 5e9, 'text' => $free === false ? 'Could not read the disk.' : 'Free space on D: is ' . round($free / 1073741824, 1) . ' GB.'];
+                return ['ok' => $free !== false && $free > 5e9, 'text' => $free === false ? 'Could not read the disk.' : 'Free space on ' . substr(ROOTPATH, 0, 2) . ' is ' . round($free / 1073741824, 1) . ' GB.'];
 
             case 'brain':
                 $st = self::dirStatus();

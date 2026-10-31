@@ -91,8 +91,8 @@ class DeployCheck extends BaseCommand
         // backups
         $bk = glob('C:\\Users\\*\\NEXUS-L-backup-*', GLOB_ONLYDIR) ?: [];
         $this->line($bk ? 'OK' : 'WARN', 'Project backup on another drive', $bk ? $bk[0] : 'none found - copy the project to C: or a network share regularly');
-        $d = @disk_free_space('D:\\');
-        $this->line($d !== false && $d > 20e9 ? 'OK' : 'WARN', 'Free space on D:', $d === false ? 'unknown' : round($d / 1073741824) . ' GB');
+        $d = @disk_free_space(substr(ROOTPATH, 0, 3));
+        $this->line($d !== false && $d > 20e9 ? 'OK' : 'WARN', 'Free space on ' . substr(ROOTPATH, 0, 2), $d === false ? 'unknown' : round($d / 1073741824) . ' GB');
 
         CLI::newLine();
         CLI::write($this->bad === 0 ? 'READY: no blocking problems' . ($this->warn ? " ({$this->warn} warnings to review)" : '.') : "NOT READY: {$this->bad} blocking problem(s), {$this->warn} warning(s).", $this->bad === 0 ? 'green' : 'red');

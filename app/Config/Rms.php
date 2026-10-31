@@ -16,7 +16,7 @@ class Rms extends BaseConfig
     public string $dbPass   = '';
 
     /** Firebase service-account JSON used for FCM v1 pushes (kept outside this repo). */
-    public string $fcmKeyFile  = 'D:\html\rms-alerts-219dd.json';
+    public string $fcmKeyFile  = 'E:\html\rms-alerts-219dd.json';
     public string $fcmChannel  = 'rms_alerts_channel_v6';
     public bool $fcmVerifySSL  = true;
     public int $fcmTimeout     = 4;
