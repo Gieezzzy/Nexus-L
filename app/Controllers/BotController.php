@@ -273,6 +273,9 @@ class BotController extends BaseController
         }
 
         $best = $hits[0]['row'];
+        if ($conf < 45) {
+            \App\Libraries\BrainLearn::noteGap($text, $page, 'low', (int) $best['id']);
+        }
         $db->table('tbl_bot_knowledge')->where('id', $best['id'])->set('hits', 'hits + 1', false)->update();
         $diag = null;
         if (! empty($best['diagnose'])) {
@@ -350,6 +353,21 @@ class BotController extends BaseController
             $db->table('tbl_bot_knowledge')->where('id', $c['knowledge_id'])->set('helpful', 'helpful + ' . (int) $delta, false)->update();
         }
         $db->table('tbl_bot_chats')->where('id', $c['id'])->update(['feedback' => $val]);
+        // learn from it: a thumbs-down is a gap; a thumbs-up after a rephrase teaches the earlier wording
+        if ((int) $c['feedback'] !== $val) {
+            try {
+                if ($val < 0) {
+                    $q = $db->query("SELECT message FROM tbl_bot_chats WHERE thread_id = (SELECT thread_id FROM tbl_bot_chats WHERE id = ?) AND sender = 'user' AND id < ? ORDER BY id DESC LIMIT 1", [$c['id'], $c['id']])->getRowArray();
+                    if ($q) {
+                        \App\Libraries\BrainLearn::noteGap((string) $q['message'], '', 'down', $c['knowledge_id'] ? (int) $c['knowledge_id'] : null);
+                    }
+                } else {
+                    \App\Libraries\BrainLearn::noteHelpful((int) $c['id']);
+                }
+            } catch (\Throwable $e) {
+                log_message('error', 'BrainLearn: ' . $e->getMessage());
+            }
+        }
 
         return $this->json(['ok' => true]);
     }
@@ -727,6 +745,23 @@ class BotController extends BaseController
         $db->table('tbl_bot_unanswered')->where('id', (int) ($p['id'] ?? 0))->update(['status' => 'answered']);
 
         return $this->json(['ok' => true, 'id' => $kid]);
+    }
+
+    /** GET brain/learn?refresh=1 : the suggestions the Brain built from what users asked, waiting for an administrator */
+    public function learn()
+    {
+        $new = $this->request->getGet('refresh') ? \App\Libraries\BrainLearn::refresh() : null;
+
+        return $this->json(['ok' => true, 'rows' => \App\Libraries\BrainLearn::open(), 'stats' => \App\Libraries\BrainLearn::stats(), 'refreshed' => $new]);
+    }
+
+    /** POST brain/learn/decide {id, action: apply|reject, title?, keywords?, body?, steps?} */
+    public function learnDecide()
+    {
+        $p = $this->input();
+        $r = \App\Libraries\BrainLearn::decide((int) ($p['id'] ?? 0), ($p['action'] ?? '') === 'reject' ? 'reject' : 'apply', $p, (string) ($this->auth->user()['username'] ?? ''));
+
+        return $this->json($r, $r['ok'] ? 200 : 422);
     }
 
     /** GET brain/issues */

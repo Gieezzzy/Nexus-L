@@ -155,7 +155,9 @@ $routes->group('', ['filter' => 'auth:admin'], static function (RouteCollection 
     $routes->post('brain/import', 'BotController::import');
     $routes->get('brain/unanswered', 'BotController::unanswered');
     $routes->post('brain/unanswered/answer', 'BotController::unansweredAnswer');
-    $routes->get('brain/issues', 'BotController::issues');
+    $routes->get('brain/learn', 'BotController::learn');
+$routes->post('brain/learn/decide', 'BotController::learnDecide');
+$routes->get('brain/issues', 'BotController::issues');
     $routes->post('brain/issues/resolve', 'BotController::issuesResolve');
     $routes->get('brain/health', 'BotController::health');
     $routes->post('brain/flush', 'BotController::flushNow');

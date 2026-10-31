@@ -126,6 +126,41 @@
     if (b.dataset.ans) { loadTeach({ title: b.dataset.s, keywords: '' }, 'Answer this question'); $('#br-t-msg').dataset.unanswered = b.dataset.ans; show('teach'); }
     if (b.dataset.ign) { await post('brain/unanswered/answer', { id: Number(b.dataset.ign), ignore: true }); loaders.unanswered(); }
   });
+  // ------------------------------------------------------------- learning (suggestions built from users' questions)
+  const KIND = { alias: 'Add words to an answer', draft: 'Answer from a live chat', gap: 'Needs an answer' };
+  const learnLoad = async (refresh) => {
+    const j = await api('brain/learn' + (refresh ? '?refresh=1' : ''));
+    const s = j.stats || {};
+    const card = (t, v, sub) => `<div class="card glass br-card"><small>${t}</small><b>${v}</b><span class="muted sm">${sub || ''}</span></div>`;
+    $('#br-learn-stats').innerHTML = s.ready
+      ? card('Waiting for you', s.open, 'suggestions') + card('Applied', s.applied, `${s.rejected} rejected`) + card('Gaps (30 days)', s.gaps30, 'questions not answered well') + card('Thumbs up / down', `${s.up30} / ${s.down30}`, 'last 30 days')
+      : '<p class="muted sm">Run the database update (php spark migrate) to switch learning on.</p>';
+    $('#br-n-learn').textContent = s.open || '';
+    if (j.refreshed) $('#br-learn-msg').textContent = `Checked ${j.refreshed.groups} groups of questions: ${j.refreshed.drafts} answers from chats, ${j.refreshed.gaps} still need an answer.`;
+    $('#br-learn-list').innerHTML = j.rows.length ? j.rows.map((r) => {
+      const ev = r.evidence || {};
+      const qs = (ev.questions || (ev.question ? [ev.question] : [])).map((q) => `<li>${esc(q)}</li>`).join('');
+      return `<li data-ls="${r.id}"><span class="br-n">${esc(KIND[r.kind] || r.kind)}</span> <span class="br-n">${r.times}&times;</span>
+        <label>Question / title<input type="text" class="ls-title" value="${esc(r.title)}" ${r.kind === 'alias' ? 'readonly' : ''}></label>
+        <label>${r.kind === 'alias' ? 'Words to add to the answer &ldquo;' + esc(r.title) + '&rdquo;' : 'Words people would use'}<input type="text" class="ls-kw" value="${esc(r.keywords || '')}"></label>
+        ${r.kind === 'alias' ? '' : `<label>Answer${r.kind === 'draft' ? ' (taken from an administrator&rsquo;s reply, please check it)' : ' (write it)'}<textarea class="ls-body" rows="3">${esc(r.body || '')}</textarea></label>`}
+        <details><summary>Why this was suggested</summary><ul class="br-ev">${qs}</ul>${ev.helped ? `<small class="muted">The user then found &ldquo;${esc(ev.helped)}&rdquo; helpful.</small>` : ''}${ev.thumbs_down ? '<small class="muted">An answer was marked thumbs-down.</small>' : ''}</details>
+        <div class="br-row"><button type="button" class="dsg-btn dsg-primary" data-lapply="${r.id}">Apply</button><button type="button" class="dsg-btn" data-lreject="${r.id}">Reject</button></div></li>`;
+    }).join('') : '<li class="muted sm">Nothing waiting. Press &ldquo;Look for new suggestions&rdquo; after users have asked more questions.</li>';
+  };
+  loaders.learning = () => learnLoad(true).catch((e) => { $('#br-learn-msg').textContent = e.message; });
+  $('#br-learn-refresh').onclick = () => learnLoad(true).catch((e) => { $('#br-learn-msg').textContent = e.message; });
+  $('#br-learn-list').addEventListener('click', async (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const li = b.closest('[data-ls]'); if (!li) return;
+    const id = Number(li.dataset.ls);
+    try {
+      if (b.dataset.lreject) await post('brain/learn/decide', { id, action: 'reject' });
+      else if (b.dataset.lapply) await post('brain/learn/decide', { id, action: 'apply', title: $('.ls-title', li).value, keywords: $('.ls-kw', li).value, body: $('.ls-body', li)?.value });
+      learnLoad(false);
+    } catch (x) { $('#br-learn-msg').textContent = x.message; }
+  });
+
   loaders.issues = async () => {
     const j = await api('brain/issues');
     $('#br-iss-list').innerHTML = j.rows.map((r) => `<li><b>${esc(r.summary)}</b> <span class="br-n">${r.times}×</span> <span class="br-n">${r.users} user(s)</span><br><small class="muted">${esc(r.page || '')} · last ${esc(r.last_seen)}</small><div class="br-row"><button type="button" class="dsg-mini" data-fix="${r.id}" data-s="${esc(r.summary)}">Write the fix</button><button type="button" class="dsg-mini" data-iign="${r.id}">Ignore</button></div></li>`).join('') || '<li class="muted">No repeated problems.</li>';

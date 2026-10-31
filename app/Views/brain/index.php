@@ -8,6 +8,7 @@
         <button type="button" class="br-tab active" data-tab="overview">Overview</button>
         <button type="button" class="br-tab" data-tab="chats">Chats <span class="br-n" id="br-n-chats"></span></button>
         <button type="button" class="br-tab" data-tab="unanswered">Unanswered <span class="br-n" id="br-n-un"></span></button>
+        <button type="button" class="br-tab" data-tab="learning">Learning <span class="br-n" id="br-n-learn"></span></button>
         <button type="button" class="br-tab" data-tab="issues">Problems <span class="br-n" id="br-n-iss"></span></button>
         <button type="button" class="br-tab" data-tab="knowledge">Knowledge</button>
         <button type="button" class="br-tab" data-tab="teach">Teach / Import</button>
@@ -33,6 +34,14 @@
     <div class="card glass"><h4>Questions the assistant could not answer</h4>
         <p class="muted sm">Answer the most frequent ones first. Once you answer, the assistant knows it for everyone.</p>
         <ul id="br-un-list" class="br-list"></ul></div>
+</section>
+
+<section id="br-learning" class="br-pane" hidden>
+    <div class="card glass"><h4>What the assistant learned from users</h4>
+        <p class="muted sm">The assistant watches what people ask, which answers get a thumbs-down, and how they rephrase. It only <b>proposes</b>: nothing becomes an answer until you apply it. Questions are stored without names.</p>
+        <div class="br-cards" id="br-learn-stats"></div>
+        <div class="br-row"><button type="button" class="dsg-btn dsg-primary" id="br-learn-refresh">Look for new suggestions</button><span id="br-learn-msg" class="muted sm"></span></div>
+        <ul id="br-learn-list" class="br-list"></ul></div>
 </section>
 
 <section id="br-issues" class="br-pane" hidden>
