@@ -53,6 +53,25 @@ def j(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=str)
 
 
+_act: tuple[float, dict[str, Any]] = (0.0, {})
+
+
+def active_settings() -> dict[str, Any]:
+    """The active version: threshold, whether the reranker is on, and the fitted calibration. Cached for 20 s."""
+    global _act
+    import time
+
+    if time.time() - _act[0] > 20:
+        row = one("SELECT version, threshold, rerank, calib FROM settings_versions WHERE active") or {}
+        _act = (time.time(), {"version": row.get("version"), "threshold": float(row.get("threshold") or settings.threshold), "rerank": bool(row.get("rerank")), "calib": row.get("calib")})
+    return _act[1]
+
+
+def drop_settings_cache() -> None:
+    global _act
+    _act = (0.0, {})
+
+
 def active_threshold() -> float:
     row = one("SELECT threshold FROM settings_versions WHERE active")
     return float(row["threshold"]) if row else settings.threshold

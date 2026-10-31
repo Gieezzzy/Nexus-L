@@ -54,6 +54,42 @@ class AiBridge
         );
     }
 
+    /** @return array<string,mixed>|null a GET to the AI service (used by the admin pages; works in every mode) */
+    public static function get(string $path, int $timeoutMs = 2500): ?array
+    {
+        if (! function_exists('curl_init')) {
+            return null;
+        }
+        $ch = curl_init(self::url() . $path);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT_MS => $timeoutMs, CURLOPT_CONNECTTIMEOUT_MS => 400, CURLOPT_HTTPHEADER => ['X-AI-Key: ' . self::key()]]);
+        $out  = curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        $j = $out === false || $code >= 300 ? null : json_decode((string) $out, true);
+
+        return is_array($j) ? $j : null;
+    }
+
+    /** @return array<string,mixed>|null a POST for the admin pages (training, review): works in every mode, longer timeout */
+    public static function admin(string $method, string $path, array $payload = [], int $timeoutMs = 20000): ?array
+    {
+        if (! function_exists('curl_init')) {
+            return null;
+        }
+        $ch = curl_init(self::url() . $path);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT_MS => $timeoutMs, CURLOPT_CONNECTTIMEOUT_MS => 600, CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'X-AI-Key: ' . self::key()],
+            CURLOPT_POSTFIELDS => $method === 'GET' ? null : json_encode($payload, JSON_UNESCAPED_UNICODE),
+        ]);
+        $out  = curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        $j = $out === false ? null : json_decode((string) $out, true);
+
+        return is_array($j) ? $j + ['_http' => $code] : null;
+    }
+
     /** One session id per user and day: links clicks, questions and admin replies of that user. */
     public static function session(int $userId, ?string $day = null): string
     {

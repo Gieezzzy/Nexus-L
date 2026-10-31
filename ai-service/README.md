@@ -55,3 +55,19 @@ An administrator's reply in a live chat becomes a **pending** correction (never 
   calibration set, **not** a measure of real users. Real accuracy comes from `/admin/report` once real conversations exist.
 * Short keyword-only questions that fit several answers are the main source of wrong answers.
 * LangGraph logs a msgpack warning about `UiState` / `AgentAnswer` in checkpoints (harmless today).
+
+## Two brains, the reranker, calibration, training and the Universe
+
+* **Primary brain = this service. Secondary brain = the classic PHP Brain.** With `ai.mode = live` (Settings), every question that is not a built-in skill
+  (chart, file, report lookup, calculator) goes to the AI brain first. If it is offline, unsure or abstains, the PHP brain answers; if both are unsure the user
+  gets the safe message plus help options. `shadow` = the PHP brain answers and the AI brain only watches; `off` = PHP only.
+* **Second stage:** a cross-encoder reranker (`Xenova/ms-marco-MiniLM-L-12-v2`, ~120 MB, CPU) reads the question together with each of the top candidates.
+* **Calibrated confidence:** a small logistic regression (numpy) turns hybrid score, reranker score, word coverage and the margin to the runner-up into
+  P(correct). The threshold is the lowest one that keeps precision >= 98% on questions the model never saw.
+* **Train AI tab (Brain console, admins):** *Train now* re-indexes, extends the test set, fits the calibration on the train split and compares old vs new on the
+  holdout split; the new version is activated only if it does at least as well. *Your training task* shows real questions with the three best candidates: pick the
+  right one, "none fits" (optionally type the right answer: it goes live), or "not about NEXUS-L". Each decision becomes a labelled case.
+* **Universe tab:** every answer is a star in a topic cluster; questions fly to the brain that answered; new knowledge appears live (polls `brain/universe/feed`,
+  stored in `tbl_bot_brain_events`).
+* `python`-side endpoints: `POST /admin/train/start`, `GET /admin/train/status`, `POST /admin/review/seed`, `GET /admin/review/next`, `POST /admin/review/{id}/label`.
+* Rasa has a circuit breaker: when it is not running it is skipped for 60 s (a refused local connection used to cost 2 seconds per message).

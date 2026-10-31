@@ -160,7 +160,14 @@ $routes->group('', ['filter' => 'auth:admin'], static function (RouteCollection 
     $routes->post('brain/import', 'BotController::import');
     $routes->get('brain/unanswered', 'BotController::unanswered');
     $routes->post('brain/unanswered/answer', 'BotController::unansweredAnswer');
-    $routes->get('brain/learn', 'BotController::learn');
+    $routes->get('brain/universe/graph', 'BotController::universeGraph');
+$routes->get('brain/universe/feed', 'BotController::universeFeed');
+$routes->get('brain/ai/status', 'BotController::aiStatus');
+$routes->post('brain/ai/train', 'BotController::aiTrain');
+$routes->get('brain/ai/review', 'BotController::aiReview');
+$routes->post('brain/ai/review/seed', 'BotController::aiReviewSeed');
+$routes->post('brain/ai/label', 'BotController::aiLabel');
+$routes->get('brain/learn', 'BotController::learn');
 $routes->post('brain/learn/decide', 'BotController::learnDecide');
 $routes->get('brain/issues', 'BotController::issues');
     $routes->post('brain/issues/resolve', 'BotController::issuesResolve');

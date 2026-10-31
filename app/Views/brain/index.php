@@ -11,6 +11,8 @@
         <button type="button" class="br-tab active" data-tab="overview">Overview</button>
         <button type="button" class="br-tab" data-tab="chats">Chats <span class="br-n" id="br-n-chats"></span></button>
         <button type="button" class="br-tab" data-tab="unanswered">Unanswered <span class="br-n" id="br-n-un"></span></button>
+        <button type="button" class="br-tab" data-tab="universe">Universe</button>
+        <button type="button" class="br-tab" data-tab="trainai">Train AI <span class="br-n" id="br-n-train"></span></button>
         <button type="button" class="br-tab" data-tab="learning">Learning <span class="br-n" id="br-n-learn"></span></button>
         <button type="button" class="br-tab" data-tab="issues">Problems <span class="br-n" id="br-n-iss"></span></button>
         <button type="button" class="br-tab" data-tab="knowledge">Knowledge</button>
@@ -37,6 +39,34 @@
     <div class="card glass"><h4>Questions the assistant could not answer</h4>
         <p class="muted sm">Answer the most frequent ones first. Once you answer, the assistant knows it for everyone.</p>
         <ul id="br-un-list" class="br-list"></ul></div>
+</section>
+
+<section id="br-universe" class="br-pane" hidden>
+    <div class="card glass bu-wrap">
+        <div class="bu-stats" id="bu-stats"><span class="muted sm">Loading the universe...</span></div>
+        <div class="bu-main">
+            <div class="bu-stage"><canvas id="bu-canvas" role="img" aria-label="Live map of everything the assistant knows"></canvas><div id="bu-tip" class="bu-tip" hidden></div></div>
+            <ul id="bu-feed" class="bu-feed" aria-live="polite"></ul>
+        </div>
+        <div class="bu-legend" id="bu-legend"></div>
+        <p class="muted sm">Every star is one answer the assistant knows (bigger = used more, ringed = new or changed in the last day). A question flies from the bottom to the brain that answers it: the <b>AI brain</b> (primary) or the <b>classic PHP brain</b> (secondary, the safety net), then lights the answer it used. New knowledge appears as a bright new star. Updates every second.</p>
+    </div>
+</section>
+
+<section id="br-trainai" class="br-pane" hidden>
+    <div class="card glass" id="bt-status"><span class="muted sm">Loading...</span></div>
+    <div class="card glass">
+        <h4>Train the AI brain</h4>
+        <p class="muted sm">Training re-reads every answer and correction, builds a test of questions the brain has never seen, teaches it how sure it really is (confidence calibration with the reranker), and only switches to the new version if it does better on those unseen questions. Takes a few minutes; the assistant keeps answering meanwhile (a little slower).</p>
+        <div class="br-row"><button type="button" class="dsg-btn dsg-primary" id="bt-train">Train now</button><span id="bt-msg" class="muted sm"></span></div>
+        <div class="bt-bar" id="bt-bar" hidden><i id="bt-fill"></i></div>
+        <div id="bt-result"></div>
+    </div>
+    <div class="card glass" id="bt-review">
+        <h4>Your training task: tell the brain what is right</h4>
+        <p class="muted sm">Real questions people typed. Pick the correct answer, say none fits, or say it is not about NEXUS-L. Each decision becomes a test case and makes the next training better. If none fits and you know the answer, type it: it goes live at once.</p>
+        <div id="bt-item"><span class="muted sm">Loading the next question...</span></div>
+    </div>
 </section>
 
 <section id="br-learning" class="br-pane" hidden>

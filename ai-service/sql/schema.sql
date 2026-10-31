@@ -122,3 +122,22 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
   finished_at timestamptz,
   summary    jsonb
 );
+
+-- ---- second-stage reader, calibration, review task ------------------------------------------------------------------------
+ALTER TABLE settings_versions ADD COLUMN IF NOT EXISTS calib jsonb;                 -- fitted logistic model (calibration.py)
+ALTER TABLE settings_versions ADD COLUMN IF NOT EXISTS rerank boolean NOT NULL DEFAULT false;
+ALTER TABLE settings_versions ADD COLUMN IF NOT EXISTS metrics jsonb;               -- the comparison that decided this version
+
+-- the labelling task: a real question, the three best candidate answers, and what the administrator said
+CREATE TABLE IF NOT EXISTS review_items (
+  item_id     bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  question    text NOT NULL UNIQUE,
+  source      text NOT NULL DEFAULT 'chat',          -- chat | unanswered | shadow
+  status      text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','done','skipped')),
+  choice      text,                                  -- kb | none | offtopic
+  kb_id       integer,
+  labeled_by  text,
+  labeled_at  timestamptz,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS review_status_idx ON review_items (status, item_id);

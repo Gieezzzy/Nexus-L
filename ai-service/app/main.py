@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from opentelemetry import trace
 from pydantic import BaseModel, Field
 
-from app import db, indexer, memory, pipeline, store
+from app import db, indexer, memory, pipeline, review, store
 from app.agent import build_graph
 from app.config import settings
 from app.state import UiState
@@ -138,13 +138,14 @@ def ask(body: AskIn) -> dict[str, Any]:
     s, u = sid(body.session_id), uid(body.user_id)
     q = redact(body.message)
     ui = body.ui or derive_ui(s)
-    tau = db.active_threshold()
+    act = db.active_settings()
+    tau = float(act["threshold"])
     db.run("INSERT INTO sessions (session_id, user_id) VALUES (%s,%s) ON CONFLICT DO NOTHING", (s, u))
     db.run("INSERT INTO messages (session_id, sender, body) VALUES (%s,'user',%s)", (s, q))
     with trace.get_tracer("nexus-l").start_as_current_span("ask") as span:
         span.set_attribute("session.id", s)
         out = app.state.graph.invoke(
-            {"session_id": s, "user_id": u, "question": q, "prev_question": redact(body.prev_question), "ui": ui, "threshold": tau},
+            {"session_id": s, "user_id": u, "question": q, "prev_question": redact(body.prev_question), "ui": ui, "threshold": tau, "use_rerank": act["rerank"], "calib": act["calib"]},
             config={"configurable": {"thread_id": s}},
         )
         trace_id = format(span.get_span_context().trace_id, "032x")
@@ -230,6 +231,53 @@ def reindex(force: bool = False) -> dict[str, Any]:
 @app.post("/admin/pipeline/run", dependencies=[Depends(auth)])
 def run_pipeline() -> dict[str, Any]:
     return pipeline.run(app.state.graph)
+
+
+@app.post("/admin/train/start", dependencies=[Depends(auth)])
+def train_start() -> dict[str, Any]:
+    return pipeline.start_train(build_graph(None))
+
+
+@app.get("/admin/train/status", dependencies=[Depends(auth)])
+def train_status() -> dict[str, Any]:
+    act = db.active_settings()
+    ver = db.one("SELECT version, threshold, rerank, holdout_precision, holdout_recall, holdout_abstain, holdout_cases, note, metrics, created_at FROM settings_versions WHERE active") or {}
+    cases = db.one("SELECT count(*) total, count(*) FILTER (WHERE origin = 'review') reviewed, count(*) FILTER (WHERE split = 'holdout') holdout FROM eval_cases") or {}
+    return {"job": pipeline.JOB, "active": ver, "reranker": bool(act["rerank"]), "calibrated": bool(act["calib"]), "cases": cases, "review": review.counts(),
+            "docs": store.count("docs"), "corrections": store.count("corrections")}
+
+
+@app.post("/admin/review/seed", dependencies=[Depends(auth)])
+def review_seed() -> dict[str, int]:
+    return review.seed()
+
+
+@app.get("/admin/review/next", dependencies=[Depends(auth)])
+def review_next() -> dict[str, Any]:
+    return review.next_item(app.state.graph) or {"item_id": None, **review.counts()}
+
+
+class LabelIn(BaseModel):
+    choice: Literal["kb", "none", "offtopic", "skip"]
+    kb_id: int | None = None
+    admin_id: str = ""
+    answer: str = ""
+
+
+@app.post("/admin/review/{item_id}/label", dependencies=[Depends(auth)])
+def review_label(item_id: int, b: LabelIn) -> dict[str, Any]:
+    return review.label(item_id, b.choice, b.kb_id, review.who(b.admin_id), b.answer)
+
+
+@app.get("/admin/explain", dependencies=[Depends(auth)])
+def explain(q: str) -> dict[str, Any]:
+    """Why the assistant would answer (or refuse) a question: the best candidates with every signal behind the confidence."""
+    from app import agent
+
+    act = db.active_settings()
+    st: dict[str, Any] = {"question": redact(q)[:300], "search_text": redact(q)[:300], "ui": UiState(role="admin"), "use_rerank": act["rerank"], "calib": act["calib"], "user_id": "eval", "session_id": "explain"}
+    r = agent.retrieve_node(st)  # type: ignore[arg-type]
+    return {"threshold": act["threshold"], "feat": r["feat"], "top": [{"title": d["title"], "score": d["score"], "dense": d.get("dense"), "cover": d.get("cover"), "rr": d.get("rr"), "kind": d["kind"]} for d in r["docs"][:3]]}
 
 
 @app.get("/admin/eval", dependencies=[Depends(auth)])

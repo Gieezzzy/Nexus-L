@@ -32,7 +32,12 @@ class Settings(BaseSettings):
     ollama_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5:3b-instruct"
 
-    threshold: float = 0.80                     # starting point; the nightly gate replaces it with a calibrated value
+    # second-stage reader: a cross-encoder reads the question and each candidate answer TOGETHER (much sharper than comparing two vectors)
+    rerank_enabled: bool = True
+    rerank_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
+    rerank_candidates: int = 4
+
+    threshold: float = 0.80                    # starting point; the nightly gate replaces it with a calibrated value
     max_retries: int = 2
     top_k: int = 6
 

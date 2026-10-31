@@ -7,7 +7,7 @@ from typing import Any, Literal
 from langgraph.graph import END, StateGraph
 from opentelemetry import trace
 
-from app import db, memory, store
+from app import calibration, db, memory, rerank, store
 from app.config import settings
 from app.nlu import nlu_node, rule_node
 from app.prompts import ABSTAIN_TEXT, HUMAN_TEXT, SYSTEM_PROMPT
@@ -34,6 +34,8 @@ def _dense_norm(cos: float) -> float:
 # ------------------------------------------------------------------------------------------------------ nodes
 
 def memory_node(state: AgentState) -> AgentState:
+    if state.get("user_id") == "eval":                        # evaluation replays have no memories
+        return {"memories": [], "trace": ["mem0:skipped (eval)"]}
     mems = memory.recall(state["user_id"], state["question"])
     return {"memories": mems, "trace": [f"mem0:{len(mems)} memories"]}
 
@@ -64,8 +66,30 @@ def retrieve_node(state: AgentState) -> AgentState:
                 hits[kb] = {"key": kb, "kind": kind, "kb_id": kb if kb > 0 else p.get("kb_id"), "title": p.get("title", ""), "text": body, "steps": p.get("steps", []),
                             "score": round(min(1.0, score), 4), "dense": round(h["score"], 4), "cover": round(cover, 3), "source_id": f"{kind}:{kb}"}
     ranked = sorted(hits.values(), key=lambda d: d["score"], reverse=True)[: settings.top_k]
+    feat: dict[str, float] = {}
+    if ranked:
+        feat = {"hybrid": ranked[0]["score"], "cover": ranked[0]["cover"], "rr": 0.0, "margin": 0.0, "rr_margin": 0.0, "qlen": min(1.0, len(qw) / 10)}
+    # second stage: a cross-encoder reads the question with each candidate answer and re-orders them
+    if state.get("use_rerank") and len(ranked) > 1 and rerank.ready():
+        cand = ranked[: settings.rerank_candidates]
+        rr = rerank.scores(q, [rerank.doc_text(c["title"], "", c["text"]) for c in cand])
+        if len(rr) == len(cand):
+            for c, r in zip(cand, rr):
+                c["rr"] = round(r, 4)
+                c["blend"] = 0.5 * c["score"] + 0.5 * r
+            cand.sort(key=lambda d: d["blend"], reverse=True)
+            ranked = cand + ranked[len(cand):]
+            second = ranked[1] if len(ranked) > 1 else None
+            feat = {"hybrid": ranked[0]["score"], "cover": ranked[0]["cover"], "rr": ranked[0]["rr"], "qlen": min(1.0, len(qw) / 10),
+                    "margin": ranked[0]["score"] - (second["score"] if second else 0.0), "rr_margin": ranked[0]["rr"] - (second.get("rr", 0.0) if second else 0.0)}
+            p = calibration.predict(state.get("calib"), feat)
+            if p is not None:
+                ranked[0]["score"] = round(p, 4)                  # the confidence IS the calibrated probability
+                ranked[0]["calibrated"] = True
+            else:
+                ranked[0]["score"] = round(ranked[0]["blend"], 4)
     best = f" (best {ranked[0]['score']:.2f}: {ranked[0]['title'][:50]})" if ranked else ""
-    return {"docs": ranked, "trace": [f"retrieve:{len(ranked)}{best}"]}
+    return {"docs": ranked, "feat": feat, "trace": [f"retrieve:{len(ranked)}{best}"]}
 
 
 def _extractive(state: AgentState) -> AgentAnswer:
@@ -133,9 +157,16 @@ def verify_node(state: AgentState) -> AgentState:
     grounded = sum(_supported(c, ctx) for c in d.claims) / max(1, len(d.claims))
     cited_ok = bool(d.citations) and all(norm(c.quote) in ctx for c in d.citations)
     top = docs[0]["score"]
-    margin = 0.92 if len(docs) > 1 and top - docs[1]["score"] < 0.03 and docs[1].get("kb_id") != docs[0].get("kb_id") else 1.0
-    unmatched = min(1.0, docs[0].get("cover", 0.0) / 0.6)         # a question whose words the answer mostly does not contain is not answered
-    conf = round(min(d.self_confidence, top) * margin * grounded * unmatched * (1.0 if cited_ok else 0.0), 3)
+    if docs[0].get("calibrated"):
+        # the calibrated probability already accounts for coverage and the gap to the runner-up
+        # the reranker can be fooled by a shared word ("today", "report"): the answer must also contain the question's own words
+        # and the reader itself must find the answer relevant: on questions that are not about NEXUS-L it scores below 0.05, on real ones above 0.9
+        margin, unmatched = 1.0, min(1.0, docs[0].get("cover", 0.0) / 0.5) * min(1.0, docs[0].get("rr", 0.0) / 0.5)
+        conf = round(top * grounded * unmatched * (1.0 if cited_ok else 0.0), 3)
+    else:
+        margin = 0.92 if len(docs) > 1 and top - docs[1]["score"] < 0.03 and docs[1].get("kb_id") != docs[0].get("kb_id") else 1.0
+        unmatched = min(1.0, docs[0].get("cover", 0.0) / 0.6)     # a question whose words the answer mostly does not contain is not answered
+        conf = round(min(d.self_confidence, top) * margin * grounded * unmatched * (1.0 if cited_ok else 0.0), 3)
     span.set_attribute("nexus.confidence", conf)
     span.set_attribute("nexus.grounded", grounded)
     span.set_attribute("nexus.threshold", state["threshold"])
@@ -145,7 +176,9 @@ def verify_node(state: AgentState) -> AgentState:
 def decide(state: AgentState) -> Literal["finish", "retry", "abstain", "human"]:
     if state["confidence"] >= state["threshold"]:
         return "finish"
-    if state.get("attempts", 0) <= settings.max_retries:
+    docs = state.get("docs") or []
+    near_miss = bool(docs) and (docs[0].get("rr", 0.0) >= 0.3 or docs[0]["score"] >= 0.5)    # a question that is clearly not about NEXUS-L is never widened until something matches
+    if state.get("attempts", 0) <= settings.max_retries and near_miss:
         return "retry"
     ui = state.get("ui")
     return "human" if ui and ui.last_error else "abstain"      # a failing user with a visible error is handed to a person

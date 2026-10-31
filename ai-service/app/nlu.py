@@ -42,15 +42,26 @@ def local_parse(text: str) -> Intent:
     return Intent(name="nlu_fallback", confidence=0.0)
 
 
+_rasa_down_until = 0.0
+
+
 async def rasa_parse(text: str) -> Intent:
+    """Rasa when it answers; the built-in router when it does not. A failed call switches Rasa off for a minute (circuit breaker), because
+    on Windows a refused connection to a local port can take seconds and every user message would pay for it."""
+    global _rasa_down_until
+    import time
+
+    if time.time() < _rasa_down_until:
+        return local_parse(text)
     try:
-        async with httpx.AsyncClient(timeout=3.0) as c:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(2.0, connect=0.4)) as c:
             r = await c.post(f"{settings.rasa_url}/model/parse", json={"text": text})
             r.raise_for_status()
             j: dict[str, Any] = r.json()
         ents = {e["entity"]: str(e["value"]) for e in j.get("entities", []) if "value" in e}
         return Intent(name=j["intent"]["name"], confidence=float(j["intent"]["confidence"]), entities=ents)
     except (httpx.HTTPError, KeyError, ValueError):
+        _rasa_down_until = time.time() + 60
         return local_parse(text)                       # NLU down or malformed: never fail the user
 
 

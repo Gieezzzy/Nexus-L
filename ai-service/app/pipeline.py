@@ -32,6 +32,13 @@ OFF_TOPIC = [
     "can you search the web for me", "open youtube", "how do I hack a wifi password", "what is the stock price of apple",
 ]
 _TYPO_KEYS = "qwertyuiopasdfghjklzxcvbnm"
+_NEG_TOPICS = ["the weather", "the news", "basketball scores", "a recipe for pasta", "the stock market", "the bitcoin price", "a joke", "movie recommendations", "flight tickets to Cebu",
+               "the capital of Japan", "how to lose weight", "a love poem", "song lyrics", "the lottery results", "my horoscope", "the dollar exchange rate", "how to bake a cake",
+               "my facebook password", "a new phone", "the best restaurant", "the traffic", "the president", "the world cup", "a math problem", "a translation to Spanish",
+               "a bedtime story", "a workout plan", "how to fix my car", "a taxi", "a hotel booking", "a video to youtube", "music to download", "a photo to instagram",
+               "an email to my friend", "a message to my mom", "the time in Tokyo", "a random number", "the score of the game", "a tiktok dance", "a gift idea"]
+_NEG_FORMS = ["what is {t}", "tell me about {t}", "give me {t}", "can you show me {t}", "i want {t} today", "please find {t}", "how is {t}", "search the web for {t}", "send {t} to me", "generate {t}"]
+OFF_TOPIC += [f.format(t=t) for i, t in enumerate(_NEG_TOPICS) for j, f in enumerate(_NEG_FORMS) if (i + j) % 3 == 0]
 
 
 def _split(question: str) -> str:
@@ -116,7 +123,7 @@ def gate(graph: Any) -> dict[str, Any]:
     best_tau, best = None, None
     for tau in [x / 100 for x in range(40, 96, 1)]:
         m = evaluate(res, tau)
-        if m["precision"] >= PRECISION_TARGET and m["refusal_ok"] >= 0.95:
+        if m["precision"] >= PRECISION_TARGET and m["refusal_ok"] >= 0.98:
             best_tau, best = tau, m                    # the LOWEST such tau keeps the most answers
             break
     if best_tau is None:
@@ -160,3 +167,118 @@ def run(graph: Any) -> dict[str, Any]:
     db.run("DELETE FROM telemetry_events WHERE occurred_at < now() - interval '90 days'")
     db.run("UPDATE pipeline_runs SET finished_at = now(), summary = %s::jsonb WHERE run_id = %s", (db.j(summary), run_id))
     return summary
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------
+# training: calibrate the confidence of the reranked candidate and decide, on cases the model never saw, whether it beats the old way
+# ---------------------------------------------------------------------------------------------------------------------------------
+import threading
+import time
+
+from app import calibration
+
+JOB: dict[str, Any] = {"state": "idle", "step": "", "progress": 0, "result": None, "error": None, "started": None, "finished": None}
+_job_lock = threading.Lock()
+
+
+def _replay_mode(cases: list[dict[str, Any]], graph: Any, *, rerank_on: bool, calib: dict[str, Any] | None, tick: Any = None) -> list[dict[str, Any]]:
+    out = []
+    for i, c in enumerate(cases):
+        s = graph.invoke({"session_id": "eval", "user_id": "eval", "question": c["question"], "ui": UiState(), "threshold": 0.0, "prev_question": "", "use_rerank": rerank_on, "calib": calib})
+        p = s.get("payload", {})
+        out.append({**c, "got_kb": p.get("kb_id"), "conf": float(s.get("confidence", 0.0)), "route": s.get("route"), "feat": s.get("feat") or {}})
+        if tick and i % 40 == 0:
+            tick(i, len(cases))
+    return out
+
+
+def _pick_threshold(res: list[dict[str, Any]]) -> tuple[float | None, dict[str, float] | None]:
+    for tau in [x / 100 for x in range(30, 99)]:
+        m = evaluate(res, tau)
+        if m["precision"] >= PRECISION_TARGET and m["refusal_ok"] >= 0.98:
+            return tau, m
+    return None, None
+
+
+def train(graph: Any) -> dict[str, Any]:
+    """Re-index, extend the evaluation set, fit the calibration on the TRAIN split, and compare old and new on the HOLDOUT split."""
+    t0 = time.time()
+    step = lambda s, p: JOB.update(step=s, progress=p)  # noqa: E731
+    step("Indexing answers and corrections", 3)
+    indexer.index_docs()
+    indexer.index_corrections()
+    added = build_eval_set()
+    update_boosts()
+    train_cases = db.query("SELECT question, expected_kb, expect_abstain, origin FROM eval_cases WHERE split = 'train'")
+    hold_cases = db.query("SELECT question, expected_kb, expect_abstain, origin FROM eval_cases WHERE split = 'holdout'")
+    if len(hold_cases) < 30 or len(train_cases) < 60:
+        return {"skipped": f"not enough labelled cases yet (train {len(train_cases)}, holdout {len(hold_cases)})"}
+
+    step("Measuring the current method on unseen questions", 8)
+    legacy = _replay_mode(hold_cases, graph, rerank_on=False, calib=None, tick=lambda i, n: step("Measuring the current method", 8 + int(22 * i / n)))
+    tau_l, m_l = _pick_threshold(legacy)
+
+    if len(train_cases) > 650:                                  # a 6-feature model needs a few hundred examples, not thousands: keeps training to minutes
+        train_cases = random.Random(1).sample(train_cases, 650)
+    step("Reading candidates with the reranker (training questions)", 30)
+    raw = _replay_mode(train_cases, graph, rerank_on=True, calib=None, tick=lambda i, n: step("Reading training questions with the reranker", 30 + int(40 * i / n)))
+    rows, labels = [], []
+    for r in raw:
+        if not r["feat"] or r["got_kb"] is None:
+            continue
+        rows.append(r["feat"])
+        labels.append(1 if (not r["expect_abstain"] and r["expected_kb"] is not None and r["got_kb"] == r["expected_kb"]) else 0)
+    step("Fitting the confidence calibration", 72)
+    model = calibration.fit(rows, labels)
+    if model is None:
+        return {"skipped": "not enough varied training examples to fit the calibration", "train_examples": len(rows)}
+
+    step("Measuring the reranked method on unseen questions", 75)
+    blend = _replay_mode(hold_cases, graph, rerank_on=True, calib=None, tick=lambda i, n: step("Measuring the reranked method", 75 + int(8 * i / n)))
+    tau_b, m_b = _pick_threshold(blend)
+    step("Measuring the calibrated method on unseen questions", 84)
+    full = _replay_mode(hold_cases, graph, rerank_on=True, calib=model, tick=lambda i, n: step("Measuring the calibrated method", 84 + int(11 * i / n)))
+    tau_f, m_f = _pick_threshold(full)
+
+    step("Deciding", 96)
+    # three candidates are judged on the SAME unseen questions; the old method wins ties, and a new one must not be less precise
+    cands = [("legacy", tau_l, m_l, False, None), ("reranked", tau_b, m_b, True, None), ("calibrated", tau_f, m_f, True, model)]
+    best = cands[0]
+    for c in cands[1:]:
+        if c[2] is not None and (best[2] is None or (c[2]["recall"] > best[2]["recall"] + 0.005 and c[2]["precision"] >= best[2]["precision"] - 0.005)):
+            best = c
+    name, tau_best, m_best, use_rr, calib_model = best
+    better = name != "legacy" and m_best is not None
+    pack = lambda t, m: {"threshold": t, **(m or {})}  # noqa: E731
+    metrics = {"legacy": pack(tau_l, m_l), "reranked": pack(tau_b, m_b), "calibrated": pack(tau_f, m_f), "best": name, "best_stats": pack(tau_best, m_best),
+               "calibration": {k: model[k] for k in ("n", "positive", "log_loss")}, "train_cases": len(train_cases), "holdout_cases": len(hold_cases), "eval_cases_added": added}
+    metrics["full"] = metrics["best_stats"]                       # the Train tab reads this one
+    if better:
+        note = f"activated the {name} method: it answers more of the unseen questions at the same precision"
+        db.run("UPDATE settings_versions SET active = false WHERE active")
+        db.run("INSERT INTO settings_versions (threshold, holdout_cases, holdout_precision, holdout_abstain, holdout_recall, note, active, calib, rerank, metrics) VALUES (%s,%s,%s,%s,%s,%s,true,%s::jsonb,%s,%s::jsonb)",
+               (tau_best, len(hold_cases), m_best["precision"], m_best["abstain"], m_best["recall"], note, db.j(calib_model) if calib_model else None, use_rr, db.j(metrics)))
+    else:
+        note = "kept the previous method: the new ones did not do better on unseen questions"
+        a = db.one("SELECT * FROM settings_versions WHERE active")
+        if m_l is not None and a:
+            db.run("UPDATE settings_versions SET metrics = %s::jsonb, threshold = %s, rerank = false, calib = NULL WHERE version = %s", (db.j(metrics), tau_l, a["version"]))
+    db.drop_settings_cache()
+    return {"activated": bool(better), "note": note, "metrics": metrics, "seconds": int(time.time() - t0)}
+
+
+def start_train(graph: Any) -> dict[str, Any]:
+    with _job_lock:
+        if JOB["state"] == "running":
+            return {"started": False, "reason": "A training run is already in progress.", **JOB}
+
+        def work() -> None:
+            try:
+                res = train(graph)
+                JOB.update(state="done", result=res, error=None, progress=100, step="Finished", finished=time.time())
+            except Exception as e:                           # noqa: BLE001
+                JOB.update(state="error", error=str(e)[:300], finished=time.time())
+
+        JOB.update(state="running", step="Starting", progress=1, result=None, error=None, started=time.time(), finished=None)
+        threading.Thread(target=work, daemon=True, name="train").start()
+    return {"started": True, **JOB}

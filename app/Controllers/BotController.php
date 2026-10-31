@@ -163,7 +163,11 @@ class BotController extends BaseController
             if ($prevUserMsg !== '' && mb_strlen($text) < 40 && str_word_count($text) <= 5 && preg_match('/^(why|why not|how|and|and then|then|what about|what next|more|explain|details?|how come|really|ok and|so)\b/i', trim($text))) {
                 $askText = $prevUserMsg . ' ' . $text;
             }
-            $reply = $this->compose($askText, ['page' => $page, 'role' => (string) ($u['role'] ?? ''), 'errors' => $this->recentErrors($uid)], $page);
+            // TWO BRAINS. The primary brain is the AI service (reranked retrieval, calibrated confidence, fact check). The classic PHP Brain is the
+            // secondary: it answers when the primary is down, unsure, or abstains. If both are unsure the user gets help options, never silence.
+            $brain  = 'secondary';
+            $reply  = null;
+            $aiSeen = false;
             if (\App\Libraries\AiBridge::isLive()) {
                 $aiResp = \App\Libraries\AiBridge::post('/ask', [
                     'session_id' => \App\Libraries\AiBridge::session($uid),
@@ -172,48 +176,57 @@ class BotController extends BaseController
                     'prev_question' => $prevUserMsg,
                     'ui' => ['page' => $page, 'role' => strtolower((string) ($u['role'] ?? 'user')) === 'admin' ? 'admin' : 'user'],
                 ], 4500);
-
                 $ansText = trim((string) ($aiResp['text'] ?? $aiResp['answer'] ?? ''));
                 if ($aiResp && $ansText !== '') {
-                    $conf = isset($aiResp['confidence']) ? (float) $aiResp['confidence'] : 0.0;
-                    $confPct = (int) round($conf * 100);
-                    $route = (string) ($aiResp['route'] ?? 'agent');
-
-                    // Zero-hallucination guard: if confidence is below threshold or route is abstain, enforce safe message
-                    $threshold = \App\Libraries\AiBridge::threshold();
-                    $finalText = ($route === 'abstain' || $conf < $threshold)
-                        ? \App\Libraries\AiBridge::fallbackMessage()
-                        : $ansText;
-
-                    $related = [];
-                    $rawRelated = is_array($aiResp['related'] ?? null) && ! empty($aiResp['related']) ? $aiResp['related'] : ($reply['related'] ?? []);
-                    foreach ($rawRelated as $rel) {
-                        $t = is_array($rel) ? (string) ($rel['title'] ?? $rel['question'] ?? '') : (string) $rel;
-                        if ($t !== '') {
-                            $relId = is_array($rel) ? (int) ($rel['id'] ?? $rel['kb_id'] ?? 0) : 0;
-                            $related[] = ['id' => $relId, 'kb_id' => $relId, 'title' => $t];
+                    $aiSeen  = true;
+                    $conf    = isset($aiResp['confidence']) ? (float) $aiResp['confidence'] : 0.0;
+                    $route   = (string) ($aiResp['route'] ?? 'agent');
+                    // the AI brain's own calibrated threshold decides (it already abstained below it); the Settings value is only the floor when it sent none
+                    $trusted = ! in_array($route, ['abstain', 'human'], true) && $conf >= (isset($aiResp['threshold']) ? (float) $aiResp['threshold'] : \App\Libraries\AiBridge::threshold());
+                    if ($trusted || ! empty($aiResp['escalate'])) {
+                        $related = [];
+                        foreach ((is_array($aiResp['related'] ?? null) ? $aiResp['related'] : []) as $rel) {
+                            $t = is_array($rel) ? (string) ($rel['title'] ?? $rel['question'] ?? '') : (string) $rel;
+                            if ($t !== '') {
+                                $relId = is_array($rel) ? (int) ($rel['id'] ?? $rel['kb_id'] ?? 0) : 0;
+                                $related[] = ['id' => $relId, 'kb_id' => $relId, 'title' => $t];
+                            }
                         }
+                        $reply = [
+                            'text' => $ansText,
+                            'steps' => is_array($aiResp['steps'] ?? null) ? $aiResp['steps'] : [],
+                            'actions' => is_array($aiResp['actions'] ?? null) ? $aiResp['actions'] : [],
+                            'confidence' => (int) round($conf * 100),
+                            'related' => $related,
+                            'diagnosis' => null,
+                            'knowledge_id' => $aiResp['kb_id'] ?? null,
+                            'suggest_admin' => ! empty($aiResp['suggest_admin']) || ! empty($aiResp['escalate']),
+                            'sources' => $aiResp['citations'] ?? [],
+                            'trace_id' => $aiResp['trace_id'] ?? null,
+                        ];
+                        $brain = 'primary';
                     }
-
-                    $reply = [
-                        'text' => $finalText,
-                        'steps' => is_array($aiResp['steps'] ?? null) ? $aiResp['steps'] : ($reply['steps'] ?? []),
-                        'actions' => is_array($aiResp['actions'] ?? null) ? $aiResp['actions'] : ($reply['actions'] ?? []),
-                        'confidence' => $confPct,
-                        'related' => $related,
-                        'diagnosis' => null,
-                        'knowledge_id' => $aiResp['kb_id'] ?? null,
-                        'suggest_admin' => ! empty($aiResp['suggest_admin']) || ! empty($aiResp['escalate']) || $route === 'abstain',
-                        'sources' => $aiResp['citations'] ?? [],
-                        'trace_id' => $aiResp['trace_id'] ?? null,
-                    ];
                 }
             }
+            if ($reply === null) {
+                $reply = $this->compose($askText, ['page' => $page, 'role' => (string) ($u['role'] ?? ''), 'errors' => $this->recentErrors($uid)], $page);
+                if (! empty($reply['suggest_admin']) && (int) ($reply['confidence'] ?? 0) < 45 && empty($reply['knowledge_id'])) {
+                    $brain = 'none';
+                    if ($aiSeen) {                                  // both brains are unsure: the safe holding message, plus the help options
+                        $reply['text'] = \App\Libraries\AiBridge::fallbackMessage();
+                    }
+                }
+            }
+            $reply['brain'] = $brain;
+        }
+        if (! isset($reply['brain'])) {
+            $reply['brain'] = 'rule';                               // a built-in capability (chart, file, report lookup, calculator)
         }
         $botName = (string) \App\Libraries\SystemSettings::get('ai.name', 'LEXIS AI');
         $cid   = $this->say((int) $thread['id'], 'bot', $botName, $reply['text'], $reply['knowledge_id'], $reply['confidence']);
         $reply['chat_id'] = $cid;
-        if (\App\Libraries\AiBridge::enabled()) {
+        \App\Libraries\BrainEvents::log('ask', (string) ($reply['brain'] ?? ''), ! empty($reply['knowledge_id']) ? (int) $reply['knowledge_id'] : null, isset($reply['confidence']) ? (int) $reply['confidence'] : null, $text);
+        if (\App\Libraries\AiBridge::mode() === 'shadow') {
             // shadow mode: the AI service answers on the side for comparison; the user only ever sees the answer above
             $prev = $db0 = $this->db()->table('tbl_bot_chats')->select('message')->where(['thread_id' => (int) $thread['id'], 'sender' => 'user'])->where('id <', $userChatId)->orderBy('id', 'DESC')->get(1)->getRowArray();
             \App\Libraries\AiBridge::shadowAsk($uid, $text, $page, (string) ($u['role'] ?? ''), $reply['knowledge_id'] ? (int) $reply['knowledge_id'] : null, isset($reply['confidence']) ? (int) $reply['confidence'] : null, (string) ($prev['message'] ?? ''));
@@ -393,7 +406,7 @@ class BotController extends BaseController
 
         if (empty($signRows)) {
             return [
-                'text'          => "Report {$apv['lab_ref_no']} is pending, but no active signatories are currently registered in Report Designer → Signatories.",
+                'text'          => "Report {$apv['lab_ref_no']} is pending, but no active signatories are currently registered in Report Designer â†’ Signatories.",
                 'title'         => 'No Active Signatories Registered',
                 'steps'         => [
                     'Ask an administrator to open Report Designer > Signatories.',
@@ -425,27 +438,27 @@ class BotController extends BaseController
                 try {
                     $ok = $synologyChat->send($sId, $msgText);
                     if ($ok) {
-                        $notified[] = "• {$displayName} - Synology ID: {$sId}";
+                        $notified[] = "â€¢ {$displayName} - Synology ID: {$sId}";
                     } else {
-                        $notified[] = "• {$displayName} - Failed to send: " . ($synologyChat->lastError() ?: 'Network error');
+                        $notified[] = "â€¢ {$displayName} - Failed to send: " . ($synologyChat->lastError() ?: 'Network error');
                     }
                 } catch (\Throwable $e) {
-                    $notified[] = "• {$displayName} - Error: " . $e->getMessage();
+                    $notified[] = "â€¢ {$displayName} - Error: " . $e->getMessage();
                 }
             } else {
-                $noSynologyId[] = "• {$displayName} (No SynologyID configured in user profile)";
+                $noSynologyId[] = "â€¢ {$displayName} (No SynologyID configured in user profile)";
             }
         }
 
         // Format bot response
-        $replyText = "🔔 **Approval Notification Sent to Signatories!**\n\n";
+        $replyText = "ðŸ”” **Approval Notification Sent to Signatories!**\n\n";
         $replyText .= "**Pending Report Details:**\n";
-        $replyText .= "• **Lab Reference:** {$apv['lab_ref_no']}\n";
+        $replyText .= "â€¢ **Lab Reference:** {$apv['lab_ref_no']}\n";
         if (! empty($apv['application_no'])) {
-            $replyText .= "• **Application No:** {$apv['application_no']}\n";
+            $replyText .= "â€¢ **Application No:** {$apv['application_no']}\n";
         }
-        $replyText .= "• **Requested By:** " . ($apv['requested_name'] ?: 'User') . "\n";
-        $replyText .= "• **Link Expiration:** In {$minutesLeft} minutes\n\n";
+        $replyText .= "â€¢ **Requested By:** " . ($apv['requested_name'] ?: 'User') . "\n";
+        $replyText .= "â€¢ **Link Expiration:** In {$minutesLeft} minutes\n\n";
 
         if (! empty($notified)) {
             $replyText .= "**Signatories Notified via Synology Chat:**\n" . implode("\n", $notified) . "\n\n";
@@ -462,7 +475,7 @@ class BotController extends BaseController
 
         return [
             'text'          => $replyText,
-            'title'         => "Approval Notification Sent · {$apv['lab_ref_no']}",
+            'title'         => "Approval Notification Sent Â· {$apv['lab_ref_no']}",
             'steps'         => [],
             'actions'       => $actions,
             'confidence'    => 100,
@@ -846,7 +859,7 @@ class BotController extends BaseController
                 foreach ($matches as $m) {
                     $resTag = $m['overall_result'] ? " [{$m['overall_result']}]" : '';
                     $style = $m['model_style'] ? " - {$m['model_style']}" : '';
-                    $msg .= "\n• {$m['lab_ref_no']}{$resTag}{$style}";
+                    $msg .= "\nâ€¢ {$m['lab_ref_no']}{$resTag}{$style}";
                     $tab = $m['form_slug'] === 'bonding' ? 'bonding' : 'material';
                     $acts[] = [
                         'type'  => 'open',
@@ -898,11 +911,11 @@ class BotController extends BaseController
             $tolPct  = $total > 0 ? round(($tolerable / $total) * 100, 1) : 0;
 
             $msg = "Live Database Statistics: {$categoryName}{$timeFilterLabel}\n";
-            $msg .= "• Total Reports: " . number_format($total) . "\n";
-            $msg .= "• Passed: " . number_format($passed) . " ({$passPct}%)\n";
-            $msg .= "• Failed: " . number_format($failed) . " ({$failPct}%)\n";
+            $msg .= "â€¢ Total Reports: " . number_format($total) . "\n";
+            $msg .= "â€¢ Passed: " . number_format($passed) . " ({$passPct}%)\n";
+            $msg .= "â€¢ Failed: " . number_format($failed) . " ({$failPct}%)\n";
             if ($tolerable > 0) {
-                $msg .= "• Tolerable: " . number_format($tolerable) . " ({$tolPct}%)\n";
+                $msg .= "â€¢ Tolerable: " . number_format($tolerable) . " ({$tolPct}%)\n";
             }
 
             // List up to 3 recent failed reports
@@ -922,7 +935,7 @@ class BotController extends BaseController
                     $msg .= "\nRecent Failed Reports:";
                     foreach ($recentFailed as $rf) {
                         $model = $rf['model_style'] ? " ({$rf['model_style']})" : '';
-                        $msg .= "\n• {$rf['lab_ref_no']}{$model}";
+                        $msg .= "\nâ€¢ {$rf['lab_ref_no']}{$model}";
                         $actions[] = [
                             'type'  => 'open',
                             'label' => 'Open ' . $rf['lab_ref_no'],
@@ -947,7 +960,7 @@ class BotController extends BaseController
 
             return [
                 'text'          => $msg,
-                'title'         => "QC Lab Live Query · {$categoryName}",
+                'title'         => "QC Lab Live Query Â· {$categoryName}",
                 'steps'         => [],
                 'actions'       => $actions,
                 'confidence'    => 100,
@@ -1038,9 +1051,9 @@ class BotController extends BaseController
                 'text'       => "To calculate the **Whole Shoe Bonding (U60)** rating, please provide:\n\n"
                     . "1. **Spot readings** (e.g. `2.8, 3.2, 2.5`)\n"
                     . "2. **Shoe Age Category or Standard**:\n"
-                    . "   • **Adult**: Standard 3.0 kg/cm (Tolerable $\ge$ 2.4)\n"
-                    . "   • **Children / Kids**: Standard 2.5 kg/cm (Tolerable $\ge$ 2.0)\n"
-                    . "   • **Center FiTO**: Standard 1.0 kg/cm (Tolerable $\ge$ 0.8)\n\n"
+                    . "   â€¢ **Adult**: Standard 3.0 kg/cm (Tolerable $\ge$ 2.4)\n"
+                    . "   â€¢ **Children / Kids**: Standard 2.5 kg/cm (Tolerable $\ge$ 2.0)\n"
+                    . "   â€¢ **Center FiTO**: Standard 1.0 kg/cm (Tolerable $\ge$ 0.8)\n\n"
                     . "Please enter your readings and category!",
                 'title'      => 'Whole Shoe Bonding Calculation',
                 'steps'      => ['Enter your spot readings and shoe category.'],
@@ -1064,12 +1077,12 @@ class BotController extends BaseController
             $childRating = ($min >= 2.5) ? 'PASS' : (($min >= 2.0) ? 'TOLERABLE' : 'FAILED');
 
             return [
-                'text'       => "📊 **Bonding Readings Calculated:**\n"
-                    . "• **Readings:** {$readingsStr}\n"
-                    . "• **Min:** {$min} kg/cm | **Max:** {$max} kg/cm | **Average:** {$ave} kg/cm\n\n"
-                    . "⚠️ **Which age category is this shoe?**\n"
-                    . "• If **Adult (STD 3.0)**: Result is **{$adultRating}** (Tolerable limit: $\ge$ 2.4)\n"
-                    . "• If **Children / Kids (STD 2.5)**: Result is **{$childRating}** (Tolerable limit: $\ge$ 2.0)\n\n"
+                'text'       => "ðŸ“Š **Bonding Readings Calculated:**\n"
+                    . "â€¢ **Readings:** {$readingsStr}\n"
+                    . "â€¢ **Min:** {$min} kg/cm | **Max:** {$max} kg/cm | **Average:** {$ave} kg/cm\n\n"
+                    . "âš ï¸ **Which age category is this shoe?**\n"
+                    . "â€¢ If **Adult (STD 3.0)**: Result is **{$adultRating}** (Tolerable limit: $\ge$ 2.4)\n"
+                    . "â€¢ If **Children / Kids (STD 2.5)**: Result is **{$childRating}** (Tolerable limit: $\ge$ 2.0)\n\n"
                     . "Reply with **Adult** or **Children** to confirm the official verdict.",
                 'title'      => 'Bonding Evaluation: Specify Category',
                 'steps'      => ['Select Adult or Children category.'],
@@ -1099,22 +1112,22 @@ class BotController extends BaseController
             }
         }
 
-        $badge = $worst === 'PASS' ? '✅ PASS' : ($worst === 'TOLERABLE' ? '⚠️ TOLERABLE' : '❌ FAILED');
+        $badge = $worst === 'PASS' ? 'âœ… PASS' : ($worst === 'TOLERABLE' ? 'âš ï¸ TOLERABLE' : 'âŒ FAILED');
         $readingsStr = implode(', ', $nums);
 
-        $out = "📊 **Whole Shoe Bonding Verdict:** **{$badge}**\n\n"
-            . "• **Category:** {$category}\n"
-            . "• **Standard (STD):** $\ge$ {$std} kg/cm\n"
-            . "• **Tolerable Range (80% STD):** {$tol} – " . ($std - 0.01) . " kg/cm\n"
-            . "• **Failure Threshold (< 80% STD):** < {$tol} kg/cm\n"
-            . "• **Specimen Readings:** {$readingsStr}\n"
-            . "• **Lowest Spot (Min):** {$min} kg/cm\n"
-            . "• **Average:** {$ave} kg/cm\n\n"
+        $out = "ðŸ“Š **Whole Shoe Bonding Verdict:** **{$badge}**\n\n"
+            . "â€¢ **Category:** {$category}\n"
+            . "â€¢ **Standard (STD):** $\ge$ {$std} kg/cm\n"
+            . "â€¢ **Tolerable Range (80% STD):** {$tol} â€“ " . ($std - 0.01) . " kg/cm\n"
+            . "â€¢ **Failure Threshold (< 80% STD):** < {$tol} kg/cm\n"
+            . "â€¢ **Specimen Readings:** {$readingsStr}\n"
+            . "â€¢ **Lowest Spot (Min):** {$min} kg/cm\n"
+            . "â€¢ **Average:** {$ave} kg/cm\n\n"
             . "**Official Rule:** PASS $\ge$ STD, TOLERABLE $\ge$ 80% STD, FAILED < 80% STD.";
 
         return [
             'text'       => $out,
-            'title'      => "Bonding Evaluation · {$badge}",
+            'title'      => "Bonding Evaluation Â· {$badge}",
             'steps'      => [],
             'actions'    => [['type' => 'open', 'label' => 'Open Whole Shoe Bonding', 'url' => site_url('dtr?tab=bonding')]],
             'confidence' => 100,
@@ -1142,15 +1155,15 @@ class BotController extends BaseController
             $rateStr = '';
             if ($std !== null) {
                 $ok = abs($sg - $std) <= 0.02;
-                $rateStr = "\n• **Standard:** {$std} (Tolerance $\pm 0.02$)\n• **Verdict:** " . ($ok ? '✅ PASS' : '❌ FAIL');
+                $rateStr = "\nâ€¢ **Standard:** {$std} (Tolerance $\pm 0.02$)\nâ€¢ **Verdict:** " . ($ok ? 'âœ… PASS' : 'âŒ FAIL');
             }
 
             return [
-                'text'       => "📊 **Specific Gravity (Hydrostatic):**\n\n"
-                    . "• **Weight in Air ($W_1$):** {$w1} g\n"
-                    . "• **Weight in Water ($W_2$):** {$w2} g\n"
-                    . "• **Calculated SG:** **{$sg}** (Formula: $\\frac{W_1}{W_1 - W_2}$){$rateStr}",
-                'title'      => "Specific Gravity · {$sg}",
+                'text'       => "ðŸ“Š **Specific Gravity (Hydrostatic):**\n\n"
+                    . "â€¢ **Weight in Air ($W_1$):** {$w1} g\n"
+                    . "â€¢ **Weight in Water ($W_2$):** {$w2} g\n"
+                    . "â€¢ **Calculated SG:** **{$sg}** (Formula: $\\frac{W_1}{W_1 - W_2}$){$rateStr}",
+                'title'      => "Specific Gravity Â· {$sg}",
                 'steps'      => [],
                 'actions'    => [['type' => 'open', 'label' => 'Open Lab Tracker', 'url' => site_url('dtr?tab=tracker')]],
                 'confidence' => 100,
@@ -1170,12 +1183,12 @@ class BotController extends BaseController
                 $sg = round($rawW / $denom, 3);
 
                 return [
-                    'text'       => "📊 **Specific Gravity (Sheet Specimen):**\n\n"
-                        . "• **Raw Weight:** {$rawW} g\n"
-                        . "• **Thickness:** {$t} mm\n"
-                        . "• **Calculated SG:** **{$sg}** (Formula: $\\frac{\\text{RawWeight}}{100 \\times (T / 10)}$)\n\n"
+                    'text'       => "ðŸ“Š **Specific Gravity (Sheet Specimen):**\n\n"
+                        . "â€¢ **Raw Weight:** {$rawW} g\n"
+                        . "â€¢ **Thickness:** {$t} mm\n"
+                        . "â€¢ **Calculated SG:** **{$sg}** (Formula: $\\frac{\\text{RawWeight}}{100 \\times (T / 10)}$)\n\n"
                         . "Tolerance against standard is $\pm 0.02$.",
-                    'title'      => "Specific Gravity · {$sg}",
+                    'title'      => "Specific Gravity Â· {$sg}",
                     'steps'      => [],
                     'actions'    => [['type' => 'open', 'label' => 'Open Lab Tracker', 'url' => site_url('dtr?tab=tracker')]],
                     'confidence' => 100,
@@ -1189,8 +1202,8 @@ class BotController extends BaseController
 
         return [
             'text'       => "To calculate **Specific Gravity (SG)**, please provide either:\n\n"
-                . "• **Method 1 (Hydrostatic):** `W1=...` (weight in air) and `W2=...` (weight in water)\n"
-                . "• **Method 2 (Sheet):** Raw Weight (g) and Thickness (mm)\n\n"
+                . "â€¢ **Method 1 (Hydrostatic):** `W1=...` (weight in air) and `W2=...` (weight in water)\n"
+                . "â€¢ **Method 2 (Sheet):** Raw Weight (g) and Thickness (mm)\n\n"
                 . "You can also specify your standard (e.g. `STD=1.15`). What are your values?",
             'title'      => 'Specific Gravity Calculator',
             'steps'      => ['Provide W1 and W2 or Raw Weight and Thickness.'],
@@ -1224,17 +1237,17 @@ class BotController extends BaseController
             $rateStr = '';
             if ($std !== null) {
                 $ok = $cs <= $std;
-                $rateStr = "\n• **Standard (Max):** $\le$ {$std}%\n• **Verdict:** " . ($ok ? '✅ PASS' : '❌ FAIL');
+                $rateStr = "\nâ€¢ **Standard (Max):** $\le$ {$std}%\nâ€¢ **Verdict:** " . ($ok ? 'âœ… PASS' : 'âŒ FAIL');
             }
 
             return [
-                'text'       => "📊 **Compression Set Calculation:**\n\n"
-                    . "• **Original Thickness ($t_0$):** {$t0} mm\n"
-                    . "• **After Recovery ($t_1$):** {$t1} mm\n"
-                    . "• **Spacer Thickness ($t_s$):** {$ts} mm\n"
-                    . "• **Calculated Compression Set:** **{$cs}%**\n"
-                    . "• **Formula:** $\\frac{t_0 - t_1}{t_0 - t_s} \\times 100\\%${$rateStr}",
-                'title'      => "Compression Set · {$cs}%",
+                'text'       => "ðŸ“Š **Compression Set Calculation:**\n\n"
+                    . "â€¢ **Original Thickness ($t_0$):** {$t0} mm\n"
+                    . "â€¢ **After Recovery ($t_1$):** {$t1} mm\n"
+                    . "â€¢ **Spacer Thickness ($t_s$):** {$ts} mm\n"
+                    . "â€¢ **Calculated Compression Set:** **{$cs}%**\n"
+                    . "â€¢ **Formula:** $\\frac{t_0 - t_1}{t_0 - t_s} \\times 100\\%${$rateStr}",
+                'title'      => "Compression Set Â· {$cs}%",
                 'steps'      => [],
                 'actions'    => [['type' => 'open', 'label' => 'Open Lab Tracker', 'url' => site_url('dtr?tab=tracker')]],
                 'confidence' => 100,
@@ -1274,12 +1287,12 @@ class BotController extends BaseController
             $sh = round((($before - $after) / $before) * 100, 2);
 
             return [
-                'text'       => "📊 **Shrinkage Calculation:**\n\n"
-                    . "• **Original Dimension:** {$before} mm\n"
-                    . "• **After Test Dimension:** {$after} mm\n"
-                    . "• **Shrinkage:** **{$sh}%**\n"
-                    . "• **Formula:** $\\frac{\\text{Before} - \\text{After}}{\\text{Before}} \\times 100\\%$",
-                'title'      => "Shrinkage · {$sh}%",
+                'text'       => "ðŸ“Š **Shrinkage Calculation:**\n\n"
+                    . "â€¢ **Original Dimension:** {$before} mm\n"
+                    . "â€¢ **After Test Dimension:** {$after} mm\n"
+                    . "â€¢ **Shrinkage:** **{$sh}%**\n"
+                    . "â€¢ **Formula:** $\\frac{\\text{Before} - \\text{After}}{\\text{Before}} \\times 100\\%$",
+                'title'      => "Shrinkage Â· {$sh}%",
                 'steps'      => [],
                 'actions'    => [['type' => 'open', 'label' => 'Open Lab Tracker', 'url' => site_url('dtr?tab=tracker')]],
                 'confidence' => 100,
@@ -1357,12 +1370,12 @@ class BotController extends BaseController
 
         if ($std === null) {
             return [
-                'text'       => "📊 **{$testName} Specimens Calculated:**\n\n"
-                    . "• **Readings:** {$readingsStr}\n"
-                    . "• **Average:** **{$ave}** (Min: {$min}, Max: {$max})\n\n"
-                    . "⚠️ **What is the Standard (STD) specification?**\n"
+                'text'       => "ðŸ“Š **{$testName} Specimens Calculated:**\n\n"
+                    . "â€¢ **Readings:** {$readingsStr}\n"
+                    . "â€¢ **Average:** **{$ave}** (Min: {$min}, Max: {$max})\n\n"
+                    . "âš ï¸ **What is the Standard (STD) specification?**\n"
                     . "Please enter your required standard (e.g. `STD 14.0`) so I can determine whether this is a **PASS** or **FAIL**.",
-                'title'      => "{$testName} · Average: {$ave}",
+                'title'      => "{$testName} Â· Average: {$ave}",
                 'steps'      => ['Specify the Standard requirement to determine Pass/Fail.'],
                 'actions'    => [['type' => 'open', 'label' => 'Open Lab Tracker', 'url' => site_url('dtr?tab=tracker')]],
                 'confidence' => 100,
@@ -1374,16 +1387,16 @@ class BotController extends BaseController
         }
 
         $pass = ($ave >= $std);
-        $badge = $pass ? '✅ PASS' : '❌ FAIL';
+        $badge = $pass ? 'âœ… PASS' : 'âŒ FAIL';
 
         return [
-            'text'       => "📊 **{$testName} Verdict:** **{$badge}**\n\n"
-                . "• **Specimens:** {$readingsStr}\n"
-                . "• **Average:** **{$ave}** (Min: {$min}, Max: {$max})\n"
-                . "• **Standard Specification:** $\ge$ {$std}\n"
-                . "• **Verdict:** **{$badge}** ({$ave} " . ($pass ? '$\ge$' : '<') . " {$std})\n\n"
+            'text'       => "ðŸ“Š **{$testName} Verdict:** **{$badge}**\n\n"
+                . "â€¢ **Specimens:** {$readingsStr}\n"
+                . "â€¢ **Average:** **{$ave}** (Min: {$min}, Max: {$max})\n"
+                . "â€¢ **Standard Specification:** $\ge$ {$std}\n"
+                . "â€¢ **Verdict:** **{$badge}** ({$ave} " . ($pass ? '$\ge$' : '<') . " {$std})\n\n"
                 . "**Formula:** Average = $\\frac{\\sum \\text{Specimens}}{N}$. Evaluated against standard priority rules.",
-            'title'      => "{$testName} · {$badge}",
+            'title'      => "{$testName} Â· {$badge}",
             'steps'      => [],
             'actions'    => [['type' => 'open', 'label' => 'Open Lab Tracker', 'url' => site_url('dtr?tab=tracker')]],
             'confidence' => 100,
@@ -1566,6 +1579,7 @@ class BotController extends BaseController
             $db->table('tbl_bot_knowledge')->where('id', $c['knowledge_id'])->set('helpful', 'helpful + ' . (int) $delta, false)->update();
         }
         $db->table('tbl_bot_chats')->where('id', $c['id'])->update(['feedback' => $val]);
+        \App\Libraries\BrainEvents::log('feedback', '', $c['knowledge_id'] ? (int) $c['knowledge_id'] : null, $val, $val > 0 ? 'thumbs up' : 'thumbs down');
         if (\App\Libraries\AiBridge::enabled()) {
             $qq = $db->query("SELECT message FROM tbl_bot_chats WHERE thread_id = (SELECT thread_id FROM tbl_bot_chats WHERE id = ?) AND sender = 'user' AND id < ? ORDER BY id DESC LIMIT 1", [$c['id'], $c['id']])->getRowArray();
             \App\Libraries\AiBridge::feedback((int) $this->auth->user()['id'], $c['knowledge_id'] ? (int) $c['knowledge_id'] : null, $val, (string) ($qq['message'] ?? ''));
@@ -1651,7 +1665,7 @@ class BotController extends BaseController
 
     public function console(): string
     {
-        return $this->render('brain/index', ['title' => 'Brain', 'withCss' => 'brain.css', 'withJs' => ['brain.js']]);
+        return $this->render('brain/index', ['title' => 'Brain', 'withCss' => 'brain.css', 'withJs' => ['brain.js', 'brain_ai.js']]);
     }
 
     /** GET brain/overview */
@@ -1854,8 +1868,10 @@ class BotController extends BaseController
         }
         $data['created_at'] = $now;
         $db->table('tbl_bot_knowledge')->insert($data);
+        $newId = (int) $db->insertID();
+        \App\Libraries\BrainEvents::log('learn', '', $newId, null, $data['title']);
 
-        return (int) $db->insertID();
+        return $newId;
     }
 
     /** GET brain/knowledge?q=&status= */
@@ -1970,6 +1986,86 @@ class BotController extends BaseController
         $db->table('tbl_bot_unanswered')->where('id', (int) ($p['id'] ?? 0))->update(['status' => 'answered']);
 
         return $this->json(['ok' => true, 'id' => $kid]);
+    }
+
+    // ------------------------------------------------------------------------------------------ Brain Universe + Train AI (admins)
+
+    /** GET brain/universe/graph : every approved answer with its topic cluster and how alive it is */
+    public function universeGraph()
+    {
+        return $this->json(['ok' => true, 'nodes' => \App\Libraries\BrainEvents::nodes(), 'stats' => \App\Libraries\BrainEvents::stats(), 'mode' => \App\Libraries\AiBridge::mode(), 'now' => time()]);
+    }
+
+    /** GET brain/universe/feed?since= : what happened since the last poll (questions, new knowledge, votes, training) */
+    public function universeFeed()
+    {
+        return $this->json(['ok' => true] + \App\Libraries\BrainEvents::feed((int) $this->request->getGet('since')));
+    }
+
+    /** GET brain/ai/status : the two brains, the training state and the review queue */
+    public function aiStatus()
+    {
+        $s = \App\Libraries\AiBridge::get('/admin/train/status', 4000);
+
+        return $this->json(['ok' => true, 'online' => $s !== null, 'mode' => \App\Libraries\AiBridge::mode(), 'threshold_php' => \App\Libraries\AiBridge::threshold(), 'ai' => $s,
+            'php' => ['knowledge' => (int) $this->db()->table('tbl_bot_knowledge')->where('status', 'approved')->countAllResults()]]);
+    }
+
+    /** POST brain/ai/train : export the latest answers and questions, then start a training run in the AI service */
+    public function aiTrain()
+    {
+        try {
+            \App\Libraries\AiExporter::run();
+        } catch (\Throwable $e) {
+            return $this->json(['ok' => false, 'error' => 'Could not export the answers: ' . $e->getMessage()], 500);
+        }
+        $r = \App\Libraries\AiBridge::admin('POST', '/admin/train/start', [], 8000);
+        if ($r === null) {
+            return $this->json(['ok' => false, 'error' => 'The AI service is not answering. Start it with run-ai.cmd.'], 503);
+        }
+        \App\Libraries\BrainEvents::log('train', 'primary', null, null, 'Training started');
+        \App\Libraries\AiBridge::admin('POST', '/admin/review/seed', [], 15000);
+
+        return $this->json(['ok' => true, 'started' => (bool) ($r['started'] ?? false)]);
+    }
+
+    /** GET brain/ai/review : the next real question with its three best candidate answers */
+    public function aiReview()
+    {
+        $r = \App\Libraries\AiBridge::admin('GET', '/admin/review/next', [], 20000);
+
+        return $r === null ? $this->json(['ok' => false, 'error' => 'The AI service is not answering.'], 503) : $this->json(['ok' => true] + $r);
+    }
+
+    /** POST brain/ai/review/seed : bring in the newest real questions */
+    public function aiReviewSeed()
+    {
+        try {
+            \App\Libraries\AiExporter::run();
+        } catch (\Throwable $e) {
+            return $this->json(['ok' => false, 'error' => $e->getMessage()], 500);
+        }
+        $r = \App\Libraries\AiBridge::admin('POST', '/admin/review/seed', [], 20000);
+
+        return $r === null ? $this->json(['ok' => false, 'error' => 'The AI service is not answering.'], 503) : $this->json(['ok' => true] + $r);
+    }
+
+    /** POST brain/ai/label {item_id, choice, kb_id?, answer?} */
+    public function aiLabel()
+    {
+        $p = $this->input();
+        $choice = in_array($p['choice'] ?? '', ['kb', 'none', 'offtopic', 'skip'], true) ? $p['choice'] : 'skip';
+        $r = \App\Libraries\AiBridge::admin('POST', '/admin/review/' . (int) ($p['item_id'] ?? 0) . '/label', [
+            'choice' => $choice, 'kb_id' => isset($p['kb_id']) ? (int) $p['kb_id'] : null, 'admin_id' => (string) ($this->auth->user()['id'] ?? 0), 'answer' => (string) ($p['answer'] ?? ''),
+        ], 20000);
+        if ($r === null) {
+            return $this->json(['ok' => false, 'error' => 'The AI service is not answering.'], 503);
+        }
+        if ($choice === 'none' && mb_strlen(trim((string) ($p['answer'] ?? ''))) >= 20) {
+            \App\Libraries\BrainEvents::log('learn', 'primary', null, null, 'New answer taught in the review task');
+        }
+
+        return $this->json(['ok' => ! empty($r['ok'])] + $r);
     }
 
     /** GET brain/learn?refresh=1 : the suggestions the Brain built from what users asked, waiting for an administrator */

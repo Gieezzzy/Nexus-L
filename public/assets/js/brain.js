@@ -16,6 +16,7 @@
 
   // ---------------------------------------------------------------- tabs
   const loaders = {};
+  window.nxBrainLoaders = loaders;      // brain_ai.js adds the Universe and Train AI tabs
   const show = (tab) => {
     $$('.br-tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
     $$('.br-pane').forEach((p) => { p.hidden = p.id !== 'br-' + tab; });

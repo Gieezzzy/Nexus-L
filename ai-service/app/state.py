@@ -53,6 +53,9 @@ class AgentState(TypedDict, total=False):
     grounded: float
     confidence: float
     threshold: float
+    use_rerank: bool
+    calib: dict[str, Any] | None
+    feat: dict[str, float]
     attempts: int
     trace: Annotated[list[str], operator.add]
     payload: dict[str, Any]
