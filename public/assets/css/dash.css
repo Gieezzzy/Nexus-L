@@ -426,3 +426,14 @@ button .ic,.dsg-btn .ic,.sc-btn .ic,.il-btn .ic{margin-right:4px}
   width: 100% !important;
   opacity: 0;
 }
+/* a page change is in progress: the old content is dimmed and shimmering blocks show that the click was received */
+.nx-navigating #main-content > :not(#nx-nav-skel) { opacity: .25; pointer-events: none; transition: opacity .15s; }
+#nx-nav-skel { padding: 16px 4px; }
+#nx-nav-skel .nx-nav-title { display: block; height: 22px; width: 32%; margin: 0 0 14px 8px; }
+#nx-slow {
+  position: fixed; left: 50%; bottom: 18px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none;
+  background: #0f172a; color: #fff; font-size: 13px; padding: 8px 14px; border-radius: 999px; z-index: 99998;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, .3); transition: opacity .25s, transform .25s;
+}
+#nx-slow.show { opacity: 1; transform: translate(-50%, 0); }
+@media (prefers-reduced-motion: reduce) { .nx-shimmer { animation: none; } }

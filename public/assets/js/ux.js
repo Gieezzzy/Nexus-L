@@ -146,10 +146,82 @@
       const target = new URL(a.href, location.href);
       if (target.origin === location.origin && target.pathname !== location.pathname) {
         window.nxProgress.start();
+        nxNavSkeleton(true);
       }
     } catch (_) {}
   });
-  window.addEventListener('pageshow', () => { window.nxProgress?.done(); });
+  window.addEventListener('pageshow', () => { window.nxProgress?.done(); nxNavSkeleton(false); });
+  // ---------------------------------------------------- a slow page change: the content area turns into grey shimmering blocks at once
+  // (the server may need seconds to answer; the user sees that the click was received instead of a frozen page)
+  function nxNavSkeleton(on) {
+    const root = document.documentElement;
+    const main = document.getElementById('main-content');
+    let sk = document.getElementById('nx-nav-skel');
+    if (!on) {
+      root.classList.remove('nx-navigating');
+      if (sk) sk.remove();
+      return;
+    }
+    if (!main || sk) return;
+    root.classList.add('nx-navigating');
+    sk = document.createElement('div');
+    sk.id = 'nx-nav-skel';
+    sk.setAttribute('aria-hidden', 'true');
+    sk.innerHTML = '<span class="nx-shimmer nx-nav-title"></span>' + [1, 2, 3, 4, 5, 6].map(() => '<div class="nx-skel-card"><span class="nx-shimmer nx-skel-avatar"></span><div class="nx-skel-lines"><span class="nx-shimmer" style="height:12px;width:60%"></span><span class="nx-shimmer" style="height:10px;width:85%"></span></div></div>').join('');
+    main.prepend(sk);
+  }
+
+  // ---------------------------------------------------- slow connection: progress bar, "still loading" notice and safe retries for every fetch
+  // - the top bar appears when a request takes longer than 350 ms
+  // - after 8 s a small notice says the connection is slow (it disappears by itself when the answer arrives)
+  // - a GET that fails because the network dropped is retried twice (never a POST: it could be done twice)
+  // - frequent background polls are ignored so they never flash the bar
+  const QUIET = /\/(bot\/(badge|thread|events|suggest)|brain\/(live|overview)|interlink\/(service\/status|feed))/;
+  const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+  if (nativeFetch) {
+    let pending = 0;
+    let barTimer = 0;
+    let slowTimer = 0;
+    const slowEl = () => {
+      let el = document.getElementById('nx-slow');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'nx-slow';
+        el.setAttribute('role', 'status');
+        el.textContent = 'Slow connection - still loading...';
+        document.body.appendChild(el);
+      }
+      return el;
+    };
+    const begin = () => {
+      if (++pending !== 1) return;
+      barTimer = setTimeout(() => window.nxProgress && window.nxProgress.start(), 350);
+      slowTimer = setTimeout(() => { if (document.body) slowEl().classList.add('show'); }, 8000);
+    };
+    const end = () => {
+      pending = Math.max(0, pending - 1);
+      if (pending) return;
+      clearTimeout(barTimer);
+      clearTimeout(slowTimer);
+      document.getElementById('nx-slow')?.classList.remove('show');
+      window.nxProgress && window.nxProgress.done();
+    };
+    window.fetch = (input, init) => {
+      const url = typeof input === 'string' ? input : (input && input.url) || '';
+      const method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+      const quiet = QUIET.test(url);
+      const aborted = () => !!(init && init.signal && init.signal.aborted);
+      const attempt = (n) => nativeFetch(input, init).catch((err) => {
+        if (method === 'GET' && n < 2 && !aborted() && navigator.onLine !== false) {
+          return new Promise((r) => setTimeout(r, 700 * (n + 1))).then(() => attempt(n + 1));
+        }
+        throw err;
+      });
+      if (quiet) return attempt(0);
+      begin();
+      return attempt(0).finally(end);
+    };
+  }
 
   // ---------------------------------------------------- network connectivity sentinel
   window.addEventListener('offline', () => {
