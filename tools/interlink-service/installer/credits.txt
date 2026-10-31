@@ -1,0 +1,13 @@
+Nexus-L InterLink Sender
+Credited by Systems & Process Audit
+
+This installs the Nexus-L InterLink Service: a small tray program that receives
+approved reports from Nexus-L and uploads them to InterLink in the background,
+one after the other.
+
+After the installation:
+  1. Open the tray icon > Settings and check the Nexus-L address and the service key.
+  2. Sign in to InterLink once (the "Sign in" option).
+  3. Leave the program running - it starts with Windows if you ticked that option.
+
+Updating over an existing installation keeps your settings and your InterLink sign-in.
