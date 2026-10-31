@@ -97,14 +97,14 @@
 
   // ------------------------------------------------------------------------------------------- widget
   const fab = document.createElement('button');
-  fab.id = 'nxbot-fab'; fab.type = 'button'; fab.setAttribute('aria-label', 'Open the NEXUS-L assistant'); fab.title = 'Ask the assistant';
+  fab.id = 'nxbot-fab'; fab.type = 'button'; fab.setAttribute('aria-label', 'Open LEXIS AI'); fab.title = 'Ask LEXIS AI';
   fab.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-help"/></svg><span class="nxbot-dot" hidden></span>';
   const bubble = document.createElement('div');
   bubble.id = 'nxbot-bubble'; bubble.hidden = true;
   const panel = document.createElement('section');
-  panel.id = 'nxbot-panel'; panel.hidden = true; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'NEXUS-L assistant');
+  panel.id = 'nxbot-panel'; panel.hidden = true; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'LEXIS AI');
   panel.innerHTML = `
-    <header><div><b>NEXUS-L Assistant</b><small>Ask how to do something, or describe a problem</small></div>
+    <header><div><b>LEXIS AI</b><small>Laboratory Execution Intelligence System</small></div>
       <div class="nxbot-hbtns"><button type="button" data-a="history" title="My recent activity">History</button><button type="button" data-a="close" aria-label="Close assistant">&times;</button></div></header>
     <div class="nxbot-live" id="nxbot-live" hidden></div>
     <div class="nxbot-msgs" id="nxbot-msgs" aria-live="polite"></div>
@@ -201,7 +201,7 @@
       opened = true;
       await loadThread();
       if (!msgs.children.length) {
-        add('bot', '<p>Hello! I am the NEXUS-L assistant. Ask how to do something in this system, or describe a problem and I will help you fix it.</p>');
+        add('bot', '<p>Hello! I am LEXIS AI (Laboratory Execution Intelligence System). Ask how to do something in this system, calculate test results, or check report status and I will help you.</p>');
         try {
           const s = await api('bot/suggest?page=' + encodeURIComponent(pagePath()));
           chips.innerHTML = (s.items || []).map((t) => `<button type="button" data-q="${esc(t)}">${esc(t)}</button>`).join('');

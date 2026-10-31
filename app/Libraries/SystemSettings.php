@@ -63,6 +63,7 @@ class SystemSettings
             'synology.bot_prefix'        => $d('synology', 'Message prefix', 'text', '', 'Put before every message the bot sends.'),
 
             // --- AI Assistant / Help Bot -------------------------------------------------------------------------------------------
+            'ai.name'                    => $d('ai', 'AI Assistant Name', 'text', 'LEXIS AI', 'The display name of the AI assistant across the chat header and responses.'),
             'ai.mode'                    => $d('ai', 'AI Engine Operating Mode', 'select:off,shadow,live', 'shadow', 'off = legacy Brain only; shadow = LangGraph answers in background for evaluation; live = LangGraph answers users directly.'),
             'ai.url'                     => $d('ai', 'Local AI Service URL', 'url', 'http://127.0.0.1:8765', 'Address of the Python LangGraph / Rasa microservice.'),
             'ai.key'                     => $d('ai', 'AI Service Shared Key (X-AI-Key)', 'password', '', 'Shared secret between PHP and the Python AI service.'),

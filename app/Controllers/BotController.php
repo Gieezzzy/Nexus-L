@@ -205,7 +205,8 @@ class BotController extends BaseController
                 }
             }
         }
-        $cid   = $this->say((int) $thread['id'], 'bot', 'NEXUS-L Assistant', $reply['text'], $reply['knowledge_id'], $reply['confidence']);
+        $botName = (string) \App\Libraries\SystemSettings::get('ai.name', 'LEXIS AI');
+        $cid   = $this->say((int) $thread['id'], 'bot', $botName, $reply['text'], $reply['knowledge_id'], $reply['confidence']);
         $reply['chat_id'] = $cid;
         if (\App\Libraries\AiBridge::enabled()) {
             // shadow mode: the AI service answers on the side for comparison; the user only ever sees the answer above
@@ -1171,7 +1172,7 @@ class BotController extends BaseController
     {
         $low = mb_strtolower($text);
         if (preg_match('/^(hi|hello|hey|good (morning|afternoon|evening)|yo)\b/', $low) && mb_strlen($low) < 30) {
-            return ['text' => 'Hello! I am the NEXUS-L assistant. Ask me how to do something in this system, or describe a problem and I will help you fix it.', 'steps' => [], 'actions' => [], 'confidence' => 100, 'related' => [], 'diagnosis' => null, 'knowledge_id' => null, 'suggest_admin' => false];
+            return ['text' => 'Hello! I am LEXIS AI (Laboratory Execution Intelligence System). Ask me how to do something in this system, calculate test results, or check report status and I will help you.', 'steps' => [], 'actions' => [], 'confidence' => 100, 'related' => [], 'diagnosis' => null, 'knowledge_id' => null, 'suggest_admin' => false];
         }
         if (preg_match('/^(thanks|thank you|ty|ok thanks|great|got it)\b/', $low) && mb_strlen($low) < 40) {
             return ['text' => 'You are welcome! Ask me anything else about NEXUS-L.', 'steps' => [], 'actions' => [], 'confidence' => 100, 'related' => [], 'diagnosis' => null, 'knowledge_id' => null, 'suggest_admin' => false];

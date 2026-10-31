@@ -15,7 +15,7 @@ NEXUS-L is the laboratory intelligence and execution system built on CodeIgniter
 | File | Responsibility |
 | :--- | :--- |
 | `app/Controllers/SettingsController.php` | Settings page (Admin only): InterLink background service settings & connectivity test, database in use / testing / switching, table-by-table background migration, and AI engine controls. |
-| `app/Controllers/BotController.php` | Help Bot & Assistant: live read-only DB querying (`dbSearchIntent`), Synology approval reminders (`approvalReminderIntent`), interactive test computation & pass/fail rating (`computeIntent`), and knowledge retrieval. |
+| `app/Controllers/BotController.php` | LEXIS AI (Laboratory Execution Intelligence System): live read-only DB querying (`dbSearchIntent`), Synology approval reminders (`approvalReminderIntent`), interactive test computation & pass/fail rating (`computeIntent`), and knowledge retrieval. |
 | `app/Libraries/ProblemKnowledgeSeeder.php` | 200 real-world QC Lab & testing problem scenarios with step-by-step diagnostic solutions, automated export to `C:\NexusAI\knowledge.jsonl`, and FAISS vector re-indexing. |
 | `app/Libraries/SystemSettings.php` | Persistent admin configuration in `tbl_system_settings` with `.env` fallback for AI mode, InterLink defaults, approval expiry, and Synology chat. |
 | `app/Libraries/AiBridge.php` | AI assistant microservice bridge: routes questions and user clickstream telemetry to the LangGraph/Rasa agent, handles shadow inference and live zero-hallucination gating. |

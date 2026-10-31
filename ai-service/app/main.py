@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
         app.state.saver_cm.__exit__(None, None, None)
 
 
-app = FastAPI(title="NEXUS-L assistant service", lifespan=lifespan)
+app = FastAPI(title="LEXIS AI - Laboratory Execution Intelligence System", lifespan=lifespan)
 
 
 def auth(x_ai_key: str = Header(default="")) -> None:

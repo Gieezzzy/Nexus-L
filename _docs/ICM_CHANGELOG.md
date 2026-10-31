@@ -5,6 +5,7 @@
 ---
 
 ## Phase 201 - Bot Read-Only Database Queries, Synology Signatory Reminders & 200 QC Problem Knowledge (2026-10-31)
+- **Brand Identity & AI Renaming:** Officially named and rebranded the assistant to **LEXIS AI (Laboratory Execution Intelligence System)** across widget headers, floating triggers, conversational greetings, database sender identities, LangGraph prompts, and service metadata, with customizable configuration via `ai.name` in `SystemSettings`.
 - **Read-Only Database Query Engine (`BotController::dbSearchIntent`):**
   - Bot understands natural queries like `"how many fail and pass do we have"`, `"what is the total failed for bonding"`, `"how many reports failed this month"`, and `"find failed reports for Vans"`.
   - Runs parameterized, read-only aggregation queries against `tbl_dtr_unified_labrefs` across all 11 test categories (`bonding`, `fabric`, `leather`, `rubber`, `wst`, `fthl`, `hardware`, `label`, `sklfm`, `box`, `insole`).
