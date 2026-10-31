@@ -36,7 +36,6 @@
         </footer>
     </div>
 
-    <script src="<?= nx_asset('js/anime.min.js') ?>" defer></script>
     <script src="<?= nx_asset('js/ux.js') ?>" defer></script>
     <script src="<?= nx_asset('js/app.js') ?>" defer></script>
     <script src="<?= nx_asset('js/bot.js') ?>" defer></script>

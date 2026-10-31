@@ -4,25 +4,6 @@
 
 ---
 
-## Phase 202 - Anime.js Ultra-Lightweight Micro-Interaction & Animation Engine (2026-10-31)
-- **High-Performance Motion Engine (`anime.min.js` + `window.nxMotion`):**
-  - Integrated Anime.js (17 KB ultra-lightweight library) to power buttery, native-feeling 60 FPS transitions without heavy CSS clutter or memory overhead on resource-constrained lab PCs.
-  - Strict hardware-accelerated GPU execution: strictly animates composited `transform` and `opacity` properties (avoiding layout thrashing, CPU spikes, or reflows).
-  - Automatically respects OS accessibility settings (`prefers-reduced-motion: reduce`) with instant fallbacks and pauses during background tabs (`document.hidden`).
-- **LEXIS AI Assistant Micro-Interactions (`public/assets/js/bot.js`):**
-  - **Panel Open / Close Spring:** Replaced abrupt toggling with an elastic spring-up from the bottom-right launcher (`easeOutBack`, 260ms) and snappy fade-down collapse (`easeInQuad`, 180ms).
-  - **FAB Launcher Micro-Motion:** Added spring-press reaction on click (`scale: 0.91 -> 1`), subtle hover elevation, and an ambient idle breath cycle (gentle 1.06x scale pulse every 24s) to remind users the assistant is active.
-  - **Staggered Question Chips:** Suggestion chips enter sequentially with a 28ms staggered pop (`anime.stagger(28)`), providing polished interactive cues.
-  - **Smooth Message Bubbles:** Incoming conversational replies slide up gracefully (`translateY: [10, 0]`, 220ms).
-  - **Rhythmic Typing Dots:** Added lightweight 3-dot waving indicator while LEXIS AI performs queries or calculations.
-- **Site-Wide Navigation & Element Cascading (`public/assets/js/ux.js` & `dash.css`):**
-  - **Staggered Card Entrance:** Main dashboard cards, statistics tiles, and hero containers smoothly cascade into view on navigation (`nxMotion.staggerIn`).
-  - **Tab Transitions:** Smooth cross-fade and slide when switching tabs across Brain, DTR test categories, and Settings panels (`nxMotion.switchTab`).
-  - **Toast & Modal Springs:** In-app notifications (`nxToast`) and confirmation dialogs (`nxConfirm`) animate in with spring physics and dismiss cleanly.
-  - **Interactive Button Reactions:** Applied micro active-scale compression (`transform: scale(0.97)`) on buttons, tabs, and navigation links.
-
----
-
 ## Phase 201 - Bot Read-Only Database Queries, Synology Signatory Reminders & 200 QC Problem Knowledge (2026-10-31)
 - **Visual Identity & Light Canva Logo Integration:**
   - Designed and exported official light-themed LEXIS AI logo (`DAHZi0cxBt0`) via Canva with electric cyan and deep royal/navy blue 3D neural-molecular network iconography on a pure white background.
