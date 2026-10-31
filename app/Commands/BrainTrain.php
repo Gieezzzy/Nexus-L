@@ -66,6 +66,10 @@ class BrainTrain extends BaseCommand
             CLI::write(CLI::color("   -> BrainLearn: {$learn['groups']} question groups, {$learn['drafts']} drafted answers.", 'green'));
         }
 
+        // 3b. Train VF Test Methods 500+ Queries & Weights
+        CLI::write("3b. Training VF Test Methods commands and variations (500+)...");
+        command('brain:train-vf');
+
         // 4. Flush Brain Backups & Markdown Playbooks
         CLI::write("4. Flushing Brain .back files & Markdown playbooks...");
         $f = Brain::flush();

@@ -39,7 +39,7 @@ class Brain
         'edit' => 'edit', 'change' => 'edit', 'modify' => 'edit', 'update' => 'edit',
         'delete' => 'delete', 'remove' => 'delete', 'erase' => 'delete',
         'bonding' => 'bonding', 'shoe' => 'bonding', 'spot' => 'bonding', 'point' => 'point', 'points' => 'point', 'dot' => 'point', 'dots' => 'point',
-        'logo' => 'logo', 'satra' => 'logo', 'vf' => 'logo',
+        'logo' => 'logo', 'satra' => 'satra', 'vf' => 'vf',
         'interlink' => 'interlink', 'intertek' => 'interlink', 'portal' => 'interlink', 'sync' => 'sync', 'synchronize' => 'sync', 'queue' => 'queue', 'queued' => 'queue',
         'designer' => 'designer', 'layout' => 'designer', 'rearrange' => 'designer', 'move' => 'move', 'drag' => 'move',
         'admin' => 'admin', 'administrator' => 'admin', 'supervisor' => 'admin', 'access' => 'permission', 'permission' => 'permission', 'authorized' => 'permission', 'unauthorized' => 'permission', 'denied' => 'permission', 'forbidden' => 'permission',

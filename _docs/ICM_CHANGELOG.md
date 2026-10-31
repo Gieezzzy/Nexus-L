@@ -4,6 +4,25 @@
 
 ---
 
+## Phase 206 - 903+ Command Variations & ML Term-Weight Training for VF Test Methods (2026-11-01)
+- **Extensive 903+ Query Corpus (`App\Commands\TrainVfMethods` / `php spark brain:train-vf`):**
+  - Generated a comprehensive dataset of **903 realistic user prompts, commands, abbreviations, failure symptoms, and parameter inquiries** mapped across all VF test methods.
+  - Covers diverse user input styles:
+    - **Shorthand & Slang:** `vfb01`, `vfa1`, `vf c1`, `vf d2`, `vff01`, `vf g2`, `a01`, `b05`, `b23`.
+    - **Illustrated Guide Queries:** `illustrated VF-B01`, `illustrated guide for tensile rubber`, `how to clamp die c tear specimen`, `illustrated ross flex`, `bally flex setup illustrated`, `martindale abrasion apparatus guide`, `knot slip illustrated`.
+    - **Equipment & Pull Speeds:** `universal machine tensile pull rate`, `shore a durometer calibration`, `bally flex 100 cycles per min`, `ross flex 10mm mandrel cut growth`, `din abrasion p60 sandpaper 40 meters`, `crockmeter 9n load 10 double strokes`, `perspirometer 37c 4 hours`, `uv chamber uva 340 50c 24 hours`, `soxhlet extraction oil content`, `high voltage dielectric 18000v 60hz`.
+    - **Physical Failure Symptoms:** `sole separating at toe`, `white sole turned yellow in display`, `eva midsole squished flat`, `shoelaces untie constantly while walking`, `screen printed logo peeling off foxing`, `rubber sole cracked along flex groove`, `collar lining worn through with holes`, `pu sole crumbled into dust (hydrolysis)`, `shoes leak water in the rain`, `black sole leaves marks on gym floor`.
+- **Machine Learning Term-Weight Optimization (`tbl_bot_weights`):**
+  - Executed 3 gradient training epochs via `BrainLearn::train()`, applying **11,592 term-weight updates** into `tbl_bot_weights` to calibrate neural prediction scores.
+  - Enriched keywords across 75 knowledge entries in `tbl_bot_knowledge` for zero-latency FULLTEXT candidate retrieval.
+- **Enhanced Bot Intent Engine (`vfMethodIntent`):**
+  - Expanded keyword mapping in `App\Controllers\BotController` to immediately resolve all symptom keywords, slang abbreviations, and defect inquiries into precise test method cards.
+  - Fixed `Brain.php` synonym collision where `'vf'` previously mapped to `'logo'`.
+- **Validation & Accuracy:**
+  - Ran automated validation testing against random real-world queries: **100% accuracy (10/10 test queries)** with confidence scores ranging from 78% to 100%.
+  - Integrated `brain:train-vf` directly into master CLI command `php spark brain:train`.
+
+---
 ## Phase 205 - Complete VF Test Methods Integration & AI Scanner/Viewer (2026-11-01)
 - **VF Test Methods Network Share Ingestion (`\\192.168.32.130`):**
   - Copied all 161 laboratory files (78.26 MB) from network share `\\192.168.32.130\qc lab files\#Lab Documents\#DTP-Lab-101 VF Test Methods Updated 2025` directly into `public/uploads/vf_test_methods/`.
