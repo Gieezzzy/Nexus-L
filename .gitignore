@@ -145,3 +145,8 @@ tools/interlink-service/bin/
 tools/interlink-service/obj/
 tools/interlink-service/data/
 tools/interlink-service/appsettings.Local.json
+
+# report data and generated files must never be committed (the repository is public)
+/writable/approvals/
+/writable/git_push*
+tools/interlink-service/installer/output/

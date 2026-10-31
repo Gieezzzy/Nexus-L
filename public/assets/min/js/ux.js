@@ -102,8 +102,8 @@
       return;
     }
     const label = text || { empty: 'Nothing to show yet.', error: 'Something went wrong. Try again.' }[kind];
-    const cell = <div class="nx-state nx-state-" role=""></div>;
-    el.innerHTML = el.tagName === 'TBODY' ? <tr><td colspan=""></td></tr> : cell;
+    const cell = `<div class="nx-state nx-state-${kind}" role="${kind === 'error' ? 'alert' : 'status'}">${esc(label)}</div>`;
+    el.innerHTML = el.tagName === 'TBODY' ? `<tr><td colspan="${cols || 20}">${cell}</td></tr>` : cell;
   };
 
   // ---------------------------------------------------- top progress bar for slow connections

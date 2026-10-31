@@ -49,7 +49,7 @@ git add push.cmd
 git add tools/auto-push.cmd
 git add _docs/ICM_CHANGELOG.md
 git add _docs/OBSIDIAN_CODEBASE_INDEX.md
-git add -A
+:: never "git add -A": writable/ holds report data (approved and signed PDFs) and the repository is public
 
 echo.
 echo [2/4] Checking staged changes...
