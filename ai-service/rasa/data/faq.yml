@@ -1,0 +1,224 @@
+version: "3.1"
+nlu:
+  - intent: faq
+    examples: |
+      - My account was used by someone else
+      - How do I add or change a user account?
+      - Download the PDF of a Sockliner, Insole or Box report
+      - "No Lab Reference is linked to ... so there is no report to attach"
+      - Open the Brain console
+      - What changed for report defaults?
+      - Is there a dark mode?
+      - What can the assistant do?
+      - What is ETRF No.?
+      - Is the service free to install on more computers?
+      - What is a PIC?
+      - Can I load the machine file again?
+      - The report was saved but has no Report No. in InterLink
+      - The PDF file name is not what I want
+      - How do I thank or give feedback on the assistant?
+      - Where do I find the material test forms?
+      - Could a report be added twice to InterLink?
+      - How do I keep my settings when reinstalling?
+      - Where do I enter tensile and elongation results?
+      - How do I use the Specific Gravity calculator?
+      - The number of points on the diagram is wrong
+      - Why does the assistant say it does not know?
+      - How do I include the report attachment page in the bonding PDF?
+      - The supplier or style fields are empty after lookup
+      - How do I sort the Lab Tracker?
+      - What does "Send reports through the background service" do?
+      - The Brain health shows a folder not writable
+      - How do I paste values from Excel into the form?
+      - How do I test the service address in a browser?
+      - How do I retire an old answer?
+      - What is the Reviewed By field?
+      - The form shows numbers with too many decimals
+      - Bonding preview takes long to open
+      - How do I start the service manually?
+      - Why does NEXUS-L not log in to InterLink for me?
+      - What is a TR No. (Test Report No.)?
+      - I chose the wrong Material Type
+      - How does Refresh & Apply Smart Standards choose the standard?
+      - How do I check what the service address is without showing the key?
+      - Compare two reports
+      - How do I set the machine file folder for a report type?
+      - Where does NEXUS-L know the service address from?
+      - Can I close NEXUS-L after pressing Send?
+      - The bonding result is FAIL but the values look fine
+      - Jobs fail with "sign in again"
+      - "InterLink did not accept" the report
+      - A non-admin sees "access denied" on Settings
+      - How do I start a chat in the Inbox?
+      - Do I need to fill every box?
+      - Settings page keeps asking me to log in
+      - The transfer says access denied
+      - The service says the PDF is missing
+      - Chinese characters show as boxes in the PDF
+      - Find the reports from a date range
+      - What are the colours of the values on the shoe diagram?
+      - Do settings apply right away?
+      - Which setting changes the Lab Location?
+      - How do I turn on notifications?
+      - How do I see reports from last month?
+      - How do I use the DIN Abrasion calculator?
+      - How do I see what users ask the assistant most?
+      - Find the reports of a supplier
+      - How do I print the bonding report for both shoes together?
+      - What does Status mean on a report?
+      - Leather Test Report (LEU / LEL) - how do I use it?
+      - What is DTR?
+      - Where does dtr/sheet-pdf come from?
+      - Why are Sample ID, Test Item Name and Test Method not sent for every test?
+      - Generate Report button is greyed out
+      - The installer says Windows protected my PC
+      - Why did the ratings change after an update?
+      - Why is the bonding result TOLERABLE?
+      - I changed the InterLink password
+      - How do I open the Report Designer?
+      - What if the service computer was shut down during a job?
+      - Label report (Woven / Size / Transfer Label) - how do I use it?
+      - The thickness-based standard did not change
+      - How do I open the Report Detail page?
+      - How do I change the port?
+      - Does 1-Click Send use the PDF I generated?
+      - What are the InterLink report defaults?
+      - What is in the Settings page?
+      - What is DIN abrasion?
+      - Check the machine files location for me
+      - What do the job states mean?
+      - How do I see the standard used for each shoe part?
+      - Is the transfer safe for my current data?
+      - What pictures does the service keep?
+      - The machine file is there but values did not load
+      - What is the quickest way to send a report?
+      - What do U and E mean in the InterLink list?
+      - The date or time on pages is wrong
+      - How do I fill the InterLink form with the NEXUS-L values?
+      - What if InterLink asks to accept new terms?
+      - How do I back up NEXUS-L?
+      - The report does not fit on one page
+      - Which setting changes the country of origin?
+      - How do I print the left and right bonding reports?
+      - Who approves a report before it is sent?
+      - How do I enter or correct a bonding spot value by hand?
+      - Colorfastness grade rules
+      - What does PASS, TOLERABLE and FAIL mean?
+      - The PDF has the wrong report data
+      - Does the installer need administrator rights?
+      - What are the system requirements for my computer?
+      - Where can I see my profile or my role?
+      - How do I see which problems users hit most?
+      - Does the service send emails?
+      - "already in the queue"
+      - Who tested this Lab Ref?
+      - What should I tell the administrator when I report a problem?
+      - How do I stop the service?
+      - The sign-in window closes immediately
+      - Why does NEXUS-L need Chrome or Edge on the server?
+      - What are the tick boxes in the installer?
+      - Does updating lose my settings or my InterLink sign-in?
+      - Can I go back to the default value of a setting?
+      - Please sign in to continue appears all the time
+      - Open the print preview of a report directly
+      - The service did not answer - using the browser extension instead
+      - How do I search by material code, style or supplier?
+      - Who sends the report to InterLink?
+      - How do I switch NEXUS-L to another database?
+      - I forgot my password
+      - I synced to InterLink but nothing changed in InterLink
+      - The downloaded PDF has two pages
+      - Download the PDF of a Hardware or Label report
+      - I get a server error (500) or "Something went wrong"
+      - How do I recalculate the bonding spots and result?
+      - "No matching machine output file found"
+      - Does the report PDF show all tests?
+      - How do I zoom the report preview?
+      - What does the Synced tag on a field mean?
+      - How do I move the points and dots on the shoe diagram?
+      - How do I import many answers into the assistant?
+      - How do I sign in to InterLink?
+      - How many decimals should I type?
+      - Which browser should I use?
+      - What does "Master Lookup Records" mean?
+      - How do I record a retest?
+      - Which application is this Lab Ref linked to?
+      - Open Form in the Lab Tracker does nothing
+      - How do I see all reports synced by a person?
+      - Machine results were loaded for the wrong sample
+      - How do I load the machine results into a report?
+      - Why do I have to type SWITCH?
+      - The setup finished but nothing appears
+      - How do I open an application on the Upload Form?
+      - How do I sign out?
+      - What are the steps from report to InterLink?
+      - Where do I sign out?
+      - How do I clear the form to start over?
+      - Fabric Test Report (FBU / FBL) - how do I use it?
+      - What does the Send button check first?
+      - Does the system work on Firefox?
+      - Is the report PDF sent to InterLink signed?
+      - How do I sign in the service to InterLink?
+      - Who receives the Synology message?
+      - How do I save a report?
+      - Can I send several applications at once?
+      - Can the service run without a logged-in user?
+      - Is my data safe in NEXUS-L?
+      - Can I change the language?
+      - How do I collapse the sidebar to get more space?
+      - I saved a report under the wrong form
+      - How do I see what a user did before a problem?
+      - Does the service resend the callback?
+      - How do I print on A4 paper correctly?
+      - What IP should I choose in the service Settings?
+      - How are old jobs cleaned up?
+      - The logo is missing on my printout
+      - How do I make the system faster?
+      - What do I enter as the Service address?
+      - InterLink asks for a verification code
+      - Does NEXUS-L need to be restarted after Settings changes?
+      - The machine file has a different layout than before
+      - Chrome warns about developer mode extensions
+      - What do the Dashboard cards mean?
+      - What does Show / Hide All Fields do?
+      - Can I switch back to the main database after testing?
+      - Test connection fails with "unknown host"
+      - How does a report get from NEXUS-L to InterLink now?
+      - Open the shoe bonding form
+      - The spot values on the diagram are in the wrong place
+      - How does the queue work?
+      - The Activity window is empty
+      - Which messages does the assistant know?
+      - What does the system record about my activity?
+      - What are the two tabs of the InterLink Upload Form?
+      - Who decides the PASS, TOLERABLE or FAIL rules?
+      - What is NEXUS-L and what can I do here?
+      - How do I know the report was submitted?
+      - Why does InterLink refuse a duplicate Report No.?
+      - Open the calculators
+      - What are Sample Information, Test Item Result and Reading grids?
+      - What does a dash (-) in the machine file mean?
+      - How do I move NEXUS-L to the SSD?
+      - How do I generate the test report PDF for InterLink?
+      - How current is the data in NEXUS-L?
+      - How do I send a report to InterLink with 1 click?
+      - Does the service work when my computer is off?
+      - What is the Pre-Sync dialog?
+      - 1-Click Send says Preparing but nothing else happens
+      - How do I go back to the previous page?
+      - Can I email the PDF from NEXUS-L?
+      - Download Official Access PDF button is missing
+      - Which setting changes the factory details?
+      - What is shrinkage and how do I calculate it?
+      - What do the numbers at the top of the Lab Reports page mean?
+      - What does Max Points mean?
+      - What messages do I get when I press Send?
+      - How do I find a bonding report by shoe style?
+      - Does Generate Report send anything to InterLink?
+      - Do settings differ per user?
+      - Can I send many reports at once?
+      - What should I do if InterLink changes its form?
+      - Find a report by MTL number
+      - What do L and W mean in the readings?
+      - How do I pin or search messages in a chat?
+      - Generate the left and right bonding PDFs

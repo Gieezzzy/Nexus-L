@@ -16,7 +16,7 @@ NEXUS-L (PHP) --AiBridge--> /ask, /ingest/*  ->  Rasa or the built-in router  ->
 | LangGraph / LangChain | the loop: retrieve, generate, verify, rewrite, abstain / human; Postgres checkpointer | running |
 | Mem0 | long-term memory per user and shared `org` memory for administrator overrides (local Qdrant + fastembed) | running |
 | Phoenix (Arize) | traces of every node, latency, tokens, evals | running at http://127.0.0.1:6006 |
-| Rasa | intent gateway for hard rules | **optional**: `AI_USE_RASA=true` once Rasa 3.6 runs on :5005 (needs Python 3.10, see `rasa/`). Until then the built-in rule router (`app/nlu.py`) is used behind the same interface |
+| Rasa 3.6 | intent gateway for hard rules (open report, talk to admin, greet, thanks, not helpful; everything else = `faq`) | installed in `E:\NexusAI\rasa-venv` (Python 3.10), model trained from `rasa/` (`python rasa/make_faq.py` then `rasa train nlu`). **Opt-in at run time**: `.\run-ai.ps1 -WithRasa`. It needs ~1.6 GB of committed memory and this PC has no page file, so with Rasa running other programs can fail with "bad allocation". If Rasa is not running the service falls back to the built-in rule router (`app/nlu.py`) automatically |
 | Local LLM | `AI_LLM_MODE=ollama` lets a local Ollama model compose answers from the retrieved text; verified the same way | optional, not installed |
 
 **Default generation is extractive**: the answer is the approved text itself, so nothing can be invented. A model is not needed.
