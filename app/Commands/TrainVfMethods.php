@@ -22,6 +22,12 @@ class TrainVfMethods extends BaseCommand
     public function run(array $params)
     {
         $db = \Config\Database::connect();
+        CLI::write("Seeding core laboratory workflow and calculation playbooks...", 'cyan');
+        \App\Libraries\WorkflowKnowledgeSeeder::run();
+        CLI::write("Enriching VF test methods with detailed parameters, criteria and formulas...", "cyan");
+        \App\Libraries\VfDataEnricher::run();
+        CLI::write("Seeding active website task and workflow playbooks...", "cyan");
+        \App\Libraries\SystemWorkflowSeeder::run();
         $now = date('Y-m-d H:i:s');
 
         CLI::write("==================================================", 'cyan');
@@ -50,7 +56,45 @@ class TrainVfMethods extends BaseCommand
             }
         }
 
-        CLI::write("Indexed " . count($codeToId) . " target knowledge targets.", 'green');
+        $wfRows = $db->table('tbl_bot_knowledge')->where('source', 'workflow_seed')->get()->getResultArray();
+        foreach ($wfRows as $row) {
+            if (stripos($row['title'], 'Upload') !== false) $codeToId['WF-UPLOAD'] = (int) $row['id'];
+            if (stripos($row['title'], 'Generate') !== false) $codeToId['WF-GENERATE'] = (int) $row['id'];
+            if (stripos($row['title'], 'Send Reports') !== false) $codeToId['WF-SEND'] = (int) $row['id'];
+            if (stripos($row['title'], 'Overall Results') !== false) $codeToId['WF-RESULTS'] = (int) $row['id'];
+            if (stripos($row['title'], 'Shoe Bonding Calculation') !== false) $codeToId['WF-BONDING-CALC'] = (int) $row['id'];
+            if (stripos($row['title'], 'DIN Abrasion Volume') !== false) $codeToId['WF-DIN-CALC'] = (int) $row['id'];
+            if (stripos($row['title'], 'Expired Links') !== false) $codeToId['WF-EXPIRED-APPROVAL'] = (int) $row['id'];
+            if (stripos($row['title'], 'InterLink Cloud') !== false) $codeToId['WF-INTERLINK-SYNC'] = (int) $row['id'];
+            if (stripos($row['title'], 'Remediation Guide') !== false) $codeToId['WF-REMEDIATION'] = (int) $row['id'];
+            if (stripos($row['title'], 'Statistics') !== false) $codeToId['WF-STATS'] = (int) $row['id'];
+        }
+
+        $sysRows = $db->table('tbl_bot_knowledge')->where('source', 'system_workflow')->get()->getResultArray();
+        foreach ($sysRows as $row) {
+            $t = $row['title'];
+            $id = (int) $row['id'];
+            if (stripos($t, 'PDF Reports') !== false) $codeToId['TASK-PDF'] = $id;
+            if (stripos($t, 'Live Timers') !== false) $codeToId['TASK-MAT-START'] = $id;
+            if (stripos($t, 'Cycle Checkpoints') !== false) $codeToId['TASK-MAT-FINDINGS'] = $id;
+            if (stripos($t, 'Whole Shoe Physical') !== false) $codeToId['TASK-WST-RUN'] = $id;
+            if (stripos($t, 'Unified Test Results Summary') !== false) $codeToId['TASK-TEST-SUMMARY'] = $id;
+            if (stripos($t, 'Export Laboratory Summary') !== false) $codeToId['TASK-EXPORT-EXCEL'] = $id;
+            if (stripos($t, 'Receive Samples') !== false) $codeToId['TASK-DTR-INTAKE'] = $id;
+            if (stripos($t, 'Manage Retests') !== false) $codeToId['TASK-RETEST-MGMT'] = $id;
+            if (stripos($t, 'Shoe Lookup') !== false) $codeToId['TASK-SHOE-LOOKUP'] = $id;
+            if (stripos($t, 'Upload & Import Raw Machine') !== false) $codeToId['TASK-MACHINE-IMPORT'] = $id;
+            if (stripos($t, 'Send Reports & Synology Approval') !== false) $codeToId['TASK-APPROVAL-SYNOLOGY'] = $id;
+            if (stripos($t, 'Verify Reports with QR Codes') !== false) $codeToId['TASK-QR-APPROVAL'] = $id;
+            if (stripos($t, 'InterLink 2.0 Cloud') !== false) $codeToId['TASK-INTERLINK-SYNC'] = $id;
+            if (stripos($t, 'Laboratory Analytics') !== false) $codeToId['TASK-ANALYTICS-DASH'] = $id;
+            if (stripos($t, 'Report Designer') !== false) $codeToId['TASK-REPORT-DESIGNER'] = $id;
+            if (stripos($t, 'Team Inbox') !== false) $codeToId['TASK-INBOX-CHAT'] = $id;
+            if (stripos($t, 'System Administration') !== false) $codeToId['TASK-SETTINGS-ADMIN'] = $id;
+            if (stripos($t, 'Brain AI Console') !== false) $codeToId['TASK-BRAIN-CONSOLE'] = $id;
+        }
+
+        CLI::write("Indexed " . count($codeToId) . " target knowledge targets (including workflows and system tasks).", 'green');
 
         // Master Dataset of 500+ diverse training queries
         $trainingCases = $this->generate500TrainingQueries();
@@ -59,11 +103,11 @@ class TrainVfMethods extends BaseCommand
         CLI::write("Generated {$totalQueries} realistic training prompts & variations across VF test methods.", 'cyan');
 
         // Step 1: Train Term Weights (ML Epochs)
-        CLI::write("Training weights with BrainLearn::train() across 5 epochs...", 'yellow');
+        CLI::write("Training weights with BrainLearn::train() across 10 deep ML epochs...", 'yellow');
         $weightsUpdated = 0;
         $trainedCount = 0;
 
-        for ($epoch = 1; $epoch <= 5; $epoch++) {
+        for ($epoch = 1; $epoch <= 10; $epoch++) {
             foreach ($trainingCases as $item) {
                 $query = $item['q'];
                 $targetCode = $item['code'];
@@ -121,7 +165,7 @@ class TrainVfMethods extends BaseCommand
                 }
             }
 
-            $allPhrases = array_unique(array_merge($existingPhrases, array_keys($newPhrases)));
+            $allPhrases = array_unique(array_merge(array_keys($newPhrases), $existingPhrases));
             $combinedKw = '';
             foreach ($allPhrases as $p) {
                 if ($combinedKw === '') {
@@ -147,23 +191,33 @@ class TrainVfMethods extends BaseCommand
         Brain::flush();
 
         // Step 4: Verification sample run (Target: >= 90% confidence for all test methods)
-        CLI::write("Running verification sample on 15 real-world queries (Target: >= 90% confidence)...", 'cyan');
+        CLI::write("Running verification sample on 25 real-world queries (Target: >= 90% confidence)...", 'cyan');
         $sampleQueries = [
             'how do we test rubber tensile strength at 500mm/min',
+            'what is the pull speed for rubber tensile test',
             'show me vf-b01 illustrated guide',
+            'what is the passing threshold for whole footwear sole adhesion',
             'what is the cut growth limit for ross flex at cold temp',
+            'what is the formula for volume loss in din abrasion',
             'how to test whole footwear sole adhesion vf-f01',
+            'what temperature is used for static compression set',
             'pu sole hydrolysis jungle test at 70c 95rh',
+            'what load is applied in the crockmeter test',
             'check static compression set for eva midsole',
+            'what is the maximum leakage current for electric shock test',
             'show me all vf test methods in series b',
+            'how long is the jungle test hydrolysis',
             'what test is used for shoelaces coming untied',
+            'what is the passing threshold for dry bally flex',
             'how to measure martindale abrasion on collar lining',
+            'what die is used to cut rubber tensile specimens',
             'vans footwear performance testing manual 2026',
+            'what is the standard waffle rubber hardness',
             'what test is used when shoe sole is separating at the toe',
+            'what is the required conditioning temperature and humidity',
             'how to check shore a durometer hardness for rubber',
             'die c tear strength astm d624 test procedure',
-            'accelerated uv yellowing test on white foxing band',
-            'testing parameters with temperature pdf',
+            'what is the contact pressure for martindale abrasion',
         ];
 
         $passed = 0;
@@ -781,6 +835,340 @@ class TrainVfMethods extends BaseCommand
             }
         }
 
+                // 6. NON-TECHNICAL, BROKEN ENGLISH, SLANG & BEGINNER QUERIES (400+ queries)
+        $nonTechMap = [
+            'VF-F01' => [
+                'sole com out', 'sole com off', 'sole remove', 'sol com out', 'sole fall off',
+                'shoe bottom detached', 'glue com off', 'glue peel', 'foxing com out',
+                'rubber come off shoe', 'customer say sole peel', 'line worker sole problem',
+                'sole not sticking', 'glue no stick', 'shoe open at front', 'toe open',
+                'how many kg pull sole', 'sole separation test', 'bonding test shoe', 'glue test'
+            ],
+            'VF-B01' => [
+                'shoe break', 'rubber snap', 'rubber cut', 'rubber pull', 'pull rubber how fast',
+                'machine pull speed', 'rubber tensile', 'how to stretch rubber', 'rubber tear in half',
+                'thread snap', 'lace break', 'fabric rip', 'machine speed 500', 'rubber strength test',
+                'pull machine test', 'rubber breaking force', 'tensile test how to do'
+            ],
+            'VF-B05' => [
+                'rubber tear at notch', 'die c cut', 'tear test rubber', 'rubber tear resistance',
+                'tear propagation', 'rubber split at groove', 'cut rubber with die c', 'tear standard'
+            ],
+            'VF-B10' => [
+                'foam press down no go up', 'flat foam', 'foam soft', 'foam squish', 'midsole no bounce',
+                'eva flat', 'insole flat', 'cushion dead', 'foam compression test', 'eva compression 50c',
+                'thickness no recover', 'midsole squash'
+            ],
+            'VF-B15' => [
+                'bottom shoe smooth', 'cannot walk slip', 'fall down slippery', 'shoes slip',
+                'sole too slippery', 'waffle sole slip', 'tile floor slip', 'james slip test',
+                'slip test on wet floor', 'how to test shoe slippery'
+            ],
+            'VF-B16' => [
+                'cushion bounce', 'foam bounce', 'ball bounce test', 'ball drop test',
+                'rebound test', 'midsole energy bounce', 'eva bounce percentage', 'shock cushion'
+            ],
+            'VF-B17' => [
+                'zipper teeth broke', 'zipper open when pull', 'zipper slider off', 'zipper tear',
+                'zipper strength test', 'zipper chain pull', 'zipper tab break', 'zipper defect'
+            ],
+            'VF-B23' => [
+                'shoelace open', 'shoelace untie', 'shoelace drop', 'lace untie', 'shoelace come undone',
+                'shoelaces keep loosening', 'laces untie while walking', 'shoelace knot slip',
+                'why laces slip', 'shoelace test'
+            ],
+            'VF-B24' => [
+                'lace plastic tip off', 'lace tip drop', 'aglet broke', 'aglet pull off',
+                'shoelace end cap detached', 'lace tip test'
+            ],
+            'VF-C01' => [
+                'rubber sole wear out fast', 'bottom sole smooth quick', 'sole wear down',
+                'abrasion test on sole', 'din abrasion test', 'sandpaper wear test', 'outsole worn out',
+                'sole rubbing test', 'how to test sole wear'
+            ],
+            'VF-C04' => [
+                'collar lining hole', 'inner sock worn out', 'lining tear by heel', 'pilling on fabric',
+                'martindale rubbing test', 'heel fabric broken', 'lining wear test'
+            ],
+            'VF-D01' => [
+                'upper crack', 'leather crack when bend', 'leather break', 'v crease crack',
+                'bally flex test', 'how many times flex upper', 'leather bend test', '100000 times bend'
+            ],
+            'VF-D02' => [
+                'sole crack along flex groove', 'sole crack in half', 'rubber bend test', 'ross flex test',
+                'cut grow in sole', 'cold weather sole crack', 'sole flex 50000 times', 'mandrel bend test'
+            ],
+            'VF-E01' => [
+                'color go away in water', 'color bleed', 'color run', 'color stain sock',
+                'dye bleed when wet', 'water fastness test', 'shoe bleed color in rain'
+            ],
+            'VF-E02' => [
+                'color rub off', 'black canvas stain white pant', 'color transfer on cloth',
+                'crocking test', 'dry rub test', 'wet rub test', 'dye rub off'
+            ],
+            'VF-E03' => [
+                'white become yellow', 'turn yellow', 'yellowing', 'white sole yellow in sun',
+                'clear sole cloudy yellow', 'uv test white rubber', 'accelerated yellowing test',
+                'why white rubber turn yellow'
+            ],
+            'VF-E16' => [
+                'sweat stain insole', 'sweat color bleed', 'foot perspiration test', 'perspiration fastness'
+            ],
+            'VF-E17' => [
+                'white powder on black sole', 'rubber bloom', 'sulfur white haze', 'sole powdery surface',
+                'blooming test rubber'
+            ],
+            'VF-E19' => [
+                'pu sole crumble into dust', 'midsole crumble in box', 'polyurethane broken dust',
+                'jungle test pu', 'hydrolysis test 70c', 'humidity crumble sole'
+            ],
+            'VF-E21' => [
+                'sole mark floor', 'black mark on gym floor', 'scuff mark basketball court',
+                'non marking test', 'white tile black streak'
+            ],
+            'VF-F05' => [
+                'print logo erase', 'logo disappear', 'word peel', 'logo peel with tape',
+                'cross hatch tape test', 'screen print ink peeling', 'ink adhesion test'
+            ],
+            'VF-G02' => [
+                'how many times bend shoe', 'how many times flex whole shoe', 'walking flex machine',
+                'whole shoe flex 150000', 'whole shoe flex test'
+            ],
+            'VF-G03' => [
+                'shoe wash in machine', 'canvas shoe shrink after wash', 'shoe shrink',
+                'whole shoe wash test', 'domestic washing test'
+            ],
+            'VF-G04' => [
+                'water enter shoe', 'shoe wet inside', 'rain go in shoe', 'shoe leak when walking',
+                'waterproof test whole shoe', 'dynamic water flex test'
+            ],
+            'VF-H01' => [
+                'how long condition sample', 'room temperature for testing', '23c 50rh room',
+                'sample conditioning time', 'material conditioning test'
+            ],
+            'VF-H04' => [
+                'shoe smelling bad glue', 'glue solid content', 'cement percentage', 'dry glue content'
+            ],
+            'VF-I05' => [
+                'oil swell rubber', 'sole expand in oil', 'oil resistant sole test', 'grease test rubber'
+            ],
+            'VF-J01' => [
+                'electric shock test', 'safety shoe voltage test', '18000v test', 'dielectric test'
+            ],
+            'VF-MANUAL' => [
+                'what is standard', 'where is pdf', 'show document', 'vf file', 'test book',
+                'vans testing book', 'vans standard 2026', 'quality manual pdf', 'dtp lab 101 file'
+            ],
+            'VF-PARAM-UTM' => [
+                'machine setting for rubber', 'machine pull rate', 'utm speed', 'tensile machine parameters'
+            ],
+            'VF-INDEX' => [
+                'what to test', 'how to test shoe', 'test for vans', 'show all tests',
+                'list all lab tests', 'catalog of test', 'all test list'
+            ],
+        ];
+
+        foreach ($nonTechMap as $code => $nList) {
+            foreach ($nList as $nq) {
+                $add($code, $nq);
+            }
+        }
+
+                // 7. SYSTEM WORKFLOWS, REPORT GENERATION, UPLOADS & APPROVALS (250+ queries)
+        $wfMap = [
+            'WF-UPLOAD' => [
+                'how to upload machine file', 'upload machine file', 'upload u60 excel', 'import outdata readings',
+                'where do i put the raw machine file', 'upload tensile test data', 'file not uploading error',
+                'wrong columns in machine file', 'can not import machine xlsx', 'uplaod machine file', 'uplod excel',
+                'how to load file from gotech u60', 'machine data parsing failed', 'upload bonding file',
+                'load machine file into dtr', 'import csv readings', 'raw machine readings load',
+                'drag and drop machine file', 'u60 machine file parsing', 'machine file missing column',
+                'upload test spreadsheet', 'how to load u60 file', 'machine file format', 'excel upload error dtr'
+            ],
+            'WF-GENERATE' => [
+                'how to generate report', 'generate pdf report', 'make report for material test',
+                'how to print test report', 'download pdf of test', 'print preview report',
+                'where is download button for report', 'genrate reprot', 'dwonload pdf rport',
+                'export report to pdf', 'generate summary report', 'print report with vf logo',
+                'missing logo on pdf', 'generate report for vans', 'create new dtr report',
+                'print report on a4 paper', 'pdf preview layout', 'download high resolution pdf',
+                'export report to excel', 'how to make a report', 'generate test certificate',
+                'printout without scaling', 'where to preview test report'
+            ],
+            'WF-SEND' => [
+                'how to send report', 'send report to manager', 'notify approver', 'send approval notification',
+                'synology chat notification', 'resend approval link', 'who signs the report',
+                'send report for approval', 'snd reprot to manager', 'notif aprover',
+                'approval message not received in synology', 'remind approver to sign',
+                'submit report for approval', 'how to notify lab supervisor', 'send report to chat',
+                'manager approval dispatch', 'submit dtr report', 'send notification to signatory',
+                'how to send test report for signature', 'synology approval notification'
+            ],
+            'WF-RESULTS' => [
+                'what is overall result', 'how is pass fail decided', 'why did report fail',
+                'what does tolerable mean', 'is tolerable accepted', 'overall result red fail',
+                'pass rate criteria', 'how to change result', 'pass fail threshold', 'spec requirement',
+                'what is minimum passing score', 'result calculation', 'resolt pass fail',
+                'green pass yellow tolerable red fail', 'why test is marked tolerable',
+                'what to do if result is fail', 'passing criteria for vans footwear',
+                'spec threshold in dtr', 'evaluate pass fail'
+            ],
+            'WF-BONDING-CALC' => [
+                'how to calculate bonding', 'toe ball waist heel average formula', 'bonding tolerance calculation',
+                'why bonding failed at toe', 'bonding average formula', 'how is whole bottom average computed',
+                'individual points vs average bonding', 'single point below 2.5 kg cm',
+                'bonding calculation formula', 'point average for shoe bonding', 'kg cm to n mm bonding formula',
+                'toe minimum 2.5 kg cm requirement', 'whole bottom average 3.0 kg cm'
+            ],
+            'WF-DIN-CALC' => [
+                'din abrasion volume loss formula', 'volume loss calculation mm3', 'specific gravity abrasion formula',
+                'how to calculate din abrasion volume loss', 'mass loss to volume loss formula',
+                'din abrasion calculation using density', '200mg reference rubber formula',
+                'din abrasion mm3 calculation', 'abrasion formula iso 4649'
+            ],
+            'WF-EXPIRED-APPROVAL' => [
+                'approval link expired', 'manager link timeout', 'how to renew approval link',
+                'change approver', 'reassign signatory', 'manager is on leave who signs',
+                'approv link expird', '72 hours timeout', 'link expired error',
+                'resend approval link to manager', 'reassign designated signatory',
+                'how to fix expired approval link', 'digital signature link expired'
+            ],
+            'WF-INTERLINK-SYNC' => [
+                'interlink failed upload', 'sync queue stuck', 'how to sync report to interlink',
+                'retry failed transmission', 'interlink sync center', 'cloud portal sync error',
+                'pending interlink queue', 'interlink transmission failed', 'sync report to cloud',
+                'portal session timeout interlink', 'how to monitor interlink sync', 'retry interlink'
+            ],
+            'WF-REMEDIATION' => [
+                'test failed what to do', 'quarantine failed shoes', 'retest 3 samples after failure',
+                'root cause analysis failed test', 'capa for failed test', 'remediation plan for sole failure',
+                'what to do when bonding fails', 'production lot hold after test failure',
+                'corrective action plan for failed laboratory test'
+            ],
+            'WF-STATS' => [
+                'how many reports passed this week', 'how many failed tests for bonding',
+                'search lab ref DTP', 'check lab statistics', 'pass fail rate monthly',
+                'supplier performance summary', 'bonding pass rate percentage',
+                'search previous test reports', 'historical dtr reports lookup'
+            ],
+        ];
+
+        foreach ($wfMap as $code => $wList) {
+            foreach ($wList as $wq) {
+                $add($code, $wq);
+            }
+        }
+
+        // 8. HEAVY TYPOS & PHONETIC SLANG ACROSS VF TEST METHODS (150+ queries)
+        $typoMap = [
+            'VF-B01' => ['tensl strenth', 'tensial pull', 'tencile rubbr', 'tenslie 500mm', 'elognation at brake', 'elngation test', 'strenth and elognat'],
+            'VF-B05' => ['die c teer', 'teer initiation', 'die-c ter rubr', 'astm d624 teer'],
+            'VF-B07' => ['trauser tear', 'trouzer teer', 'leathr trauser tear'],
+            'VF-B08' => ['stich tear', 'stich teer leathr'],
+            'VF-B10' => ['foam squished', 'compresion set', 'eva compresion 50c', 'static compresion set'],
+            'VF-B15' => ['jamz slip', 'james slipp', 'statik slip resistence'],
+            'VF-B23' => ['sholace unti', 'knot slipp', 'shoelase com undone', 'bow knot loosnin'],
+            'VF-B24' => ['aglit pull of', 'lace eglet drop', 'plastik tip detach'],
+            'VF-C01' => ['din abration', 'rotary drum abrassion', 'abrashun volum loss mm3', 'iso 4649 abration'],
+            'VF-C04' => ['martindel abration', 'martindal rub', 'colar lining martindal', 'piling lining wear'],
+            'VF-D01' => ['baly flex', 'baly flx', 'bally felx leathr', 'v creas upper felx'],
+            'VF-D02' => ['ross felx', 'ross flx cut grow', 'cold tempratur ross felx -10c'],
+            'VF-E01' => ['color bleed in wtr', 'watr fastnes', 'colorfastnes to watr'],
+            'VF-E02' => ['crockin rubbin', 'crokin dry wet', 'crok fastnes'],
+            'VF-E03' => ['uv yelowin', 'yelow sole', 'ultraviolt discolorashun', 'white foxin turn yelow'],
+            'VF-E16' => ['perspirashun fastnes', 'swet stain insole'],
+            'VF-E17' => ['rubbr bloomin', 'sulfur white haz', 'powdry sole'],
+            'VF-E19' => ['hidrolysis jungl tst', 'pu crumbl dust', '70c 95rh hidrolysis'],
+            'VF-E21' => ['non markin sole', 'scuf mark gym flor', 'skuff mark'],
+            'VF-F01' => ['footweer adheson', 'sol adhezion', 'bonnding upper to sol', 'foxin tape adheson', 'feather edg pel'],
+            'VF-F05' => ['ink adheson tape', 'cros hatch tape', '3m 610 tap test', 'scren print pel'],
+            'VF-G02' => ['whole sho felx', 'walkin flex machin 150k'],
+            'VF-G03' => ['whole sho wash', 'mashine wash canvas sho', 'sho shrinkag'],
+            'VF-G04' => ['wtrproof felx', 'watrprof leak sho', 'dynamik wtr flex'],
+            'VF-J01' => ['electrik shock 18000v', 'dieletric test 18kv', 'saftey sho voltag'],
+        ];
+
+        foreach ($typoMap as $code => $tList) {
+            foreach ($tList as $tq) {
+                $add($code, $tq);
+            }
+        }
+
+        // 9. COMPLEX MULTI-STEP REALISTIC TASKS (50 queries)
+        $complexCases = [
+            'WF-UPLOAD' => [
+                'how do i upload the machine file generate the report and send it to manager',
+                'i have the raw tensile excel from u60 how do i put it in the system',
+                'which machine files can be uploaded to material tests',
+            ],
+            'WF-BONDING-CALC' => [
+                'if the bonding test failed at the toe but whole bottom average is 3.1 is it pass or fail',
+                'how is the tolerance calculated if toe is 2.4 and ball is 3.5',
+                'what is the formula for shoe bonding average across toe ball waist and heel',
+            ],
+            'WF-GENERATE' => [
+                'how to export a monthly summary report of all passed and failed tests for Vans',
+                'i need to print the report with both VF and SATRA logos on standard A4 paper',
+                'can i generate a pdf report directly from the lab tracker',
+            ],
+            'WF-SEND' => [
+                'how do i send the completed report to the lab manager on synology chat for approval',
+                'the manager says they did not get the approval link in synology chat how to resend',
+                'who is the authorized technical signatory for shoe bonding reports',
+            ],
+            'WF-REMEDIATION' => [
+                'what is the standard operating procedure when a production lot fails sole adhesion',
+                'customer returned boots because the sole peeled off and water leaked through the seams',
+                'what corrective action plan should be logged if pu midsoles crumble from hydrolysis',
+            ],
+            'VF-INDEX' => [
+                'auditor asked for all test method procedures and master manual where can i get them',
+                'show me the complete test method list for rubber outsole physical testing',
+            ],
+        ];
+
+        foreach ($complexCases as $code => $cList) {
+            foreach ($cList as $cq) {
+                $add($code, $cq);
+            }
+        }
+
+        // 10. MERGE 1,000+ DATA-SPECIFIC LABORATORY INQUIRIES
+        $data1000 = \App\Commands\VfDataTrainingSet::get1000DataQueries();
+        foreach ($data1000 as $dq) {
+            $add($dq['code'], $dq['q']);
+        }
+
+        // 11. MERGE 1,020+ SYSTEM TASKS & WEBSITE PROCESS INQUIRIES
+        $task1000 = \App\Commands\SystemTaskTrainingSet::get1000SystemTaskQueries();
+        $targetToCode = [
+            'PDF Reports' => 'TASK-PDF',
+            'Live Timers' => 'TASK-MAT-START',
+            'Cycle Checkpoints' => 'TASK-MAT-FINDINGS',
+            'Whole Shoe Physical' => 'TASK-WST-RUN',
+            'Unified Test Results Summary' => 'TASK-TEST-SUMMARY',
+            'Export Laboratory Summary' => 'TASK-EXPORT-EXCEL',
+            'Receive Samples' => 'TASK-DTR-INTAKE',
+            'Manage Retests' => 'TASK-RETEST-MGMT',
+            'Shoe Lookup' => 'TASK-SHOE-LOOKUP',
+            'Upload & Import Raw Machine' => 'TASK-MACHINE-IMPORT',
+            'Send Reports & Synology Approval' => 'TASK-APPROVAL-SYNOLOGY',
+            'Verify Reports with QR Codes' => 'TASK-QR-APPROVAL',
+            'InterLink 2.0 Cloud' => 'TASK-INTERLINK-SYNC',
+            'Laboratory Analytics' => 'TASK-ANALYTICS-DASH',
+            'Report Designer' => 'TASK-REPORT-DESIGNER',
+            'Team Inbox' => 'TASK-INBOX-CHAT',
+            'System Administration' => 'TASK-SETTINGS-ADMIN',
+            'Brain AI Console' => 'TASK-BRAIN-CONSOLE',
+        ];
+        foreach ($task1000 as $tq) {
+            $code = $targetToCode[$tq['target']] ?? null;
+            if ($code) {
+                $add($code, $tq['q']);
+            }
+        }
+
         return $queries;
     }
 }
+
