@@ -149,8 +149,16 @@
     if (r.actions && r.actions.length) h += '<div class="nxbot-acts">' + r.actions.map((a, i) => `<button type="button" data-act="${i}">${esc(a.label)}</button>`).join('') + '</div>';
     if (r.related && r.related.length) h += '<div class="nxbot-rel"><small>Related:</small> ' + r.related.map((x) => `<button type="button" data-q="${esc(x.title || x.question || x.label || x)}" data-topic="${esc(x.id || x.kb_id || '')}">${esc(x.title || x.question || x.label || x)}</button>`).join('') + '</div>';
     if (chatId) h += `<div class="nxbot-fb"><button type="button" data-fb="1" data-chat="${chatId}">Helpful</button><button type="button" data-fb="-1" data-chat="${chatId}">Not helpful</button>${r.suggest_admin ? '<button type="button" data-a="admin" class="nxbot-esc">Talk to an administrator</button>' : ''}</div>`;
+    // charts are drawn from a small spec; files are authenticated, expiring downloads
+    if (r.chart && r.chart.labels && r.chart.series) h += '<div class="nxbot-chart"><canvas role="img" aria-label="' + esc(r.chart.title || 'Chart') + '"></canvas><div class="nxbot-chart-btns"><button type="button" data-chart="big">Enlarge</button><button type="button" data-chart="png">Image (PNG)</button><button type="button" data-chart="pdf">PDF</button></div></div>';
+    if (r.files && r.files.length) h += '<div class="nxbot-files">' + r.files.map((f) => `<a class="nxbot-file" href="${esc(f.url)}" download="${esc(f.name || '')}">${esc(f.label || f.name)}${f.size ? ' <small>' + (f.size > 1048576 ? (f.size / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(f.size / 1024)) + ' KB') + '</small>' : ''}</a>`).join('') + '</div>';
     const d = add('bot', h, chatId);
     d._actions = r.actions || [];
+    if (r.chart && window.nxChart) {
+      d._chart = r.chart;
+      const cv = d.querySelector('canvas');
+      if (cv) window.nxChart.draw(cv, r.chart, { w: Math.max(240, Math.min(cv.parentElement.clientWidth || 320, 420)), h: 230 });
+    }
     return d;
   };
 
@@ -271,6 +279,35 @@
         add('bot', '<b class="nxbot-t">Your recent activity (only you can see this)</b><ul class="nxbot-hist">' + h.events.slice(0, 12).map((x) => `<li><small>${esc(x.created_at)}</small> ${esc(x.event_type)} · ${esc(x.target || x.page || '')}</li>`).join('') + '</ul>');
       } catch (x) { /* ignore */ }
       return;
+    }
+    if (b.dataset.chart) {
+      const spec = b.closest('.nxbot-m')._chart;
+      if (!spec || !window.nxChart) return;
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
+      const save = (url, name) => { const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); };
+      if (b.dataset.chart === 'png') { save(window.nxChart.png(spec), 'chart-' + stamp + '.png'); record('bot', { target: 'chart png' }); return; }
+      if (b.dataset.chart === 'pdf') {
+        const old = b.textContent;
+        b.disabled = true; b.textContent = 'Making PDF...';
+        try { const j = await post('bot/chart-pdf', { png: window.nxChart.png(spec), title: spec.title }); save(j.url, j.name); } catch (x) { add('bot', '<p>' + esc(x.message || 'The PDF could not be made.') + '</p>'); }
+        b.disabled = false; b.textContent = old;
+        return;
+      }
+      if (b.dataset.chart === 'big') {
+        const back = document.createElement('div');
+        back.className = 'nxbot-big';
+        back.innerHTML = '<div class="nxbot-big-box" role="dialog" aria-label="Chart"><canvas></canvas><div class="nxbot-chart-btns"><button type="button" data-x="png">Image (PNG)</button><button type="button" data-x="close">Close</button></div></div>';
+        document.body.appendChild(back);
+        const cv = back.querySelector('canvas');
+        const w = Math.min(980, window.innerWidth - 40);
+        window.nxChart.draw(cv, spec, { w, h: Math.min(560, Math.round(w * 0.58)) });
+        back.addEventListener('click', (ev) => {
+          const t = ev.target;
+          if (t === back || (t.dataset && t.dataset.x === 'close')) back.remove();
+          else if (t.dataset && t.dataset.x === 'png') save(window.nxChart.png(spec), 'chart-' + stamp + '.png');
+        });
+        return;
+      }
     }
     if (b.dataset.topic) {
       try { const j = await api('bot/topic?id=' + b.dataset.topic); renderReply(j.reply, 0); } catch (x) { /* ignore */ }

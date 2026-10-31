@@ -113,6 +113,8 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->post('bot/ask', 'BotController::ask');
     $routes->post('bot/events', 'BotController::events');
     $routes->post('bot/feedback', 'BotController::feedback');
+$routes->get('bot/file/(:segment)', 'BotController::file/$1');
+$routes->post('bot/chart-pdf', 'BotController::chartPdf');
     $routes->post('bot/escalate', 'BotController::escalate');
     $routes->get('bot/thread', 'BotController::thread');
     $routes->get('bot/topic', 'BotController::topic');

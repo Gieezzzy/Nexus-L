@@ -437,6 +437,18 @@ button .ic,.dsg-btn .ic,.sc-btn .ic,.il-btn .ic{margin-right:4px}
 }
 #nx-slow.show { opacity: 1; transform: translate(-50%, 0); }
 @media (prefers-reduced-motion: reduce) { .nx-shimmer { animation: none; } }
+/* ---- assistant: charts, files, enlarged chart ---- */
+.nxbot-chart { margin: 8px 0 4px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; padding: 6px; max-width: 100%; }
+.nxbot-chart canvas { display: block; max-width: 100%; }
+.nxbot-chart-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.nxbot-chart-btns button, .nxbot-file { font: inherit; font-size: 12px; padding: 5px 10px; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; cursor: pointer; text-decoration: none; display: inline-block; }
+.nxbot-chart-btns button:hover, .nxbot-file:hover { background: #e0f2fe; border-color: #38bdf8; }
+.nxbot-files { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
+.nxbot-file small { color: #64748b; margin-left: 4px; }
+.nxbot-big { position: fixed; inset: 0; z-index: 100000; background: rgba(15, 23, 42, .55); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.nxbot-big-box { background: #fff; border-radius: 14px; padding: 12px; max-width: 100%; max-height: 100%; overflow: auto; box-shadow: 0 20px 60px rgba(15, 23, 42, .35); }
+.nxbot-big-box canvas { display: block; max-width: 100%; }
+
 /* ---- smoothness hygiene ---- */
 a, button, [role=button], input, select, textarea, label, summary { touch-action: manipulation; }
 html { -webkit-tap-highlight-color: transparent; }

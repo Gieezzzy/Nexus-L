@@ -10,6 +10,7 @@ use App\Libraries\BrainSeed4 as Seed4;
 use App\Libraries\BrainSeed5 as Seed5;
 use App\Libraries\BrainSeed6 as Seed6;
 use App\Libraries\BrainSeed7 as Seed7;
+use App\Libraries\BrainSeed8 as Seed8;
 use CodeIgniter\CLI\BaseCommand;
 use CodeIgniter\CLI\CLI;
 
@@ -26,7 +27,7 @@ class BrainSeed extends BaseCommand
         $now = date('Y-m-d H:i:s');
         $add = 0;
         $upd = 0;
-        foreach (array_merge(Seed::all(), Seed2::all(), Seed3::all(), Seed4::all(), Seed5::all(), Seed6::all(), Seed7::all()) as $e) {
+        foreach (array_merge(Seed::all(), Seed2::all(), Seed3::all(), Seed4::all(), Seed5::all(), Seed6::all(), Seed7::all(), Seed8::all()) as $e) {
             $data = [
                 'kind' => 'playbook', 'title' => mb_substr($e['title'], 0, 200), 'keywords' => mb_substr((string) ($e['keywords'] ?? ''), 0, 600), 'body' => (string) $e['body'],
                 'steps_json' => json_encode($e['steps'] ?? [], JSON_UNESCAPED_UNICODE), 'actions_json' => json_encode($e['actions'] ?? [], JSON_UNESCAPED_SLASHES),

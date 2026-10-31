@@ -154,11 +154,16 @@ class BotController extends BaseController
         $prev = $this->db()->table('tbl_bot_chats')->select('message')->where(['thread_id' => (int) $thread['id'], 'sender' => 'user'])->where('id <', $userChatId)->orderBy('id', 'DESC')->get(1)->getRowArray();
         $prevUserMsg = (string) ($prev['message'] ?? '');
 
-        $intentReply = $this->labRefIntent($text) ?? $this->approvalReminderIntent($text, $uid, (array) $u) ?? $this->dbSearchIntent($text) ?? $this->computeIntent($text, $prevUserMsg);
+        $intentReply = $this->artifactIntent($text, $uid, (int) $thread['id'], (array) $u) ?? $this->labRefIntent($text) ?? $this->approvalReminderIntent($text, $uid, (array) $u) ?? $this->dbSearchIntent($text) ?? $this->computeIntent($text, $prevUserMsg);
         if ($intentReply !== null) {
             $reply = $intentReply;
         } else {
-            $reply = $this->compose($text, ['page' => $page, 'role' => (string) ($u['role'] ?? ''), 'errors' => $this->recentErrors($uid)], $page);
+            // a short follow-up ("why?", "and then?", "what about X") is about the previous question
+            $askText = $text;
+            if ($prevUserMsg !== '' && mb_strlen($text) < 40 && str_word_count($text) <= 5 && preg_match('/^(why|why not|how|and|and then|then|what about|what next|more|explain|details?|how come|really|ok and|so)\b/i', trim($text))) {
+                $askText = $prevUserMsg . ' ' . $text;
+            }
+            $reply = $this->compose($askText, ['page' => $page, 'role' => (string) ($u['role'] ?? ''), 'errors' => $this->recentErrors($uid)], $page);
             if (\App\Libraries\AiBridge::isLive()) {
                 $aiResp = \App\Libraries\AiBridge::post('/ask', [
                     'session_id' => \App\Libraries\AiBridge::session($uid),
@@ -469,6 +474,254 @@ class BotController extends BaseController
             'knowledge_id'  => null,
             'suggest_admin' => false,
         ];
+    }
+
+    // ------------------------------------------------------------------------------------------------ charts, files and images
+
+    private function artReply(string $text, string $title, array $extra = []): array
+    {
+        return array_merge(['text' => $text, 'title' => $title, 'steps' => [], 'actions' => [], 'confidence' => 100, 'related' => [], 'diagnosis' => null, 'knowledge_id' => null, 'suggest_admin' => false], $extra);
+    }
+
+    /** The Lab Reference the user means: in the sentence, else the last one in this conversation, else the last one they asked about. */
+    private function labRefInContext(string $text, int $threadId, int $uid): ?string
+    {
+        if (preg_match('/\b(DTP\d{8}[A-Z0-9]{2,}(?:-[LR])?)\b/i', $text, $m)) {
+            return strtoupper($m[1]);
+        }
+        foreach ($this->db()->table('tbl_bot_chats')->select('message')->where(['thread_id' => $threadId, 'sender' => 'user'])->orderBy('id', 'DESC')->limit(12)->get()->getResultArray() as $r) {
+            if (preg_match('/\b(DTP\d{8}[A-Z0-9]{2,}(?:-[LR])?)\b/i', (string) $r['message'], $m)) {
+                return strtoupper($m[1]);
+            }
+        }
+        $c = cache('botctx_' . $uid);
+
+        return is_array($c) && ! empty($c['labref']) ? (string) $c['labref'] : null;
+    }
+
+    private function fileEntry(?array $f, string $label): ?array
+    {
+        return $f ? ['label' => $label, 'name' => $f['name'], 'url' => $f['url'], 'size' => $f['size']] : null;
+    }
+
+    /**
+     * Charts ("pie chart of pass and fail by category", "trend of failed bonding reports per month"), pictures of them (the page draws
+     * and downloads PNG) and files ("export failed fabric reports this month to Excel", "export this report as PDF").
+     * Follow-ups work: "as a pie", "same for leather", "export that to excel".
+     */
+    private function artifactIntent(string $text, int $uid, int $threadId, array $u): ?array
+    {
+        try {
+            $low = mb_strtolower(trim($text));
+            $ctx = cache('botctx_' . $uid);
+            $ctx = is_array($ctx) ? $ctx : [];
+            $db  = $this->db();
+            if (! $db->tableExists('tbl_dtr_unified_labrefs')) {
+                return null;
+            }
+            $chart  = \App\Libraries\BotArtifacts::chartRequest($text);
+            $export = \App\Libraries\BotArtifacts::exportRequest($text);
+
+            // follow-ups on the last chart
+            if (! $chart && ! empty($ctx['chart']) && $low !== '') {
+                $newF = \App\Libraries\BotArtifacts::filters($text);
+                $kind = preg_match('/\b(pie|donut|doughnut)\b/', $low) ? 'pie' : (preg_match('/\b(line|trend)\b/', $low) ? 'line' : (preg_match('/\b(bar|column)\b/', $low) ? 'bar' : null));
+                $changes = $kind !== null || $newF['slug'] !== null || $newF['result'] !== null || $newF['from'] !== null;
+                if (! $export && $changes && ! preg_match('/\bby\s+[a-z]+/', $low) && mb_strlen($low) < 60 && preg_match('/^(and|now|also|same|what about|how about|show|make|change|as|in|for|only|just|but|instead|try|use|turn)\b/', $low)) {
+                    $req = $ctx['chart']['req'];
+                    $f   = $ctx['chart']['f'];
+                    $req['kind'] = $kind ?? $req['kind'];
+                    foreach (['slug', 'result'] as $k) {
+                        if ($newF[$k] !== null) {
+                            $f[$k] = $newF[$k];
+                        }
+                    }
+                    if ($newF['from'] !== null) {
+                        $f['from'] = $newF['from'];
+                        $f['to'] = $newF['to'];
+                        $f['period'] = $newF['period'];
+                    }
+                    $req['title'] = ($f['result'] ? $f['result'] . ' reports' : 'Reports') . ' by ' . ['category' => 'category', 'result' => 'result', 'month' => 'month', 'supplier' => 'supplier', 'model' => 'model / style', 'material' => 'material type', 'technician' => 'technician', 'status' => 'status'][$req['dim']]
+                        . ($f['slug'] ? ' - ' . \App\Libraries\BotArtifacts::CATEGORIES[$f['slug']] : '') . ($f['period'] !== 'all time' ? ' (' . $f['period'] . ')' : '');
+
+                    return $this->chartReply($req, $f, $uid);
+                }
+            }
+
+            if ($chart) {
+                return $this->chartReply($chart, \App\Libraries\BotArtifacts::filters($text), $uid);
+            }
+
+            // an export of the chart that is on screen ("export that to excel", "download the data")
+            if (! empty($ctx['chart']) && $export === null && preg_match('/\b(export|download|save|get)\b.*\b(that|it|the chart|the graph|the data|chart data|this (chart|graph|data|result|one))\b/', $low)) {
+                $export = ['format' => preg_match('/\bcsv\b/', $low) ? 'csv' : (preg_match('/\bpdf\b/', $low) ? 'pdf' : 'xlsx'), 'subject' => 'chart', 'labref' => null];
+            } elseif ($export !== null && ! empty($ctx['chart']) && $export['labref'] === null && preg_match('/\b(that|it|the chart|the graph|chart data|this (chart|graph|data|result|one))\b/', $low) && ! preg_match('/\b(report)\b/', $low)) {
+                $export['subject'] = 'chart';
+            }
+            if ($export === null) {
+                return null;
+            }
+
+            return $this->exportReply($export, $text, $uid, $threadId, $ctx);
+        } catch (\Throwable $e) {
+            log_message('error', 'artifactIntent: ' . $e->getMessage());
+
+            return $this->artReply('I could not make that just now. ' . (ENVIRONMENT === 'production' ? '' : $e->getMessage()), 'Could not create it', ['suggest_admin' => true]);
+        }
+    }
+
+    private function chartReply(array $req, array $f, int $uid): array
+    {
+        $spec = \App\Libraries\BotArtifacts::chartSpec($req, $f);
+        if ($spec['total'] === 0 || ! $spec['labels']) {
+            return $this->artReply('There are no reports for that selection' . ($f['period'] !== 'all time' ? ' (' . $f['period'] . ')' : '') . ', so there is nothing to draw. Try another period or a different category.', 'No data for the chart', [
+                'related' => [['title' => 'Chart of pass and fail by category'], ['title' => 'Trend of reports per month']]]);
+        }
+        cache()->save('botctx_' . $uid, array_merge((array) cache('botctx_' . $uid), ['chart' => ['req' => $req, 'f' => $f, 'spec' => $spec]]), 1800);
+
+        $lines = [];
+        foreach ($spec['series'] as $s) {
+            $lines[] = $s['name'] . ': ' . number_format(array_sum($s['data']));
+        }
+        $top = '';
+        if ($spec['dimension'] !== 'month' && count($spec['series']) === 1) {
+            $top = ' Highest: ' . $spec['labels'][0] . ' (' . number_format($spec['series'][0]['data'][0]) . ').';
+        }
+        $head = array_merge(['Label'], array_map(static fn ($s) => $s['name'], $spec['series']));
+        $rows = [];
+        foreach ($spec['labels'] as $i => $label) {
+            $rows[] = array_merge([$label], array_map(static fn ($s) => (string) $s['data'][$i], $spec['series']));
+        }
+        $files = [];
+        $x = \App\Libraries\BotArtifacts::xlsx($head, $rows, 'Chart data');
+        if ($x) {
+            $files[] = $this->fileEntry(\App\Libraries\BotArtifacts::register($x, 'chart-data-' . date('Ymd-His') . '.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $uid), 'Data (Excel)');
+        }
+
+        return $this->artReply(
+            $spec['title'] . ': ' . number_format($spec['total']) . ' report(s) from the live QC data. ' . implode(' | ', $lines) . '.' . $top . ' Use the buttons under the chart to save it as an image or PDF. You can say "as a pie", "same for leather" or "this month" to change it.',
+            'Chart', ['chart' => $spec, 'files' => array_values(array_filter($files)), 'related' => [['title' => 'Export that to Excel'], ['title' => 'Show it as a pie chart']]]
+        );
+    }
+
+    private function exportReply(array $e, string $text, int $uid, int $threadId, array $ctx): array
+    {
+        $fmt = $e['format'];
+        $mime = ['pdf' => 'application/pdf', 'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'csv' => 'text/csv'];
+        $stamp = date('Ymd-His');
+
+        if ($e['subject'] === 'chart' && ! empty($ctx['chart']['spec'])) {
+            $spec = $ctx['chart']['spec'];
+            $head = array_merge(['Label'], array_map(static fn ($s) => $s['name'], $spec['series']));
+            $rows = [];
+            foreach ($spec['labels'] as $i => $label) {
+                $rows[] = array_merge([$label], array_map(static fn ($s) => (string) $s['data'][$i], $spec['series']));
+            }
+            $p = $fmt === 'csv' ? \App\Libraries\BotArtifacts::csv($head, $rows) : \App\Libraries\BotArtifacts::xlsx($head, $rows, 'Chart data');
+            $f = $p ? \App\Libraries\BotArtifacts::register($p, 'chart-data-' . $stamp . '.' . ($fmt === 'csv' ? 'csv' : 'xlsx'), $mime[$fmt === 'csv' ? 'csv' : 'xlsx'], $uid) : null;
+            if (! $f) {
+                return $this->artReply('I could not create the file just now (too many files in the last hour, or the server cannot write it). Try again in a few minutes.', 'Export', ['suggest_admin' => true]);
+            }
+
+            return $this->artReply('Here is the data of the chart "' . $spec['title'] . '" as ' . ($fmt === 'csv' ? 'a CSV' : 'an Excel') . ' file. The link works for one hour.', 'Download ready', ['files' => [$this->fileEntry($f, 'Download ' . $f['name'])]]);
+        }
+
+        if ($e['subject'] === 'one') {
+            $ref = $e['labref'] ?: $this->labRefInContext($text, $threadId, $uid);
+            if (! $ref) {
+                return $this->artReply('Which report should I export? Type its Lab Reference, for example "export DTP20261012FAA8-L as PDF", or open the report first and ask again.', 'Which report?', ['related' => [['title' => 'Export failed bonding reports this month to Excel']]]);
+            }
+            cache()->save('botctx_' . $uid, array_merge((array) cache('botctx_' . $uid), ['labref' => $ref]), 1800);
+            $res = \App\Libraries\BotArtifacts::reportPdf($ref);
+            if (($res['error'] ?? '') === 'not_found') {
+                return $this->artReply('I could not find ' . $ref . ' in NEXUS-L. Check the number (date part, letters and the -L / -R ending).', 'Report not found', ['actions' => [['type' => 'open', 'label' => 'Open Lab Tracker', 'url' => site_url('dtr?tab=tracker')]]]);
+            }
+            $row = $res['row'];
+            $files = [];
+            $actions = [];
+            if ($fmt === 'pdf') {
+                $f = $res['pdf'] ? \App\Libraries\BotArtifacts::register($res['pdf'], $ref . '-summary.pdf', 'application/pdf', $uid) : null;
+                if ($f) {
+                    $files[] = $this->fileEntry($f, 'Download ' . $ref . ' summary (PDF)');
+                }
+            } else {
+                $items = (json_decode((string) $row['test_items_json'], true)['items'] ?? []);
+                if (! $items) {
+                    return $this->artReply($ref . ' has no test readings saved yet, so a spreadsheet of its tests would be empty. Open the report, enter or load the readings and save it; I can also make the PDF summary.', 'Nothing to export yet', ['actions' => [['type' => 'open', 'label' => 'Open ' . $ref, 'url' => site_url('dtr?tab=' . ((string) $row['form_slug'] === 'bonding' ? 'bonding' : 'material') . '&open=' . rawurlencode($row['form_slug'] . ':' . $row['source_id']))]], 'related' => [['title' => 'Export ' . $ref . ' as PDF']]]);
+                }
+                $head = ['Test', 'Method', 'Requirement', 'Reading', 'Result'];
+                $rows = array_map(static fn ($it) => [(string) ($it['test_name'] ?? ''), (string) ($it['test_method'] ?? ''), (string) ($it['requirement_spec'] ?? ''), (string) ($it['actual_reading'] ?? ''), (string) ($it['result_status'] ?? $it['raw_rating'] ?? '')], $items);
+                $p = $fmt === 'csv' ? \App\Libraries\BotArtifacts::csv($head, $rows) : \App\Libraries\BotArtifacts::xlsx($head, $rows, $ref);
+                $f = $p ? \App\Libraries\BotArtifacts::register($p, $ref . '.' . $fmt, $mime[$fmt], $uid) : null;
+                if ($f) {
+                    $files[] = $this->fileEntry($f, 'Download ' . $ref . ' tests (' . strtoupper($fmt) . ')');
+                }
+            }
+            $slug = (string) $row['form_slug'];
+            if ($slug !== 'bonding') {
+                $actions[] = ['type' => 'open', 'label' => 'Official report PDF (Access)', 'url' => site_url('dtr/report-pdf?lab_ref=' . rawurlencode($ref))];
+            }
+            $actions[] = ['type' => 'open', 'label' => 'Open the official sheet', 'url' => site_url('dtr?tab=' . ($slug === 'bonding' ? 'bonding' : 'material') . '&open=' . rawurlencode($slug . ':' . $row['source_id']) . '&preview=1')];
+            if (! $files) {
+                return $this->artReply('I found ' . $ref . ' but the file could not be created just now' . ($fmt === 'pdf' ? ' (the server needs Chrome or Edge to make PDFs)' : '') . '. The official sheet opens with its own Download PDF button.', 'Export', ['actions' => $actions, 'suggest_admin' => true]);
+            }
+
+            return $this->artReply($ref . ' - ' . $row['form_category'] . ($row['overall_result'] ? ', result ' . $row['overall_result'] : '') . '. The file below is a summary made from the saved report; the signed official sheet is the document you send. The link works for one hour.', 'Download ready', ['files' => $files, 'actions' => $actions]);
+        }
+
+        // a list of reports
+        $f = \App\Libraries\BotArtifacts::filters($text);
+        if ($f['slug'] === null && $f['result'] === null && $f['from'] === null && ! preg_match('/\b(all|every|whole|entire|reports|results|list|table|database)\b/i', $text)) {
+            return $this->artReply('What should I export? Tell me which reports, for example "export failed bonding reports this month to Excel", or ask for a chart first and then say "export that to Excel".', 'What to export?', ['related' => [['title' => 'Export failed bonding reports this month to Excel'], ['title' => 'Show a pie chart of pass and fail']]]);
+        }
+        $rows = \App\Libraries\BotArtifacts::rows($f);
+        if (! $rows) {
+            return $this->artReply('No reports match that selection, so there is nothing to export. Try another period or category.', 'Nothing to export');
+        }
+        $label = ($f['result'] ? $f['result'] . ' ' : '') . ($f['slug'] ? \App\Libraries\BotArtifacts::CATEGORIES[$f['slug']] . ' ' : '') . 'reports' . ($f['period'] !== 'all time' ? ' - ' . $f['period'] : '');
+        if ($fmt === 'pdf') {
+            $p = \App\Libraries\BotArtifacts::listPdf($rows, ucfirst($label), 'QC Lab Reports');
+            $mimeT = 'application/pdf';
+        } else {
+            $cols = array_keys(\App\Libraries\BotArtifacts::COLUMNS);
+            $data = array_map(static fn ($r) => array_map(static fn ($c) => (string) ($r[$c] ?? ''), $cols), $rows);
+            $head = array_values(\App\Libraries\BotArtifacts::COLUMNS);
+            $p = $fmt === 'csv' ? \App\Libraries\BotArtifacts::csv($head, $data) : \App\Libraries\BotArtifacts::xlsx($head, $data, 'QC Reports');
+            $mimeT = $mime[$fmt];
+        }
+        $file = $p ? \App\Libraries\BotArtifacts::register($p, 'qc-reports-' . $stamp . '.' . $fmt, $mimeT, $uid) : null;
+        if (! $file) {
+            return $this->artReply('I could not create the ' . strtoupper($fmt) . ' file just now' . ($fmt === 'pdf' ? ' (the server needs Chrome or Edge to make PDFs; Excel and CSV work without it)' : '') . '.', 'Export', ['suggest_admin' => true]);
+        }
+
+        return $this->artReply(ucfirst($label) . ': ' . number_format(count($rows)) . ' row(s)' . (count($rows) >= \App\Libraries\BotArtifacts::MAX_ROWS ? ' (the first ' . number_format(\App\Libraries\BotArtifacts::MAX_ROWS) . ')' : '') . ' exported from the live data. The link works for one hour.', 'Download ready', ['files' => [$this->fileEntry($file, 'Download ' . $file['name'])]]);
+    }
+
+    /** GET bot/file/<token> : the file, only for the person it was made for, only for a while */
+    public function file(string $token = '')
+    {
+        $f = \App\Libraries\BotArtifacts::open($token, (int) ($this->auth->user()['id'] ?? 0));
+        if (! $f) {
+            return $this->response->setStatusCode(404)->setBody('This file is no longer available. Ask the assistant to make it again.');
+        }
+        $name = preg_replace('/[^A-Za-z0-9._-]/', '_', $f['name']);
+
+        return $this->response->setHeader('Content-Type', $f['mime'])->setHeader('Content-Disposition', 'attachment; filename="' . $name . '"')
+            ->setHeader('X-Content-Type-Options', 'nosniff')->setHeader('Cache-Control', 'private, no-store')->setBody((string) file_get_contents($f['path']));
+    }
+
+    /** POST bot/chart-pdf {png, title} : the picture of a chart the page drew, as a PDF */
+    public function chartPdf()
+    {
+        $p   = $this->input();
+        $uid = (int) ($this->auth->user()['id'] ?? 0);
+        $pdf = \App\Libraries\BotArtifacts::imagePdf((string) ($p['png'] ?? ''), mb_substr(strip_tags((string) ($p['title'] ?? 'Chart')), 0, 120));
+        $f   = $pdf ? \App\Libraries\BotArtifacts::register($pdf, 'chart-' . date('Ymd-His') . '.pdf', 'application/pdf', $uid) : null;
+        if (! $f) {
+            return $this->json(['ok' => false, 'error' => 'The PDF could not be made (the server needs Chrome or Edge, or too many files were made in the last hour).'], 422);
+        }
+
+        return $this->json(['ok' => true, 'url' => $f['url'], 'name' => $f['name']]);
     }
 
     private function dbSearchIntent(string $text): ?array
@@ -1190,6 +1443,20 @@ class BotController extends BaseController
             }
         }
 
+        // questions made only of filler words have nothing to search for: answer the common ones directly
+        $direct = null;
+        if (preg_match('/^(what|how)\s+(can|could|do)\s+(you|u)\s+(do|help|offer)\b|^(what|which)\s+(are\s+)?(your\s+)?(features|abilities|capabilities|skills)|^what\s+can\s+i\s+(ask|say)\b/i', trim($low))) {
+            $direct = 'What can you do?';
+        } elseif (preg_match('/^(why|why not|how come|why is that|why\?+)$/i', trim($low))) {
+            $direct = 'Why?';
+        }
+        if ($direct !== null) {
+            $row = $this->db()->table('tbl_bot_knowledge')->where(['title' => $direct, 'status' => 'approved'])->get()->getRowArray();
+            if ($row) {
+                return ['text' => (string) $row['body'], 'title' => (string) $row['title'], 'steps' => array_values(array_filter((array) json_decode((string) ($row['steps_json'] ?? ''), true), 'is_string')), 'actions' => [], 'confidence' => 100, 'related' => [], 'diagnosis' => null, 'knowledge_id' => (int) $row['id'], 'suggest_admin' => false];
+            }
+        }
+
         $hits = Brain::search($text, $ctx, 5);
         $conf = Brain::confidence($hits, $text);
         $db   = $this->db();
@@ -1207,9 +1474,14 @@ class BotController extends BaseController
             }
 
             return [
-                'text'  => 'I do not have a verified answer for that yet. I have noted the question so it can be added. You can rephrase it, or send it to an administrator who will help you directly.',
+                // never a dead end: say what is possible, offer the closest topics and examples, and keep the administrator one click away
+                'text'  => ($hits ? 'I am not sure I understood that. These topics look closest - pick one, or rephrase in other words. ' : 'I do not have a verified answer for that yet. ') . 'I have noted the question so it can be added. I can also answer how-to questions, count and chart the live QC data, and make PDF / Excel files; or I can connect you to an administrator.',
+                'title' => 'Let me help you with that',
                 'steps' => [], 'actions' => [], 'confidence' => $conf, 'diagnosis' => null, 'knowledge_id' => null, 'suggest_admin' => true,
-                'related' => array_map(static fn ($h) => ['id' => (int) $h['row']['id'], 'title' => $h['row']['title']], array_slice($hits, 0, 3)),
+                'related' => array_merge(
+                    array_map(static fn ($h) => ['id' => (int) $h['row']['id'], 'title' => $h['row']['title']], array_slice($hits, 0, 3)),
+                    [['title' => 'What can you do?'], ['title' => 'I do not know what to ask']]
+                ),
             ];
         }
 

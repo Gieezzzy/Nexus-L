@@ -53,6 +53,9 @@ class Brain
         'phone' => 'mobile', 'mobile' => 'mobile', 'tablet' => 'mobile', 'sidebar' => 'sidebar', 'menu' => 'sidebar', 'collapse' => 'sidebar',
         'register' => 'register', 'signup' => 'register', 'account' => 'account', 'profile' => 'account',
         'notfound' => 'notfound', '404' => 'notfound', '500' => 'server', '401' => 'login', '403' => 'permission', 'server' => 'server',
+        // common typing mistakes (the knowledge uses the correct spelling)
+        'responce' => 'response', 'reponse' => 'response', 'respons' => 'response', 'excell' => 'excel', 'exel' => 'excel', 'xcel' => 'excel', 'grap' => 'graph', 'graf' => 'graph', 'grpah' => 'graph', 'chrt' => 'chart',
+        'reprot' => 'report', 'rport' => 'report', 'repot' => 'report', 'reoprt' => 'report', 'imge' => 'image', 'pictur' => 'image', 'picture' => 'image', 'photo' => 'image', 'recieve' => 'receive', 'recipt' => 'receipt', 'calender' => 'calendar', 'dowload' => 'download', 'downlaod' => 'download', 'donwload' => 'download', 'expor' => 'export', 'exprot' => 'export',
     ];
 
     // ----------------------------------------------------------------------------------------------- folders
