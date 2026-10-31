@@ -5,6 +5,10 @@
 ---
 
 ## Phase 201 - Bot Read-Only Database Queries, Synology Signatory Reminders & 200 QC Problem Knowledge (2026-10-31)
+- **UI/UX Performance & Animation Policy (QA Verified):**
+  - Completely stripped out third-party animation libraries (Anime.js) and full-page cascading transitions after QA testing showed excessive visual fatigue and browser memory overhead.
+  - Standardized on pure instant enterprise responsiveness: zero page-load flashes, zero wobbly hover translations on navigation menus, and zero background interval timers.
+  - Retained clean, lightweight branding (LEXIS AI light logo and crisp icon badge) with native, instant browser performance.
 - **Visual Identity & Light Canva Logo Integration:**
   - Designed and exported official light-themed LEXIS AI logo (`DAHZi0cxBt0`) via Canva with electric cyan and deep royal/navy blue 3D neural-molecular network iconography on a pure white background.
   - Integrated high-resolution assets into `public/assets/images/`: `lexis-logo.png`, `lexis-logo-transparent.png`, `lexis-icon.png`, and `lexis-icon-transparent.png`.
