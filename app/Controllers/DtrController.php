@@ -119,9 +119,125 @@ class DtrController extends BaseController
         ],
     ];
 
+    /** Lab Tracker intake tables: one row per specimen line saved from the Specimen Intake / Whole Shoe Intake popups. */
+    private function ensureTrackerTables($db): void
+    {
+        $db->query('CREATE TABLE IF NOT EXISTS tbl_dtr_BondingTracker (
+            TrackerID INT AUTO_INCREMENT PRIMARY KEY,
+            LabRefNo VARCHAR(191) NULL,
+            Building CHAR(1) NULL,
+            `LineNo` VARCHAR(10) NULL,
+            Side CHAR(1) NULL,
+            ProductionCode VARCHAR(191) NULL,
+            Style VARCHAR(191) NULL,
+            Colorway VARCHAR(191) NULL,
+            MTL VARCHAR(191) NULL,
+            LabTest VARCHAR(50) NULL,
+            TestType VARCHAR(50) NULL,
+            Technician VARCHAR(191) NULL,
+            Lacking TINYINT(1) NOT NULL DEFAULT 0,
+            Shutdown TINYINT(1) NOT NULL DEFAULT 0,
+            RetestDetails VARCHAR(500) NULL,
+            CollectionDate DATE NULL,
+            ProductionDate DATE NULL,
+            EncodedBy VARCHAR(191) NULL,
+            CreatedAt DATETIME NULL,
+            UNIQUE KEY uq_labref (LabRefNo),
+            INDEX (ProductionDate), INDEX (CollectionDate)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+
+        if (! in_array('technician', array_map('strtolower', $db->getFieldNames('tbl_dtr_BondingTracker')), true)) {
+            $db->query('ALTER TABLE tbl_dtr_BondingTracker ADD COLUMN Technician VARCHAR(191) NULL AFTER TestType');
+        }
+        if (! in_array('side', array_map('strtolower', $db->getFieldNames('tbl_dtr_BondingTracker')), true)) {
+            $db->query('ALTER TABLE tbl_dtr_BondingTracker ADD COLUMN Side CHAR(1) NULL AFTER `LineNo`');
+        }
+        if (! $db->fieldExists('Shutdown', 'tbl_dtr_BondingTracker')) {
+            // table made before shutdown marking: a Shutdown row has no specimen, so LabRefNo may be empty (a unique key allows many NULLs)
+            $db->query('ALTER TABLE tbl_dtr_BondingTracker MODIFY LabRefNo VARCHAR(191) NULL, ADD COLUMN Shutdown TINYINT(1) NOT NULL DEFAULT 0 AFTER Lacking');
+        }
+
+        // one row per test type ticked on a whole shoe line: LabRefNo = Test Type Lab Ref No (e.g. DTP20261103AGA4), WholeshoeLabRefNo = mother (e.g. DTP20261103WHA4)
+        $db->query('CREATE TABLE IF NOT EXISTS tbl_dtr_WholeshoeTracker (
+            TrackerID INT AUTO_INCREMENT PRIMARY KEY,
+            LabRefNo VARCHAR(191) NOT NULL,
+            WholeshoeLabRefNo VARCHAR(191) NULL,
+            Building CHAR(1) NULL,
+            `LineNo` VARCHAR(10) NULL,
+            Side CHAR(1) NULL,
+            ProductionCode VARCHAR(191) NULL,
+            Style VARCHAR(191) NULL,
+            Colorway VARCHAR(191) NULL,
+            MTL VARCHAR(191) NULL,
+            NoOfShoes INT NOT NULL DEFAULT 1,
+            TestType VARCHAR(50) NULL,
+            TestCode CHAR(2) NULL,
+            CollectionDate DATE NULL,
+            ProductionDate DATE NULL,
+            EncodedBy VARCHAR(191) NULL,
+            CreatedAt DATETIME NULL,
+            UNIQUE KEY uq_labref (LabRefNo),
+            INDEX (WholeshoeLabRefNo), INDEX (ProductionCode), INDEX (ProductionDate), INDEX (CollectionDate)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+
+        // the older whole shoe intake table also gets the Side (L / R) column
+        if ($db->tableExists('tbl_dtr_wholeshoe_intake') && ! in_array('side', array_map('strtolower', $db->getFieldNames('tbl_dtr_wholeshoe_intake')), true)) {
+            $db->query('ALTER TABLE tbl_dtr_wholeshoe_intake ADD COLUMN Side CHAR(1) NULL AFTER `LineNo`');
+        }
+        // upgrade a table made by an earlier version: column names are compared case-insensitively (MySQL ignores case)
+        $have = array_map('strtolower', $db->getFieldNames('tbl_dtr_WholeshoeTracker'));
+        if (in_array('wholeshoelabrefno', $have, true)) {
+            foreach ($db->getFieldData('tbl_dtr_WholeshoeTracker') as $f) {
+                // fix the spelling of the column name (WholeshoeLabrefNo -> WholeshoeLabRefNo) and make it nullable, once
+                if (strtolower($f->name) === 'wholeshoelabrefno' && ($f->name !== 'WholeshoeLabRefNo' || ! $f->nullable)) {
+                    $db->query('ALTER TABLE tbl_dtr_WholeshoeTracker CHANGE `' . $f->name . '` WholeshoeLabRefNo VARCHAR(191) NULL');
+                }
+            }
+        } else {
+            $db->query('ALTER TABLE tbl_dtr_WholeshoeTracker ADD COLUMN WholeshoeLabRefNo VARCHAR(191) NULL AFTER LabRefNo');
+        }
+        foreach (['TestType' => 'VARCHAR(50) NULL', 'TestCode' => 'CHAR(2) NULL', 'Side' => 'CHAR(1) NULL'] as $col => $def) {
+            if (! in_array(strtolower($col), $have, true)) {
+                $db->query("ALTER TABLE tbl_dtr_WholeshoeTracker ADD COLUMN {$col} {$def}");
+            }
+        }
+        // rows that have a Side but whose Lab Ref No has no -L / -R ending yet: add it (safe to repeat, it only touches refs without an ending)
+        $db->query("UPDATE tbl_dtr_WholeshoeTracker SET
+                WholeshoeLabRefNo = IF(WholeshoeLabRefNo IS NULL OR WholeshoeLabRefNo = '' OR WholeshoeLabRefNo LIKE '%-L' OR WholeshoeLabRefNo LIKE '%-R', WholeshoeLabRefNo, CONCAT(WholeshoeLabRefNo, '-', Side)),
+                LabRefNo = CONCAT(LabRefNo, '-', Side)
+            WHERE Side IN ('L', 'R') AND LabRefNo NOT LIKE '%-L' AND LabRefNo NOT LIKE '%-R'");
+        if ($db->tableExists('tbl_dtr_wholeshoe_intake') && in_array('side', array_map('strtolower', $db->getFieldNames('tbl_dtr_wholeshoe_intake')), true)) {
+            $db->query("UPDATE tbl_dtr_wholeshoe_intake SET LabRefNo = CONCAT(LabRefNo, '-', Side) WHERE Side IN ('L', 'R') AND LabRefNo NOT LIKE '%-L' AND LabRefNo NOT LIKE '%-R'");
+        }        if (in_array('testtypes', $have, true)) {
+            // first version kept one row per line (LabRefNo = mother, TestTypes = list): split it into one row per test type
+            $codes = ['heat aging' => 'AG', 'hydrolysis' => 'HY', 'washing' => 'WS', 'uv' => 'UV', 'flexing' => 'FX', 'dip test' => 'DT'];
+            foreach ($db->table('tbl_dtr_WholeshoeTracker')->get()->getResultArray() as $row) {
+                $mother = (string) $row['LabRefNo'];
+                $kids   = [];
+                foreach (array_filter(array_map('trim', explode(',', (string) ($row['TestTypes'] ?? '')))) as $tt) {
+                    if (isset($codes[strtolower($tt)])) {
+                        $kids[] = [$tt, $codes[strtolower($tt)]];
+                    }
+                }
+                $db->table('tbl_dtr_WholeshoeTracker')->where('TrackerID', $row['TrackerID'])->update(['WholeshoeLabRefNo' => $mother]);
+                foreach ($kids as $i => [$tt, $tc]) {
+                    $ref = substr_replace($mother, $tc, 11, 2);
+                    if ($i === 0) {
+                        $db->table('tbl_dtr_WholeshoeTracker')->where('TrackerID', $row['TrackerID'])->update(['LabRefNo' => $ref, 'TestType' => $tt, 'TestCode' => $tc]);
+                    } else {
+                        $copy = $row;
+                        unset($copy['TrackerID'], $copy['TestTypes']);
+                        $db->table('tbl_dtr_WholeshoeTracker')->ignore(true)->insert(array_merge($copy, ['LabRefNo' => $ref, 'WholeshoeLabRefNo' => $mother, 'TestType' => $tt, 'TestCode' => $tc]));
+                    }
+                }
+            }
+            $db->query('ALTER TABLE tbl_dtr_WholeshoeTracker DROP COLUMN TestTypes');
+        }
+    }
     public function index(): string
     {
         $db        = \Config\Database::connect();
+        $this->ensureTrackerTables($db);
         $activeTab = trim((string) ($this->request->getGet('tab') ?? 'tracker'));
 
         // Category counts from tbl_dtr_unified_labrefs
@@ -164,25 +280,20 @@ class DtrController extends BaseController
         // Bonding Shoe Collection (tbl_dtr_bonding_info) & Whole Shoe Collection (tbl_dtr_shoe_list)
         $bondingTotal = $db->table('tbl_dtr_bonding_info')->countAllResults();
         $bondingShoes = $db->table('tbl_dtr_bonding_info')
-            ->select('BondingTestID, LabRefNo, ModelStyle, Color, Side, Factory, ProductionDate, TestedDate, Technician, Result')
+            ->select('BondingTestID, LabRefNo, ModelStyle, Color, Side, Factory, ProductionDate, TestedDate, Technician, Result, LabNotesComments, POLotNO, ReceivedDate, Remarks')
             ->orderBy('BondingTestID', 'DESC')
             ->limit(100)
             ->get()
             ->getResultArray();
 
         $shoeTotal  = $db->table('tbl_dtr_shoe_list')->countAllResults();
-        // each shoe with the details of its latest intake (building / line, no. of shoes, test types, dates, encoder) when recorded
-        if ($db->tableExists('tbl_dtr_wholeshoe_intake')) {
-            $wholeShoes = $db->table('tbl_dtr_shoe_list s')
-                ->select('s.*, i.LabRefNo, i.Building, i.LineNo, i.NoOfShoes, i.TestTypes, i.CollectionDate, i.ProductionDate AS IntakeProductionDate, i.EncodedBy')
-                ->join('tbl_dtr_wholeshoe_intake i', 'i.IntakeID = (SELECT MAX(x.IntakeID) FROM tbl_dtr_wholeshoe_intake x WHERE x.ProdCode = s.ProdCode)', 'left', false)
-                ->orderBy('s.ID', 'DESC')
-                ->limit(100)
-                ->get()
-                ->getResultArray();
-        } else {
-            $wholeShoes = $db->table('tbl_dtr_shoe_list')->orderBy('ID', 'DESC')->limit(100)->get()->getResultArray();
-        }
+        // Whole Shoe Collection = every recorded test type (one row each) from tbl_dtr_WholeshoeTracker
+        $wholeShoes = $db->table('tbl_dtr_WholeshoeTracker')
+            ->select('LabRefNo, WholeshoeLabRefNo, ProductionCode AS ProdCode, Style AS StyleNo, Colorway, MTL, Building, `LineNo`, Side, NoOfShoes, TestType AS TestTypes, CollectionDate, ProductionDate AS IntakeProductionDate, EncodedBy', false)
+            ->orderBy('TrackerID', 'DESC')
+            ->limit(200)
+            ->get()
+            ->getResultArray();
 
         // Distinct MaterialTypes in tbl_dtr_standards
         $standardMatTypes = array_column(
@@ -502,10 +613,12 @@ class DtrController extends BaseController
         }
 
         $db      = \Config\Database::connect();
+        $this->ensureTrackerTables($db);
         $db->query('CREATE TABLE IF NOT EXISTS tbl_dtr_wholeshoe_intake (
             IntakeID INT AUTO_INCREMENT PRIMARY KEY,
             Building CHAR(1) NULL,
             `LineNo` VARCHAR(10) NULL,
+            Side CHAR(1) NULL,
             LabRefNo VARCHAR(191) NULL,
             ProdCode VARCHAR(191) NULL,
             NoOfShoes INT NOT NULL DEFAULT 1,
@@ -521,52 +634,89 @@ class DtrController extends BaseController
         }
         $saved   = 0;
         $skipped = [];
-        $seen    = [];
+        $codes   = ['heat aging' => 'AG', 'hydrolysis' => 'HY', 'washing' => 'WS', 'uv' => 'UV', 'flexing' => 'FX', 'dip test' => 'DT'];
+        $now     = date('Y-m-d H:i:s');
 
         foreach ($rows as $r) {
             $code = mb_substr(trim((string) ($r['code'] ?? '')), 0, 191);
             if ($code === '') {
                 continue;
             }
-            if (isset($seen[$code]) || $db->table('tbl_dtr_shoe_list')->where('ProdCode', $code)->countAllResults() > 0) {
-                $skipped[] = $code;
-                continue;
-            }
-            $seen[$code] = true;
-            $db->table('tbl_dtr_shoe_list')->insert([
-                'ProdCode' => $code,
-                'StyleNo'  => mb_substr(trim((string) ($r['style'] ?? '')), 0, 191),
-                'Colorway' => trim((string) ($r['color'] ?? '')),
-                'MTL'      => mb_substr(trim((string) ($r['mtl'] ?? '')), 0, 191),
-            ]);
-            $saved++;
 
-            // Lab Ref No = DTP + production date (YYYYMMDD) + WS + line (building letter + number); a letter is added if it is already used
-            $bld   = strtoupper(mb_substr((string) ($p['building'] ?? 'A'), 0, 1)) === 'B' ? 'B' : 'A';
-            $pd    = preg_replace('/\D/', '', (string) (($p['productionDate'] ?? '') ?: ($p['collectionDate'] ?? '') ?: date('Y-m-d')));
-            $lineN = (int) preg_replace('/\D/', '', (string) ($r['line'] ?? '')) ?: ($saved + 1);
-            $base  = 'DTP' . $pd . 'WS' . $bld . $lineN;
-            $labRef = $base;
-            for ($sfx = 'B'; $db->table('tbl_dtr_wholeshoe_intake')->where('LabRefNo', $labRef)->countAllResults() > 0 && $sfx <= 'Z'; $sfx++) {
-                $labRef = $base . $sfx;
+            // Whole Shoe Lab Ref No (mother, kept internally) = DTP + production date + WH + building + line.
+            // Test Type Lab Ref No (one per ticked test) = the same with WH replaced by the test code, e.g. DTP20261103AGA4. Duplicates are checked on the Test Type Lab Ref No.
+            $bld    = strtoupper(mb_substr((string) ($p['building'] ?? 'A'), 0, 1)) === 'B' ? 'B' : 'A';
+            $pd     = preg_replace('/\D/', '', (string) (($p['productionDate'] ?? '') ?: ($p['collectionDate'] ?? '') ?: date('Y-m-d')));
+            $lineN  = (int) preg_replace('/\D/', '', (string) ($r['line'] ?? '')) ?: ($saved + 1);
+            $side   = ($r['side'] ?? 'L') === 'R' ? 'R' : 'L';
+            $mother = 'DTP' . $pd . 'WH' . $bld . $lineN . '-' . $side;   // -L / -R like the bonding Lab Ref No
+
+            $kids = [];
+            foreach ((array) ($r['tests'] ?? []) as $tt) {
+                $tc = $codes[strtolower(trim((string) $tt))] ?? null;
+                if ($tc !== null) {
+                    $kids[] = ['type' => trim((string) $tt), 'code' => $tc, 'ref' => substr_replace($mother, $tc, 11, 2)];
+                }
             }
+            // one tracker row per test type; a line with no test ticked is recorded once under the mother Lab Ref No
+            $base = [
+                'WholeshoeLabRefNo' => $mother,
+                'Building'          => $bld,
+                'LineNo'            => mb_substr((string) ($r['line'] ?? ''), 0, 10),
+                'Side'              => $side,
+                'ProductionCode'    => $code,
+                'Style'             => mb_substr(trim((string) ($r['style'] ?? '')), 0, 191),
+                'Colorway'          => mb_substr(trim((string) ($r['color'] ?? '')), 0, 191),
+                'MTL'               => mb_substr(trim((string) ($r['mtl'] ?? '')), 0, 191),
+                'NoOfShoes'         => max(1, (int) ($r['qty'] ?? 1)),
+                'CollectionDate'    => ($p['collectionDate'] ?? '') ?: null,
+                'ProductionDate'    => ($p['productionDate'] ?? '') ?: null,
+                'EncodedBy'         => mb_substr(trim((string) ($p['encodedBy'] ?? '')), 0, 191),
+                'CreatedAt'         => $now,
+            ];
+            $todo = $kids ?: [['type' => null, 'code' => null, 'ref' => $mother]];
+            $newKids = [];
+            foreach ($todo as $k) {
+                if ($db->table('tbl_dtr_WholeshoeTracker')->where('LabRefNo', $k['ref'])->countAllResults() > 0) {
+                    $skipped[] = $k['ref'];
+                } else {
+                    $newKids[] = $k;
+                }
+            }
+            if (! $newKids) {
+                continue;   // everything on this line is already recorded
+            }
+
+            if ($db->table('tbl_dtr_shoe_list')->where('ProdCode', $code)->countAllResults() === 0) {
+                $db->table('tbl_dtr_shoe_list')->insert([
+                    'ProdCode' => $code,
+                    'StyleNo'  => mb_substr(trim((string) ($r['style'] ?? '')), 0, 191),
+                    'Colorway' => trim((string) ($r['color'] ?? '')),
+                    'MTL'      => mb_substr(trim((string) ($r['mtl'] ?? '')), 0, 191),
+                ]);
+            }
+            foreach ($newKids as $k) {
+                $db->table('tbl_dtr_WholeshoeTracker')->insert($base + ['LabRefNo' => $k['ref'], 'TestType' => $k['type'], 'TestCode' => $k['code']]);
+            }
+            $types = implode(', ', array_filter(array_column($newKids, 'type')));
             $db->table('tbl_dtr_wholeshoe_intake')->insert([
                 'Building'       => $bld,
                 'LineNo'         => mb_substr((string) ($r['line'] ?? ''), 0, 10),
-                'LabRefNo'       => $labRef,
+                'Side'           => $side,
+                'LabRefNo'       => $mother,
                 'ProdCode'       => $code,
                 'NoOfShoes'      => max(1, (int) ($r['qty'] ?? 1)),
-                'TestTypes'      => implode(', ', array_map('strval', is_array($r['tests'] ?? null) ? $r['tests'] : [])),
+                'TestTypes'      => $types,
                 'CollectionDate' => ($p['collectionDate'] ?? '') ?: null,
                 'ProductionDate' => ($p['productionDate'] ?? '') ?: null,
                 'EncodedBy'      => mb_substr(trim((string) ($p['encodedBy'] ?? '')), 0, 191),
-                'CreatedAt'      => date('Y-m-d H:i:s'),
+                'CreatedAt'      => $now,
             ]);
+            $saved++;
         }
-
         $msg = "Saved {$saved} whole shoe(s).";
         if ($skipped) {
-            $msg .= ' Skipped (already exist): ' . implode(', ', $skipped) . '.';
+            $msg .= ' Skipped (Test Type Lab Ref No already exists): ' . implode(', ', $skipped) . '.';
         }
 
         return $this->response->setJSON(['ok' => $saved > 0, 'message' => $msg, 'saved' => $saved, 'skipped' => $skipped, 'csrf' => csrf_hash()]);
@@ -708,11 +858,27 @@ class DtrController extends BaseController
         if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $prod) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $collect)) {
             return $fail('Collection and Production dates are required.');
         }
-        if (! $rows) {
+        $shutdowns = array_values(array_filter(array_map(static fn ($x) => strtoupper(trim((string) $x)), is_array($p['shutdowns'] ?? null) ? $p['shutdowns'] : [])));
+        if (! $rows && ! $shutdowns) {
             return $fail('No specimen lines to save.');
         }
 
         $db      = \Config\Database::connect();
+        $this->ensureTrackerTables($db);
+
+        // lines whose Active toggle was off are recorded as SHUTDOWN for the production date (replaces an earlier mark of the same line/date)
+        $down = 0;
+        foreach ($shutdowns as $ln) {
+            if (! preg_match('/^' . $building . '(\d{1,2})$/', $ln, $m)) {
+                continue;
+            }
+            $db->table('tbl_dtr_BondingTracker')->where(['Shutdown' => 1, 'Building' => $building, 'LineNo' => $building . (int) $m[1], 'ProductionDate' => $prod])->delete();
+            $db->table('tbl_dtr_BondingTracker')->insert([
+                'LabRefNo' => null, 'Building' => $building, 'LineNo' => $building . (int) $m[1], 'LabTest' => 'Bonding', 'TestType' => 'SHUTDOWN', 'Shutdown' => 1,
+                'CollectionDate' => $collect, 'ProductionDate' => $prod, 'EncodedBy' => $encodedBy, 'CreatedAt' => date('Y-m-d H:i:s'),
+            ]);
+            $down++;
+        }
         $table   = $db->table('tbl_dtr_bonding_info');
         $saved   = 0;
         $skipped = [];
@@ -754,18 +920,41 @@ class DtrController extends BaseController
                 'MaterialSource'   => 'Prod. Material',
                 'ReceivedDate'     => $collect,
                 'Side'             => $side === 'R' ? 'Right' : 'Left',
+                'Technician'       => mb_substr(trim((string) ($r['tech'] ?? '')), 0, 191),
                 'Remarks'          => mb_substr(trim((string) ($r['type'] ?? '')) . (! empty($r['retest']) ? ' / Retest' : ''), 0, 191),
                 'LabNotesComments' => implode('; ', $notes),
+            ]);
+            $db->table('tbl_dtr_BondingTracker')->ignore(true)->insert([
+                'LabRefNo'       => $labRef,
+                'Building'       => $building,
+                'LineNo'         => $building . (int) $m[1],
+                'Side'           => $side,
+                'ProductionCode' => mb_substr(trim((string) ($r['code'] ?? '')), 0, 191),
+                'Style'          => mb_substr(trim((string) ($r['style'] ?? '')), 0, 191),
+                'Colorway'       => mb_substr(trim((string) ($r['color'] ?? '')), 0, 191),
+                'MTL'            => mb_substr(trim((string) ($r['mtl'] ?? '')), 0, 191),
+                'LabTest'        => 'Bonding',
+                'TestType'       => mb_substr(trim((string) ($r['type'] ?? '')), 0, 50),
+                'Technician'     => mb_substr(trim((string) ($r['tech'] ?? '')), 0, 191),
+                'Lacking'        => ! empty($r['lacking']) ? 1 : 0,
+                'RetestDetails'  => mb_substr(trim((string) ($r['retestNote'] ?? '')), 0, 500),
+                'CollectionDate' => $collect,
+                'ProductionDate' => $prod,
+                'EncodedBy'      => $encodedBy,
+                'CreatedAt'      => date('Y-m-d H:i:s'),
             ]);
             $saved++;
         }
 
         $msg = "Saved {$saved} specimen(s) for Building {$building}.";
+        if ($down) {
+            $msg .= " {$down} line(s) marked SHUTDOWN.";
+        }
         if ($skipped) {
             $msg .= ' Skipped (already exist): ' . implode(', ', $skipped) . '.';
         }
 
-        return $this->response->setJSON(['ok' => $saved > 0, 'message' => $msg, 'saved' => $saved, 'skipped' => $skipped, 'csrf' => csrf_hash()]);
+        return $this->response->setJSON(['ok' => $saved > 0 || $down > 0, 'message' => $msg, 'saved' => $saved, 'skipped' => $skipped, 'csrf' => csrf_hash()]);
     }
 
     /**
@@ -1709,11 +1898,9 @@ class DtrController extends BaseController
             ->setBody($pdf);
     }
 
-
     /**
-     * GET /dtr/bonding-access-pdf?id=1099&side=Left
-     * Invokes Microsoft Access COM to generate the official Report - LEFT / Report - RIGHT PDF directly
-     * and streams it to the user.
+     * GET /dtr/bonding-access-pdf?id={BondingTestID}&side={Left|Right}
+     * Runs export_bonding_pdf.ps1 to invoke Microsoft Access COM automation and output the legacy report as a PDF.
      */
     public function bondingAccessPdf()
     {

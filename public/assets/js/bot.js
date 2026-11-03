@@ -97,17 +97,17 @@
 
   // ------------------------------------------------------------------------------------------- widget
   const fab = document.createElement('button');
-  fab.id = 'nxbot-fab'; fab.type = 'button'; fab.setAttribute('aria-label', 'Open LEXIS AI'); fab.title = 'Ask LEXIS AI';
-  fab.innerHTML = '<img class="nxbot-fab-icon" src="' + BASE + 'assets/images/lexis-icon.png" alt="LEXIS AI" width="36" height="36"><span class="nxbot-dot" hidden></span>';
+  fab.id = 'nxbot-fab'; fab.type = 'button'; fab.setAttribute('aria-label', 'Open LEXUS AI'); fab.title = 'Ask LEXUS AI';
+  fab.innerHTML = '<img class="nxbot-fab-icon" src="' + BASE + 'assets/images/lexis-icon.png" alt="LEXUS AI" width="36" height="36"><span class="nxbot-dot" hidden></span>';
   const bubble = document.createElement('div');
   bubble.id = 'nxbot-bubble'; bubble.hidden = true;
   const panel = document.createElement('section');
-  panel.id = 'nxbot-panel'; panel.hidden = true; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'LEXIS AI');
+  panel.id = 'nxbot-panel'; panel.hidden = true; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'LEXUS AI');
   panel.innerHTML = `
     <header>
       <div class="nxbot-hbrand">
-        <img class="nxbot-hlogo" src="${BASE}assets/images/lexis-icon.png" alt="LEXIS AI" width="34" height="34">
-        <div><b>LEXIS AI</b><small>Laboratory Execution Intelligence System</small></div>
+        <img class="nxbot-hlogo" src="${BASE}assets/images/lexis-icon.png" alt="LEXUS AI" width="34" height="34">
+        <div><b>LEXUS AI</b><small>Laboratory Execution Intelligence System</small></div>
       </div>
       <div class="nxbot-hbtns"><button type="button" data-a="history" title="My recent activity">History</button><button type="button" data-a="close" aria-label="Close assistant">&times;</button></div>
     </header>
@@ -214,7 +214,7 @@
       opened = true;
       await loadThread();
       if (!msgs.children.length) {
-        add('bot', `<div class="nxbot-welcome"><img class="nxbot-wlogo" src="${BASE}assets/images/lexis-logo.png" alt="LEXIS AI"><p>Hello! I am <b>LEXIS AI</b> (Laboratory Execution Intelligence System). Ask how to do something in this system, calculate test results, or check report status and I will help you.</p></div>`);
+        add('bot', `<div class="nxbot-welcome"><img class="nxbot-wlogo" src="${BASE}assets/images/lexis-logo.png" alt="LEXUS AI"><p>Hello! I am <b>LEXUS AI</b> (Laboratory Execution Intelligence System). Ask how to do something in this system, calculate test results, or check report status and I will help you.</p></div>`);
         try {
           const s = await api('bot/suggest?page=' + encodeURIComponent(pagePath()));
           chips.innerHTML = (s.items || []).map((t) => `<button type="button" data-q="${esc(t)}">${esc(t)}</button>`).join('');

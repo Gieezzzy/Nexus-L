@@ -118,17 +118,11 @@
   const intake = { building: 'A' };
   const intakeEl = { back: $('#dtr-intake-backdrop'), tbody: $('#dtr-intake-tbody'), msg: $('#dtr-intake-msg') };
 
-  const renderIntakeRows = () => {
-    if (!intakeEl.tbody) return;
-    const b = intake.building;
-    let html = '';
-    const lineCount = b === 'B' ? 14 : 12;
-    for (let i = 1; i <= lineCount; i++) {
-      const rightSide = i % 2 === 0;
-      html += `
-        <tr data-line="${b}${i}">
+  // A row for one line. The "+" beside the line number adds another row for that same line (extra = true, with a remove button).
+  const intakeRowHtml = (line, extra, rightSide) => `
+        <tr data-line="${line}"${extra ? ' data-extra="1"' : ''}>
           <td><label class="dtr-switch"><input type="checkbox" class="ik-active" checked><span></span></label></td>
-          <td><b>${b}${i}</b></td>
+          <td class="ik-linecell"><b>${line}</b> <button type="button" class="ik-addrow" title="Add another row for ${line}" aria-label="Add another row for ${line}">+</button>${extra ? '<button type="button" class="ik-delrow" title="Remove this row" aria-label="Remove this row">&times;</button>' : ''}</td>
           <td><div class="dtr-side-toggle"><button type="button" data-side="L" class="${rightSide ? '' : 'active'}">L</button><button type="button" data-side="R" class="${rightSide ? 'active' : ''}">R</button></div></td>
           <td class="ik-labref mono"></td>
           <td><input type="text" class="ik-code" placeholder="Enter code"></td>
@@ -137,18 +131,22 @@
           <td><input type="text" class="ik-mtl" placeholder="Enter MTL #"></td>
           <td><button type="button" class="dtr-btn dtr-btn-outline ik-lib">Library</button></td>
           <td><b>Bonding</b></td>
-          <td class="muted">&mdash;</td>
+          <td><input type="text" class="ik-tech" list="dtr-tech-list" placeholder="Technician" autocomplete="off"></td>
           <td><select class="ik-type"><option>DAILY</option><option>TECH TRIAL</option><option>FIRST CASE</option><option>RETEST</option></select></td>
           <td><label style="display:flex;align-items:center;gap:6px;font-weight:600"><input type="checkbox" class="ik-lacking"> Lacking</label></td>
           <td><textarea class="ik-retest-note" rows="2" placeholder="Retest details"></textarea></td>
         </tr>`;
-    }
+  const renderIntakeRows = () => {
+    if (!intakeEl.tbody) return;
+    const b = intake.building;
+    let html = '';
+    const lineCount = b === 'B' ? 14 : 12;
+    for (let i = 1; i <= lineCount; i++) html += intakeRowHtml(`${b}${i}`, false, i % 2 === 0);
     intakeEl.tbody.innerHTML = html;
     const label = $('#dtr-intake-batch-label');
     if (label) label.textContent = `${b} • ${$('#dtr-intake-collection')?.value || ''}`;
     refreshIntakeLabRefs();
-  };
-  // Lab Ref No = DTP + production date (YYYYMMDD) + SH + building + line number + -side (same rule the server uses on save)
+  };  // Lab Ref No = DTP + production date (YYYYMMDD) + SH + building + line number + -side (same rule the server uses on save)
   const refreshIntakeLabRefs = () => {
     const d = ($('#dtr-intake-production')?.value || '').replace(/-/g, '');
     $$('#dtr-intake-tbody tr').forEach((tr) => {
@@ -245,6 +243,17 @@
       tr.querySelectorAll('.dtr-side-toggle button').forEach((x) => x.classList.toggle('active', x === sideBtn));
       return;
     }
+    if (e.target.closest('.ik-addrow')) {
+      // new row goes after the last row of the same line, on the opposite side of that row (L <-> R)
+      let last = tr;
+      while (last.nextElementSibling && last.nextElementSibling.dataset.line === last.dataset.line) last = last.nextElementSibling;
+      const lastSide = last.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L';
+      last.insertAdjacentHTML('afterend', intakeRowHtml(last.dataset.line, true, lastSide === 'L'));
+      refreshIntakeLabRefs();
+      last.nextElementSibling.querySelector('.ik-code')?.focus();
+      return;
+    }
+    if (e.target.closest('.ik-delrow')) { tr.remove(); return; }
     if (e.target.closest('.ik-lib')) {
       openLibrary(tr, e.target.closest('.ik-lib'));
     }
@@ -303,6 +312,7 @@
     const tr = e.target.closest('tr');
     if (!tr) return;
     if (e.target.classList.contains('ik-active')) tr.classList.toggle('inactive', !e.target.checked);
+    if (e.target.classList.contains('ik-tech')) e.target.value = withMachineNo(e.target.value);
     if (e.target.classList.contains('ik-type') && e.target.value === 'RETEST') {
       retestRow = tr;
       retestEl.search.value = '';
@@ -313,8 +323,9 @@
 
   $('#btn-intake-save')?.addEventListener('click', async () => {
     const rows = [];
+    const shutdowns = [];
     $$('#dtr-intake-tbody tr').forEach((tr) => {
-      if (!tr.querySelector('.ik-active').checked) return;
+      if (!tr.querySelector('.ik-active').checked) { if (!tr.dataset.extra) shutdowns.push(tr.dataset.line); return; }   // main row toggled off = line shutdown (an extra row only skips itself)
       const row = {
         line: tr.dataset.line,
         side: tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L',
@@ -323,6 +334,7 @@
         color: tr.querySelector('.ik-color').value.trim(),
         mtl: tr.querySelector('.ik-mtl').value.trim(),
         test: 'Bonding',
+        tech: withMachineNo(tr.querySelector('.ik-tech').value.trim()),
         type: tr.querySelector('.ik-type').value,
         retestNote: tr.querySelector('.ik-retest-note').value.trim().replace(/\s*\n\s*/g, ' | '),
         lacking: tr.querySelector('.ik-lacking').checked,
@@ -330,7 +342,7 @@
       row.retest = row.type === 'RETEST' || row.retestNote !== '';
       if (row.code || row.style || row.color || row.mtl) rows.push(row);
     });
-    if (!rows.length) { intakeEl.msg.textContent = 'Fill in at least one active line before saving.'; return; }
+    if (!rows.length && !shutdowns.length) { intakeEl.msg.textContent = 'Fill in at least one active line before saving.'; return; }
     try {
       const res = await apiFetch('dtr/intake-save', {
         method: 'POST',
@@ -341,11 +353,13 @@
           productionDate: $('#dtr-intake-production').value,
           encodedBy: $('#dtr-intake-encoder').value.trim(),
           rows,
+          shutdowns,
         }),
       });
       if (res && res.ok) {
         showToast(`✓ ${res.message}`);
         closeIntake();
+        setTimeout(() => location.reload(), 700);   // the new lines show in the collection list
       } else {
         intakeEl.msg.textContent = (res && res.message) || 'Save failed.';
       }
@@ -362,13 +376,13 @@
   let wsBuilding = 'A';
   const WS_TESTS = ['Heat Aging', 'Hydrolysis', 'Washing', 'UV', 'Flexing', 'Dip Test'];
 
-  const addWholeShoeRow = () => {
-    wsLines += 1;
-    wsEl.tbody.insertAdjacentHTML('beforeend', `
-      <tr data-line="${wsBuilding}${wsLines}">
+  // A row for one line. The "+" beside the line number adds another row for that same line (extra = true, with a remove button).
+  const wsRowHtml = (line, extra, rightSide) => `
+      <tr data-line="${line}"${extra ? ' data-extra="1"' : ''}>
         <td><label class="dtr-switch"><input type="checkbox" class="ik-active" checked><span></span></label></td>
-        <td><b>${wsBuilding}${wsLines}</b></td>
-        <td class="ik-labref mono"></td>
+        <td class="ik-linecell"><b>${line}</b> <button type="button" class="ik-addrow" title="Add another row for ${line}" aria-label="Add another row for ${line}">+</button>${extra ? '<button type="button" class="ik-delrow" title="Remove this row" aria-label="Remove this row">&times;</button>' : ''}</td>
+        <td><div class="dtr-side-toggle"><button type="button" data-side="L" class="${rightSide ? '' : 'active'}">L</button><button type="button" data-side="R" class="${rightSide ? 'active' : ''}">R</button></div></td>
+        <td class="ik-tlabref mono"></td>
         <td><input type="text" class="ik-code" placeholder="Enter code"></td>
         <td><input type="text" class="ik-style" placeholder="Enter style"></td>
         <td><input type="text" class="ik-color" placeholder="Enter colorway"></td>
@@ -376,24 +390,32 @@
         <td><button type="button" class="dtr-btn dtr-btn-outline ik-lib">Library</button></td>
         <td><input type="number" class="ik-qty" min="1" step="1" value="1"></td>
         <td class="ik-tests">${WS_TESTS.map((t) => `<label class="ik-test"><input type="checkbox" value="${t}"><span>${t}</span></label>`).join('')}</td>
-      </tr>`);
-  };
-  const renderWholeShoeRows = () => {
+      </tr>`;
+  const addWholeShoeRow = () => {
+    wsLines += 1;
+    // sides alternate L / R down the lines, like the Specimen Intake
+    wsEl.tbody.insertAdjacentHTML('beforeend', wsRowHtml(wsBuilding + wsLines, false, wsLines % 2 === 0));
+  };  const renderWholeShoeRows = () => {
     wsEl.tbody.innerHTML = '';
     wsLines = 0;
     const count = wsBuilding === 'B' ? 14 : 12;
     for (let i = 0; i < count; i++) addWholeShoeRow();
     refreshWholeShoeLabRefs();
   };
-  // Lab Ref No = DTP + production date (YYYYMMDD) + WS + building + line number (the server adds a letter if it is already used)
+  // Every ticked test type gets its own Test Type Lab Ref No (the Whole Shoe Lab Ref No DTP + date + WH + line is made by the server and not shown): = DTP + date + test code + building + line + -L / -R side (e.g. DTP20261103AGA4-L)
+  const WS_CODES = { 'Heat Aging': 'AG', Hydrolysis: 'HY', Washing: 'WS', UV: 'UV', Flexing: 'FX', 'Dip Test': 'DT' };
   const refreshWholeShoeLabRefs = () => {
     const d = ($('#dtr-wshoe-production')?.value || '').replace(/-/g, '');
     $$('#dtr-wshoe-tbody tr').forEach((tr) => {
-      tr.querySelector('.ik-labref').textContent = d ? `DTP${d}WS${tr.dataset.line}` : '';
+      const tcell = tr.querySelector('.ik-tlabref');
+      if (!d) { tcell.textContent = ''; return; }
+      const side = tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L';
+      tcell.innerHTML = [...tr.querySelectorAll('.ik-tests input:checked')].map((c) => `<div class="ik-child">DTP${d}${WS_CODES[c.value] || ''}${tr.dataset.line}-${side}</div>`).join('');
     });
-  };
-  const openWholeShoe = () => {
+  };  const openWholeShoe = () => {
     wsBuilding = 'A';
+    wsProdTouched = false;
+    $('#dtr-wshoe-production').value = $('#dtr-wshoe-date').value;
     $$('#dtr-wshoe-building button').forEach((x) => x.classList.toggle('active', x.dataset.building === 'A'));
     renderWholeShoeRows();
     wsEl.msg.textContent = '';
@@ -406,26 +428,44 @@
       renderWholeShoeRows();
     });
   });
+  // the Production Date follows the Collection Date until it is changed by hand
+  let wsProdTouched = false;
   const syncWholeShoeDates = () => {
-    const match = $('#dtr-wshoe-match').checked;
-    $('#dtr-wshoe-production').disabled = match;
-    if (match) $('#dtr-wshoe-production').value = $('#dtr-wshoe-date').value;
+    if (!wsProdTouched) $('#dtr-wshoe-production').value = $('#dtr-wshoe-date').value;
     refreshWholeShoeLabRefs();
   };
-  $('#dtr-wshoe-production')?.addEventListener('change', refreshWholeShoeLabRefs);
+  $('#dtr-wshoe-production')?.addEventListener('change', () => { wsProdTouched = true; refreshWholeShoeLabRefs(); });
   $('#dtr-wshoe-date')?.addEventListener('change', syncWholeShoeDates);
-  $('#dtr-wshoe-match')?.addEventListener('change', syncWholeShoeDates);
   const closeWholeShoe = () => { closeLibrary(); wsEl.back?.classList.add('hidden'); };
 
   $$('[data-add-record="shoes"]').forEach((btn) => btn.addEventListener('click', openWholeShoe));
   $('#btn-wshoe-close')?.addEventListener('click', closeWholeShoe);
   $('#btn-wshoe-cancel')?.addEventListener('click', closeWholeShoe);
   wsEl.tbody?.addEventListener('click', (e) => {
+    const sideBtn = e.target.closest('.dtr-side-toggle button');
+    if (sideBtn) {
+      sideBtn.closest('tr').querySelectorAll('.dtr-side-toggle button').forEach((x) => x.classList.toggle('active', x === sideBtn));
+      refreshWholeShoeLabRefs();
+      return;
+    }
+    const add = e.target.closest('.ik-addrow');
+    if (add) {
+      // new row goes after the last row of the same line
+      let last = add.closest('tr');
+      while (last.nextElementSibling && last.nextElementSibling.dataset.line === last.dataset.line) last = last.nextElementSibling;
+      last.insertAdjacentHTML('afterend', wsRowHtml(last.dataset.line, true, false));
+      refreshWholeShoeLabRefs();
+      last.nextElementSibling.querySelector('.ik-code')?.focus();
+      return;
+    }
+    const del = e.target.closest('.ik-delrow');
+    if (del) { del.closest('tr').remove(); return; }
     const lib = e.target.closest('.ik-lib');
     if (lib) openLibrary(lib.closest('tr'), lib);
   });
   wsEl.tbody?.addEventListener('change', (e) => {
     if (e.target.classList.contains('ik-active')) e.target.closest('tr').classList.toggle('inactive', !e.target.checked);
+    if (e.target.closest('.ik-tests')) refreshWholeShoeLabRefs();
   });
 
   $('#btn-wshoe-save')?.addEventListener('click', async () => {
@@ -438,6 +478,7 @@
         color: tr.querySelector('.ik-color').value.trim(),
         mtl: tr.querySelector('.ik-mtl').value.trim(),
         line: tr.dataset.line,
+        side: tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L',
         qty: Math.max(1, parseInt(tr.querySelector('.ik-qty').value, 10) || 1),
         tests: [...tr.querySelectorAll('.ik-tests input:checked')].map((c) => c.value),
       };
@@ -459,6 +500,7 @@
       if (res && res.ok) {
         showToast(`✓ ${res.message}`);
         closeWholeShoe();
+        setTimeout(() => location.reload(), 700);
       } else {
         wsEl.msg.textContent = (res && res.message) || 'Save failed.';
       }

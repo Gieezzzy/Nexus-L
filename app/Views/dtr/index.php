@@ -293,19 +293,24 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
             <div class="dtr-card-head">
                 <button type="button" class="dtr-btn dtr-btn-primary" style="margin-left:auto" data-add-record="bonding">+ Bonding Shoe Collected</button>
             </div>
-            <div class="dtr-table-wrap" style="max-height:420px">
-                <table class="dtr-table">
+            <div class="dtr-table-wrap dtr-bshoe-wrap" style="max-height:420px">
+                <table class="dtr-table dtr-bshoe-table">
                     <thead>
                         <tr>
                             <th>LabRefNo</th>
-                            <th>Model / Style</th>
-                            <th>Color</th>
-                            <th>Side</th>
-                            <th>Factory</th>
-                            <th>Production Date</th>
+                            <th>Prod. Code</th>
+                            <th>Style No.</th>
+                            <th>Colorway</th>
+                            <th>MTL #</th>
+                            <th>Line</th>
+                            <th>Test Type</th>
+                            <th>Collection Date</th>
+                            <th>Prod. Date</th>
                             <th>Tested Date</th>
                             <th>Technician</th>
                             <th>Result</th>
+                            <th>Status</th>
+                            <th>Encoder</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -313,14 +318,19 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                             <?php $bRes = strtoupper((string) ($b['Result'] ?? '')); $bCls = $bRes === 'FAIL' ? 'b-err' : ($bRes === 'TOLERABLE' ? 'b-warn' : 'b-ok'); ?>
                             <tr>
                                 <td class="mono"><button type="button" class="dtr-dl-btn" data-dl-labref="<?= esc($b['LabRefNo'] ?? '', 'attr') ?>" title="Download Bonding Test-VF report" aria-label="Download report"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 11v6"/><path d="m9 14 3 3 3-3"/></svg></button> <b><?= esc($b['LabRefNo'] ?? '') ?></b></td>
+                                <td class="mono"><b><?= esc($b['POLotNO'] ?? '') ?></b></td>
                                 <td><?= esc($b['ModelStyle'] ?? '') ?></td>
                                 <td><?= esc($b['Color'] ?? '') ?></td>
-                                <td><?= esc($b['Side'] ?? '') ?></td>
-                                <td><?= esc($b['Factory'] ?? '') ?></td>
+                                <td class="mono"><?= preg_match('/MTL ([^;]+)/', (string) ($b['LabNotesComments'] ?? ''), $mm) ? esc(trim($mm[1])) : '' ?></td>
+                                <td><?= preg_match('/^DTP\d{8}[A-Z]{2}([A-Z])(\d+)/i', (string) ($b['LabRefNo'] ?? ''), $lm) ? esc('Bldg ' . strtoupper($lm[1]) . ' / ' . strtoupper($lm[1]) . (int) $lm[2]) : '' ?></td>
+                                <td><?= esc(trim(str_replace('/ Retest', '', (string) ($b['Remarks'] ?? '')))) ?></td>
+                                <td><?= esc(substr((string) ($b['ReceivedDate'] ?? ''), 0, 10)) ?></td>
                                 <td><?= esc(substr((string) ($b['ProductionDate'] ?? ''), 0, 10)) ?></td>
                                 <td><?= esc(substr((string) ($b['TestedDate'] ?? ''), 0, 10)) ?></td>
                                 <td><?= esc($b['Technician'] ?? '') ?></td>
                                 <td><?= $bRes !== '' ? '<span class="badge ' . $bCls . '">' . esc($bRes) . '</span>' : '-' ?></td>
+                                <td><?= $bRes !== '' ? '<span class="badge b-ok">Tested</span>' : '<span class="badge b-warn">Pending</span>' ?></td>
+                                <td><?= preg_match('/Encoded by ([^;]+)/', (string) ($b['LabNotesComments'] ?? ''), $em) ? esc(trim($em[1])) : '' ?></td>
                             </tr>
                         <?php endforeach ?>
                     </tbody>
@@ -333,32 +343,30 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                 <button type="button" class="dtr-btn dtr-btn-primary" style="margin-left:auto" data-add-record="shoes">+ Whole Shoe Collected</button>
             </div>
             <div class="dtr-table-wrap" style="max-height:420px">
-                <table class="dtr-table">
+                <table class="dtr-table dtr-wlist-table">
                     <thead>
                         <tr>
-                            <th>LabRefNo</th>
-                            <th>Production Code</th>
+                            <th>Test Type LabRefNo</th>
+                            <th>Prod. Code</th>
                             <th>Style No.</th>
                             <th>Colorway</th>
                             <th>MTL #</th>
                             <th>Line</th>
-                            <th>No. of Shoes</th>
                             <th>Test Type</th>
                             <th>Collection Date</th>
-                            <th>Production Date</th>
+                            <th>Prod. Date</th>
                             <th>Encoded By</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($wholeShoes as $s): ?>
                             <tr>
-                                <td class="mono"><?php if (! empty($s['LabRefNo'])): ?><button type="button" class="dtr-dl-btn" data-dl-labref="<?= esc($s['LabRefNo'], 'attr') ?>" data-dl-route="dtr/wholeshoe-report-pdf" data-dl-suffix="Whole-Footwear-Test-Results" title="Download Whole Footwear Test Results" aria-label="Download report"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 11v6"/><path d="m9 14 3 3 3-3"/></svg></button> <b><?= esc($s['LabRefNo']) ?></b><?php endif ?></td>
+                                <td class="mono"><?php if (! empty($s['LabRefNo'])): ?><?php if (! empty($s['WholeshoeLabRefNo'])): ?><button type="button" class="dtr-dl-btn" data-dl-labref="<?= esc($s['WholeshoeLabRefNo'], 'attr') ?>" data-dl-route="dtr/wholeshoe-report-pdf" data-dl-suffix="Whole-Footwear-Test-Results" title="Download Whole Footwear Test Results" aria-label="Download report"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 11v6"/><path d="m9 14 3 3 3-3"/></svg></button> <?php endif ?><b><?= esc($s['LabRefNo']) ?></b><?php endif ?></td>
                                 <td class="mono"><b><?= esc($s['ProdCode'] ?? '') ?></b></td>
                                 <td><?= esc($s['StyleNo'] ?? '') ?></td>
                                 <td><?= esc($s['Colorway'] ?? '') ?></td>
                                 <td class="mono"><?= esc($s['MTL'] ?? '') ?></td>
                                 <td><?= esc(trim(($s['Building'] ?? '') !== '' && ($s['Building'] ?? null) !== null ? 'Bldg ' . $s['Building'] . ' / ' . ($s['LineNo'] ?? '') : '')) ?></td>
-                                <td><?= isset($s['NoOfShoes']) ? (int) $s['NoOfShoes'] : '' ?></td>
                                 <td><?= esc($s['TestTypes'] ?? '') ?></td>
                                 <td><?= esc(substr((string) ($s['CollectionDate'] ?? ''), 0, 10)) ?></td>
                                 <td><?= esc(substr((string) ($s['IntakeProductionDate'] ?? ''), 0, 10)) ?></td>
@@ -1206,13 +1214,16 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
             ];
             $pullSketch = static function (string $side): string {
                 $eyelets = '';
-                foreach ([[44, 70], [40, 108], [38, 146], [38, 184], [40, 222]] as $p) {
-                    $eyelets .= '<circle cx="' . $p[0] . '" cy="' . $p[1] . '" r="4"/><circle cx="' . (200 - $p[0]) . '" cy="' . $p[1] . '" r="4"/>';
+                foreach ([[30, 70], [30, 100], [30, 133], [30, 163], [30, 196]] as $p) {
+                    $eyelets .= '<circle cx="' . $p[0] . '" cy="' . $p[1] . '" r="4.2"/><circle cx="' . (168 - $p[0]) . '" cy="' . $p[1] . '" r="4.2"/>';
                 }
 
-                return '<svg viewBox="0 0 200 300" class="pf-shoe" role="img" aria-label="' . $side . ' shoe"><text x="100" y="18" text-anchor="middle" class="pf-shoe-t">' . $side . '</text>'
-                    . '<path d="M34 270 C26 200 28 120 52 64 C70 28 130 28 148 64 C172 120 174 200 166 270 Z" fill="#fff" stroke="#111" stroke-width="1.5"/>'
-                    . '<path d="M60 250 C56 190 58 130 74 90 C84 66 116 66 126 90 C142 130 144 190 140 250" fill="none" stroke="#111" stroke-width="1"/>'
+                // upper outline with a thick band (outer + inner edge), eyelets in the band, flared heel sides in blue
+                return '<svg viewBox="0 0 168 250" class="pf-shoe" role="img" aria-label="' . $side . ' shoe"><text x="84" y="13" text-anchor="middle" class="pf-shoe-t">' . $side . '</text>'
+                    . '<path d="M20 214 L20 78 C20 36 44 24 84 24 C124 24 148 36 148 78 L148 214" fill="#fff" stroke="#111" stroke-width="1.6"/>'
+                    . '<path d="M40 214 L40 84 C40 54 56 42 84 42 C112 42 128 54 128 84 L128 214" fill="none" stroke="#111" stroke-width="1.6"/>'
+                    . '<path d="M20 214 L2 240 M148 214 L166 240" fill="none" stroke="#2563eb" stroke-width="1.2"/>'
+                    . '<path d="M40 214 L36 230 M128 214 L132 230" fill="none" stroke="#111" stroke-width="1.2"/>'
                     . '<g fill="#fff" stroke="#111" stroke-width="1.2">' . $eyelets . '</g></svg>';
             };
         ?>
@@ -1667,7 +1678,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                 <thead>
                     <tr>
                         <th>Active</th><th>Line</th><th>Side</th><th>Lab Ref No</th><th>Production Code</th><th>Style</th><th>Colorway</th><th>MTL #</th>
-                        <th>Shoe Master</th><th>Laboratory Test</th><th>Size</th><th>Test Type</th><th>Lacking</th><th>Retest Details</th>
+                        <th>Shoe Master</th><th>Laboratory Test</th><th>Technician</th><th>Test Type</th><th>Lacking</th><th>Retest Details</th>
                     </tr>
                 </thead>
                 <tbody id="dtr-intake-tbody"></tbody>
@@ -1707,9 +1718,8 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
             </div>
             <div class="dtr-intake-field">
                 <label for="dtr-wshoe-production">Production Date</label>
-                <input type="date" id="dtr-wshoe-production" value="<?= date('Y-m-d') ?>" disabled>
+                <input type="date" id="dtr-wshoe-production" value="<?= date('Y-m-d') ?>">
             </div>
-            <label class="dtr-intake-match"><input type="checkbox" id="dtr-wshoe-match" checked> Match collection date</label>
             <div class="dtr-intake-field" style="margin-left:auto">
                 <label for="dtr-wshoe-encoder">Encoded By</label>
                 <input type="text" id="dtr-wshoe-encoder" value="<?= esc((string) (service('auth')->user()['name'] ?? ''), 'attr') ?>" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;min-width:220px">
@@ -1718,7 +1728,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
         <div class="dtr-modal-body dtr-intake-body">
             <table class="dtr-table dtr-intake-table dtr-wshoe-table">
                 <thead>
-                    <tr><th>Active</th><th>Line</th><th>Lab Ref No</th><th>Production Code</th><th>Style No.</th><th>Colorway</th><th>MTL #</th><th>Shoe Master</th><th>No. of Shoes</th><th>Test Type</th></tr>
+                    <tr><th>Active</th><th>Line</th><th>Side</th><th>Test Type Lab Ref No</th><th>Production Code</th><th>Style No.</th><th>Colorway</th><th>MTL #</th><th>Shoe Master</th><th>No. of Shoes</th><th>Test Type</th></tr>
                 </thead>
                 <tbody id="dtr-wshoe-tbody"></tbody>
             </table>

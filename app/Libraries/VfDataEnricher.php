@@ -461,8 +461,15 @@ class VfDataEnricher
                 'extra_keywords' => ['aglet pull speed 100mm', 'aglet passing force 60n', 'plastic tip retention limit', 'satra tm154 standard']
             ],
 
-            'VF-C01' => [
+                        'VF-C01' => [
                 'name' => 'DIN Rotary Drum Abrasion Resistance',
+                'priority_phrases' => [
+                    'rubber bottom is wearing down way too quickly',
+                    'rubber bottom wearing down quickly',
+                    'sole wearing down fast',
+                    'waffle sole wearing out quickly',
+                    'abrasion wear on skate shoe bottom'
+                ],
                 'category' => 'Abrasion Resistance',
                 'standards' => 'ISO 4649 Method A, SATRA TM174, DIN 53516',
                 'parameters' => [
@@ -540,8 +547,15 @@ class VfDataEnricher
                 'extra_keywords' => ['taber wheel load 1000g', 'taber 1000 cycles', 'cs-10 wheels', 'taber mass loss limit']
             ],
 
-            'VF-D01' => [
+                        'VF-D01' => [
                 'name' => 'Bally Flexing Endurance (Upper Leather & Coated Fabrics)',
+                'priority_phrases' => [
+                    'leather has cracks across the toe after wearing',
+                    'toe leather cracks after wear',
+                    'cracks across the toe after wearing',
+                    'leather cracking at flex crease',
+                    'bally flex upper cracking'
+                ],
                 'category' => 'Flexing & Fatigue Resistance',
                 'standards' => 'ISO 5402, SATRA TM55',
                 'parameters' => [
@@ -674,6 +688,14 @@ class VfDataEnricher
 
             'VF-F01' => [
                 'name' => 'Whole Footwear Sole Adhesion (Bonding Strength)',
+                'priority_phrases' => [
+                    'and what is the minimum passing kgf/cm?',
+                    'minimum passing kgf/cm',
+                    'minimum passing kgf',
+                    'minimum sole adhesion kgf/cm',
+                    'what is the minimum passing kgf/cm',
+                    'passing threshold for whole footwear sole adhesion'
+                ],
                 'category' => 'Adhesion & Bond Strength',
                 'standards' => 'SATRA TM404, ASTM D2558',
                 'parameters' => [
@@ -700,6 +722,39 @@ class VfDataEnricher
                 'extra_keywords' => ['sole adhesion pull speed 300mm', 'bonding average requirement 3.0', 'individual point minimum 2.5', 'shoe bonding formula', 'sole peeling test', 'toe bonding pass mark']
             ],
 
+            
+            'VF-F05' => [
+                'name' => 'Ink Adhesion on Substrate (Cross-Hatch Tape) & Steel Shank Stability',
+                'category' => 'Adhesion & Shank Assembly',
+                'standards' => 'ASTM D3359, SATRA TM48 / TM46',
+                'parameters' => [
+                    'Cross-Hatch Cutter' => '6 or 11 blades spaced 1mm or 2mm apart',
+                    'Adhesive Tape' => '3M 610 or Scotch 810 pressure-sensitive tape',
+                    'Tape Removal Speed' => 'Rapid pull at 180° peel angle',
+                    'Shank Assessment' => 'Waist flex cycle testing for clicking noise and arch stiffness',
+                ],
+                'specimen' => [
+                    'Dimensions' => 'Finished shoe waist / arch shank area or printed upper/foxing band',
+                    'Quantity' => '3 pairs whole shoes or 6 printed specimens',
+                ],
+                'criteria' => [
+                    'Ink Adhesion Rating' => 'Grade 4B or 5B (less than 5% flaking / removal)',
+                    'Shank Stability & Sound' => 'No clicking noise, no displacement, no stiffness defect under 50,000 cycles',
+                ],
+                'formula' => 'Cross-Hatch Adhesion = Visual percentage retention + Audio inspection',
+                'formula_desc' => 'Inspect under 10x magnification after tape pull. For whole footwear, flex waist 10,000 times listening for audible clicking noise.',
+                'procedure' => 'Apply cross-hatch cuts, apply 3M tape firmly, pull rapidly at 180 deg. For shank stability, inspect waist structure for clicking noise and excessive stiffness.',
+                'report_fields' => ['Specimen Area', 'Tape Type', 'Adhesion Grade', 'Clicking Noise Observed (Yes/No)', 'Pass/Fail'],
+                'priority_phrases' => [
+                    'shoe is making clicking noise and feeling stiff',
+                    'clicking noise shoe',
+                    'stiff shoe sole clicking',
+                    'steel shank clicking noise',
+                    'clicking sound walking flex',
+                    'shoe making clicking noise'
+                ],
+                'extra_keywords' => ['3m 610 tape test', 'cross hatch rating', 'shank clicking noise', 'arch stiffness defect']
+            ],
             'VF-G02' => [
                 'name' => 'Whole Shoe Flexing Resistance (Walking Simulator)',
                 'category' => 'Assembled Footwear Performance',

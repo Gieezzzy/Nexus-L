@@ -412,6 +412,84 @@
     layout.start = layout.start || { x: d ? d.x : 30, y: d ? d.y + 4 : 70, label: 'START' };
     selected = 'start'; render(); renderProps();
   };
+  // Renumbers the spots (value box + dot move together, same direction) so Spot 1 is the one nearest the START marker
+  $('#dsg-align-start').onclick = () => {
+    if (!layout.start || !layout.dots) {
+      $('#dsg-status').textContent = 'Turn on the vector layout and add a START point first.';
+      return;
+    }
+    ['utf', 'fto'].forEach((k) => {
+      const dots = layout.dots[k] || {};
+      const idx = Object.keys(dots).map(Number).sort((a, b) => a - b);
+      const n = idx.length;
+      if (n < 2) return;
+      let s = 0; let best = Infinity;
+      idx.forEach((i, j) => {
+        const d = Math.hypot(dots[i].x - layout.start.x, dots[i].y - layout.start.y);
+        if (d < best) { best = d; s = j; }
+      });
+      if (s === 0) return;
+      const oldDots = Object.assign({}, dots);
+      const oldBoxes = Object.assign({}, layout[k]);
+      idx.forEach((i, j) => {
+        const from = idx[(j + s) % n];
+        layout.dots[k][i] = oldDots[from];
+        if (oldBoxes[from]) layout[k][i] = oldBoxes[from];
+      });
+    });
+    selected = null; render(); renderProps();
+    $('#dsg-status').textContent = 'Spot 1 is now at START. Press Save to keep it.';
+  };
+  // Spreads each ring of dots at equal distances along its outline, Spot 1 on the point of the outline nearest START
+  // (numbers keep running in the same direction); every value box moves with its dot.
+  $('#dsg-even-space').onclick = () => {
+    if (!layout.start || !layout.dots) {
+      $('#dsg-status').textContent = 'Turn on the vector layout and add a START point first.';
+      return;
+    }
+    // work in real proportions: the stage is not square (report is 641 x 798)
+    const W = 641; const H = 798;
+    ['utf', 'fto'].forEach((k) => {
+      const dots = layout.dots[k] || {};
+      const idx = Object.keys(dots).map(Number).sort((a, b) => a - b);
+      const n = idx.length;
+      if (n < 3) return;
+      const P = idx.map((i) => ({ x: dots[i].x * W / 100, y: dots[i].y * H / 100 }));
+      const seg = []; let total = 0;
+      for (let j = 0; j < n; j++) {
+        const a = P[j]; const b = P[(j + 1) % n];
+        const d = Math.hypot(b.x - a.x, b.y - a.y); seg.push(d); total += d;
+      }
+      // arc length of the outline point nearest START
+      const sx = layout.start.x * W / 100; const sy = layout.start.y * H / 100;
+      let best = Infinity; let s0 = 0; let acc = 0;
+      for (let j = 0; j < n; j++) {
+        const a = P[j]; const b = P[(j + 1) % n];
+        const vx = b.x - a.x; const vy = b.y - a.y; const L2 = vx * vx + vy * vy || 1;
+        const t = Math.max(0, Math.min(1, ((sx - a.x) * vx + (sy - a.y) * vy) / L2));
+        const d = Math.hypot(a.x + vx * t - sx, a.y + vy * t - sy);
+        if (d < best) { best = d; s0 = acc + seg[j] * t; }
+        acc += seg[j];
+      }
+      const at = (s) => {
+        s = ((s % total) + total) % total;
+        let j = 0;
+        while (j < n - 1 && s > seg[j]) { s -= seg[j]; j++; }
+        const a = P[j]; const b = P[(j + 1) % n]; const t = seg[j] ? s / seg[j] : 0;
+        return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+      };
+      const step = total / n;
+      idx.forEach((i, j) => {
+        const p = at(s0 + j * step);
+        const nx = r2(p.x / W * 100); const ny = r2(p.y / H * 100);
+        const b = layout[k][i];
+        if (b) { b.pctLeft = r2(b.pctLeft + nx - dots[i].x); b.pctTop = r2(b.pctTop + ny - dots[i].y); }
+        dots[i] = { x: nx, y: ny };
+      });
+    });
+    selected = null; render(); renderProps();
+    $('#dsg-status').textContent = 'Spots are now evenly spaced, Spot 1 at START. Check the boxes, then press Save.';
+  };
   $('#dsg-vector').addEventListener('change', (ev) => {
     if (ev.target.checked) {
       layout.vector = true;

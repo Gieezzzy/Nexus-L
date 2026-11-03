@@ -34,6 +34,8 @@
         <label class="dsg-chk" title="Draws the dots and leader lines separately on a clean shoe outline so you can drag every dot onto the exact spot of the shoe"><input type="checkbox" id="dsg-vector"> Movable dots &amp; lines</label>
         <span class="dsg-sp"></span>
         <button type="button" class="dsg-btn" id="dsg-add-start">+ Start point</button>
+        <button type="button" class="dsg-btn" id="dsg-align-start" title="Renumber the spots so Spot 1 sits on the START marker">Spot 1 at START</button>
+        <button type="button" class="dsg-btn" id="dsg-even-space" title="Place every spot the same distance apart along the shoe outline, Spot 1 on START">Even spacing from START</button>
         <button type="button" class="dsg-btn" id="dsg-add-text">+ Text</button>
         <button type="button" class="dsg-btn" id="dsg-add-field">+ Value from record</button>
         <button type="button" class="dsg-btn" id="dsg-add-chart">+ Bar chart</button>

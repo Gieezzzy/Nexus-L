@@ -181,7 +181,7 @@ class SystemWorkflowSeeder
             // 5. TEST RESULTS SUMMARY & FILTERING
             [
                 'title' => 'How to Filter & View Unified Test Results Summary (Materials & Whole Shoe)',
-                'keywords' => 'test results summary, test summary table, filter test results, view all test records, filter by season brand, search test summary, passed failed tests summary, wst summary',
+                'keywords' => 'where can i see which shoes passed or failed today, see which shoes passed or failed today, which shoes passed or failed today, passed or failed today shoes summary, test results summary, test summary table, filter test results, view all test records, filter by season brand, search test summary',
                 'body' => "### Unified Test Results Summary Suite\n\n"
                         . "The **Test Results Summary** (`/test-summary`) combines all Material Testing and Whole Shoe Testing records into a single interactive monitoring dashboard.\n\n"
                         . "#### Summary Capabilities:\n"
@@ -241,7 +241,7 @@ class SystemWorkflowSeeder
             // 7. DTR SAMPLE INTAKE & RECEIVING
             [
                 'title' => 'How to Receive Samples, Log Supplier Batches & Intake Footwear in DTR',
-                'keywords' => 'sample intake dtr, receive material, log sample batch, intake footwear, material receive save, sample log in, dtr intake save, supplier batch logging, new sample intake',
+                'keywords' => 'where do i scan or check new delivery batch, scan or check new delivery batch, scan new delivery batch, check delivery batch intake, sample intake dtr, receive material, log sample batch, intake footwear, material receive save, sample log in, dtr intake save, supplier batch logging',
                 'body' => "### Sample Intake & Material Receiving in DTR\n\n"
                         . "Before testing begins, every specimen and shoe pair must be formally logged into DTR to generate a unique Lab Reference ID and track supplier batch traceability.\n\n"
                         . "#### Intake Procedure:\n"
@@ -579,7 +579,61 @@ class SystemWorkflowSeeder
                     ['type' => 'open', 'label' => 'Knowledge Base Manager', 'url' => site_url('brain/knowledge')],
                 ],
                 'page_match' => 'brain',
-            ]
+            ],
+        
+            // 19. LEXUS MULTI-FORMAT REPORT GENERATION (PPTX, XLSX, PDF)
+            [
+                'title' => 'How to Generate PowerPoint, Excel & PDF Reports with LEXUS AI',
+                'keywords' => 'generate powerpoint report, export excel report, generate ppt report, export pdf report, monthly quality audit report, powerpoint report of pass fail, span date audit report, lexus report engine, download pptx report, download xlsx spreadsheet, generate powerpoint report for dtp20261027faa7, give me excel report of dtp20261027faa7, export pdf report for dtp20261027faa7',
+                'body' => "### LEXUS AI Multi-Format Reporting Engine\n\n"
+                        . "LEXUS AI generates executive Microsoft PowerPoint presentations (.pptx), granular Excel workbooks (.xlsx), and high-resolution vector PDFs (.pdf) natively within NEXUS-L without any third-party cloud services.\n\n"
+                        . "#### Supported Reporting Scopes:\n"
+                        . "1. **Single Lab Reference Process Report:** Complete peel strength curves, pass/fail status, and production parameters for a specific reference (e.g. `DTP20261027FAA7`).\n"
+                        . "2. **Monthly & Span Date Quality Audits:** Summary dashboards with total Pass, Tolerable, and Failed counts, percentage pass rates, and stage breakdowns (First Article FA, Pre-Production PP, Mass Production PR).\n\n"
+                        . "#### Example Commands to Prompt LEXUS:\n"
+                        . "- *\"Generate PowerPoint report for DTP20261027FAA7\"*\n"
+                        . "- *\"Give me excel report of DTP20261027FAA7\"*\n"
+                        . "- *\"Export monthly powerpoint report of pass fail and tolerable\"*\n"
+                        . "- *\"Export monthly audit summary to excel\"*",
+                'steps' => [
+                    'Type your request to LEXUS specifying the Lab Reference or date span.',
+                    'Specify desired format: PowerPoint (.pptx), Excel (.xlsx), or PDF (.pdf).',
+                    'LEXUS compiles the test data and returns a direct download card with live action buttons.',
+                    'Click the download button to open the formatted slide deck or spreadsheet.'
+                ],
+                'actions' => [
+                    ['type' => 'open', 'label' => 'Open LEXUS AI Assistant', 'url' => site_url('brain')],
+                    ['type' => 'open', 'label' => 'View Test Results Summary', 'url' => site_url('test-summary')],
+                ],
+                'page_match' => 'brain',
+            ],
+
+            // 20. LAB REFERENCE ANATOMY & STAGE DECONSTRUCTION
+            [
+                'title' => 'Lab Reference Anatomy: Deconstructing Facility, Date, Stage (FA/PP/PR) & Assembly Line',
+                'keywords' => 'what does lab reference mean, lab reference anatomy, dtp20261027faa7, dtp lab reference breakdown, fa first article meaning, production line a7, understand lab reference code, bonding reference structure, explain lab reference, what does lab reference dtp20261027faa7 mean',
+                'body' => "### Understanding NEXUS-L Standardized Lab Reference Codes\n\n"
+                        . "Every footwear specimen tested in DaTian Subic Shoes Inc. is assigned a standardized reference ID containing full production traceability:\n\n"
+                        . "#### Anatomy Example: `DTP20261027FAA7`\n"
+                        . "- **DTP (Facility):** DaTian Subic Shoes Inc. Philippines QC Lab.\n"
+                        . "- **20261027 (Test Date):** 27 October 2026 (Format: YYYYMMDD).\n"
+                        . "- **FA (Production Stage):** **First Article** (Initial production tooling qualification). Other stages include `PP` (Pre-Production), `PR` (Mass Production), `CS` (Confirmation Sample), `SM` (Salesman Sample), `DV` (Development).\n"
+                        . "- **A7 (Production Line):** Assembly Conveyor Line A7 in the manufacturing building.\n"
+                        . "- **Suffix -L / -R (Specimen Foot):** Left foot or Right foot specimen.\n\n"
+                        . "LEXUS AI automatically parses this anatomy and can generate specialized reports filtered by stage and production line.",
+                'steps' => [
+                    'Observe the 15-character reference code (e.g. DTP20261027FAA7).',
+                    'First 3 characters identify the manufacturing facility (DTP).',
+                    'Next 8 digits represent the testing calendar date (YYYYMMDD).',
+                    'Next 2 characters signify the production phase (FA = First Article).',
+                    'Trailing characters designate the specific assembly line (A7).'
+                ],
+                'actions' => [
+                    ['type' => 'open', 'label' => 'Open Digital Test Reports', 'url' => site_url('dtr')],
+                    ['type' => 'open', 'label' => 'Open LEXUS AI Console', 'url' => site_url('brain')],
+                ],
+                'page_match' => 'dtr',
+            ],
         ];
     }
 }

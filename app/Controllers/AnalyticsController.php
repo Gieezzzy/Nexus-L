@@ -39,16 +39,56 @@ class AnalyticsController extends BaseController
         }
 
         // Shoe Bonding has two sub-tabs: analytics (charts) and result (per cement supplier summary)
-        $view = ($tab === 'bonding' && $this->request->getGet('view') === 'result') ? 'result' : 'analytics';
+        $v    = (string) $this->request->getGet('view');
+        $view = ($tab === 'bonding' && in_array($v, ['result', 'monthly'], true)) ? $v : 'analytics';
 
         $data = match (true) {
             $tab === 'wholeshoe' => $this->wholeShoe($db),
             $tab === 'materials' => $this->materials($db),
             $view === 'result'   => $this->bondingResult($db),
+            $view === 'monthly'  => $this->bondingMonthly($db),
             default              => $this->bonding($db),
         };
 
         return $this->render('analytics/index', ['title' => 'Analytics'] + $data + ['tab' => $tab, 'view' => $view, 'group' => $this->group, 'from' => $this->from, 'to' => $this->to]);
+    }
+
+    /** Monthly Summary (by production date): daily tested / failed trend, status totals and failed count per line and day. */
+    private function bondingMonthly($db): array
+    {
+        // ProductionDate is stored as text: MM-DD-YYYY (or YYYY-MM-DD); normalise it to YYYY-MM-DD
+        $pd = "(CASE WHEN ProductionDate REGEXP '^[0-9]{2}-[0-9]{2}-20[0-9]{2}' THEN CONCAT(SUBSTR(ProductionDate, 7, 4), '-', SUBSTR(ProductionDate, 1, 2), '-', SUBSTR(ProductionDate, 4, 2)) WHEN ProductionDate REGEXP '^20[0-9]{2}-[0-9]{2}-[0-9]{2}' THEN LEFT(ProductionDate, 10) END)";
+        $w = $this->dateWhere($pd);
+        $days = $db->query("SELECT {$pd} AS d, COUNT(*) AS tested, SUM(Result LIKE 'FAIL%') AS failed FROM tbl_dtr_bonding_info WHERE {$w} GROUP BY d ORDER BY d")->getResultArray();
+        $st   = $db->query("SELECT COALESCE(SUM(Result = 'PASS'), 0) AS pass, COALESCE(SUM(Result LIKE 'FAIL%'), 0) AS fail, COALESCE(SUM(Result = 'TOLERABLE'), 0) AS tol FROM tbl_dtr_bonding_info WHERE {$w}")->getRowArray();
+
+        // failed specimens per building line and production date; the line comes from the Lab Ref No (DTP<date>SH<building><line>-<side>)
+        $lines = ['A' => range(1, 12), 'B' => range(1, 14)];
+        $cells = [];
+        foreach ($db->query("SELECT LabRefNo, {$pd} AS d FROM tbl_dtr_bonding_info WHERE {$w} AND Result LIKE 'FAIL%'")->getResultArray() as $r) {
+            if (preg_match('/^DTP\d{8}[A-Z]{2}([A-Z])(\d+)/i', (string) $r['LabRefNo'], $m)) {
+                $b = strtoupper($m[1]); $n = (int) $m[2];
+                $cells[$b][$n][$r['d']] = ($cells[$b][$n][$r['d']] ?? 0) + 1;
+                if (! in_array($n, $lines[$b] ?? [], true)) {
+                    $lines[$b][] = $n;
+                }
+            }
+        }
+        foreach ($lines as &$ln) {
+            sort($ln);
+        }
+        unset($ln);
+        ksort($lines);
+
+        // lines marked SHUTDOWN in the Specimen Intake (Active toggle off) for a production date
+        $shut = [];
+        if ($db->tableExists('tbl_dtr_BondingTracker') && $db->fieldExists('Shutdown', 'tbl_dtr_BondingTracker')) {
+            foreach ($db->query('SELECT Building, `LineNo` AS ln, ProductionDate AS d FROM tbl_dtr_BondingTracker WHERE Shutdown = 1 AND ' . $this->dateWhere('ProductionDate'))->getResultArray() as $r) {
+                $shut[strtoupper((string) $r['Building'])][(int) preg_replace('/\D/', '', (string) $r['ln'])][substr((string) $r['d'], 0, 10)] = true;
+            }
+        }
+
+        return ['days' => $days, 'shut' => $shut, 'status' => $st, 'lines' => $lines, 'cells' => $cells, 'kpis' => [], 'chartTitle' => '', 'months' => [], 'lists' => []];
     }
 
     /** Bonding Result: pass / tolerable / failed counts per cement (adhesive) supplier, with a total row. */

@@ -292,7 +292,7 @@ button .ic,.dsg-btn .ic,.sc-btn .ic,.il-btn .ic{margin-right:4px}
 }
 @media (prefers-reduced-motion:reduce){.side,.shell{transition:none}}
 
-/* ---- NEXUS-L assistant widget (LEXIS AI) ---------------------------------------------------- */
+/* ---- NEXUS-L assistant widget (LEXUS AI) ---------------------------------------------------- */
 #nxbot-fab{position:fixed;right:18px;bottom:18px;z-index:9990;width:56px;height:56px;border-radius:50%;border:2px solid #bae6fd;background:#ffffff;color:#0f172a;cursor:pointer;box-shadow:0 10px 26px rgba(2,132,199,.28);display:flex;align-items:center;justify-content:center;transition:transform .2s ease,box-shadow .2s ease;padding:0;overflow:hidden}
 #nxbot-fab:hover{transform:scale(1.08);box-shadow:0 12px 30px rgba(2,132,199,.42);border-color:#38bdf8}
 #nxbot-fab .nxbot-fab-icon{width:40px;height:40px;border-radius:50%;object-fit:contain;pointer-events:none;display:block}

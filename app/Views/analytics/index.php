@@ -72,6 +72,23 @@ $segmented = $months && array_key_exists('pass', $months[0]);
 .an-tabs a{padding:9px 16px;font-size:12.5px;font-weight:700;color:#475569;text-decoration:none;border-right:1px solid #eef2f7}
 .an-tabs a:last-child{border-right:0}.an-tabs a:hover{background:#f1f5f9}
 .an-tabs a.on{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff}
+.ms-tbl{border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:14px;align-self:flex-start;margin-top:0}
+.ms-tbl th,.ms-tbl td{border:1px solid #000;padding:3px 6px;text-align:left}
+.ms-tbl th{background:#b4c6e7;text-align:center;font-weight:700}
+.ms-tbl th.ttl{background:#4472c4;color:#fff}
+.ms-tbl tr.tt td{font-weight:800}
+.mx-tbl{border-collapse:collapse;width:100%;table-layout:fixed;font-family:Arial,sans-serif;font-size:10px;text-align:center;background:#fff}
+.mx-tbl th,.mx-tbl td{border:1px solid #000;padding:2px 1px;height:17px;font-weight:700;overflow:hidden}
+.mx-tbl th.ttl{background:#2f75b5;color:#fff;font-size:11px;padding:4px}
+.mx-tbl tr.dh th{font-size:9px;font-weight:800}
+.mx-tbl .lc{width:150px;text-align:left;padding-left:5px;font-weight:800}
+.mx-tbl .tc{width:92px}
+.mx-tbl tr.bt td{background:#f4b183;height:30px;font-size:12px}
+.mx-tbl tr.bt td.blue{color:#2f75b5;font-size:15px}
+.mx-tbl td.sd{background:#a6a6a6;font-size:6.5px;letter-spacing:0;padding:0}
+.mx-tbl td.mx{background:#c55a11}
+.mx-tbl tr.rd td{color:#e00000;height:26px}
+.mx-tbl tr.rt td{height:22px}
 .br-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:22px 24px}
 .br-tbl{border-collapse:collapse;width:86%;margin:0 0 18px 0;background:#fff;font-family:Arial,Helvetica,sans-serif;color:#000}
 .br-tbl th,.br-tbl td{border:1px solid #000;text-align:center;padding:2px 8px}
@@ -95,7 +112,7 @@ $segmented = $months && array_key_exists('pass', $months[0]);
         <?php if ($tab === 'bonding'): ?>
         <input type="hidden" name="view" value="<?= esc($view, 'attr') ?>">
         <div class="an-tabs" style="margin-right:auto">
-            <?php foreach (['analytics' => 'Bonding Analytics', 'result' => 'Bonding Result'] as $vk => $vl): ?>
+            <?php foreach (['analytics' => 'Bonding Analytics', 'monthly' => 'Monthly Summary', 'result' => 'Bonding Result'] as $vk => $vl): ?>
                 <a href="<?= esc(site_url('analytics') . '?' . http_build_query(array_filter(['tab' => 'bonding', 'view' => $vk, 'group' => $group, 'from' => $from, 'to' => $to, 'all' => ($from === '' && $to === '') ? '1' : null], static fn ($v) => $v !== null && $v !== '')), 'attr') ?>" class="<?= $view === $vk ? 'on' : '' ?>"><?= esc($vl) ?></a>
             <?php endforeach ?>
         </div>
@@ -202,6 +219,116 @@ $segmented = $months && array_key_exists('pass', $months[0]);
         </div>
         <?php endif ?>
     </div>
+<?php elseif ($view === 'monthly'): ?>
+    <?php
+    $monthName = strtoupper(date('F Y', strtotime(($from !== '' ? $from : ($days ? $days[0]['d'] : date('Y-m-d')))))); // e.g. OCTOBER 2026
+    $monthOnly = strtoupper(date('F', strtotime(($from !== '' ? $from : ($days ? $days[0]['d'] : date('Y-m-d'))))));
+    $mdY = static fn (string $d) => date('m-d-Y', strtotime($d));
+    ?>
+    <?php if (! $days): ?><div class="card glass"><p class="muted sm" style="margin:0">No bonding tests with a production date in this period.</p></div><?php else: ?>
+
+    <?php
+    // ---- 1. failure trend (bars: failed + tested, line: % failed) ----
+    $W = 1000; $H = 430; $L = 46; $R = 56; $T = 56; $B = 92;
+    $pw = $W - $L - $R; $ph = $H - $T - $B;
+    $maxT = 5; $maxP = 5;
+    foreach ($days as $d) { $maxT = max($maxT, (int) $d['tested']); $maxP = max($maxP, $d['tested'] ? ceil((int) $d['failed'] / (int) $d['tested'] * 100 / 5) * 5 : 0); }
+    $maxT = (int) (ceil($maxT / 5) * 5);
+    $n = count($days); $slot = $pw / $n; $bw = min(22, $slot * 0.36);
+    $yT = static fn ($v) => $T + $ph - $v / $maxT * $ph;
+    $yP = static fn ($v) => $T + $ph - $v / $maxP * $ph;
+    $svg = '';
+    for ($i = 0; $i <= 6; $i++) {
+        $gy = $T + $ph - $i / 6 * $ph;
+        $svg .= '<line x1="' . $L . '" x2="' . ($W - $R) . '" y1="' . $gy . '" y2="' . $gy . '" stroke="#555" stroke-width="1"/>';
+        $svg .= '<text x="' . ($L - 6) . '" y="' . ($gy + 4) . '" text-anchor="end" fill="#ddd" font-size="11">' . round($i / 6 * $maxT, 1) . '</text>';
+        $svg .= '<text x="' . ($W - $R + 6) . '" y="' . ($gy + 4) . '" fill="#ddd" font-size="11">' . number_format($i / 6 * $maxP, 2) . '%</text>';
+    }
+    $pts = []; $lbls = '';
+    foreach ($days as $i => $d) {
+        $cx = $L + $slot * ($i + 0.5); $te = (int) $d['tested']; $fa = (int) $d['failed'];
+        $svg .= '<rect x="' . ($cx - $bw - 1) . '" y="' . $yT($fa) . '" width="' . $bw . '" height="' . ($T + $ph - $yT($fa)) . '" fill="#4a90d9"/>';
+        $svg .= '<rect x="' . ($cx + 1) . '" y="' . $yT($te) . '" width="' . $bw . '" height="' . ($T + $ph - $yT($te)) . '" fill="#ed7d31"/>';
+        $svg .= '<text x="' . ($cx - $bw / 2) . '" y="' . ($yT($fa) - 4) . '" text-anchor="middle" fill="#fff" font-size="10" font-weight="700">' . $fa . '</text>';
+        $svg .= '<text x="' . ($cx + $bw / 2 + 1) . '" y="' . ($yT($te) - 4) . '" text-anchor="middle" fill="#fff" font-size="10" font-weight="700">' . $te . '</text>';
+        $pv = $te ? $fa / $te * 100 : 0;
+        $pts[] = round($cx, 1) . ',' . round($yP($pv), 1);
+        $lbls .= '<text x="' . $cx . '" y="' . ($yP($pv) - 5) . '" text-anchor="middle" fill="#fff" font-size="10.5" font-weight="700" stroke="#3a3a3a" stroke-width="2.5" paint-order="stroke">' . number_format($pv, 2) . '%</text>';
+        $svg .= '<text transform="translate(' . ($cx + 3) . ',' . ($T + $ph + 10) . ') rotate(-45)" text-anchor="end" fill="#ddd" font-size="10">' . $mdY($d['d']) . '</text>';
+    }
+    $svg .= '<polyline points="' . implode(' ', $pts) . '" fill="none" stroke="#bfbfbf" stroke-width="1.4"/>' . $lbls;
+    $lg = $H - 14;
+    $svg .= '<g font-size="11" fill="#ddd"><rect x="330" y="' . ($lg - 8) . '" width="9" height="9" fill="#4a90d9"/><text x="344" y="' . $lg . '">Failed Specimen</text><rect x="440" y="' . ($lg - 8) . '" width="9" height="9" fill="#ed7d31"/><text x="454" y="' . $lg . '">Tested Specimen</text><line x1="555" x2="575" y1="' . ($lg - 4) . '" y2="' . ($lg - 4) . '" stroke="#bfbfbf"/><text x="580" y="' . $lg . '">Percentage Failed</text></g>';
+    ?>
+    <div class="card" style="padding:0;overflow:hidden;background:#3a3a3a;border:0">
+        <div style="text-align:center;color:#fff;font:700 15px Arial,sans-serif;padding:14px 0 0;letter-spacing:.02em">BONDING FAILURE TREND BY PRODUCTION DATE &nbsp;- <?= esc($monthName) ?></div>
+        <svg viewBox="0 0 <?= $W ?> <?= $H ?>" width="100%" style="display:block;font-family:Arial,sans-serif"><?= $svg ?></svg>
+    </div>
+
+    <?php
+    // ---- 2. status summary pie + table ----
+    $stT = max(1, (int) $status['pass'] + (int) $status['fail'] + (int) $status['tol']);
+    $sp = [['PASS', (int) $status['pass'], '#5b9bd5'], ['FAILED', (int) $status['fail'], '#ed7d31'], ['TOLERABLE', (int) $status['tol'], '#a5a5a5']];
+    $cxp = 150; $cyp = 150; $rp = 112; $acc = 0; $ps = ''; $pl = '';
+    foreach ($sp as [$nm, $v, $col]) {
+        if ($v <= 0) { continue; }
+        $a0 = $acc / $stT * 360; $acc += $v; $a1 = $acc / $stT * 360;
+        if ($v >= $stT) { $ps .= '<circle cx="' . $cxp . '" cy="' . $cyp . '" r="' . $rp . '" fill="' . $col . '"/>'; }
+        else {
+            $x0 = $cxp + $rp * sin(deg2rad($a0)); $y0 = $cyp - $rp * cos(deg2rad($a0)); $x1 = $cxp + $rp * sin(deg2rad($a1)); $y1 = $cyp - $rp * cos(deg2rad($a1));
+            $ps .= '<path d="M' . $cxp . ',' . $cyp . ' L' . round($x0, 1) . ',' . round($y0, 1) . ' A' . $rp . ',' . $rp . ' 0 ' . (($a1 - $a0) > 180 ? 1 : 0) . ' 1 ' . round($x1, 1) . ',' . round($y1, 1) . ' Z" fill="' . $col . '" stroke="#fff" stroke-width="1"/>';
+        }
+        $mid = deg2rad(($a0 + $a1) / 2);
+        $lx = $cxp + ($rp + 26) * sin($mid); $ly = $cyp - ($rp + 18) * cos($mid);
+        $pl .= '<g transform="translate(' . round($lx, 1) . ',' . round($ly, 1) . ')"><rect x="-38" y="-17" width="76" height="34" fill="#fff" stroke="#777"/><text y="-3" text-anchor="middle" font-size="11.5" font-weight="700">' . $nm . '</text><text y="11" text-anchor="middle" font-size="11.5" font-weight="700">' . round($v / $stT * 100) . '%</text></g>';
+    }
+    ?>
+    <div class="card" style="background:#fff;display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
+        <div style="flex:1 1 330px;max-width:520px;border:1px solid #cfd6df;background:#fff">
+            <div style="text-align:center;font:700 22px Arial,sans-serif;padding-top:10px"><?= ucfirst(strtolower($monthOnly)) ?> Summary</div>
+            <svg viewBox="-20 0 340 310" width="100%" style="display:block;font-family:Arial,sans-serif"><?= $ps . $pl ?></svg>
+        </div>
+        <table class="ms-tbl" style="flex:0 1 380px">
+            <tr><th colspan="2" class="ttl"><?= esc($monthOnly) ?></th></tr>
+            <tr><th>STATUS</th><th>COUNT</th></tr>
+            <tr><td>PASS</td><td><?= (int) $status['pass'] ?></td></tr>
+            <tr><td>FAILED</td><td><?= (int) $status['fail'] ?></td></tr>
+            <tr><td>TOLERABLE</td><td><?= (int) $status['tol'] ?></td></tr>
+            <tr class="tt"><td>Total:</td><td><?= (int) $status['pass'] + (int) $status['fail'] + (int) $status['tol'] ?></td></tr>
+        </table>
+    </div>
+
+    <?php
+    // ---- 3. failed specimens per line and production date ----
+    $dates = array_column($days, 'd');
+    $totF = []; $totT = []; $grand = 0; $grandT = 0;
+    foreach ($days as $d) { $totT[$d['d']] = (int) $d['tested']; $grandT += (int) $d['tested']; }
+    $lastD = end($dates);
+    ?>
+    <div class="card" style="background:#fff;padding:0;overflow-x:auto">
+        <table class="mx-tbl">
+            <tr><th colspan="<?= count($dates) + 2 ?>" class="ttl">COUNT OF BONDING-FAILED SPECIMENS BY LINE AND PRODUCTION DATE - <?= esc($monthName) ?></th></tr>
+            <tr class="dh"><th class="lc">PRODUCTION DATE</th><?php foreach ($dates as $d): ?><th><?= $mdY($d) ?></th><?php endforeach ?><th class="tc">TOTAL FAILED<br>PER LINE AS OF<br><?= esc($lastD) ?></th></tr>
+            <?php foreach ($lines as $bld => $nums): ?>
+                <?php
+                $bTot = array_fill_keys($dates, 0); $rowT = [];
+                foreach ($nums as $nn) { $rowT[$nn] = array_sum($cells[$bld][$nn] ?? []); }
+                $mxRow = $rowT ? max($rowT) : 0;
+                ?>
+                <?php foreach ($nums as $nn): ?>
+                    <tr><td class="lc"><?= esc($bld . $nn) ?></td>
+                    <?php foreach ($dates as $d): $c = (int) ($cells[$bld][$nn][$d] ?? 0); $bTot[$d] += $c; $totF[$d] = ($totF[$d] ?? 0) + $c; ?><?php if (! empty($shut[$bld][$nn][$d]) && $c === 0): ?><td class="sd" title="Shutdown">SHUTDOWN</td><?php else: ?><td><?= $c ?></td><?php endif ?><?php endforeach ?>
+                    <td class="tc<?= ($mxRow > 0 && $rowT[$nn] === $mxRow) ? ' mx' : '' ?>"><?= $rowT[$nn] ?></td></tr>
+                <?php endforeach ?>
+                <tr class="bt"><td class="lc">TOTAL FAILED BLDG <?= esc($bld) ?></td><?php foreach ($dates as $d): ?><td><?= $bTot[$d] ?></td><?php endforeach ?><td class="tc blue"><?= array_sum($rowT) ?></td></tr>
+                <?php $grand += array_sum($rowT); ?>
+            <?php endforeach ?>
+            <tr class="rd"><td class="lc">TOTAL FAILED PER PRODUCTION DATE</td><?php foreach ($dates as $d): ?><td><?= (int) ($totF[$d] ?? 0) ?></td><?php endforeach ?><td class="tc"><?= $grand ?></td></tr>
+            <tr class="rt"><td class="lc">TOTAL TESTED PER PRODUCTION DATE</td><?php foreach ($dates as $d): ?><td><?= $totT[$d] ?></td><?php endforeach ?><td class="tc"><?= $grandT ?></td></tr>
+            <tr class="rd"><td class="lc">TOTAL FAILURE PERCENTAGE PER PRODUCTION DATE</td><?php foreach ($dates as $d): ?><td><?= $totT[$d] ? number_format((int) ($totF[$d] ?? 0) / $totT[$d] * 100, 2) . '%' : '0.00%' ?></td><?php endforeach ?><td class="tc"><?= $grandT ? number_format($grand / $grandT * 100, 2) . '%' : '0.00%' ?></td></tr>
+        </table>
+    </div>
+    <?php endif ?>
 <?php else: ?>
     <div class="an-kpis">
         <?php foreach ($kpis as $k): ?>
