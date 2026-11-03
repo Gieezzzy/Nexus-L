@@ -64,7 +64,7 @@ class AiBridge
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT_MS => $timeoutMs, CURLOPT_CONNECTTIMEOUT_MS => 400, CURLOPT_HTTPHEADER => ['X-AI-Key: ' . self::key()]]);
         $out  = curl_exec($ch);
         $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        if (PHP_VERSION_ID < 80500) { @curl_close($ch); }
         $j = $out === false || $code >= 300 ? null : json_decode((string) $out, true);
 
         return is_array($j) ? $j : null;
@@ -84,7 +84,7 @@ class AiBridge
         ]);
         $out  = curl_exec($ch);
         $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        if (PHP_VERSION_ID < 80500) { @curl_close($ch); }
         $j = $out === false ? null : json_decode((string) $out, true);
 
         return is_array($j) ? $j + ['_http' => $code] : null;
@@ -110,7 +110,7 @@ class AiBridge
         ]);
         $out  = curl_exec($ch);
         $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        if (PHP_VERSION_ID < 80500) { @curl_close($ch); }
         if ($out === false || $code >= 300) {
             return null;
         }

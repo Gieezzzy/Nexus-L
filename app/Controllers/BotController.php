@@ -6432,7 +6432,7 @@ private function artifactIntent(string $text, int $uid, int $threadId, array $u)
 
 
 
-                    . "â€¢ **Formula:** $\\frac{t_0 - t_1}{t_0 - t_s} \\times 100\\%${$rateStr}",
+                    . "â€¢ **Formula:** $\\frac{t_0 - t_1}{t_0 - t_s} \\times 100\\%" . $rateStr,
 
 
 
@@ -9672,6 +9672,10 @@ private function artifactIntent(string $text, int $uid, int $threadId, array $u)
 
 
 
+        if (! \App\Libraries\AiBridge::enabled() || ! \App\Libraries\BrainEvents::aiOnline()) {
+            return $this->json(['ok' => true, 'item_id' => null, 'pending' => 0, 'labelled_cases' => 0, 'candidates' => []]);
+        }
+
         $r = \App\Libraries\AiBridge::admin('GET', '/admin/review/next', [], 20000);
 
 

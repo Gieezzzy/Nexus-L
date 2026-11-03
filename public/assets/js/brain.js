@@ -8,11 +8,11 @@
   const csrfMeta = document.querySelector('meta[name="X-CSRF-TOKEN"]');
   const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const api = (path, opts = {}) => fetch(BASE + path, opts).then((r) => r.json().then((j) => {
-    if (j.csrf) csrfMeta.content = j.csrf;
+    if (j.csrf && csrfMeta) csrfMeta.content = j.csrf;
     if (!r.ok || j.ok === false) throw new Error(j.error || 'Request failed');
     return j;
   }));
-  const post = (path, body) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfMeta.content }, body: JSON.stringify(body || {}) });
+  const post = (path, body) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfMeta ? csrfMeta.content : '' }, body: JSON.stringify(body || {}) });
 
   // ---------------------------------------------------------------- tabs
   const loaders = {};
