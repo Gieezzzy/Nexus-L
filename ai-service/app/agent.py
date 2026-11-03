@@ -7,7 +7,8 @@ from typing import Any, Literal
 from langgraph.graph import END, StateGraph
 from opentelemetry import trace
 
-from app import calibration, db, memory, rerank, store
+from app import calibration, context, db, dbskill, labdocs, memory, requirements, rerank, store
+from app import nlu as nlu_mod
 from app.config import settings
 from app.nlu import nlu_node, rule_node
 from app.prompts import ABSTAIN_TEXT, HUMAN_TEXT, SYSTEM_PROMPT
@@ -32,6 +33,15 @@ def _dense_norm(cos: float) -> float:
 
 
 # ------------------------------------------------------------------------------------------------------ nodes
+
+def context_node(state: AgentState) -> AgentState:
+    """Conversation continuity: a follow-up is searched together with the topic it belongs to, so a talk does not drop mid-way."""
+    hist = state.get("history") or []
+    r = context.resolve(state["question"], hist, state.get("prev_question", ""))
+    label = f"followup of '{r['topic'][:40]}' kb={r['topic_kb']}" if r["followup"] and r["topic"] else ("followup (no topic)" if r["followup"] else "new topic")
+    text, casual = context.casual_expand(r["search_text"])                 # "sole is peeling" -> the manual's "adhesion peel strength"
+    return {"search_text": text, "casual": casual, "topic": r["topic"], "topic_kb": r["topic_kb"], "followup": r["followup"], "trace": [f"context:{label}"]}
+
 
 def memory_node(state: AgentState) -> AgentState:
     if state.get("user_id") == "eval":                        # evaluation replays have no memories
@@ -61,6 +71,8 @@ def retrieve_node(state: AgentState) -> AgentState:
                 score += 0.03
             if kind == "correction":
                 score += 0.05                                   # administrator-approved answers rank first
+            if state.get("followup") and state.get("topic_kb") and kb == state["topic_kb"]:
+                score += 0.08                                   # a follow-up stays on the answer it follows
             cur = hits.get(kb)
             if cur is None or score > cur["score"]:
                 hits[kb] = {"key": kb, "kind": kind, "kb_id": kb if kb > 0 else p.get("kb_id"), "title": p.get("title", ""), "text": body, "steps": p.get("steps", []),
@@ -70,7 +82,8 @@ def retrieve_node(state: AgentState) -> AgentState:
     if ranked:
         feat = {"hybrid": ranked[0]["score"], "cover": ranked[0]["cover"], "rr": 0.0, "margin": 0.0, "rr_margin": 0.0, "qlen": min(1.0, len(qw) / 10)}
     # second stage: a cross-encoder reads the question with each candidate answer and re-orders them
-    if state.get("use_rerank") and len(ranked) > 1 and rerank.ready():
+    # (a curated everyday-word match is not re-read: the cross-encoder does not know "peeling" means adhesion; the hybrid score decides)
+    if state.get("use_rerank") and not state.get("casual") and len(ranked) > 1 and rerank.ready():
         cand = ranked[: settings.rerank_candidates]
         rr = rerank.scores(q, [rerank.doc_text(c["title"], "", c["text"]) for c in cand])
         if len(rr) == len(cand):
@@ -173,22 +186,59 @@ def verify_node(state: AgentState) -> AgentState:
     return {"grounded": round(grounded, 3), "confidence": conf, "trace": [f"verify:grounded={grounded:.2f} cited_ok={cited_ok} margin={margin} conf={conf:.2f}"]}
 
 
-def decide(state: AgentState) -> Literal["finish", "retry", "abstain", "human"]:
+def decide(state: AgentState) -> Literal["finish", "retry", "documents"]:
     if state["confidence"] >= state["threshold"]:
         return "finish"
     docs = state.get("docs") or []
     near_miss = bool(docs) and (docs[0].get("rr", 0.0) >= 0.3 or docs[0]["score"] >= 0.5)    # a question that is clearly not about NEXUS-L is never widened until something matches
     if state.get("attempts", 0) <= settings.max_retries and near_miss:
         return "retry"
+    return "documents"                                         # no approved answer fits: look in the lab documents before giving up
+
+
+# using NEXUS-L itself ("how do I add a bonding test", "print the report") is not in the lab documents: those questions are left to the
+# approved answers and the PHP brain, never answered with a passage that merely shares the words
+_SYSTEM_Q = re.compile(
+    r"(^|\b)(how (do|can|should) i|where (do|can) i|how to|can i|i want to|i need to)\s+(add|create|make|enter|encode|record|register|open|edit|"
+    r"delete|remove|print|export|download|upload|import|send|save|submit|approve|sign|find|see|view|change|update|sync|attach|generate|log)\b"
+    r"|\b(nexus-?l|button|tab|screen|click|dashboard|inbox|interlink|designer|settings|password|account|login|log in|sign in|qr code|pdf)\b", re.I)
+
+
+def documents_node(state: AgentState) -> AgentState:
+    """Second source: the controlled lab documents. Answers only when a passage is clearly about the question, and names it."""
+    # an approved NEXUS-L answer that only just missed its threshold beats a document (how to use the system is not in the lab documents)
+    if state.get("draft") and state.get("confidence", 0.0) >= state["threshold"] - 0.03 and state.get("grounded", 0.0) >= 0.99:
+        out = finish_node(state)
+        out["trace"] = [f"documents:skipped (approved answer near threshold {state['confidence']:.2f})"]
+        return out
+    if _SYSTEM_Q.search(state["question"]):
+        ui = state.get("ui")
+        nxt = human_node(state) if ui and ui.last_error else abstain_node(state)
+        nxt["trace"] = ["documents:skipped (question about using NEXUS-L)"]
+        return nxt
+    ans = labdocs.answer(state.get("search_text") or state["question"], state.get("session_id", ""))
+    if ans and ans["confidence"] >= labdocs.THRESHOLD:
+        if state["user_id"] != "eval":
+            memory.remember(state["user_id"], f"Asked: {state['question']} -> answered from {ans['source']['file']} ({ans['source']['loc']})")
+        return {"route": "agent", "confidence": ans["confidence"], "trace": [f"documents:{ans['source']['file']} conf={ans['confidence']:.2f}"], "payload": _doc_payload(ans)}
+    if ans and ans.get("clarify"):                                 # close to a few documents, none clearly: ask which one
+        return {"route": "agent", "confidence": ans["confidence"], "trace": [f"documents:clarify ({len(labdocs._pending.get(state.get('session_id', ''), {}).get('options', []))} options)"],
+                "payload": _doc_payload(ans)}
+    best = f"{ans['source']['file']} conf={ans['confidence']:.2f}" if ans else "none"
     ui = state.get("ui")
-    return "human" if ui and ui.last_error else "abstain"      # a failing user with a visible error is handed to a person
+    nxt = human_node(state) if ui and ui.last_error else abstain_node(state)   # a failing user with a visible error is handed to a person
+    nxt["trace"] = [f"documents:no fit ({best})"]
+    return nxt
 
 
 def rewrite_node(state: AgentState) -> AgentState:
     """Self-correction: widen the search with what the page says the user is doing, then retrieve again."""
     ui = state.get("ui")
     extra = " ".join(x for x in ((ui.page if ui else ""), (ui.last_error if ui and ui.last_error else ""), *(a.split(":")[-1] for a in (ui.last_actions if ui else []))) if x)
-    base = state.get("search_text") or state["question"]
+    if state.get("followup") and state.get("topic") and state.get("attempts", 0) <= 1:
+        base = context.casual_expand(state["question"])[0]                           # the topic did not help: it may be a new subject, so try the message alone
+    else:
+        base = state.get("search_text") or state["question"]
     nxt = f"{base} {extra}".strip() if extra and extra not in base else base
     # never add the candidate's own words to the query: that would make any answer look like a perfect match
     return {"search_text": nxt, "trace": [f"rewrite:+'{extra[:40]}'"]}
@@ -211,19 +261,51 @@ def human_node(state: AgentState) -> AgentState:
     return {"route": "human", "payload": {"text": HUMAN_TEXT, "escalate": True, "confidence": state["confidence"], "route": "human", "log_gap": True}}
 
 
+def _doc_payload(ans: dict[str, Any]) -> dict[str, Any]:
+    return {"text": ans["text"], "steps": [], "kb_id": None, "confidence": ans["confidence"], "route": "agent", "source": "documents",
+            "document": ans["source"], "clarify": bool(ans.get("clarify")), "options": ans.get("options", []),
+            "citations": [{"source_id": f"labdoc:{ans['source']['path']}#{ans['source']['loc']}", "quote": ans["excerpt"][:300]}]}
+
+
+def first_node(state: AgentState) -> AgentState:
+    """Before anything else: the reply to "which one do you mean?" (a number, or a detail that narrows the last question), and questions
+    about the laboratory's own data ("how many failed this month", a Lab Reference), which the NEXUS-L database answers exactly."""
+    q, sid = state["question"], state.get("session_id", "")
+    picked = labdocs.choose(sid, q)
+    if picked and picked["confidence"] >= labdocs.THRESHOLD or (picked and picked.get("clarify")):
+        how = f"option {picked['chosen']}" if picked.get("chosen") else f"narrowed '{picked.get('narrowed', '')[:40]}'"
+        return {"route": "agent", "confidence": picked["confidence"], "payload": _doc_payload(picked), "trace": [f"clarified:{how} -> {picked['source']['file']}"]}
+    # "the standard for eyelets": the requirement row itself, not the whole test method (and "adult casual?" right after it)
+    req = requirements.answer(q, sid)
+    if req:
+        return {"route": "agent", "confidence": req["confidence"], "trace": [f"requirements:{req['source']['file']} {req['source']['loc']}"],
+                "payload": {"text": req["text"], "steps": [], "kb_id": None, "confidence": req["confidence"], "route": "agent", "source": "documents",
+                            "document": req["source"], "citations": [{"source_id": f"labdoc:{req['source']['path']}#{req['source']['loc']}", "quote": req["excerpt"]}]}}
+    # "open DTP..." stays the button that opens the report (rule route); a Lab Reference in any other question is looked up
+    data = None if (nlu_mod.local_parse(q).name == "open_report" and not re.search(r"\b(result|results|reading|readings|status|detail|details|complete|clearly|all)\b", q, re.I)) else dbskill.answer(q)
+    if data:
+        return {"route": "agent", "confidence": 0.99, "trace": [f"database:{data['kind']} rows={data.get('rows', data.get('found', 0))}"],
+                "payload": {"text": data["text"], "steps": [], "kb_id": None, "confidence": 0.99, "route": "agent", "source": "database", "kind": data["kind"],
+                            **({"actions": [{"type": "open", "label": f"Open {data['lab_ref']}", "url": f"dtr?open={data['lab_ref']}"}]} if data.get("lab_ref") else {})}}
+    return {"route": "next", "trace": ["first:none"]}
+
+
 def build_graph(checkpointer: Any | None = None):
     g = StateGraph(AgentState)
-    for name, fn in (("nlu", nlu_node), ("rule", rule_node), ("memory", memory_node), ("retrieve", retrieve_node), ("generate", generate_node),
-                     ("verify", verify_node), ("rewrite", rewrite_node), ("finish", finish_node), ("abstain", abstain_node), ("human", human_node)):
+    for name, fn in (("first", first_node), ("nlu", nlu_node), ("rule", rule_node), ("context", context_node), ("memory", memory_node), ("retrieve", retrieve_node),
+                     ("generate", generate_node), ("verify", verify_node), ("rewrite", rewrite_node), ("documents", documents_node), ("finish", finish_node),
+                     ("abstain", abstain_node), ("human", human_node)):
         g.add_node(name, fn)
-    g.set_entry_point("nlu")
-    g.add_conditional_edges("nlu", lambda s: s["route"], {"rule": "rule", "agent": "memory"})
+    g.set_entry_point("first")
+    g.add_conditional_edges("first", lambda s: "nlu" if s["route"] == "next" else "end", {"nlu": "nlu", "end": END})
+    g.add_conditional_edges("nlu", lambda s: s["route"], {"rule": "rule", "agent": "context"})
     g.add_edge("rule", END)
+    g.add_edge("context", "memory")
     g.add_edge("memory", "retrieve")
     g.add_edge("retrieve", "generate")
     g.add_edge("generate", "verify")
-    g.add_conditional_edges("verify", decide, {"finish": "finish", "retry": "rewrite", "abstain": "abstain", "human": "human"})
+    g.add_conditional_edges("verify", decide, {"finish": "finish", "retry": "rewrite", "documents": "documents"})
     g.add_edge("rewrite", "retrieve")
-    for n in ("finish", "abstain", "human"):
+    for n in ("finish", "abstain", "human", "documents"):
         g.add_edge(n, END)
     return g.compile(checkpointer=checkpointer)

@@ -106,6 +106,60 @@
     el.innerHTML = el.tagName === 'TBODY' ? `<tr><td colspan="${cols || 20}">${cell}</td></tr>` : cell;
   };
 
+  // ---------------------------------------------------- section-by-section loading shimmer
+  // Any container marked data-nx-load that is still empty (or only says "Loading…") shimmers in place until its own data
+  // has been written into it; every section finishes on its own, so a shimmer never sits above content that is already shown.
+  //   nxBusy(el, true|false)  start / stop it by hand (for a reload of the same section)
+  const SKEL_ROWS = (cols) => {
+    const w = ['65%', '80%', '55%', '90%', '70%', '60%'];
+    let rows = '';
+    for (let r = 0; r < 5; r++) {
+      let tds = '';
+      for (let c = 0; c < cols; c++) tds += `<td><span class="nx-shimmer nx-skel-cell" style="width:${w[(r + c) % w.length]}"></span></td>`;
+      rows += `<tr class="nx-skel-tr" data-nx-skel="1">${tds}</tr>`;
+    }
+    return rows;
+  };
+  const isPending = (el) => {
+    const kids = [...el.children].filter((c) => !c.hasAttribute('data-nx-skel'));
+    return !kids.length || /^\s*loading/i.test(el.textContent || '');
+  };
+  const watchers = new WeakMap();
+  window.nxBusy = (el, on) => {
+    if (!el) return;
+    const old = watchers.get(el);
+    if (old) { old.mo.disconnect(); clearTimeout(old.t); watchers.delete(el); }
+    if (!on) {
+      el.classList.remove('nx-sec-wait');
+      el.removeAttribute('aria-busy');
+      el.querySelectorAll('[data-nx-skel]').forEach((r) => r.remove());   // rows appended after the placeholder
+      return;
+    }
+    el.setAttribute('aria-busy', 'true');
+    if (el.tagName === 'TBODY') {
+      const table = el.closest('table');
+      const cols = Math.min(10, Math.max(3, (table && table.tHead && table.tHead.rows[0] ? table.tHead.rows[0].cells.length : 6)));
+      el.innerHTML = SKEL_ROWS(cols);
+    } else {
+      el.classList.add('nx-sec-wait');
+    }
+    // finished as soon as anything other than our own placeholder is written into the section
+    const mo = new MutationObserver((list) => {
+      const real = list.some((m) => [...m.addedNodes].some((n) => !(n.nodeType === 1 && n.hasAttribute('data-nx-skel'))) || m.type === 'characterData');
+      if (real) window.nxBusy(el, false);
+    });
+    mo.observe(el, { childList: true, subtree: true, characterData: true });
+    // never shimmer forever: a section that is never filled (hidden tab, failed request) is released after 20 s
+    const t = setTimeout(() => {
+      window.nxBusy(el, false);
+      if (el.tagName === 'TBODY' && el.querySelector('[data-nx-skel]')) el.innerHTML = '';
+    }, 20000);
+    watchers.set(el, { mo, t });
+  };
+  const autoBusy = () => document.querySelectorAll('[data-nx-load]').forEach((el) => { if (isPending(el)) window.nxBusy(el, true); });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', autoBusy, { once: true });
+  else autoBusy();
+
   // ---------------------------------------------------- top progress bar for slow connections
   let bar = null;
   let barTimer = null;
@@ -144,12 +198,18 @@
     if (e.metaKey || e.ctrlKey || e.shiftKey) return;
     try {
       const target = new URL(a.href, location.href);
-      if (target.origin === location.origin && target.pathname !== location.pathname) {
+      if (target.origin !== location.origin || target.pathname === location.pathname) return;
+      leaving = false;
+      setTimeout(() => {
+        if (e.defaultPrevented) return;           // a page script handled the click itself: nothing is loading
         window.nxProgress.start();
         nxNavSkeleton(true);
-      }
+        setTimeout(() => { if (!leaving) { window.nxProgress.done(); nxNavSkeleton(false); } }, 2500);
+      }, 120);                                    // quick page changes show no shimmer at all
     } catch (_) {}
   });
+  let leaving = false;
+  window.addEventListener('beforeunload', () => { leaving = true; });
   window.addEventListener('pageshow', () => { window.nxProgress?.done(); nxNavSkeleton(false); });
   // ---------------------------------------------------- a slow page change: the content area turns into grey shimmering blocks at once
   // (the server may need seconds to answer; the user sees that the click was received instead of a frozen page)

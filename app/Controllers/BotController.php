@@ -1368,7 +1368,7 @@ class BotController extends BaseController
 
         // Multi-turn conversational memory: load recent turns across bot and user
         $threadHistory = $this->db()->table('tbl_bot_chats')
-            ->select('sender, message')
+            ->select('sender, message, knowledge_id')
             ->where('thread_id', (int) $thread['id'])
             ->where('id <', $userChatId)
             ->orderBy('id', 'DESC')
@@ -1568,6 +1568,22 @@ class BotController extends BaseController
 
 
 
+                    // the last turns of this chat, whichever brain answered them: a follow-up keeps its topic
+
+
+
+
+
+
+
+                    'history' => array_map(static fn ($c) => ['sender' => (string) $c['sender'], 'text' => mb_substr((string) $c['message'], 0, 600), 'kb_id' => $c['knowledge_id'] !== null ? (int) $c['knowledge_id'] : null], $threadHistory),
+
+
+
+
+
+
+
                     'ui' => ['page' => $page, 'role' => strtolower((string) ($u['role'] ?? 'user')) === 'admin' ? 'admin' : 'user'],
 
 
@@ -1576,7 +1592,7 @@ class BotController extends BaseController
 
 
 
-                ], 4500);
+                ], 9000);                                                   // the AI brain answers in 1-5 s (document search and re-reading); waiting less hands a right answer to the fallback
 
 
 

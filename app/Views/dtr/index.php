@@ -174,7 +174,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                         <th>Overall Result</th>
                     </tr>
                 </thead>
-                <tbody id="dtr-tracker-tbody">
+                <tbody id="dtr-tracker-tbody" data-nx-load>
                     <?php foreach ($recentReports as $r): ?>
                         <?php
                             $resUpper = strtoupper((string) ($r['overall_result'] ?? 'PASS'));
@@ -1370,7 +1370,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                 <tr><td>Send by (提供方):</td><td><input type="hidden" id="ws-tests"></td><td>Technician(技术人员) :</td><td><input type="text" id="ws-tech" list="dtr-tech-list" autocomplete="off"></td></tr>
             </table>
 
-            <div id="ws-sections"></div>
+            <div id="ws-sections" data-nx-load></div>
 
             <table class="wsf-t wsf-foot"><tr>
                 <td class="wsf-cm">Comments备注 :<textarea id="ws-comments" rows="3"></textarea></td>
@@ -1465,7 +1465,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                             <th style="text-align:right">ACTION</th>
                         </tr>
                     </thead>
-                    <tbody id="wst-list-tbody">
+                    <tbody id="wst-list-tbody" data-nx-load>
                         <tr><td colspan="8" class="muted" style="text-align:center;padding:24px">Loading test sessions...</td></tr>
                     </tbody>
                 </table>
@@ -1628,7 +1628,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                         <th>Thickness Max</th>
                     </tr>
                 </thead>
-                <tbody id="exp-standards-tbody">
+                <tbody id="exp-standards-tbody" data-nx-load>
                     <tr><td colspan="6" class="muted" style="text-align:center;padding:12px">Select a Material Type above or click "Run Smart Standards &amp; Lookup" to view matching specifications.</td></tr>
                 </tbody>
             </table>
@@ -1681,7 +1681,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                         <th>Shoe Master</th><th>Laboratory Test</th><th>Technician</th><th>Test Type</th><th>Lacking</th><th>Retest Details</th>
                     </tr>
                 </thead>
-                <tbody id="dtr-intake-tbody"></tbody>
+                <tbody id="dtr-intake-tbody" data-nx-load></tbody>
             </table>
         </div>
         <div class="dtr-modal-footer">
@@ -1730,7 +1730,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                 <thead>
                     <tr><th>Active</th><th>Line</th><th>Side</th><th>Test Type Lab Ref No</th><th>Production Code</th><th>Style No.</th><th>Colorway</th><th>MTL #</th><th>Shoe Master</th><th>No. of Shoes</th><th>Test Type</th></tr>
                 </thead>
-                <tbody id="dtr-wshoe-tbody"></tbody>
+                <tbody id="dtr-wshoe-tbody" data-nx-load></tbody>
             </table>
         </div>
         <div class="dtr-modal-footer">
@@ -1773,7 +1773,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                 <thead>
                     <tr><th>Type of Materials</th><th>Material Name</th><th>Container No.</th><th>Prod Code</th><th>Processing No.</th><th>Quantity (Materials Received)</th><th>Estimated Timeline (Finish Testing)</th></tr>
                 </thead>
-                <tbody id="dtr-mrec-tbody"></tbody>
+                <tbody id="dtr-mrec-tbody" data-nx-load></tbody>
             </table>
         </div>
         <div class="dtr-modal-footer">
@@ -1797,7 +1797,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
             </div>
             <table class="dtr-table" style="width:100%">
                 <thead><tr><th>Lab Ref No.</th><th>Style</th><th>Color</th><th>Result</th><th>Mode of Failure</th><th>Analysis / Reason</th><th>Tested</th><th></th></tr></thead>
-                <tbody id="dtr-retest-tbody"></tbody>
+                <tbody id="dtr-retest-tbody" data-nx-load></tbody>
             </table>
         </div>
         <div class="dtr-modal-footer">

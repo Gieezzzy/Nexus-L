@@ -9,18 +9,25 @@ $py  = 'C:\NexusAI\venv\Scripts\python.exe'
 $pg  = 'C:\Program Files\PostgreSQL\16\bin\postgres.exe'
 $app = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-if (-not (Get-NetTCPConnection -State Listen -LocalPort 5440 -ErrorAction SilentlyContinue)) {
-    if (Test-Path 'C:\NexusAI\pgdata\postmaster.pid') {
+# NEXUS-L runs this file whenever its health check gets no answer, which also happens while a process is still starting (the
+# port is not open yet). So a process counts as running when it exists, not only when its port listens: otherwise a second copy
+# starts, and the lock file of a PostgreSQL that is still starting gets deleted.
+function Running([string]$exe, [string]$match) {
+    [bool](Get-CimInstance Win32_Process -Filter "Name='$exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*$match*" })
+}
+$pgUp = Running 'postgres.exe' 'NexusAI\pgdata'
+if (-not $pgUp -and -not (Get-NetTCPConnection -State Listen -LocalPort 5440 -ErrorAction SilentlyContinue)) {
+    if (Test-Path 'C:\NexusAI\pgdata\postmaster.pid') {      # left behind by a crash or power cut: no postgres.exe owns it
         Remove-Item 'C:\NexusAI\pgdata\postmaster.pid' -Force -ErrorAction SilentlyContinue
     }
     Start-Process $pg -ArgumentList '-D', 'C:\NexusAI\pgdata', '-p', '5440' -WindowStyle Minimized
     Start-Sleep 4
 }
-if (-not (Get-NetTCPConnection -State Listen -LocalPort 6006 -ErrorAction SilentlyContinue)) {
+if (-not (Running 'python.exe' 'phoenix.server.main') -and -not (Get-NetTCPConnection -State Listen -LocalPort 6006 -ErrorAction SilentlyContinue)) {
     $env:PHOENIX_WORKING_DIR = 'C:\NexusAI\phoenix'; $env:PHOENIX_HOST = '127.0.0.1'; $env:PHOENIX_PORT = '6006'
     Start-Process $py -ArgumentList '-m', 'phoenix.server.main', 'serve' -WindowStyle Minimized
 }
-if ($WithRasa -and -not (Get-NetTCPConnection -State Listen -LocalPort 5005 -ErrorAction SilentlyContinue)) {
+if ($WithRasa -and -not (Running 'python.exe' 'rasa.exe') -and -not (Get-NetTCPConnection -State Listen -LocalPort 5005 -ErrorAction SilentlyContinue)) {
     # Rasa needs about 1.6 GB of committed memory (TensorFlow). This PC has no page file and only ~2 GB of commit to spare, so Rasa is
     # opt-in: without it the service uses its built-in rule router automatically (AI_USE_RASA=true falls back when Rasa is not running).
     # Rasa 3.6 (NLU only) runs in its own Python 3.10 environment on E:; telemetry off, listens on 127.0.0.1 only
@@ -28,7 +35,7 @@ if ($WithRasa -and -not (Get-NetTCPConnection -State Listen -LocalPort 5005 -Err
     $model = (Get-ChildItem 'E:\NexusAI\rasa-models' -Filter *.tar.gz | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
     Start-Process 'E:\NexusAI\rasa-venv\Scripts\rasa.exe' -ArgumentList 'run', '--enable-api', '-i', '127.0.0.1', '-p', '5005', '-m', $model -WorkingDirectory (Join-Path $app 'rasa') -WindowStyle Minimized
 }
-if (-not (Get-NetTCPConnection -State Listen -LocalPort 8765 -ErrorAction SilentlyContinue)) {
+if (-not (Running 'python.exe' 'app.main:app') -and -not (Get-NetTCPConnection -State Listen -LocalPort 8765 -ErrorAction SilentlyContinue)) {
     $env:HF_HUB_OFFLINE = '1'                        # the embedding model is already on disk: nothing is downloaded or sent
     Start-Process $py -ArgumentList '-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '8765' -WorkingDirectory $app -WindowStyle Minimized
 }

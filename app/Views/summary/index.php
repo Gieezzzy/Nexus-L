@@ -349,7 +349,7 @@
                         <th style="min-width:115px;text-align:right">ACTION</th>
                     </tr>
                 </thead>
-                <tbody id="summary-table-tbody">
+                <tbody id="summary-table-tbody" data-nx-load>
                     <tr>
                         <td colspan="10" style="text-align:center;padding:36px;color:#64748b">
                             <div style="display:flex;align-items:center;justify-content:center;gap:8px">

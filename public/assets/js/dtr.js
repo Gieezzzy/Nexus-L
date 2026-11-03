@@ -3109,6 +3109,28 @@
   (() => {
     const q = new URLSearchParams(location.search);
     const [slug, id] = String(q.get('open') || '').split(':');
+    const ref = String(q.get('ref') || '').trim();
+    // ?open=bonding&ref=<Lab Ref No> (from the dashboard tracker): the saved report of that lab reference is selected in the
+    // list; a sample that has no report yet opens a new bonding form with its Lab Ref No filled in
+    if (slug === 'bonding' && !id && ref) {
+      setTimeout(async () => {
+        await bondingReady;
+        switchTab('bonding');
+        setReportKind('bonding');
+        await loadBondingRecordList();
+        const sel = $('#dtr-bonding-record-select');
+        const opt = sel && [...sel.options].find((o) => o.value && o.textContent.trim().startsWith(ref));
+        if (opt) {
+          sel.value = opt.value;
+          await loadSingleBondingRecord(opt.value);
+        } else {
+          const lr = $('#bf_LabRefNo');
+          if (lr) { lr.value = ref; lr.dispatchEvent(new Event('input', { bubbles: true })); }
+          if (window.nxToast) nxToast(`${ref} has no bonding report yet: a new report was started for it.`, 'info', 6000);
+        }
+      }, 900);
+      return;
+    }
     if (!slug || !/^[a-z]+$/.test(slug) || !/^\d+$/.test(id || '')) return;
     setTimeout(async () => {
       await bondingReady; // the blank form must not overwrite the linked report

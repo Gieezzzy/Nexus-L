@@ -44,6 +44,11 @@ class AgentState(TypedDict, total=False):
     question: str                 # as the user typed it (redacted)
     search_text: str              # what retrieval uses; widened by the self-correction loop
     prev_question: str
+    history: list[dict[str, Any]]  # last turns {sender, text, kb_id}, oldest first (conversation continuity)
+    topic: str                    # the real question a follow-up belongs to
+    topic_kb: int | None          # the answer given to that topic; ranked first again for a follow-up
+    followup: bool
+    casual: bool                  # the search text was rewritten from everyday words to the manual's words
     ui: UiState
     intent: Intent
     route: Literal["rule", "agent", "abstain", "human"]

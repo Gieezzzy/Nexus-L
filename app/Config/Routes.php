@@ -34,6 +34,7 @@ $routes->get('interlink/service/verify', 'InterlinkServiceController::verify');
 // ---------------------------------------------------------------------
 $routes->group('', ['filter' => 'auth'], static function (RouteCollection $routes): void {
     $routes->get('dashboard', 'DashboardController::index', ['as' => 'dashboard']);
+    $routes->get('dashboard/data', 'DashboardController::data');
     $routes->get('help', 'HelpController::index', ['as' => 'help']);
     $routes->get('analytics', 'AnalyticsController::index', ['as' => 'analytics']);
     $routes->get('/', static fn () => redirect()->route('dashboard'));

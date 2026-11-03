@@ -358,7 +358,7 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                             <td><input type="text" data-col="cancellation_reason" placeholder="- Search -"></td>
                         </tr>
                     </thead>
-                    <tbody id="itk-grid-tbody">
+                    <tbody id="itk-grid-tbody" data-nx-load>
                         <!-- Populated dynamically by interlink.js from $reports -->
                     </tbody>
                 </table>

@@ -134,7 +134,7 @@
                             <th style="text-align:right">ACTION</th>
                         </tr>
                     </thead>
-                    <tbody id="wst-list-tbody">
+                    <tbody id="wst-list-tbody" data-nx-load>
                         <tr><td colspan="8" class="muted" style="text-align:center;padding:24px">Loading test sessions...</td></tr>
                     </tbody>
                 </table>

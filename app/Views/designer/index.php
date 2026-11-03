@@ -130,7 +130,7 @@
     <div class="card glass">
         <h4>Managers &amp; Supervisors who approve reports</h4>
         <p class="muted sm">A report can be sent to InterLink only after one of these people approves it: they scan the QR code on the Upload Form (or open the link from Synology Chat), sign in with their NEXUS-L account, check the report and sign. Their signature and the date are stamped on the report PDF.</p>
-        <table class="dsg-xt" id="dsg-sig-table"><tr><td class="muted sm">Loading…</td></tr></table>
+        <table class="dsg-xt" id="dsg-sig-table" data-nx-load><tr><td class="muted sm">Loading…</td></tr></table>
     </div>
     <div class="card glass">
         <h4 id="dsg-sig-form-title">Add a signatory</h4>

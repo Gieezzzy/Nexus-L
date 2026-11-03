@@ -60,9 +60,9 @@
 
 <section id="br-overview" class="br-pane">
 
-    <div class="br-cards" id="br-cards"></div>
+    <div class="br-cards" id="br-cards" data-nx-load></div>
 
-    <div class="card glass"><h4>Most visited pages (7 days)</h4><div id="br-pages" class="muted sm">Loading…</div></div>
+    <div class="card glass"><h4>Most visited pages (7 days)</h4><div id="br-pages" data-nx-load class="muted sm">Loading…</div></div>
 
 </section>
 
@@ -76,7 +76,7 @@
 
             <div class="br-filter"><select id="br-chat-status"><option value="escalated">With an administrator</option><option value="">All</option><option value="resolved">Resolved</option></select></div>
 
-            <ul id="br-threads" class="br-list"></ul></div>
+            <ul id="br-threads" data-nx-load class="br-list"></ul></div>
 
         <div class="card glass" id="br-thread-box"><p class="muted sm">Pick a conversation.</p></div>
 
@@ -92,7 +92,7 @@
 
         <p class="muted sm">Answer the most frequent ones first. Once you answer, the assistant knows it for everyone.</p>
 
-        <ul id="br-un-list" class="br-list"></ul></div>
+        <ul id="br-un-list" data-nx-load class="br-list"></ul></div>
 
 </section>
 
@@ -160,7 +160,7 @@
 
         <p class="muted sm">The assistant watches what people ask, which answers get a thumbs-down, and how they rephrase. It only <b>proposes</b>: nothing becomes an answer until you apply it. Questions are stored without names.</p>
 
-        <div class="br-cards" id="br-learn-stats"></div>
+        <div class="br-cards" id="br-learn-stats" data-nx-load></div>
 
         <div id="br-learn-loop"></div>
 
@@ -168,7 +168,7 @@
 
         <div class="br-row"><button type="button" class="dsg-btn dsg-primary" id="br-learn-refresh">Look for new suggestions</button><span id="br-learn-msg" class="muted sm"></span></div>
 
-        <ul id="br-learn-list" class="br-list"></ul></div>
+        <ul id="br-learn-list" data-nx-load class="br-list"></ul></div>
 
 </section>
 
@@ -180,7 +180,7 @@
 
         <p class="muted sm">Errors, failed requests and long waits, grouped. Write the fix once to teach the assistant.</p>
 
-        <ul id="br-iss-list" class="br-list"></ul></div>
+        <ul id="br-iss-list" data-nx-load class="br-list"></ul></div>
 
 </section>
 
@@ -192,7 +192,7 @@
 
         <div class="br-filter"><input type="text" id="br-k-q" placeholder="Search the knowledge…"><select id="br-k-status"><option value="">All</option><option value="approved">Approved</option><option value="draft">Draft</option><option value="retired">Retired</option></select></div>
 
-        <div class="br-tablewrap"><table class="br-table"><thead><tr><th>Title</th><th>Kind</th><th>Source</th><th>Uses</th><th>Helpful</th><th>Status</th><th></th></tr></thead><tbody id="br-k-rows"></tbody></table></div>
+        <div class="br-tablewrap"><table class="br-table"><thead><tr><th>Title</th><th>Kind</th><th>Source</th><th>Uses</th><th>Helpful</th><th>Status</th><th></th></tr></thead><tbody id="br-k-rows" data-nx-load></tbody></table></div>
 
     </div>
 
@@ -246,7 +246,7 @@
 
 <section id="br-health" class="br-pane" hidden>
 
-    <div class="card glass"><h4>System health</h4><ul id="br-h-checks" class="br-list"></ul>
+    <div class="card glass"><h4>System health</h4><ul id="br-h-checks" data-nx-load class="br-list"></ul>
 
         <div class="br-row"><button type="button" class="dsg-btn" id="br-h-flush">Export the Brain now</button><button type="button" class="dsg-btn dsg-danger" id="br-h-restore">Restore knowledge from knowledge.back</button><span id="br-h-msg" class="muted sm"></span></div></div>
 

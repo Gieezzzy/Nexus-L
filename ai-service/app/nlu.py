@@ -69,6 +69,12 @@ def nlu_node(state: AgentState) -> AgentState:
     import asyncio
 
     intent = asyncio.run(rasa_parse(state["question"])) if settings.use_rasa else local_parse(state["question"])
+    if intent.name in {"greet", "thanks", "feedback_negative"} and local_parse(state["question"]).name != intent.name:
+        intent = Intent(name="nlu_fallback", confidence=0.0)       # a bare "where?" is a follow-up, not a greeting: the classifier alone may not say so
+    if intent.name == "open_report":
+        # only a real Lab Reference can be opened ("What machine is DTP-QC-001?" is a question, not a report to open)
+        loc = local_parse(state["question"])
+        intent = loc if loc.name == "open_report" else Intent(name="nlu_fallback", confidence=0.0)
     is_rule = intent.name in RULE_INTENTS and intent.confidence >= settings.rasa_rule_threshold
     out: AgentState = {"intent": intent, "route": "rule" if is_rule else "agent", "attempts": 0, "search_text": state["question"],
                        "trace": [f"nlu:{intent.name}@{intent.confidence:.2f}->{'rule' if is_rule else 'agent'}"]}

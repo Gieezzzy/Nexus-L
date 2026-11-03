@@ -48,7 +48,7 @@
             <input type="text" id="sc-q" placeholder="Search Lab Ref / TR / material / style" style="flex:1;min-width:180px">
             <select id="sc-cat"><option value="all">All types</option></select>
         </div>
-        <div class="sc-list"><table><thead><tr><th></th><th>Lab Ref</th><th>Type</th><th>Material / style</th><th>Result</th></tr></thead><tbody id="sc-labrefs"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody></table></div>
+        <div class="sc-list"><table><thead><tr><th></th><th>Lab Ref</th><th>Type</th><th>Material / style</th><th>Result</th></tr></thead><tbody id="sc-labrefs" data-nx-load><tr><td colspan="5" class="muted">Loading…</td></tr></tbody></table></div>
         <div class="sc-row" style="margin-top:8px"><button type="button" class="sc-btn primary" id="sc-fill" disabled>2. Send to InterLink (1 click)</button><span id="sc-msg" class="muted sm"></span></div>
     </div>
 </div>

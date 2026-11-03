@@ -427,7 +427,7 @@ button .ic,.dsg-btn .ic,.sc-btn .ic,.il-btn .ic{margin-right:4px}
   opacity: 0;
 }
 /* a page change is in progress: the old content is dimmed and shimmering blocks show that the click was received */
-.nx-navigating #main-content > :not(#nx-nav-skel) { opacity: .25; pointer-events: none; transition: opacity .15s; }
+.nx-navigating #main-content > :not(#nx-nav-skel) { display: none; }   /* the shimmer stands in for the page, never above it */
 #nx-nav-skel { padding: 16px 4px; }
 #nx-nav-skel .nx-nav-title { display: block; height: 22px; width: 32%; margin: 0 0 14px 8px; }
 #nx-slow {
@@ -436,7 +436,13 @@ button .ic,.dsg-btn .ic,.sc-btn .ic,.il-btn .ic{margin-right:4px}
   box-shadow: 0 6px 20px rgba(15, 23, 42, .3); transition: opacity .25s, transform .25s;
 }
 #nx-slow.show { opacity: 1; transform: translate(-50%, 0); }
-@media (prefers-reduced-motion: reduce) { .nx-shimmer { animation: none; } }
+/* a section waiting for its data: grey block with a light band sliding across (transform only, no repaint) */
+@keyframes nxSecShim { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.nx-sec-wait { position: relative; min-height: 120px; overflow: hidden; border-radius: 10px; background: #e9eef5 !important; }
+.nx-sec-wait > * { visibility: hidden; }
+.nx-sec-wait::after { content: ""; position: absolute; inset: 0; pointer-events: none; will-change: transform;
+  background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.75) 50%, transparent 70%); animation: nxSecShim 1.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .nx-shimmer { animation: none; } .nx-sec-wait::after { animation: none; opacity: 0; } }
 /* ---- assistant: charts, files, enlarged chart ---- */
 .nxbot-chart { margin: 8px 0 4px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; padding: 6px; max-width: 100%; }
 .nxbot-chart canvas { display: block; max-width: 100%; }

@@ -29,7 +29,7 @@
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
             <input id="msgr-q" type="search" placeholder="Search people" autocomplete="off" maxlength="50" aria-label="Search people">
         </div>
-        <ul id="msgr-items" class="msgr-items"></ul>
+        <ul id="msgr-items" data-nx-load class="msgr-items"></ul>
         <p id="msgr-none" class="msgr-empty hidden">No conversations yet. Search for a person to start one.</p>
     </aside>
 
@@ -134,7 +134,7 @@
         <div id="inf-sub" class="inf-view hidden">
             <div class="inf-subbar"><button type="button" id="inf-back" class="msgr-icon" aria-label="Back"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><b id="inf-subtitle"></b></div>
             <div id="inf-search-box" class="msgr-search hidden"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="inf-q" type="search" placeholder="Search in conversation" maxlength="60" autocomplete="off"></div>
-            <ul id="inf-list" class="inf-list"></ul>
+            <ul id="inf-list" data-nx-load class="inf-list"></ul>
             <div id="inf-grid" class="inf-grid"></div>
             <button type="button" id="inf-more" class="inf-save hidden">Load more</button>
             <p id="inf-empty" class="msgr-empty hidden"></p>

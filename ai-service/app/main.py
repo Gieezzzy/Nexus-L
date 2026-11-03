@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from opentelemetry import trace
 from pydantic import BaseModel, Field
 
-from app import db, indexer, memory, pipeline, review, store
+from app import context, db, indexer, labdocs, memory, pipeline, review, store
 from app.agent import build_graph
 from app.config import settings
 from app.state import UiState
@@ -24,9 +24,18 @@ log = logging.getLogger("nexus.main")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_tracing()
-    db.migrate()
+    for attempt in range(6):                                # PostgreSQL may still be starting (after a reboot it starts with us)
+        try:
+            db.migrate()
+            break
+        except Exception as e:                              # answers do not need it; the audit log and memory wait for it
+            log.warning("PostgreSQL not ready (%s), attempt %d", str(e)[:120], attempt + 1)
+            time.sleep(5)
     store.client()
     app.state.docs = indexer.index_docs()
+    # the document word index and the reranker load once here, so the first person who asks does not wait for them
+    import threading
+    threading.Thread(target=lambda: (labdocs._kw_index(), labdocs.search("warm up")), daemon=True).start()
     log.info("indexed: %s", app.state.docs)
     saver = None
     try:
@@ -67,6 +76,7 @@ class AskIn(BaseModel):
     user_id: str
     message: str = Field(min_length=1, max_length=1000)
     prev_question: str = ""
+    history: list[dict[str, Any]] = Field(default_factory=list, max_length=12)   # last turns {sender, text, kb_id} from NEXUS-L (either brain may have answered them)
     ui: UiState | None = None
     live_kb_id: int | None = None          # shadow mode: what the production bot answered
     live_conf: float | None = None
@@ -129,7 +139,8 @@ def health() -> dict[str, Any]:
     except Exception:
         ok_db = False
     return {"ok": ok_db, "docs": store.count("docs"), "corrections": store.count("corrections"), "threshold": db.active_threshold() if ok_db else None,
-            "mode": settings.llm_mode, "rasa": settings.use_rasa}
+            "mode": settings.llm_mode, "rasa": settings.use_rasa,
+            "labdocs": labdocs.status().get("indexed", 0)}
 
 
 @app.post("/ask", dependencies=[Depends(auth)])
@@ -140,17 +151,24 @@ def ask(body: AskIn) -> dict[str, Any]:
     ui = body.ui or derive_ui(s)
     act = db.active_settings()
     tau = float(act["threshold"])
+    hist = context.clean_history(body.history) or context.load_history(s)       # before this message is stored, so it is not its own context
     db.run("INSERT INTO sessions (session_id, user_id) VALUES (%s,%s) ON CONFLICT DO NOTHING", (s, u))
     db.run("INSERT INTO messages (session_id, sender, body) VALUES (%s,'user',%s)", (s, q))
     with trace.get_tracer("nexus-l").start_as_current_span("ask") as span:
         span.set_attribute("session.id", s)
         out = app.state.graph.invoke(
-            {"session_id": s, "user_id": u, "question": q, "prev_question": redact(body.prev_question), "ui": ui, "threshold": tau, "use_rerank": act["rerank"], "calib": act["calib"]},
+            {"session_id": s, "user_id": u, "question": q, "prev_question": redact(body.prev_question), "history": hist, "ui": ui, "threshold": tau, "use_rerank": act["rerank"], "calib": act["calib"]},
             config={"configurable": {"thread_id": s}},
         )
         trace_id = format(span.get_span_context().trace_id, "032x")
     p: dict[str, Any] = dict(out["payload"])
-    p["trace_id"], p["trail"], p["threshold"] = trace_id, out.get("trace", []), tau
+    trail = out.get("trace", [])
+    start = max((i for i, x in enumerate(trail) if x.startswith("nlu:")), default=0)       # the checkpointer keeps earlier turns' trace: this turn only
+    p["trace_id"], p["trail"], p["threshold"] = trace_id, trail[start:], tau
+    if p.get("source") == "documents":
+        p["threshold"] = labdocs.THRESHOLD                 # a document answer passed the document threshold, not the approved-answer one
+    if p.get("source") == "database" or p.get("clarify"):
+        p["threshold"] = 0.0                               # data read from NEXUS-L itself, or Lexus asking which document is meant: shown as is
     ms = int((time.time() - t0) * 1000)
     mid = db.one("INSERT INTO messages (session_id, sender, body, trace_id, route, confidence, kb_id) VALUES (%s,'bot',%s,%s,%s,%s,%s) RETURNING message_id",
                  (s, p["text"], trace_id, p.get("route"), p.get("confidence"), p.get("kb_id")))
@@ -226,6 +244,36 @@ def decide(cid: int, d: DecideIn) -> dict[str, Any]:
 @app.post("/admin/index", dependencies=[Depends(auth)])
 def reindex(force: bool = False) -> dict[str, Any]:
     return indexer.index_docs(force)
+
+
+@app.post("/admin/labdocs/index", dependencies=[Depends(auth)])
+def labdocs_index(full: bool = False) -> dict[str, Any]:
+    """Embeds the passages written by labdocs_extract.py (new and changed ones only unless full=true). Runs in the background."""
+    return labdocs.index_in_background(full)
+
+
+@app.get("/admin/labdocs/status", dependencies=[Depends(auth)])
+def labdocs_status() -> dict[str, Any]:
+    return labdocs.status()
+
+
+@app.get("/admin/labdocs/search", dependencies=[Depends(auth)])
+def labdocs_search(q: str) -> dict[str, Any]:
+    """What the document search finds for a question, with the scores (for checking and tuning)."""
+    return {"answer": labdocs.answer(q)}
+
+
+@app.post("/admin/labdocs/reload", dependencies=[Depends(auth)])
+def labdocs_reload() -> dict[str, Any]:
+    """Reads weights.json again (after tools/train_lexus.py --save), without a restart."""
+    return {"weights": labdocs.load_weights()}
+
+
+@app.get("/admin/labdocs/features", dependencies=[Depends(auth)])
+def labdocs_features(q: str) -> dict[str, Any]:
+    """Every candidate passage for a question with the parts of its score (for tools/tune_labdocs.py)."""
+    keep = ("pid", "file", "loc", "folder", "title", "text", "rr", "cover", "wcover", "named", "logit", "auth", "dense", "base", "ocr", "conf")
+    return {"candidates": [{f: c.get(f) for f in keep} for c in labdocs.search(q)], "weights": labdocs.WEIGHTS}
 
 
 @app.post("/admin/pipeline/run", dependencies=[Depends(auth)])

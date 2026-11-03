@@ -23,8 +23,14 @@ def load_knowledge() -> list[dict[str, Any]]:
     return [json.loads(line) for line in f.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+def _is_stub(r: dict[str, Any]) -> bool:
+    """Placeholder test-method entries ("Follow official VF standard operating procedures across all 1 pages") say nothing a technician
+    can use; they would win over the real document passage, so the documents answer those questions instead."""
+    return "Follow official VF standard operating procedures across all" in (r.get("body") or "")
+
+
 def index_docs(force: bool = False) -> dict[str, Any]:
-    rows = load_knowledge()
+    rows = [r for r in load_knowledge() if not _is_stub(r)]
     digest = hashlib.sha1(json.dumps(rows, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     marker = settings.home / "knowledge.sha1"
     if not force and marker.exists() and marker.read_text() == digest and store.count("docs") == len(rows):
