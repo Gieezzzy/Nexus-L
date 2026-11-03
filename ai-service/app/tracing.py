@@ -12,6 +12,14 @@ def init_tracing() -> None:
     """Every LangGraph node, model call and retriever call becomes a span in Phoenix (self-hosted, on this machine)."""
     if not settings.phoenix_enabled:
         return
+    import socket
+    try:
+        s = socket.create_connection(("127.0.0.1", 6006), timeout=0.2)
+        s.close()
+    except OSError:
+        log.info("Phoenix collector on port 6006 is not active. Tracing gracefully bypassed.")
+        return
+
     os.environ.setdefault("PHOENIX_WORKING_DIR", str(settings.home / "phoenix"))
     try:
         from openinference.instrumentation.langchain import LangChainInstrumentor
