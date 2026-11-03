@@ -24,6 +24,12 @@ $routes->group('', ['filter' => 'guest'], static function (RouteCollection $rout
 });
 
 // ---------------------------------------------------------------------
+// InterLink background service -> NEXUS-L (no login: protected by the shared service key in the X-Service-Key header)
+// ---------------------------------------------------------------------
+$routes->post('interlink/service/callback', 'InterlinkServiceController::callback');
+$routes->get('interlink/service/verify', 'InterlinkServiceController::verify');
+
+// ---------------------------------------------------------------------
 // Authenticated routes - nothing below is reachable without logging in
 // ---------------------------------------------------------------------
 $routes->group('', ['filter' => 'auth'], static function (RouteCollection $routes): void {
@@ -76,6 +82,9 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->post('interlink/proxy', 'InterlinkController::proxy');
     $routes->get('interlink/center/status', 'InterlinkController::centerStatus');
     $routes->post('interlink/center/fill', 'InterlinkController::centerFill');
+    $routes->get('interlink/service/status', 'InterlinkServiceController::status');
+    $routes->post('interlink/service/submit', 'InterlinkServiceController::submit');
+    $routes->get('interlink/service/feed', 'InterlinkServiceController::feed');
 
     // QC Lab Digital Test Reports (#Digital Test Report & Bonding LIS System)
     $routes->get('dtr', 'DtrController::index', ['as' => 'dtr']);
@@ -144,16 +153,31 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->post('bot/ask', 'BotController::ask');
     $routes->post('bot/events', 'BotController::events');
     $routes->post('bot/feedback', 'BotController::feedback');
+    $routes->get('bot/file/(:segment)', 'BotController::file/$1');
+    $routes->post('bot/chart-pdf', 'BotController::chartPdf');
     $routes->post('bot/escalate', 'BotController::escalate');
     $routes->get('bot/thread', 'BotController::thread');
     $routes->get('bot/topic', 'BotController::topic');
     $routes->get('bot/suggest', 'BotController::suggest');
     $routes->get('bot/history', 'BotController::history');
     $routes->get('bot/badge', 'BotController::badge');
+    $routes->post('bot/toggle-ai', 'BotController::toggleAi');
+    $routes->post('brain/toggle', 'BotController::toggleAi');
 });
 
 // Report Designer: admins only.
 $routes->group('', ['filter' => 'auth:admin'], static function (RouteCollection $routes): void {
+    // Settings (Admin only): InterLink service address and key, the database in use and a transfer to another one, report defaults
+    $routes->get('settings', 'SettingsController::index', ['as' => 'settings']);
+    $routes->post('settings/save', 'SettingsController::save');
+    $routes->post('settings/service/test', 'SettingsController::testService');
+    $routes->post('settings/ai/test', 'SettingsController::testAi');
+    $routes->post('settings/ai/seed', 'SettingsController::seedAiKnowledge');
+    $routes->post('settings/git/sync', 'SettingsController::gitSync');
+    $routes->post('settings/db/test', 'SettingsController::dbTest');
+    $routes->post('settings/db/switch', 'SettingsController::dbSwitch');
+    $routes->post('settings/transfer/start', 'SettingsController::transferStart');
+    $routes->get('settings/transfer/status', 'SettingsController::transferStatus');
     $routes->get('designer', 'DesignerController::index', ['as' => 'designer']);
     $routes->post('designer/save', 'DesignerController::save');
     $routes->post('designer/reset', 'DesignerController::reset');
@@ -178,6 +202,15 @@ $routes->group('', ['filter' => 'auth:admin'], static function (RouteCollection 
     $routes->post('brain/import', 'BotController::import');
     $routes->get('brain/unanswered', 'BotController::unanswered');
     $routes->post('brain/unanswered/answer', 'BotController::unansweredAnswer');
+    $routes->get('brain/universe/graph', 'BotController::universeGraph');
+    $routes->get('brain/universe/feed', 'BotController::universeFeed');
+    $routes->get('brain/ai/status', 'BotController::aiStatus');
+    $routes->post('brain/ai/train', 'BotController::aiTrain');
+    $routes->get('brain/ai/review', 'BotController::aiReview');
+    $routes->post('brain/ai/review/seed', 'BotController::aiReviewSeed');
+    $routes->post('brain/ai/label', 'BotController::aiLabel');
+    $routes->get('brain/learn', 'BotController::learn');
+    $routes->post('brain/learn/decide', 'BotController::learnDecide');
     $routes->get('brain/issues', 'BotController::issues');
     $routes->post('brain/issues/resolve', 'BotController::issuesResolve');
     $routes->get('brain/health', 'BotController::health');
