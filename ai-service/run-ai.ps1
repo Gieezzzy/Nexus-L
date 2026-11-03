@@ -10,8 +10,11 @@ $pg  = 'C:\Program Files\PostgreSQL\16\bin\postgres.exe'
 $app = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 if (-not (Get-NetTCPConnection -State Listen -LocalPort 5440 -ErrorAction SilentlyContinue)) {
+    if (Test-Path 'C:\NexusAI\pgdata\postmaster.pid') {
+        Remove-Item 'C:\NexusAI\pgdata\postmaster.pid' -Force -ErrorAction SilentlyContinue
+    }
     Start-Process $pg -ArgumentList '-D', 'C:\NexusAI\pgdata', '-p', '5440' -WindowStyle Minimized
-    Start-Sleep 6
+    Start-Sleep 4
 }
 if (-not (Get-NetTCPConnection -State Listen -LocalPort 6006 -ErrorAction SilentlyContinue)) {
     $env:PHOENIX_WORKING_DIR = 'C:\NexusAI\phoenix'; $env:PHOENIX_HOST = '127.0.0.1'; $env:PHOENIX_PORT = '6006'

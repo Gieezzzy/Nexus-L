@@ -88,7 +88,14 @@ class BrainEvents
     {
         $c = cache('brain_ai_online');
         if ($c === null || $c === false) {
-            $c = AiBridge::enabled() && AiBridge::get('/health', 2000) !== null ? 'y' : 'n';
+            $isOnline = AiBridge::enabled() && AiBridge::get('/health', 1500) !== null;
+            if (! $isOnline && AiBridge::enabled()) {
+                $cmd = ROOTPATH . 'run-ai.cmd';
+                if (is_file($cmd)) {
+                    @pclose(@popen('start /B "" "' . $cmd . '"', 'r'));
+                }
+            }
+            $c = $isOnline ? 'y' : 'n';
             cache()->save('brain_ai_online', $c, 8);
         }
 

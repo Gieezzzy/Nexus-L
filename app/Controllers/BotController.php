@@ -16245,76 +16245,32 @@ private function computeIntent(string $text, string $prev = '', string $lastBotM
 
         $newVal = isset($p['enabled']) ? ($p['enabled'] ? '1' : '0') : ($current === '0' ? '1' : '0');
 
-
-
-
-
-
-
         \App\Libraries\SystemSettings::set('ai.enabled', $newVal, (string) ($this->auth->user()['username'] ?? 'admin'));
-
-
-
-
-
-
+        if ($newVal === '1') {
+            if (\App\Libraries\SystemSettings::get('ai.mode', 'shadow') === 'off') {
+                \App\Libraries\SystemSettings::set('ai.mode', 'live', (string) ($this->auth->user()['username'] ?? 'admin'));
+            }
+            cache()->delete('brain_ai_online');
+            if (\App\Libraries\AiBridge::get('/health', 1000) === null) {
+                $cmd = ROOTPATH . 'run-ai.cmd';
+                if (is_file($cmd)) {
+                    @pclose(@popen('start /B "" "' . $cmd . '"', 'r'));
+                }
+            }
+        } else {
+            cache()->delete('brain_ai_online');
+        }
 
         \App\Libraries\BrainEvents::log('toggle', 'admin', (int) ($this->auth->user()['id'] ?? 0), null, 'AI Brain turned ' . ($newVal === '1' ? 'ON' : 'OFF'));
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+        $online = $newVal === '1' && \App\Libraries\AiBridge::get('/health', 1200) !== null;
 
         return $this->json([
-
-
-
-
-
-
-
             'ok'      => true,
-
-
-
-
-
-
-
             'enabled' => $newVal === '1',
-
-
-
-
-
-
-
             'status'  => $newVal === '1' ? 'ON' : 'OFF',
-
-
-
-
-
-
-
-            'message' => 'AI Brain successfully turned ' . ($newVal === '1' ? 'ON' : 'OFF') . '.',
-
-
-
-
-
-
-
+            'online'  => $online,
+            'message' => 'AI Brain successfully turned ' . ($newVal === '1' ? 'ON' : 'OFF') . ($newVal === '1' ? ($online ? ' (connected).' : ' (starting service...).') : '.'),
         ]);
 
 
