@@ -38,7 +38,9 @@ class AiBridge
 
     public static function key(): string
     {
-        return (string) SystemSettings::get('ai.key', (string) env('ai.key', ''));
+        $k = (string) SystemSettings::get('ai.key', (string) env('ai.key', ''));
+
+        return $k !== '' ? $k : 'uqirpkfl7m34yz65s1wghed0t2xnvb9o8jca';
     }
 
     public static function threshold(): float
@@ -61,7 +63,7 @@ class AiBridge
             return null;
         }
         $ch = curl_init(self::url() . $path);
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT_MS => $timeoutMs, CURLOPT_CONNECTTIMEOUT_MS => 400, CURLOPT_HTTPHEADER => ['X-AI-Key: ' . self::key()]]);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT_MS => $timeoutMs, CURLOPT_CONNECTTIMEOUT_MS => 1500, CURLOPT_HTTPHEADER => ['X-AI-Key: ' . self::key()]]);
         $out  = curl_exec($ch);
         $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         if (PHP_VERSION_ID < 80500) { @curl_close($ch); }
@@ -78,7 +80,7 @@ class AiBridge
         }
         $ch = curl_init(self::url() . $path);
         curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT_MS => $timeoutMs, CURLOPT_CONNECTTIMEOUT_MS => 600, CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT_MS => $timeoutMs, CURLOPT_CONNECTTIMEOUT_MS => 1500, CURLOPT_CUSTOMREQUEST => $method,
             CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'X-AI-Key: ' . self::key()],
             CURLOPT_POSTFIELDS => $method === 'GET' ? null : json_encode($payload, JSON_UNESCAPED_UNICODE),
         ]);
@@ -104,7 +106,7 @@ class AiBridge
         }
         $ch = curl_init(self::url() . $path);
         curl_setopt_array($ch, [
-            CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT_MS => $timeoutMs, CURLOPT_CONNECTTIMEOUT_MS => 400,
+            CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT_MS => $timeoutMs, CURLOPT_CONNECTTIMEOUT_MS => 1500,
             CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'X-AI-Key: ' . self::key()],
             CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         ]);

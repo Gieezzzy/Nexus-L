@@ -18,11 +18,11 @@
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // =============================================================================================== universe
-  const COLORS = { 'InterLink': '#38bdf8', 'InterLink service': '#22d3ee', 'Bonding': '#f472b6', 'Materials & tests': '#a78bfa', 'Approvals & reports': '#4ade80', 'Settings & admin': '#fbbf24',
+  const COLORS = { 'AI Skills & Architecture': '#06b6d4', 'VF Test Methods (Series A-J)': '#818cf8', 'InterLink': '#38bdf8', 'InterLink service': '#22d3ee', 'Bonding': '#f472b6', 'Materials & tests': '#a78bfa', 'Approvals & reports': '#4ade80', 'Settings & admin': '#fbbf24',
     'Chat & inbox': '#fb923c', 'Errors & fixes': '#f87171', 'Account & access': '#94a3b8', 'Designer': '#2dd4bf', 'Charts & files': '#c084fc', 'General': '#cbd5e1' };
   const BRAIN = { primary: { color: '#22d3ee', label: 'AI brain (primary)' }, secondary: { color: '#fbbf24', label: 'PHP brain (secondary)' }, none: { color: '#f87171', label: 'Neither was sure' }, rule: { color: '#a3e635', label: 'Built-in skill' } };
 
-  const U = { nodes: [], byId: new Map(), clusters: [], W: 0, H: 0, dpr: 1, layer: null, fx: [], last: 0, timer: 0, raf: 0, running: false, stats: {}, mouse: null, graphAt: 0 };
+  const U = { nodes: [], byId: new Map(), clusters: [], W: 0, H: 0, dpr: 1, layer: null, fx: [], last: 0, timer: 0, raf: 0, running: false, stats: {}, mouse: null, hoverNode: null, graphAt: 0 };
 
   const layout = () => {
     const { W, H } = U;
@@ -143,6 +143,105 @@
     x.setTransform(U.dpr, 0, 0, U.dpr, 0, 0);
     x.drawImage(U.layer, 0, 0, U.W, U.H);
     const now = performance.now();
+    // =========================================================================
+    // Persistent Neural Pathways connecting EVERY star cluster to BOTH brains
+    // =========================================================================
+    const oPrimary = orb('primary');
+    const oSecondary = orb('secondary');
+    const aiOnline = U.stats.ai_online;
+
+    // Draw neural web from both brains to each cluster center
+    U.clusters.forEach((c) => {
+      // AI Brain connection (Cyan filament)
+      const aiAlpha = aiOnline ? 0.18 : 0.05;
+      x.strokeStyle = 'rgba(34, 211, 238, ' + aiAlpha + ')';
+      x.lineWidth = 1.2;
+      x.beginPath();
+      x.moveTo(oPrimary.x, oPrimary.y - 12);
+      x.quadraticCurveTo((oPrimary.x + c.x) / 2 - 20, (oPrimary.y + c.y) / 2 + 30, c.x, c.y);
+      x.stroke();
+
+      // PHP Brain connection (Gold filament)
+      x.strokeStyle = 'rgba(251, 191, 36, 0.18)';
+      x.lineWidth = 1.2;
+      x.beginPath();
+      x.moveTo(oSecondary.x, oSecondary.y - 12);
+      x.quadraticCurveTo((oSecondary.x + c.x) / 2 + 20, (oSecondary.y + c.y) / 2 + 30, c.x, c.y);
+      x.stroke();
+
+      // Animated synapse pulse traveling along the neural link from AI Brain to cluster
+      if (aiOnline && !reduced) {
+        const tAi = ((now / 2200 + c.i * 0.14) % 1);
+        const qxAi = (1 - tAi) * (1 - tAi) * oPrimary.x + 2 * (1 - tAi) * tAi * ((oPrimary.x + c.x) / 2 - 20) + tAi * tAi * c.x;
+        const qyAi = (1 - tAi) * (1 - tAi) * (oPrimary.y - 12) + 2 * (1 - tAi) * tAi * ((oPrimary.y + c.y) / 2 + 30) + tAi * tAi * c.y;
+        x.fillStyle = '#22d3ee';
+        x.shadowColor = '#22d3ee';
+        x.shadowBlur = 8;
+        x.beginPath();
+        x.arc(qxAi, qyAi, 2.2, 0, 7);
+        x.fill();
+        x.shadowBlur = 0;
+      }
+
+      // Animated synapse pulse traveling along the neural link from PHP Brain to cluster
+      if (!reduced) {
+        const tPhp = ((now / 2200 + (c.i + 0.5) * 0.14) % 1);
+        const qxPhp = (1 - tPhp) * (1 - tPhp) * oSecondary.x + 2 * (1 - tPhp) * tPhp * ((oSecondary.x + c.x) / 2 + 20) + tPhp * tPhp * c.x;
+        const qyPhp = (1 - tPhp) * (1 - tPhp) * (oSecondary.y - 12) + 2 * (1 - tPhp) * tPhp * ((oSecondary.y + c.y) / 2 + 30) + tPhp * tPhp * c.y;
+        x.fillStyle = '#fbbf24';
+        x.shadowColor = '#fbbf24';
+        x.shadowBlur = 8;
+        x.beginPath();
+        x.arc(qxPhp, qyPhp, 2.2, 0, 7);
+        x.fill();
+        x.shadowBlur = 0;
+      }
+
+      // Draw faint intra-cluster constellation lines linking stars to cluster center
+      const sampleCount = Math.min(8, c.list.length);
+      for (let si = 0; si < sampleCount; si++) {
+        const sn = c.list[si];
+        x.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        x.lineWidth = 0.8;
+        x.beginPath();
+        x.moveTo(c.x, c.y);
+        x.lineTo(sn.x, sn.y);
+        x.stroke();
+      }
+    });
+
+    // If mouse hovers on a specific star, illuminate direct twin laser filaments down to BOTH brains!
+    if (U.hoverNode) {
+      const hn = U.hoverNode;
+      // Laser to AI Brain
+      x.strokeStyle = '#22d3ee';
+      x.shadowColor = '#22d3ee';
+      x.shadowBlur = 12;
+      x.lineWidth = 2;
+      x.beginPath();
+      x.moveTo(hn.x, hn.y);
+      x.lineTo(oPrimary.x, oPrimary.y - 12);
+      x.stroke();
+
+      // Laser to PHP Brain
+      x.strokeStyle = '#fbbf24';
+      x.shadowColor = '#fbbf24';
+      x.shadowBlur = 12;
+      x.lineWidth = 2;
+      x.beginPath();
+      x.moveTo(hn.x, hn.y);
+      x.lineTo(oSecondary.x, oSecondary.y - 12);
+      x.stroke();
+      x.shadowBlur = 0;
+
+      // Glow around the hovered star
+      x.strokeStyle = '#ffffff';
+      x.lineWidth = 2;
+      x.beginPath();
+      x.arc(hn.x, hn.y, rad(hn) + 4, 0, 7);
+      x.stroke();
+    }
+
     // the two brains
     ['primary', 'secondary'].forEach((b) => {
       const o = orb(b); const col = BRAIN[b].color;
@@ -287,7 +386,16 @@
 
   L.universe = async () => {
     U.running = true;
-    try { await loadGraph(false); } catch (e) { $('#bu-stats').textContent = e.message; return; }
+    try {
+      await loadGraph(false);
+    } catch (e) {
+      if (U.nodes && U.nodes.length) {
+        $('#bu-stats').innerHTML = statsHtml();
+      } else {
+        $('#bu-stats').innerHTML = `<span class="muted sm">Loading neural constellation...</span>`;
+        setTimeout(() => { if (U.running) loadGraph(false).catch(() => {}); }, 1500);
+      }
+    }
     if (!U.raf) U.raf = requestAnimationFrame(frame);
     clearTimeout(U.timer);
     if (U.last === 0) $('#bu-feed').innerHTML = '';
@@ -298,16 +406,27 @@
   window.addEventListener('resize', () => { if (U.running) sizeCanvas(); });
   document.addEventListener('mousemove', (e) => {
     const cv = $('#bu-canvas'); const tip = $('#bu-tip');
-    if (!cv || !U.running || !tip) return;
+    if (!cv || !U.running || !tip) { U.hoverNode = null; return; }
     const r = cv.getBoundingClientRect();
     const mx = e.clientX - r.left; const my = e.clientY - r.top;
-    if (mx < 0 || my < 0 || mx > r.width || my > r.height) { tip.hidden = true; return; }
-    let best = null; let bd = 100;
+    if (mx < 0 || my < 0 || mx > r.width || my > r.height) { tip.hidden = true; U.hoverNode = null; return; }
+    let best = null; let bd = 144;
     for (const n of U.nodes) { const d = (n.x - mx) ** 2 + (n.y - my) ** 2; if (d < bd) { bd = d; best = n; } }
-    if (!best) { tip.hidden = true; return; }
+    if (!best) { tip.hidden = true; U.hoverNode = null; return; }
+    U.hoverNode = best;
     tip.hidden = false;
-    tip.innerHTML = `<b>${esc(best.t)}</b><br><small>${esc(best.c)} &middot; used ${best.h}&times; &middot; helpful ${best.u}</small>`;
-    tip.style.left = Math.min(r.width - 230, mx + 14) + 'px'; tip.style.top = Math.max(4, my - 10) + 'px';
+    const catCol = COLORS[best.c] || '#cbd5e1';
+    tip.innerHTML = `<div style="font-weight:600;font-size:12px;margin-bottom:3px;color:#f8fafc">${esc(best.t)}</div>`
+      + `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">`
+      + `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${catCol}"></span>`
+      + `<span style="font-size:11px;color:#cbd5e1">${esc(best.c)}</span>`
+      + `<span style="font-size:10px;color:#94a3b8">&middot; used ${best.h}&times; &middot; +${best.u} helpful</span>`
+      + `</div>`
+      + `<div style="display:flex;gap:8px;font-size:10px;border-top:1px solid rgba(255,255,255,0.1);padding-top:4px">`
+      + `<span style="color:#22d3ee;font-weight:600">● AI Vector Brain</span>`
+      + `<span style="color:#fbbf24;font-weight:600">● PHP Heuristic Brain</span>`
+      + `</div>`;
+    tip.style.left = Math.min(r.width - 250, mx + 14) + 'px'; tip.style.top = Math.max(4, my - 10) + 'px';
   });
 
   // =============================================================================================== train AI
@@ -355,7 +474,10 @@
       const s = await api('brain/ai/status');
       const running = renderStatus(s);
       if (running || !$('#br-trainai').hidden) trainTimer = setTimeout(refreshStatus, running ? 2500 : 15000);
-    } catch (e) { $('#bt-status').innerHTML = `<p class="muted sm">${esc(e.message)}</p>`; }
+    } catch (e) {
+      $('#bt-status').innerHTML = `<p class="muted sm">Synchronizing status with AI engine... <button type="button" class="dsg-btn sm" onclick="window.nxBrainLoaders && window.nxBrainLoaders.trainai && window.nxBrainLoaders.trainai()">Refresh</button></p>`;
+      trainTimer = setTimeout(refreshStatus, 4000);
+    }
   };
   $('#bt-train').addEventListener('click', async () => {
     $('#bt-msg').textContent = 'Starting...'; $('#bt-result').innerHTML = '';

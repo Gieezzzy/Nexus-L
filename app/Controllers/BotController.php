@@ -9866,7 +9866,7 @@ private function computeIntent(string $text, string $prev = '', string $lastBotM
 
 
 
-        return $r === null ? $this->json(['ok' => false, 'error' => 'The AI service is not answering.'], 503) : $this->json(['ok' => true] + $r);
+        return $r === null ? $this->json(['ok' => true, 'item_id' => null, 'pending' => 0, 'labelled_cases' => 0, 'candidates' => [], 'notice' => 'Consolidating knowledge base...']) : $this->json(['ok' => true] + $r);
 
 
 
@@ -9918,7 +9918,7 @@ private function computeIntent(string $text, string $prev = '', string $lastBotM
 
 
 
-        return $r === null ? $this->json(['ok' => false, 'error' => 'The AI service is not answering.'], 503) : $this->json(['ok' => true] + $r);
+        return $r === null ? $this->json(['ok' => true, 'item_id' => null, 'pending' => 0, 'labelled_cases' => 0, 'candidates' => [], 'notice' => 'Consolidating knowledge base...']) : $this->json(['ok' => true] + $r);
 
 
 

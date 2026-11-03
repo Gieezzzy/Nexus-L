@@ -1,13 +1,515 @@
-(()=>{var U;const I=window.nxBrainLoaders;if(!I)return;const d=(t,i=document)=>i.querySelector(t),F=(((U=document.querySelector('meta[name="base-url"]'))==null?void 0:U.content)||"/").replace(/\/?$/,"/"),$=document.querySelector('meta[name="X-CSRF-TOKEN"]'),f=t=>String(t??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"),w=(t,i={})=>fetch(F+t,i).then(e=>e.json().then(r=>{if(r.csrf&&$&&($.content=r.csrf),!e.ok||r.ok===!1)throw new Error(r.error||"Request failed");return r})),E=(t,i)=>w(t,{method:"POST",headers:{"Content-Type":"application/json","X-Requested-With":"XMLHttpRequest","X-CSRF-TOKEN":$?$.content:""},body:JSON.stringify(i||{})}),M=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches,x={InterLink:"#38bdf8","InterLink service":"#22d3ee",Bonding:"#f472b6","Materials & tests":"#a78bfa","Approvals & reports":"#4ade80","Settings & admin":"#fbbf24","Chat & inbox":"#fb923c","Errors & fixes":"#f87171","Account & access":"#94a3b8",Designer:"#2dd4bf","Charts & files":"#c084fc",General:"#cbd5e1"},k={primary:{color:"#22d3ee",label:"AI brain (primary)"},secondary:{color:"#fbbf24",label:"PHP brain (secondary)"},none:{color:"#f87171",label:"Neither was sure"},rule:{color:"#a3e635",label:"Built-in skill"}},a={nodes:[],byId:new Map,clusters:[],W:0,H:0,dpr:1,layer:null,fx:[],last:0,timer:0,raf:0,running:!1,stats:{},mouse:null,graphAt:0},C=()=>{const{W:t,H:i}=a,e=t/2,r=i*.44,s=new Map;a.nodes.forEach(l=>{s.has(l.c)||s.set(l.c,[]),s.get(l.c).push(l)}),a.clusters=[...s.entries()].sort((l,m)=>m[1].length-l[1].length).map(([l,m],u,y)=>({name:l,list:m,i:u,n:y.length}));const n=Math.max(1,a.nodes.length),o=t*(i*.78)*.42,c=Math.max(3.2,Math.min(7.5,Math.sqrt(o/(Math.PI*n)))),h=34,b=i*.8;a.clusters.forEach(l=>{l.r=c*Math.sqrt(l.list.length+.6)+5;const m=l.i/l.n*Math.PI*2-Math.PI/2;l.x=e+Math.cos(m)*t*.28,l.y=r+Math.sin(m)*(b-h)*.3});for(let l=0;l<400;l++){let m=!1;for(let u=0;u<a.clusters.length;u++)for(let y=u+1;y<a.clusters.length;y++){const g=a.clusters[u],v=a.clusters[y];let A=v.x-g.x,T=v.y-g.y;const H=Math.hypot(A,T)||.01,X=g.r+v.r+18;if(H<X){const L=(X-H)/2;A/=H,T/=H,g.x-=A*L,g.y-=T*L,v.x+=A*L,v.y+=T*L,m=!0}}if(a.clusters.forEach(u=>{u.x+=(e-u.x)*.004,u.y+=((h+b)/2-u.y)*.004,u.x=Math.max(u.r+8,Math.min(t-u.r-8,u.x)),u.y=Math.max(h+u.r,Math.min(b-u.r,u.y))}),!m&&l>40)break}a.clusters.forEach(l=>{l.list.forEach((m,u)=>{const y=c*Math.sqrt(u+.6),g=u*2.39996323;m.x=l.x+Math.cos(g)*y,m.y=l.y+Math.sin(g)*y})}),G()},N=t=>1.5+Math.min(4.5,Math.log2(1+t.h)*.55+Math.max(0,t.u)*.2),G=()=>{const{W:t,H:i,dpr:e}=a,r=document.createElement("canvas");r.width=t*e,r.height=i*e;const s=r.getContext("2d");s.scale(e,e);const n=s.createRadialGradient(t/2,i*.44,10,t/2,i*.44,Math.max(t,i)*.7);n.addColorStop(0,"#0b1633"),n.addColorStop(1,"#030712"),s.fillStyle=n,s.fillRect(0,0,t,i);for(let o=0;o<90;o++)s.fillStyle="rgba(255,255,255,"+(.1+o*37%10/40)+")",s.fillRect(o*97.3%t,o*53.7%i,1.2,1.2);a.clusters.forEach(o=>{const c=x[o.name]||"#cbd5e1",h=o.r,b=s.createRadialGradient(o.x,o.y,2,o.x,o.y,h*1.6);b.addColorStop(0,c+"33"),b.addColorStop(1,c+"00"),s.fillStyle=b,s.beginPath(),s.arc(o.x,o.y,h*1.6,0,7),s.fill()}),a.nodes.forEach(o=>{const c=x[o.c]||"#cbd5e1";s.globalAlpha=.82,s.fillStyle=c,s.beginPath(),s.arc(o.x,o.y,N(o),0,7),s.fill()}),s.globalAlpha=1,s.font='600 11px "Segoe UI", sans-serif',s.textAlign="center",a.clusters.forEach(o=>{s.fillStyle=x[o.name]||"#cbd5e1",s.fillText(o.name+" ("+o.list.length+")",o.x,o.y-o.r-3)}),a.layer=r},W=t=>{const{W:i,H:e}=a;return t==="primary"?{x:i*.32,y:e*.9}:t==="secondary"?{x:i*.68,y:e*.9}:{x:i*.5,y:e*.78}},D=t=>{const i=performance.now();if(t.kind==="ask"){const e=t.brain||"none",r={x:a.W*.5,y:a.H+6},s=W(e==="rule"?"none":e),n=t.kb_id?a.byId.get(Number(t.kb_id)):null;a.fx.push({t:i,type:"ask",brain:e,from:r,orb:s,node:n,q:t.label,conf:t.conf,dur:M?400:2200})}else if(t.kind==="learn"){const e=t.kb_id?a.byId.get(Number(t.kb_id)):null;a.fx.push({t:i,type:"learn",node:e,at:e||{x:a.W/2,y:a.H*.44},label:t.label,dur:M?600:3200})}else if(t.kind==="feedback"){const e=t.kb_id?a.byId.get(Number(t.kb_id)):null;e&&a.fx.push({t:i,type:"vote",node:e,up:Number(t.conf)>0,dur:M?400:1400})}else(t.kind==="train"||t.kind==="import")&&a.fx.push({t:i,type:"wave",dur:M?500:2600,label:t.label})},P=t=>{if(a.raf=0,!a.running)return;const i=d("#bu-canvas");if(!i||!a.layer){a.raf=requestAnimationFrame(P);return}const e=i.getContext("2d");e.setTransform(a.dpr,0,0,a.dpr,0,0),e.drawImage(a.layer,0,0,a.W,a.H);const r=performance.now();["primary","secondary"].forEach(n=>{const o=W(n),c=k[n].color,h=n==="secondary"||a.stats.ai_online,b=1+Math.sin(r/600+(n==="primary"?0:2))*.06,l=e.createRadialGradient(o.x,o.y,2,o.x,o.y,46*b);l.addColorStop(0,c+(h?"cc":"44")),l.addColorStop(1,c+"00"),e.fillStyle=l,e.beginPath(),e.arc(o.x,o.y,46*b,0,7),e.fill(),e.fillStyle=h?c:"#64748b",e.beginPath(),e.arc(o.x,o.y,11,0,7),e.fill(),e.fillStyle="#e2e8f0",e.font='600 11px "Segoe UI", sans-serif',e.textAlign="center",e.fillText(k[n].label+(h?"":" - offline"),o.x,o.y+30)}),a.fx=a.fx.filter(n=>r-n.t<n.dur+400),a.fx.forEach(n=>{const o=Math.min(1,(r-n.t)/n.dur);if(n.type==="ask"){const c=(k[n.brain]||k.none).color,h=(l,m,u)=>({x:l.x+(m.x-l.x)*u,y:l.y+(m.y-l.y)*u});let b;if(o<.35?b=h(n.from,n.orb,o/.35):n.node?b=h(n.orb,n.node,Math.min(1,(o-.35)/.4)):b=n.orb,e.fillStyle=c,e.shadowColor=c,e.shadowBlur=14,e.beginPath(),e.arc(b.x,b.y,4,0,7),e.fill(),e.shadowBlur=0,o>.75&&n.node){const l=(o-.75)/.25;e.strokeStyle=c,e.globalAlpha=1-l,e.lineWidth=2,e.beginPath(),e.arc(n.node.x,n.node.y,6+l*26,0,7),e.stroke(),e.globalAlpha=1}n.q&&o>.3&&(e.globalAlpha=Math.min(1,(1-o)*3),e.font='11px "Segoe UI", sans-serif',e.textAlign="center",e.fillStyle="#f8fafc",e.fillText('"'+String(n.q).slice(0,60)+'"',n.node?n.node.x:n.orb.x,(n.node?n.node.y:n.orb.y)-18),e.globalAlpha=1),!n.node&&o>.35&&(e.strokeStyle=c,e.globalAlpha=1-o,e.beginPath(),e.arc(n.orb.x,n.orb.y,14+o*40,0,7),e.stroke(),e.globalAlpha=1)}else if(n.type==="learn"){const c="#fde047";for(let h=0;h<3;h++){const b=o*1.6-h*.22;b<=0||b>=1||(e.strokeStyle=c,e.globalAlpha=(1-b)*.9,e.lineWidth=2,e.beginPath(),e.arc(n.at.x,n.at.y,6+b*60,0,7),e.stroke())}e.globalAlpha=1,e.fillStyle=c,e.shadowColor=c,e.shadowBlur=18,e.beginPath(),e.arc(n.at.x,n.at.y,4.5+Math.sin(r/90)*1.2,0,7),e.fill(),e.shadowBlur=0,n.label&&(e.globalAlpha=Math.min(1,(1-o)*2.5),e.fillStyle="#fef9c3",e.font='600 12px "Segoe UI", sans-serif',e.textAlign="center",e.fillText("New: "+String(n.label).slice(0,56),n.at.x,n.at.y-22),e.globalAlpha=1)}else if(n.type==="vote"){const c=n.up?"#4ade80":"#f87171";e.strokeStyle=c,e.globalAlpha=1-o,e.lineWidth=2,e.beginPath(),e.arc(n.node.x,n.node.y,4+o*18,0,7),e.stroke(),e.globalAlpha=1}else if(n.type==="wave"){const c=a.W/2,h=a.H*.44;e.strokeStyle="#38bdf8",e.globalAlpha=(1-o)*.8,e.lineWidth=3,e.beginPath(),e.arc(c,h,o*Math.max(a.W,a.H)*.6,0,7),e.stroke(),e.globalAlpha=1,n.label&&(e.fillStyle="#bae6fd",e.font='600 13px "Segoe UI", sans-serif',e.textAlign="center",e.globalAlpha=1-o,e.fillText(n.label,c,h),e.globalAlpha=1)}});const s=Date.now()/1e3-86400;e.lineWidth=1,e.strokeStyle="rgba(253,224,71,.8)",a.nodes.forEach(n=>{n.ts>s&&(e.beginPath(),e.arc(n.x,n.y,N(n)+2.2,0,7),e.stroke())}),a.raf=requestAnimationFrame(P)},R=()=>{const t=d("#bu-canvas");if(!t)return;const i=t.parentElement,e=Math.max(320,i.clientWidth),r=Math.max(360,Math.min(640,Math.round(e*.6)));a.dpr=Math.min(window.devicePixelRatio||1,2),!(e===a.W&&r===a.H)&&(a.W=e,a.H=r,t.width=e*a.dpr,t.height=r*a.dpr,t.style.width=e+"px",t.style.height=r+"px",a.nodes.length&&C())},j=()=>{const t=a.stats||{},i=t.by_brain||{},e=Math.max(1,t.asked_today||0),r=n=>Math.round(100*(i[n]&&i[n].n||0)/e),s=(n,o,c)=>`<span class="bu-chip" style="--c:${c||"#38bdf8"}"><b>${o}</b><small>${n}</small></span>`;return s("answers known",(t.knowledge||0).toLocaleString(),"#a78bfa")+s("questions today",t.asked_today||0,"#38bdf8")+s("by AI brain",r("primary")+"%","#22d3ee")+s("by PHP brain",r("secondary")+"%","#fbbf24")+s("learned today",t.learned_today||0,"#fde047")+s("votes today",t.votes_today||0,"#4ade80")+`<span class="bu-chip" style="--c:${t.ai_online?"#4ade80":"#f87171"}"><b>${t.ai_online?"online":"offline"}</b><small>AI brain</small></span>`},z=t=>{const i=(t.created_at||"").slice(11,19);let e="#94a3b8",r="";if(t.kind==="ask"){const s=k[t.brain]||{color:"#94a3b8",label:"answered"};e=s.color,r=`<b>${f(s.label)}</b> ${t.conf!=null?t.conf+"%":""} &middot; ${f(t.label)}`}else t.kind==="learn"?(e="#fde047",r=`<b>New knowledge</b> &middot; ${f(t.label)}`):t.kind==="feedback"?(e=Number(t.conf)>0?"#4ade80":"#f87171",r=`<b>${Number(t.conf)>0?"Thumbs up":"Thumbs down"}</b>`):t.kind==="train"?(e="#38bdf8",r=`<b>Training</b> &middot; ${f(t.label)}`):r=`<b>${f(t.kind)}</b> ${f(t.label)}`;return`<li style="--c:${e}"><small>${i}</small> ${r}</li>`},B=async()=>{if(a.running){try{if(!document.hidden){const t=await w("brain/universe/feed?since="+a.last);if(a.stats=t.stats||a.stats,d("#bu-stats").innerHTML=j(),t.events.length){const i=a.last===0,e=d("#bu-feed");for(e.insertAdjacentHTML("afterbegin",t.events.slice().reverse().map(z).join(""));e.children.length>60;)e.lastChild.remove();i||t.events.forEach(D),a.last=t.last,t.events.some(r=>r.kind==="learn"||r.kind==="import")&&await q(!0)}Date.now()-a.graphAt>6e4&&await q(!0)}}catch{}a.timer=setTimeout(B,1500)}},q=async t=>{const i=await w("brain/universe/graph"),e=new Set(a.nodes.map(s=>s.id)),r=i.nodes.filter(s=>!e.has(s.id));a.nodes=i.nodes,a.byId=new Map(a.nodes.map(s=>[s.id,s])),a.stats=i.stats,a.graphAt=Date.now(),R(),C(),d("#bu-stats").innerHTML=j(),d("#bu-legend").innerHTML=Object.keys(x).filter(s=>a.nodes.some(n=>n.c===s)).map(s=>`<span><i style="background:${x[s]}"></i>${f(s)}</span>`).join("")+'<span><i class="ring"></i>new or changed today</span>',t&&r.slice(0,6).forEach(s=>a.fx.push({t:performance.now(),type:"learn",node:a.byId.get(s.id),at:a.byId.get(s.id),label:s.t,dur:3200}))};I.universe=async()=>{a.running=!0;try{await q(!1)}catch(t){d("#bu-stats").textContent=t.message;return}a.raf||(a.raf=requestAnimationFrame(P)),clearTimeout(a.timer),a.last===0&&(d("#bu-feed").innerHTML=""),B()},document.querySelectorAll(".br-tab").forEach(t=>t.addEventListener("click",()=>{t.dataset.tab!=="universe"&&(a.running=!1,clearTimeout(a.timer))})),window.addEventListener("resize",()=>{a.running&&R()}),document.addEventListener("mousemove",t=>{const i=d("#bu-canvas"),e=d("#bu-tip");if(!i||!a.running||!e)return;const r=i.getBoundingClientRect(),s=t.clientX-r.left,n=t.clientY-r.top;if(s<0||n<0||s>r.width||n>r.height){e.hidden=!0;return}let o=null,c=100;for(const h of a.nodes){const b=(h.x-s)**2+(h.y-n)**2;b<c&&(c=b,o=h)}if(!o){e.hidden=!0;return}e.hidden=!1,e.innerHTML=`<b>${f(o.t)}</b><br><small>${f(o.c)} &middot; used ${o.h}&times; &middot; helpful ${o.u}</small>`,e.style.left=Math.min(r.width-230,s+14)+"px",e.style.top=Math.max(4,n-10)+"px"});let O=0;const p=t=>t==null?"-":Math.round(t*1e3)/10+"%",K=t=>{const i=d("#bt-status");if(!t.online){i.innerHTML='<h4>The two brains</h4><p><b style="color:#b91c1c">The AI brain is offline.</b> The classic PHP brain is answering alone. Start the AI brain by double-clicking <code>run-ai.cmd</code> in the NEXUS-L folder.</p>';return}const e=t.ai||{},r=e.active||{},s=r.metrics||{},n=s.legacy||{},o=s.full||{};i.innerHTML=`<h4>The two brains</h4>
+/**
+ * Brain console: the live "Universe" (every answer the assistant knows as a star; questions fly to the brain that answers them; new knowledge
+ * appears as it is learned) and the "Train AI" tab (train now, and the review task that teaches the brain what is right).
+ */
+(() => {
+  const L = window.nxBrainLoaders;
+  if (!L) return;
+  const $ = (s, c = document) => c.querySelector(s);
+  const BASE = (document.querySelector('meta[name="base-url"]')?.content || '/').replace(/\/?$/, '/');
+  const csrfMeta = document.querySelector('meta[name="X-CSRF-TOKEN"]');
+  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const api = (path, opts = {}) => fetch(BASE + path, opts).then((r) => r.json().then((j) => {
+    if (j.csrf && csrfMeta) csrfMeta.content = j.csrf;
+    if (!r.ok || j.ok === false) throw new Error(j.error || 'Request failed');
+    return j;
+  }));
+  const post = (path, body) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfMeta ? csrfMeta.content : '' }, body: JSON.stringify(body || {}) });
+  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // =============================================================================================== universe
+  const COLORS = { 'AI Skills & Architecture': '#06b6d4', 'VF Test Methods (Series A-J)': '#818cf8', 'InterLink': '#38bdf8', 'InterLink service': '#22d3ee', 'Bonding': '#f472b6', 'Materials & tests': '#a78bfa', 'Approvals & reports': '#4ade80', 'Settings & admin': '#fbbf24',
+    'Chat & inbox': '#fb923c', 'Errors & fixes': '#f87171', 'Account & access': '#94a3b8', 'Designer': '#2dd4bf', 'Charts & files': '#c084fc', 'General': '#cbd5e1' };
+  const BRAIN = { primary: { color: '#22d3ee', label: 'AI brain (primary)' }, secondary: { color: '#fbbf24', label: 'PHP brain (secondary)' }, none: { color: '#f87171', label: 'Neither was sure' }, rule: { color: '#a3e635', label: 'Built-in skill' } };
+
+  const U = { nodes: [], byId: new Map(), clusters: [], W: 0, H: 0, dpr: 1, layer: null, fx: [], last: 0, timer: 0, raf: 0, running: false, stats: {}, mouse: null, hoverNode: null, graphAt: 0 };
+
+  const layout = () => {
+    const { W, H } = U;
+    const cx = W / 2;
+    const cy = H * 0.44;
+    const groups = new Map();
+    U.nodes.forEach((n) => { if (!groups.has(n.c)) groups.set(n.c, []); groups.get(n.c).push(n); });
+    U.clusters = [...groups.entries()].sort((a, b) => b[1].length - a[1].length).map(([name, list], i, all) => ({ name, list, i, n: all.length }));
+    // every cluster is a disc whose size follows its number of stars; the discs are pushed apart until none overlap
+    const N = Math.max(1, U.nodes.length);
+    const area = W * (H * 0.78) * 0.42;
+    const sp = Math.max(3.2, Math.min(7.5, Math.sqrt(area / (Math.PI * N))));
+    const top = 34; const bottom = H * 0.8;
+    U.clusters.forEach((c) => {
+      c.r = sp * Math.sqrt(c.list.length + 0.6) + 5;
+      const a = (c.i / c.n) * Math.PI * 2 - Math.PI / 2;
+      c.x = cx + Math.cos(a) * W * 0.28;
+      c.y = cy + Math.sin(a) * (bottom - top) * 0.3;
+    });
+    for (let it = 0; it < 400; it++) {
+      let moved = false;
+      for (let i = 0; i < U.clusters.length; i++) {
+        for (let j = i + 1; j < U.clusters.length; j++) {
+          const A = U.clusters[i]; const B = U.clusters[j];
+          let dx = B.x - A.x; let dy = B.y - A.y;
+          const d = Math.hypot(dx, dy) || 0.01;
+          const need = A.r + B.r + 18;
+          if (d < need) {
+            const push = (need - d) / 2; dx /= d; dy /= d;
+            A.x -= dx * push; A.y -= dy * push; B.x += dx * push; B.y += dy * push; moved = true;
+          }
+        }
+      }
+      U.clusters.forEach((c) => {
+        c.x += (cx - c.x) * 0.004; c.y += ((top + bottom) / 2 - c.y) * 0.004;                 // a gentle pull to the middle
+        c.x = Math.max(c.r + 8, Math.min(W - c.r - 8, c.x));
+        c.y = Math.max(top + c.r, Math.min(bottom - c.r, c.y));
+      });
+      if (!moved && it > 40) break;
+    }
+    U.clusters.forEach((c) => {
+      c.list.forEach((n, k) => {
+        const r = sp * Math.sqrt(k + 0.6);
+        const t = k * 2.39996323;
+        n.x = c.x + Math.cos(t) * r;
+        n.y = c.y + Math.sin(t) * r;
+      });
+    });
+    drawLayer();
+  };
+
+  const rad = (n) => 1.5 + Math.min(4.5, Math.log2(1 + n.h) * 0.55 + Math.max(0, n.u) * 0.2);
+
+  const drawLayer = () => {
+    const { W, H, dpr } = U;
+    const c = document.createElement('canvas');
+    c.width = W * dpr; c.height = H * dpr;
+    const x = c.getContext('2d');
+    x.scale(dpr, dpr);
+    // the sky
+    const g = x.createRadialGradient(W / 2, H * 0.44, 10, W / 2, H * 0.44, Math.max(W, H) * 0.7);
+    g.addColorStop(0, '#0b1633'); g.addColorStop(1, '#030712');
+    x.fillStyle = g; x.fillRect(0, 0, W, H);
+    for (let i = 0; i < 90; i++) { x.fillStyle = 'rgba(255,255,255,' + (0.1 + ((i * 37) % 10) / 40) + ')'; x.fillRect((i * 97.3) % W, (i * 53.7) % H, 1.2, 1.2); }
+    // cluster glow and names
+    U.clusters.forEach((cl) => {
+      const col = COLORS[cl.name] || '#cbd5e1';
+      const rr = cl.r;
+      const gg = x.createRadialGradient(cl.x, cl.y, 2, cl.x, cl.y, rr * 1.6);
+      gg.addColorStop(0, col + '33'); gg.addColorStop(1, col + '00');
+      x.fillStyle = gg; x.beginPath(); x.arc(cl.x, cl.y, rr * 1.6, 0, 7); x.fill();
+    });
+    U.nodes.forEach((n) => {
+      const col = COLORS[n.c] || '#cbd5e1';
+      x.globalAlpha = 0.82;
+      x.fillStyle = col;
+      x.beginPath(); x.arc(n.x, n.y, rad(n), 0, 7); x.fill();
+    });
+    x.globalAlpha = 1;
+    x.font = '600 11px "Segoe UI", sans-serif'; x.textAlign = 'center';
+    U.clusters.forEach((cl) => {
+      x.fillStyle = (COLORS[cl.name] || '#cbd5e1');
+      x.fillText(cl.name + ' (' + cl.list.length + ')', cl.x, cl.y - cl.r - 3);
+    });
+    U.layer = c;
+  };
+
+  const orb = (which) => {
+    const { W, H } = U;
+    return which === 'primary' ? { x: W * 0.32, y: H * 0.9 } : which === 'secondary' ? { x: W * 0.68, y: H * 0.9 } : { x: W * 0.5, y: H * 0.78 };
+  };
+
+  const spawn = (e) => {
+    const now = performance.now();
+    if (e.kind === 'ask') {
+      const b = e.brain || 'none';
+      const from = { x: U.W * 0.5, y: U.H + 6 };
+      const o = orb(b === 'rule' ? 'none' : b);
+      const node = e.kb_id ? U.byId.get(Number(e.kb_id)) : null;
+      U.fx.push({ t: now, type: 'ask', brain: b, from, orb: o, node, q: e.label, conf: e.conf, dur: reduced ? 400 : 2200 });
+    } else if (e.kind === 'learn') {
+      const node = e.kb_id ? U.byId.get(Number(e.kb_id)) : null;
+      U.fx.push({ t: now, type: 'learn', node, at: node || { x: U.W / 2, y: U.H * 0.44 }, label: e.label, dur: reduced ? 600 : 3200 });
+    } else if (e.kind === 'feedback') {
+      const node = e.kb_id ? U.byId.get(Number(e.kb_id)) : null;
+      if (node) U.fx.push({ t: now, type: 'vote', node, up: Number(e.conf) > 0, dur: reduced ? 400 : 1400 });
+    } else if (e.kind === 'train' || e.kind === 'import') {
+      U.fx.push({ t: now, type: 'wave', dur: reduced ? 500 : 2600, label: e.label });
+    }
+  };
+
+  const frame = (ts) => {
+    U.raf = 0;
+    if (!U.running) return;
+    const cv = $('#bu-canvas');
+    if (!cv || !U.layer) { U.raf = requestAnimationFrame(frame); return; }
+    const x = cv.getContext('2d');
+    x.setTransform(U.dpr, 0, 0, U.dpr, 0, 0);
+    x.drawImage(U.layer, 0, 0, U.W, U.H);
+    const now = performance.now();
+    // =========================================================================
+    // Persistent Neural Pathways connecting EVERY star cluster to BOTH brains
+    // =========================================================================
+    const oPrimary = orb('primary');
+    const oSecondary = orb('secondary');
+    const aiOnline = U.stats.ai_online;
+
+    // Draw neural web from both brains to each cluster center
+    U.clusters.forEach((c) => {
+      // AI Brain connection (Cyan filament)
+      const aiAlpha = aiOnline ? 0.18 : 0.05;
+      x.strokeStyle = 'rgba(34, 211, 238, ' + aiAlpha + ')';
+      x.lineWidth = 1.2;
+      x.beginPath();
+      x.moveTo(oPrimary.x, oPrimary.y - 12);
+      x.quadraticCurveTo((oPrimary.x + c.x) / 2 - 20, (oPrimary.y + c.y) / 2 + 30, c.x, c.y);
+      x.stroke();
+
+      // PHP Brain connection (Gold filament)
+      x.strokeStyle = 'rgba(251, 191, 36, 0.18)';
+      x.lineWidth = 1.2;
+      x.beginPath();
+      x.moveTo(oSecondary.x, oSecondary.y - 12);
+      x.quadraticCurveTo((oSecondary.x + c.x) / 2 + 20, (oSecondary.y + c.y) / 2 + 30, c.x, c.y);
+      x.stroke();
+
+      // Animated synapse pulse traveling along the neural link from AI Brain to cluster
+      if (aiOnline && !reduced) {
+        const tAi = ((now / 2200 + c.i * 0.14) % 1);
+        const qxAi = (1 - tAi) * (1 - tAi) * oPrimary.x + 2 * (1 - tAi) * tAi * ((oPrimary.x + c.x) / 2 - 20) + tAi * tAi * c.x;
+        const qyAi = (1 - tAi) * (1 - tAi) * (oPrimary.y - 12) + 2 * (1 - tAi) * tAi * ((oPrimary.y + c.y) / 2 + 30) + tAi * tAi * c.y;
+        x.fillStyle = '#22d3ee';
+        x.shadowColor = '#22d3ee';
+        x.shadowBlur = 8;
+        x.beginPath();
+        x.arc(qxAi, qyAi, 2.2, 0, 7);
+        x.fill();
+        x.shadowBlur = 0;
+      }
+
+      // Animated synapse pulse traveling along the neural link from PHP Brain to cluster
+      if (!reduced) {
+        const tPhp = ((now / 2200 + (c.i + 0.5) * 0.14) % 1);
+        const qxPhp = (1 - tPhp) * (1 - tPhp) * oSecondary.x + 2 * (1 - tPhp) * tPhp * ((oSecondary.x + c.x) / 2 + 20) + tPhp * tPhp * c.x;
+        const qyPhp = (1 - tPhp) * (1 - tPhp) * (oSecondary.y - 12) + 2 * (1 - tPhp) * tPhp * ((oSecondary.y + c.y) / 2 + 30) + tPhp * tPhp * c.y;
+        x.fillStyle = '#fbbf24';
+        x.shadowColor = '#fbbf24';
+        x.shadowBlur = 8;
+        x.beginPath();
+        x.arc(qxPhp, qyPhp, 2.2, 0, 7);
+        x.fill();
+        x.shadowBlur = 0;
+      }
+
+      // Draw faint intra-cluster constellation lines linking stars to cluster center
+      const sampleCount = Math.min(8, c.list.length);
+      for (let si = 0; si < sampleCount; si++) {
+        const sn = c.list[si];
+        x.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        x.lineWidth = 0.8;
+        x.beginPath();
+        x.moveTo(c.x, c.y);
+        x.lineTo(sn.x, sn.y);
+        x.stroke();
+      }
+    });
+
+    // If mouse hovers on a specific star, illuminate direct twin laser filaments down to BOTH brains!
+    if (U.hoverNode) {
+      const hn = U.hoverNode;
+      // Laser to AI Brain
+      x.strokeStyle = '#22d3ee';
+      x.shadowColor = '#22d3ee';
+      x.shadowBlur = 12;
+      x.lineWidth = 2;
+      x.beginPath();
+      x.moveTo(hn.x, hn.y);
+      x.lineTo(oPrimary.x, oPrimary.y - 12);
+      x.stroke();
+
+      // Laser to PHP Brain
+      x.strokeStyle = '#fbbf24';
+      x.shadowColor = '#fbbf24';
+      x.shadowBlur = 12;
+      x.lineWidth = 2;
+      x.beginPath();
+      x.moveTo(hn.x, hn.y);
+      x.lineTo(oSecondary.x, oSecondary.y - 12);
+      x.stroke();
+      x.shadowBlur = 0;
+
+      // Glow around the hovered star
+      x.strokeStyle = '#ffffff';
+      x.lineWidth = 2;
+      x.beginPath();
+      x.arc(hn.x, hn.y, rad(hn) + 4, 0, 7);
+      x.stroke();
+    }
+
+    // the two brains
+    ['primary', 'secondary'].forEach((b) => {
+      const o = orb(b); const col = BRAIN[b].color;
+      const online = b === 'secondary' || U.stats.ai_online;
+      const pulse = 1 + Math.sin(now / 600 + (b === 'primary' ? 0 : 2)) * 0.06;
+      const g = x.createRadialGradient(o.x, o.y, 2, o.x, o.y, 46 * pulse);
+      g.addColorStop(0, col + (online ? 'cc' : '44')); g.addColorStop(1, col + '00');
+      x.fillStyle = g; x.beginPath(); x.arc(o.x, o.y, 46 * pulse, 0, 7); x.fill();
+      x.fillStyle = online ? col : '#64748b'; x.beginPath(); x.arc(o.x, o.y, 11, 0, 7); x.fill();
+      x.fillStyle = '#e2e8f0'; x.font = '600 11px "Segoe UI", sans-serif'; x.textAlign = 'center';
+      x.fillText(BRAIN[b].label + (online ? '' : ' - offline'), o.x, o.y + 30);
+    });
+    // effects
+    U.fx = U.fx.filter((f) => now - f.t < f.dur + 400);
+    U.fx.forEach((f) => {
+      const p = Math.min(1, (now - f.t) / f.dur);
+      if (f.type === 'ask') {
+        const col = (BRAIN[f.brain] || BRAIN.none).color;
+        const seg = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+        let pt;
+        if (p < 0.35) pt = seg(f.from, f.orb, p / 0.35);
+        else if (f.node) pt = seg(f.orb, f.node, Math.min(1, (p - 0.35) / 0.4));
+        else pt = f.orb;
+        x.fillStyle = col; x.shadowColor = col; x.shadowBlur = 14;
+        x.beginPath(); x.arc(pt.x, pt.y, 4, 0, 7); x.fill(); x.shadowBlur = 0;
+        if (p > 0.75 && f.node) {
+          const k = (p - 0.75) / 0.25;
+          x.strokeStyle = col; x.globalAlpha = 1 - k; x.lineWidth = 2;
+          x.beginPath(); x.arc(f.node.x, f.node.y, 6 + k * 26, 0, 7); x.stroke(); x.globalAlpha = 1;
+        }
+        if (f.q && p > 0.3) {
+          x.globalAlpha = Math.min(1, (1 - p) * 3);
+          x.font = '11px "Segoe UI", sans-serif'; x.textAlign = 'center'; x.fillStyle = '#f8fafc';
+          x.fillText('"' + String(f.q).slice(0, 60) + '"', f.node ? f.node.x : f.orb.x, (f.node ? f.node.y : f.orb.y) - 18);
+          x.globalAlpha = 1;
+        }
+        if (!f.node && p > 0.35) { x.strokeStyle = col; x.globalAlpha = 1 - p; x.beginPath(); x.arc(f.orb.x, f.orb.y, 14 + p * 40, 0, 7); x.stroke(); x.globalAlpha = 1; }
+      } else if (f.type === 'learn') {
+        const gold = '#fde047';
+        for (let i = 0; i < 3; i++) {
+          const k = (p * 1.6 - i * 0.22);
+          if (k <= 0 || k >= 1) continue;
+          x.strokeStyle = gold; x.globalAlpha = (1 - k) * 0.9; x.lineWidth = 2;
+          x.beginPath(); x.arc(f.at.x, f.at.y, 6 + k * 60, 0, 7); x.stroke();
+        }
+        x.globalAlpha = 1; x.fillStyle = gold; x.shadowColor = gold; x.shadowBlur = 18;
+        x.beginPath(); x.arc(f.at.x, f.at.y, 4.5 + Math.sin(now / 90) * 1.2, 0, 7); x.fill(); x.shadowBlur = 0;
+        if (f.label) { x.globalAlpha = Math.min(1, (1 - p) * 2.5); x.fillStyle = '#fef9c3'; x.font = '600 12px "Segoe UI", sans-serif'; x.textAlign = 'center'; x.fillText('New: ' + String(f.label).slice(0, 56), f.at.x, f.at.y - 22); x.globalAlpha = 1; }
+      } else if (f.type === 'vote') {
+        const col = f.up ? '#4ade80' : '#f87171';
+        x.strokeStyle = col; x.globalAlpha = 1 - p; x.lineWidth = 2;
+        x.beginPath(); x.arc(f.node.x, f.node.y, 4 + p * 18, 0, 7); x.stroke(); x.globalAlpha = 1;
+      } else if (f.type === 'wave') {
+        const cx = U.W / 2; const cy = U.H * 0.44;
+        x.strokeStyle = '#38bdf8'; x.globalAlpha = (1 - p) * 0.8; x.lineWidth = 3;
+        x.beginPath(); x.arc(cx, cy, p * Math.max(U.W, U.H) * 0.6, 0, 7); x.stroke(); x.globalAlpha = 1;
+        if (f.label) { x.fillStyle = '#bae6fd'; x.font = '600 13px "Segoe UI", sans-serif'; x.textAlign = 'center'; x.globalAlpha = 1 - p; x.fillText(f.label, cx, cy); x.globalAlpha = 1; }
+      }
+    });
+    // recently learned or changed stars wear a ring
+    const day = Date.now() / 1000 - 86400;
+    x.lineWidth = 1; x.strokeStyle = 'rgba(253,224,71,.8)';
+    U.nodes.forEach((n) => { if (n.ts > day) { x.beginPath(); x.arc(n.x, n.y, rad(n) + 2.2, 0, 7); x.stroke(); } });
+    U.raf = requestAnimationFrame(frame);
+  };
+
+  const sizeCanvas = () => {
+    const cv = $('#bu-canvas');
+    if (!cv) return;
+    const stage = cv.parentElement;
+    const W = Math.max(320, stage.clientWidth);
+    const H = Math.max(360, Math.min(640, Math.round(W * 0.6)));
+    U.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (W === U.W && H === U.H) return;
+    U.W = W; U.H = H;
+    cv.width = W * U.dpr; cv.height = H * U.dpr;
+    cv.style.width = W + 'px'; cv.style.height = H + 'px';
+    if (U.nodes.length) layout();
+  };
+
+  const statsHtml = () => {
+    const s = U.stats || {};
+    const b = s.by_brain || {};
+    const total = Math.max(1, s.asked_today || 0);
+    const pct = (k) => Math.round(100 * ((b[k] && b[k].n) || 0) / total);
+    const chip = (t, v, c) => `<span class="bu-chip" style="--c:${c || '#38bdf8'}"><b>${v}</b><small>${t}</small></span>`;
+    return chip('answers known', (s.knowledge || 0).toLocaleString(), '#a78bfa') + chip('questions today', s.asked_today || 0, '#38bdf8') + chip('by AI brain', pct('primary') + '%', '#22d3ee')
+      + chip('by PHP brain', pct('secondary') + '%', '#fbbf24') + chip('learned today', s.learned_today || 0, '#fde047') + chip('votes today', s.votes_today || 0, '#4ade80')
+      + `<span class="bu-chip" style="--c:${s.ai_online ? '#4ade80' : '#f87171'}"><b>${s.ai_online ? 'online' : 'offline'}</b><small>AI brain</small></span>`;
+  };
+
+  const feedLine = (e) => {
+    const t = (e.created_at || '').slice(11, 19);
+    let c = '#94a3b8'; let h = '';
+    if (e.kind === 'ask') {
+      const b = BRAIN[e.brain] || { color: '#94a3b8', label: 'answered' };
+      c = b.color; h = `<b>${esc(b.label)}</b> ${e.conf != null ? e.conf + '%' : ''} &middot; ${esc(e.label)}`;
+    } else if (e.kind === 'learn') { c = '#fde047'; h = `<b>New knowledge</b> &middot; ${esc(e.label)}`; }
+    else if (e.kind === 'feedback') { c = Number(e.conf) > 0 ? '#4ade80' : '#f87171'; h = `<b>${Number(e.conf) > 0 ? 'Thumbs up' : 'Thumbs down'}</b>`; }
+    else if (e.kind === 'train') { c = '#38bdf8'; h = `<b>Training</b> &middot; ${esc(e.label)}`; }
+    else { h = `<b>${esc(e.kind)}</b> ${esc(e.label)}`; }
+    return `<li style="--c:${c}"><small>${t}</small> ${h}</li>`;
+  };
+
+  const pump = async () => {
+    if (!U.running) return;
+    try {
+      if (!document.hidden) {
+        const j = await api('brain/universe/feed?since=' + U.last);
+        U.stats = j.stats || U.stats;
+        $('#bu-stats').innerHTML = statsHtml();
+        if (j.events.length) {
+          const first = U.last === 0;
+          const ul = $('#bu-feed');
+          ul.insertAdjacentHTML('afterbegin', j.events.slice().reverse().map(feedLine).join(''));
+          while (ul.children.length > 60) ul.lastChild.remove();
+          if (!first) j.events.forEach(spawn);
+          U.last = j.last;
+          if (j.events.some((e) => e.kind === 'learn' || e.kind === 'import')) await loadGraph(true);
+        }
+        if (Date.now() - U.graphAt > 60000) await loadGraph(true);
+      }
+    } catch (e) { /* the next poll tries again */ }
+    U.timer = setTimeout(pump, 1500);
+  };
+
+  const loadGraph = async (quiet) => {
+    const j = await api('brain/universe/graph');
+    const known = new Set(U.nodes.map((n) => n.id));
+    const fresh = j.nodes.filter((n) => !known.has(n.id));
+    U.nodes = j.nodes;
+    U.byId = new Map(U.nodes.map((n) => [n.id, n]));
+    U.stats = j.stats;
+    U.graphAt = Date.now();
+    sizeCanvas();
+    layout();
+    $('#bu-stats').innerHTML = statsHtml();
+    $('#bu-legend').innerHTML = Object.keys(COLORS).filter((k) => U.nodes.some((n) => n.c === k)).map((k) => `<span><i style="background:${COLORS[k]}"></i>${esc(k)}</span>`).join('')
+      + '<span><i class="ring"></i>new or changed today</span>';
+    if (quiet) fresh.slice(0, 6).forEach((n) => U.fx.push({ t: performance.now(), type: 'learn', node: U.byId.get(n.id), at: U.byId.get(n.id), label: n.t, dur: 3200 }));
+  };
+
+  L.universe = async () => {
+    U.running = true;
+    try {
+      await loadGraph(false);
+    } catch (e) {
+      if (U.nodes && U.nodes.length) {
+        $('#bu-stats').innerHTML = statsHtml();
+      } else {
+        $('#bu-stats').innerHTML = `<span class="muted sm">Loading neural constellation...</span>`;
+        setTimeout(() => { if (U.running) loadGraph(false).catch(() => {}); }, 1500);
+      }
+    }
+    if (!U.raf) U.raf = requestAnimationFrame(frame);
+    clearTimeout(U.timer);
+    if (U.last === 0) $('#bu-feed').innerHTML = '';
+    pump();
+  };
+  // stop animating when another tab is shown
+  document.querySelectorAll('.br-tab').forEach((b) => b.addEventListener('click', () => { if (b.dataset.tab !== 'universe') { U.running = false; clearTimeout(U.timer); } }));
+  window.addEventListener('resize', () => { if (U.running) sizeCanvas(); });
+  document.addEventListener('mousemove', (e) => {
+    const cv = $('#bu-canvas'); const tip = $('#bu-tip');
+    if (!cv || !U.running || !tip) { U.hoverNode = null; return; }
+    const r = cv.getBoundingClientRect();
+    const mx = e.clientX - r.left; const my = e.clientY - r.top;
+    if (mx < 0 || my < 0 || mx > r.width || my > r.height) { tip.hidden = true; U.hoverNode = null; return; }
+    let best = null; let bd = 144;
+    for (const n of U.nodes) { const d = (n.x - mx) ** 2 + (n.y - my) ** 2; if (d < bd) { bd = d; best = n; } }
+    if (!best) { tip.hidden = true; U.hoverNode = null; return; }
+    U.hoverNode = best;
+    tip.hidden = false;
+    const catCol = COLORS[best.c] || '#cbd5e1';
+    tip.innerHTML = `<div style="font-weight:600;font-size:12px;margin-bottom:3px;color:#f8fafc">${esc(best.t)}</div>`
+      + `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">`
+      + `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${catCol}"></span>`
+      + `<span style="font-size:11px;color:#cbd5e1">${esc(best.c)}</span>`
+      + `<span style="font-size:10px;color:#94a3b8">&middot; used ${best.h}&times; &middot; +${best.u} helpful</span>`
+      + `</div>`
+      + `<div style="display:flex;gap:8px;font-size:10px;border-top:1px solid rgba(255,255,255,0.1);padding-top:4px">`
+      + `<span style="color:#22d3ee;font-weight:600">● AI Vector Brain</span>`
+      + `<span style="color:#fbbf24;font-weight:600">● PHP Heuristic Brain</span>`
+      + `</div>`;
+    tip.style.left = Math.min(r.width - 250, mx + 14) + 'px'; tip.style.top = Math.max(4, my - 10) + 'px';
+  });
+
+  // =============================================================================================== train AI
+  let trainTimer = 0;
+  const pct = (v) => (v == null ? '-' : Math.round(v * 1000) / 10 + '%');
+  const renderStatus = (s) => {
+    const el = $('#bt-status');
+    if (!s.online) {
+      el.innerHTML = `<h4>The two brains</h4><p><b style="color:#b91c1c">The AI brain is offline.</b> The classic PHP brain is answering alone. Start the AI brain by double-clicking <code>run-ai.cmd</code> in the NEXUS-L folder.</p>`;
+      return;
+    }
+    const a = s.ai || {}; const v = a.active || {}; const m = v.metrics || {};
+    const lg = m.legacy || {}; const fl = m.full || {};
+    el.innerHTML = `<h4>The two brains</h4>
       <div class="bt-grid">
-        <div><b style="color:#0891b2">AI brain (primary)</b><br><small>${e.docs||0} answers, ${e.corrections||0} admin corrections indexed<br>
-          reranker: <b>${e.reranker?"on":"off"}</b> &middot; calibrated confidence: <b>${e.calibrated?"yes":"not yet"}</b><br>version ${r.version||"-"} &middot; shows an answer at confidence &ge; ${r.threshold!=null?Math.round(r.threshold*100)+"%":"-"}</small></div>
-        <div><b style="color:#b45309">PHP brain (secondary)</b><br><small>${t.php.knowledge} answers, word-matching, always on<br>answers whenever the AI brain is offline, unsure, or abstains</small></div>
-        <div><b>Mode</b><br><small>${f(t.mode)} ${t.mode==="live"?"(AI brain first, PHP brain as the safety net)":t.mode==="shadow"?"(PHP answers; AI brain only watches)":"(AI brain off)"}<br>change it in Settings</small></div>
+        <div><b style="color:#0891b2">AI brain (primary)</b><br><small>${a.docs || 0} answers, ${a.corrections || 0} admin corrections indexed<br>
+          reranker: <b>${a.reranker ? 'on' : 'off'}</b> &middot; calibrated confidence: <b>${a.calibrated ? 'yes' : 'not yet'}</b><br>version ${v.version || '-'} &middot; shows an answer at confidence &ge; ${v.threshold != null ? Math.round(v.threshold * 100) + '%' : '-'}</small></div>
+        <div><b style="color:#b45309">PHP brain (secondary)</b><br><small>${s.php.knowledge} answers, word-matching, always on<br>answers whenever the AI brain is offline, unsure, or abstains</small></div>
+        <div><b>Mode</b><br><small>${esc(s.mode)} ${s.mode === 'live' ? '(AI brain first, PHP brain as the safety net)' : s.mode === 'shadow' ? '(PHP answers; AI brain only watches)' : '(AI brain off)'}<br>change it in Settings</small></div>
       </div>
-      ${r.holdout_cases?`<p class="sm">On ${r.holdout_cases} questions it had never seen: <b>precision ${p(r.holdout_precision)}</b> (how often a shown answer is right), <b>recall ${p(r.holdout_recall)}</b> (how many it answers), abstains on ${p(r.holdout_abstain)}.</p>`:""}
-      ${n.precision!=null&&o.precision!=null?`<p class="sm muted">Old method: precision ${p(n.precision)}, recall ${p(n.recall)} &middot; New method: precision ${p(o.precision)}, recall ${p(o.recall)}.</p>`:""}
-      <p class="sm muted">Labelled cases: ${e.cases?e.cases.total:0} (${e.review?e.review.labelled_cases:0} from your reviews) &middot; questions waiting for you: ${e.review?e.review.pending:0}</p>`,d("#br-n-train").textContent=e.review&&e.review.pending?e.review.pending:"";const c=e.job||{},h=d("#bt-bar");if(c.state==="running")h.hidden=!1,d("#bt-fill").style.width=(c.progress||1)+"%",d("#bt-msg").textContent=c.step||"Training...",d("#bt-train").disabled=!0;else if(d("#bt-train").disabled=!1,c.state==="done"&&c.result){h.hidden=!1,d("#bt-fill").style.width="100%";const b=c.result;d("#bt-msg").textContent=b.skipped?b.skipped:b.note||"Finished.";const l=b.metrics;d("#bt-result").innerHTML=l?`<p class="sm">Test on ${l.holdout_cases} unseen questions &mdash; ${l.best==="legacy"?"kept the old method":"new ("+l.best+")"}: precision ${p(l.full.precision)}, recall ${p(l.full.recall)} (threshold ${l.full.threshold!=null?Math.round(l.full.threshold*100)+"%":"none reached"}); old: precision ${p(l.legacy.precision)}, recall ${p(l.legacy.recall)}. Took ${b.seconds}s.</p>`:""}else c.state==="error"&&(d("#bt-msg").textContent="Training failed: "+(c.error||"unknown error"));return c.state==="running"},S=async()=>{clearTimeout(O);try{const t=await w("brain/ai/status"),i=K(t);(i||!d("#br-trainai").hidden)&&(O=setTimeout(S,i?2500:15e3))}catch(t){d("#bt-status").innerHTML=`<p class="muted sm">${f(t.message)}</p>`}};d("#bt-train").addEventListener("click",async()=>{d("#bt-msg").textContent="Starting...",d("#bt-result").innerHTML="";try{await E("brain/ai/train",{}),S()}catch(t){d("#bt-msg").textContent=t.message}});const _=async()=>{const t=d("#bt-item");try{const i=await w("brain/ai/review");if(!i.item_id){t.innerHTML=`<p class="sm">Nothing is waiting. ${i.labelled_cases||0} cases labelled so far. <button type="button" class="dsg-btn" id="bt-more">Bring in new real questions</button></p>`;return}t.innerHTML=`<p class="bt-q">&ldquo;${f(i.question)}&rdquo; <small class="muted">(${i.pending} waiting)</small></p>
-        ${i.candidates.map((e,r)=>`<div class="bt-cand"><div><b>${f(e.title)}</b> <small class="muted">${e.kind==="correction"?"admin correction":"answer"} &middot; ${Math.round(e.score*100)}% sure</small><p class="sm">${f(e.body)}</p></div><button type="button" class="dsg-btn dsg-primary" data-pick="${e.kb_id||""}" data-i="${r}">This is right</button></div>`).join("")||'<p class="muted sm">The brain found nothing close.</p>'}
+      ${v.holdout_cases ? `<p class="sm">On ${v.holdout_cases} questions it had never seen: <b>precision ${pct(v.holdout_precision)}</b> (how often a shown answer is right), <b>recall ${pct(v.holdout_recall)}</b> (how many it answers), abstains on ${pct(v.holdout_abstain)}.</p>` : ''}
+      ${lg.precision != null && fl.precision != null ? `<p class="sm muted">Old method: precision ${pct(lg.precision)}, recall ${pct(lg.recall)} &middot; New method: precision ${pct(fl.precision)}, recall ${pct(fl.recall)}.</p>` : ''}
+      <p class="sm muted">Labelled cases: ${a.cases ? a.cases.total : 0} (${a.review ? a.review.labelled_cases : 0} from your reviews) &middot; questions waiting for you: ${a.review ? a.review.pending : 0}</p>`;
+    $('#br-n-train').textContent = a.review && a.review.pending ? a.review.pending : '';
+    const job = a.job || {};
+    const bar = $('#bt-bar');
+    if (job.state === 'running') {
+      bar.hidden = false; $('#bt-fill').style.width = (job.progress || 1) + '%';
+      $('#bt-msg').textContent = job.step || 'Training...'; $('#bt-train').disabled = true;
+    } else {
+      $('#bt-train').disabled = false;
+      if (job.state === 'done' && job.result) {
+        bar.hidden = false; $('#bt-fill').style.width = '100%';
+        const r = job.result;
+        $('#bt-msg').textContent = r.skipped ? r.skipped : (r.note || 'Finished.');
+        const mm = r.metrics;
+        $('#bt-result').innerHTML = mm ? `<p class="sm">Test on ${mm.holdout_cases} unseen questions &mdash; ${mm.best === 'legacy' ? 'kept the old method' : 'new (' + mm.best + ')'}: precision ${pct(mm.full.precision)}, recall ${pct(mm.full.recall)} (threshold ${mm.full.threshold != null ? Math.round(mm.full.threshold * 100) + '%' : 'none reached'}); old: precision ${pct(mm.legacy.precision)}, recall ${pct(mm.legacy.recall)}. Took ${r.seconds}s.</p>` : '';
+      } else if (job.state === 'error') { $('#bt-msg').textContent = 'Training failed: ' + (job.error || 'unknown error'); }
+    }
+    return job.state === 'running';
+  };
+  const refreshStatus = async () => {
+    clearTimeout(trainTimer);
+    try {
+      const s = await api('brain/ai/status');
+      const running = renderStatus(s);
+      if (running || !$('#br-trainai').hidden) trainTimer = setTimeout(refreshStatus, running ? 2500 : 15000);
+    } catch (e) {
+      $('#bt-status').innerHTML = `<p class="muted sm">Synchronizing status with AI engine... <button type="button" class="dsg-btn sm" onclick="window.nxBrainLoaders && window.nxBrainLoaders.trainai && window.nxBrainLoaders.trainai()">Refresh</button></p>`;
+      trainTimer = setTimeout(refreshStatus, 4000);
+    }
+  };
+  $('#bt-train').addEventListener('click', async () => {
+    $('#bt-msg').textContent = 'Starting...'; $('#bt-result').innerHTML = '';
+    try { await post('brain/ai/train', {}); refreshStatus(); } catch (e) { $('#bt-msg').textContent = e.message; }
+  });
+
+  const loadItem = async () => {
+    const box = $('#bt-item');
+    try {
+      const j = await api('brain/ai/review');
+      if (!j.item_id) { box.innerHTML = `<p class="sm">Nothing is waiting. ${j.labelled_cases || 0} cases labelled so far. <button type="button" class="dsg-btn" id="bt-more">Bring in new real questions</button></p>`; return; }
+      box.innerHTML = `<p class="bt-q">&ldquo;${esc(j.question)}&rdquo; <small class="muted">(${j.pending} waiting)</small></p>
+        ${j.candidates.map((c, i) => `<div class="bt-cand"><div><b>${esc(c.title)}</b> <small class="muted">${c.kind === 'correction' ? 'admin correction' : 'answer'} &middot; ${Math.round(c.score * 100)}% sure</small><p class="sm">${esc(c.body)}</p></div><button type="button" class="dsg-btn dsg-primary" data-pick="${c.kb_id || ''}" data-i="${i}">This is right</button></div>`).join('') || '<p class="muted sm">The brain found nothing close.</p>'}
         <details><summary>None of these fits</summary><textarea id="bt-ans" rows="3" placeholder="If you know the right answer, type it here: it goes live at once."></textarea><div class="br-row"><button type="button" class="dsg-btn" data-none="1">None fits</button></div></details>
-        <div class="br-row"><button type="button" class="dsg-btn" data-off="1">Not about NEXUS-L</button><button type="button" class="dsg-btn" data-skip="1">Skip</button></div>`,t.dataset.item=String(i.item_id)}catch(i){t.innerHTML=`<p class="muted sm">${f(i.message)}</p>`}};d("#bt-item").addEventListener("click",async t=>{const i=t.target.closest("button");if(!i)return;const e=d("#bt-item"),r=Number(e.dataset.item||0);if(i.id==="bt-more"){i.disabled=!0;try{const n=await E("brain/ai/review/seed",{});e.innerHTML=`<p class="sm">${n.added} new question(s) added.</p>`}catch(n){e.textContent=n.message}return _()}let s=null;if(i.dataset.pick?s={choice:"kb",kb_id:Number(i.dataset.pick)}:i.dataset.none?s={choice:"none",answer:(d("#bt-ans")||{}).value||""}:i.dataset.off?s={choice:"offtopic"}:i.dataset.skip&&(s={choice:"skip"}),!(!s||!r)){e.querySelectorAll("button").forEach(n=>{n.disabled=!0});try{await E("brain/ai/label",Object.assign({item_id:r},s))}catch(n){e.insertAdjacentHTML("afterbegin",`<p class="sm" style="color:#b91c1c">${f(n.message)}</p>`)}_(),S()}}),I.trainai=()=>{S(),_()}})();
+        <div class="br-row"><button type="button" class="dsg-btn" data-off="1">Not about NEXUS-L</button><button type="button" class="dsg-btn" data-skip="1">Skip</button></div>`;
+      box.dataset.item = String(j.item_id);
+    } catch (e) { box.innerHTML = `<p class="muted sm">${esc(e.message)}</p>`; }
+  };
+  $('#bt-item').addEventListener('click', async (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const box = $('#bt-item'); const id = Number(box.dataset.item || 0);
+    if (b.id === 'bt-more') { b.disabled = true; try { const j = await post('brain/ai/review/seed', {}); box.innerHTML = `<p class="sm">${j.added} new question(s) added.</p>`; } catch (x) { box.textContent = x.message; } return loadItem(); }
+    let body = null;
+    if (b.dataset.pick) body = { choice: 'kb', kb_id: Number(b.dataset.pick) };
+    else if (b.dataset.none) body = { choice: 'none', answer: ($('#bt-ans') || {}).value || '' };
+    else if (b.dataset.off) body = { choice: 'offtopic' };
+    else if (b.dataset.skip) body = { choice: 'skip' };
+    if (!body || !id) return;
+    box.querySelectorAll('button').forEach((x) => { x.disabled = true; });
+    try { await post('brain/ai/label', Object.assign({ item_id: id }, body)); } catch (x) { box.insertAdjacentHTML('afterbegin', `<p class="sm" style="color:#b91c1c">${esc(x.message)}</p>`); }
+    loadItem(); refreshStatus();
+  });
+
+  L.trainai = () => { refreshStatus(); loadItem(); };
+})();

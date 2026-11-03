@@ -88,7 +88,7 @@ class BrainEvents
     {
         $c = cache('brain_ai_online');
         if ($c === null || $c === false) {
-            $c = AiBridge::enabled() && AiBridge::get('/health', 700) !== null ? 'y' : 'n';
+            $c = AiBridge::enabled() && AiBridge::get('/health', 2000) !== null ? 'y' : 'n';
             cache()->save('brain_ai_online', $c, 8);
         }
 
@@ -100,17 +100,19 @@ class BrainEvents
     {
         $t = mb_strtolower($title . ' ' . $keywords . ' ' . (string) $page);
         $rules = [
-            'Charts & files' => '/\b(chart|graph|excel|csv|export|png|image|picture|download link|spreadsheet)\b/',
-            'InterLink service' => '/\b(interlink service|service computer|queue|installer|tray|shared key|sign in to interlink|background service)\b/',
-            'InterLink' => '/\b(interlink|upload form|sender|extension|lab ref.*attach|submit)\b/',
-            'Bonding' => '/\b(bonding|shoe|u60|shb|machine file|diagram)\b/',
-            'Materials & tests' => '/\b(fabric|leather|rubber|material|test|reading|rating|standard|thickness|abrasion|tensile|hardware|label|insole|foam|wst|fthl)\b/',
-            'Approvals & reports' => '/\b(approval|approve|signat|sign|report|pdf|preview|print|lab tracker|lab ref)\b/',
-            'Settings & admin' => '/\b(settings|admin|database|transfer|synology|defaults|brain|teach|knowledge)\b/',
-            'Chat & inbox' => '/\b(inbox|chat|message|emoji|theme|assistant|bot)\b/',
-            'Errors & fixes' => '/\b(error|fail|problem|cannot|can\'t|not working|slow|blank|stuck|timeout|lag)\b/',
-            'Account & access' => '/\b(login|password|account|role|access|user|permission|logout)\b/',
-            'Designer' => '/\b(designer|layout|template|canvas|field)\b/',
+            'AI Skills & Architecture' => '/\b(mem0|langgraph|localai|hindsight|cognee|openviking|simplemem|biomimetic|vector database|graph memory|cyclical graph|agent memory|long-term memory)\b/i',
+            'VF Test Methods (Series A-J)' => '/^(vf-|vf\s|dtp-lab-101)|\b(vf-[a-j]\d{2}|test method vf|series [a-j] test|illustrated guide)\b/i',
+            'Charts & files' => '/\b(chart|graph|excel|csv|export|png|image|picture|download link|spreadsheet|powerpoint|ppt)\b/i',
+            'InterLink service' => '/\b(interlink service|service computer|queue|installer|tray|shared key|sign in to interlink|background service)\b/i',
+            'InterLink' => '/\b(interlink|upload form|sender|extension|lab ref.*attach|submit)\b/i',
+            'Bonding' => '/\b(bonding|shoe|u60|shb|machine file|diagram)\b/i',
+            'Materials & tests' => '/\b(fabric|leather|rubber|material|test|reading|rating|standard|thickness|abrasion|tensile|hardware|label|insole|foam|wst|fthl)\b/i',
+            'Approvals & reports' => '/\b(approval|approve|signat|sign|report|pdf|preview|print|lab tracker|lab ref)\b/i',
+            'Settings & admin' => '/\b(settings|admin|database|transfer|synology|defaults|brain|teach|knowledge)\b/i',
+            'Chat & inbox' => '/\b(inbox|chat|message|emoji|theme|assistant|bot)\b/i',
+            'Errors & fixes' => '/\b(error|fail|problem|cannot|can\'t|not working|slow|blank|stuck|timeout|lag)\b/i',
+            'Account & access' => '/\b(login|password|account|role|access|user|permission|logout)\b/i',
+            'Designer' => '/\b(designer|layout|template|canvas|field)\b/i',
         ];
         foreach ($rules as $name => $re) {
             if (preg_match($re, $t)) {
