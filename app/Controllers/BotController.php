@@ -3293,7 +3293,7 @@ class BotController extends BaseController
                 ],
                 'suggestions' => [
                     'What is LangGraph in our AI?',
-                    'Explain LocalAI offline LLM',
+                    'Explain Hindsight biomimetic memory',
                     'Overview of all AI skills',
                 ],
             ];
@@ -3328,7 +3328,7 @@ class BotController extends BaseController
                 ],
                 'suggestions' => [
                     'What is Mem0 in our AI?',
-                    'Explain LocalAI offline LLM',
+                    'Explain Cognee knowledge graph',
                     'Overview of all AI skills',
                 ],
             ];
@@ -3361,42 +3361,183 @@ class BotController extends BaseController
                     ['type' => 'open', 'label' => 'Open AI Assistant Settings', 'url' => site_url('settings')],
                 ],
                 'suggestions' => [
-                    'What is Mem0 in our AI?',
-                    'What is LangGraph in our AI?',
+                    'What is SimpleMem compression?',
+                    'What is OpenViking context VFS?',
                     'Overview of all AI skills',
                 ],
             ];
         }
 
-        // 4. Combined skills overview
-        if (preg_match('/\b(?:skills?\s*(?:of|in)\s*(?:our|the)?\s*ai|ai\s*skills?|core\s*ai\s*skills?|ai\s*brain\s*(?:skills?|stack|architecture)|what\s*are\s*the\s*ai\s*skills)\b/i', $low)) {
-            $replyText = "### \xf0\x9f\x9b\xa1\xef\xb8\x8f Core Skills & Architecture of our AI (LEXUS AI Brain)\n\n"
-                . "The LEXUS AI Brain in NEXUS-L is powered by three specialized open-source technologies for continuous memory, state orchestration, and local offline inference:\n\n"
-                . "| Skill / Technology | Architecture Role | What It Solves | GitHub Repository |\n"
-                . "| :--- | :--- | :--- | :--- |\n"
-                . "| **1. Mem0** | **The Memory Layer for AI** | Long-term memory, cross-session continuity, and user preference tracking across chat sessions | [mem0ai/mem0](https://github.com/mem0ai/mem0) |\n"
-                . "| **2. LangGraph** | **Multi-Turn State Management** | Cyclical graph workflows, conversation routing, self-correction, and tool looping | [langchain-ai/langgraph](https://github.com/langchain-ai/langgraph) |\n"
-                . "| **3. LocalAI** | **Self-Hosted Local LLM API** | Running open-source models (Llama 3, Mistral, Phi-3) 100% offline on your own machine without cloud API fees | [mudler/LocalAI](https://github.com/mudler/LocalAI) |\n\n"
-                . "> [!IMPORTANT]\n"
-                . "> **Privacy & Isolation:** All 3 components run strictly on the local laboratory host (`127.0.0.1`). No proprietary test data, test results, or laboratory reports ever leave the internal network.";
+        // 4. Specific skill: Hindsight
+        if (preg_match('/\b(hindsight|vectorize[- ]?io\s*hindsight|biomimetic\s*memory|retain\s*recall\s*reflect|ai\s*amnesia|memory\s*tiers)\b/i', $low)) {
+            $replyText = "### \xf0\x9f\xa7\xa0 Hindsight \xe2\x80\x94 Biomimetic Agent Memory\n\n"
+                . "**Hindsight** is a dedicated agent memory architecture designed to run entirely locally using your own data infrastructure. It bypasses typical fragile RAG pipelines by creating biological-style multi-tiered memory models.\n\n"
+                . "#### \xf0\x9f\x8e\xaf What it Solves\n"
+                . "\xe2\x80\xa2 **Continuous Memory Consolidation:** Prevents \"AI amnesia\" by constantly digesting past conversations into long-term mental models.\n"
+                . "\xe2\x80\xa2 **Cross-Session Reasoning:** Synthesizes conclusions across multiple testing shifts and dates instead of treating each session as an isolated conversation.\n"
+                . "\xe2\x80\xa2 **100% Local Execution:** Runs completely on-premises using your local data infrastructure without external cloud API dependencies.\n\n"
+                . "#### \xe2\x9a\x99\xef\xb8\x8f How it Works (The 3-Part Lifecycle)\n"
+                . "1. **Retain (Observation Extraction):** Watches user chats and test runs, extracting discrete verified facts and observations.\n"
+                . "2. **Recall (Hybrid Retrieval):** Merges dense semantic embeddings with sparse keyword matching to retrieve relevant context accurately.\n"
+                . "3. **Reflect (Background Consolidation):** Background worker tasks cross-reference statements across test records, consolidating findings and pruning redundant noise.\n\n"
+                . "\xe2\x80\xa2 **GitHub Repository:** [vectorize-io/hindsight](https://github.com/vectorize-io/hindsight)";
 
             return [
                 'text' => $replyText,
                 'steps' => [
-                    '1. Mem0 manages user memory and context recall',
-                    '2. LangGraph manages dialog state machines and error self-correction loops',
-                    '3. LocalAI / local runtime hosts quantized models offline without external cloud calls',
+                    'Retain: Extracts discrete observations from conversation turns',
+                    'Recall: Merges dense semantic embeddings with sparse keyword matching',
+                    'Reflect: Consolidates observations into long-term mental models in the background',
                 ],
                 'actions' => [
-                    ['type' => 'open', 'label' => 'View Mem0 on GitHub', 'url' => 'https://github.com/mem0ai/mem0', 'target' => '_blank'],
-                    ['type' => 'open', 'label' => 'View LangGraph on GitHub', 'url' => 'https://github.com/langchain-ai/langgraph', 'target' => '_blank'],
-                    ['type' => 'open', 'label' => 'View LocalAI on GitHub', 'url' => 'https://github.com/mudler/LocalAI', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'View Hindsight on GitHub', 'url' => 'https://github.com/vectorize-io/hindsight', 'target' => '_blank'],
                     ['type' => 'open', 'label' => 'Open AI Brain Console', 'url' => site_url('brain')],
                 ],
                 'suggestions' => [
-                    'Tell me more about Mem0',
-                    'How does LangGraph work in our system?',
-                    'Explain LocalAI offline deployment',
+                    'What is Cognee knowledge graph?',
+                    'What is OpenViking context VFS?',
+                    'Overview of all AI skills',
+                ],
+            ];
+        }
+
+        // 5. Specific skill: Cognee
+        if (preg_match('/\b(cognee|topoteretes\s*cognee|graph[- ]?based\s*(?:cognitive\s*)?memory|local\s*knowledge\s*graph|entity\s*relationship\s*tracking)\b/i', $low)) {
+            $replyText = "### \xf0\x9f\x95\xb8\xef\xb8\x8f Cognee \xe2\x80\x94 Graph-Based Cognitive Memory Platform\n\n"
+                . "**Cognee** is an open-source cognitive platform designed to turn raw conversations, test results, and laboratory documents into an interconnected **local knowledge graph**.\n\n"
+                . "#### \xf0\x9f\x8e\xaf What it Solves\n"
+                . "\xe2\x80\xa2 **Relationship & Connection Tracking:** Understands how entities connect (e.g. *Supplier X* \xe2\x86\x92 supplies *Rubber Compound Y* \xe2\x86\x92 tested under *VF-A01* \xe2\x86\x92 historical failure in *Week 42*).\n"
+                . "\xe2\x80\xa2 **High Semantic Accuracy:** Eliminates vector hallucinations by hopping along verified graph edges rather than relying purely on text similarity.\n"
+                . "\xe2\x80\xa2 **Zero Cloud Costs:** Operates completely on your local machine using small, local CPU-optimized models.\n\n"
+                . "#### \xe2\x9a\x99\xef\xb8\x8f How it Works\n"
+                . "1. **Entity & Relation Extraction:** Extracts key entities (test methods, suppliers, chemical compounds, technicians) and their relationships from chat logs and test sheets.\n"
+                . "2. **Graph Construction:** Builds local graph nodes and edges stored in local graph/relational databases.\n"
+                . "3. **Multi-Hop Traversal:** Instead of simple string searches, queries traverse connected graph nodes to discover non-obvious correlations and failure root causes.\n\n"
+                . "\xe2\x80\xa2 **GitHub Repository:** [topoteretes/cognee](https://github.com/topoteretes/cognee)";
+
+            return [
+                'text' => $replyText,
+                'steps' => [
+                    'Ingests unstructured laboratory chats, spreadsheets, and test sheets',
+                    'Extracts entities and relationships using local CPU-optimized models',
+                    'Builds a traversable knowledge graph for multi-hop relational queries',
+                ],
+                'actions' => [
+                    ['type' => 'open', 'label' => 'View Cognee on GitHub', 'url' => 'https://github.com/topoteretes/cognee', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'Open AI Brain Universe', 'url' => site_url('brain#universe')],
+                ],
+                'suggestions' => [
+                    'What is Hindsight biomimetic memory?',
+                    'What is OpenViking context VFS?',
+                    'Overview of all AI skills',
+                ],
+            ];
+        }
+
+        // 6. Specific skill: OpenViking
+        if (preg_match('/\b(openviking|volcengine\s*openviking|transparent\s*context|context\s*virtual\s*filesystem|vfs\s*memory|virtual\s*filesystem\s*for\s*ai)\b/i', $low)) {
+            $replyText = "### \xf0\x9f\x97\x82\xef\xb8\x8f OpenViking \xe2\x80\x94 Transparent Context Virtual Filesystem\n\n"
+                . "**OpenViking** (developed by Volcengine) is an open-source context database that maps an agent's memory directly into a **transparent virtual filesystem (VFS)** layer.\n\n"
+                . "#### \xf0\x9f\x8e\xaf What it Solves\n"
+                . "\xe2\x80\xa2 **Eliminates the \"Black Box\":** Overcomes the opacity of traditional vector stores where administrators cannot inspect or edit what the bot has stored.\n"
+                . "\xe2\x80\xa2 **Direct Auditability & Correction:** Quality managers can directly inspect, modify, or delete erroneous memories with standard filesystem operations.\n"
+                . "\xe2\x80\xa2 **Granular Access Control:** File-permission style access control across departments (e.g., technicians vs lab supervisors).\n\n"
+                . "#### \xe2\x9a\x99\xef\xb8\x8f How it Works\n"
+                . "1. **Filesystem Mapping:** User preferences, test histories, and machine logs are organized into directories and files (e.g., `/users/staff_01/preferences.json`, `/labrefs/DTP2026/readings.txt`).\n"
+                . "2. **CLI Inspection:** Administrators can use terminal-style operations (`ls`, `tree`, `read`, `write`, `grep`) to audit memory contents.\n"
+                . "3. **Precise Overrides:** Correcting an error is as simple as updating a text file inside the virtual filesystem directory.\n\n"
+                . "\xe2\x80\xa2 **GitHub Repository:** [volcengine/OpenViking](https://github.com/volcengine/OpenViking)";
+
+            return [
+                'text' => $replyText,
+                'steps' => [
+                    'Maps agent memory hierarchy into structured virtual folders and files',
+                    'Enables standard terminal operations (ls, tree, grep) to inspect memory state',
+                    'Allows administrators to directly edit, sanitize, and audit stored knowledge',
+                ],
+                'actions' => [
+                    ['type' => 'open', 'label' => 'View OpenViking on GitHub', 'url' => 'https://github.com/volcengine/OpenViking', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'Open Knowledge Management', 'url' => site_url('brain#knowledge')],
+                ],
+                'suggestions' => [
+                    'What is SimpleMem compression?',
+                    'What is Cognee knowledge graph?',
+                    'Overview of all AI skills',
+                ],
+            ];
+        }
+
+        // 7. Specific skill: SimpleMem
+        if (preg_match('/\b(simplemem|aiming[- ]?lab\s*simplemem|lossless\s*token[- ]?saving|context\s*(?:window\s*)?compression|token[- ]?saving\s*compression)\b/i', $low)) {
+            $replyText = "### \xe2\x9a\xa1 SimpleMem \xe2\x80\x94 Lossless Token-Saving Context Compression\n\n"
+                . "**SimpleMem** (developed by Aiming Lab) is a high-efficiency context compression framework designed to drastically reduce token consumption in multi-turn local conversations.\n\n"
+                . "#### \xf0\x9f\x8e\xaf What it Solves\n"
+                . "\xe2\x80\xa2 **Local Inference Latency:** Prevents CPU/GPU slowdowns caused by feeding hundreds of conversational turns into local models.\n"
+                . "\xe2\x80\xa2 **Context Window Overflow:** Extends the effective conversation length up to 10\xc3\x97 without exceeding the model's context limits.\n"
+                . "\xe2\x80\xa2 **Hardware Efficiency:** Enables local execution on constrained server hardware with minimal RAM/VRAM footprint.\n\n"
+                . "#### \xe2\x9a\x99\xef\xb8\x8f How it Works\n"
+                . "1. **Semantic Distillation:** Analyzes multi-turn dialogue history and strips conversational filler, pleasantries, and duplicated exchanges.\n"
+                . "2. **Timestamped Semantic Blocks:** Condenses key questions, numerical values, and decisions into compact, timestamped structured facts.\n"
+                . "3. **Micro-Payload Injection:** Passes only the compressed distillation to the LLM prompt, keeping prompt token payloads exceptionally small while preserving full conversational fidelity.\n\n"
+                . "\xe2\x80\xa2 **GitHub Repository:** [aiming-lab/SimpleMem](https://github.com/aiming-lab/SimpleMem)";
+
+            return [
+                'text' => $replyText,
+                'steps' => [
+                    'Monitors multi-turn conversation length and token budget',
+                    'Strips conversational fluff and compresses turns into timestamped blocks',
+                    'Maintains 10x longer continuous dialogue with near-zero latency penalty',
+                ],
+                'actions' => [
+                    ['type' => 'open', 'label' => 'View SimpleMem on GitHub', 'url' => 'https://github.com/aiming-lab/SimpleMem', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'Open AI Assistant Settings', 'url' => site_url('settings')],
+                ],
+                'suggestions' => [
+                    'What is Hindsight biomimetic memory?',
+                    'What is Mem0 in our AI?',
+                    'Overview of all AI skills',
+                ],
+            ];
+        }
+
+        // 8. Combined skills overview
+        if (preg_match('/\b(?:skills?\s*(?:of|in|for)\s*(?:our|the)?\s*ai|ai\s*skills?|core\s*ai\s*skills?|ai\s*brain\s*(?:skills?|stack|architecture)|what\s*are\s*the\s*ai\s*skills)\b/i', $low)) {
+            $replyText = "### \xf0\x9f\x9b\xa1\xef\xb8\x8f Core Skills & Architecture of our AI (LEXUS AI Brain)\n\n"
+                . "The LEXUS AI Brain in NEXUS-L is powered by seven specialized open-source technologies for continuous memory, state orchestration, knowledge graphs, and local offline inference:\n\n"
+                . "| Skill / Technology | Architecture Role | What It Solves | GitHub Repository |\n"
+                . "| :--- | :--- | :--- | :--- |\n"
+                . "| **1. Mem0** | **The Memory Layer for AI** | Long-term memory, cross-session continuity, and user preference tracking across chat sessions | [mem0ai/mem0](https://github.com/mem0ai/mem0) |\n"
+                . "| **2. LangGraph** | **Multi-Turn State Management** | Cyclical graph workflows, conversation routing, self-correction, and tool looping | [langchain-ai/langgraph](https://github.com/langchain-ai/langgraph) |\n"
+                . "| **3. LocalAI** | **Self-Hosted Local LLM API** | Running open-source models (Llama 3, Mistral, Phi-3) 100% offline on your own machine without cloud API fees | [mudler/LocalAI](https://github.com/mudler/LocalAI) |\n"
+                . "| **4. Hindsight** | **Biomimetic Agent Memory** | Continuous memory consolidation (Retain-Recall-Reflect) to prevent AI amnesia and build mental models | [vectorize-io/hindsight](https://github.com/vectorize-io/hindsight) |\n"
+                . "| **5. Cognee** | **Knowledge Graph Platform** | Extracts entities & relationships into a local graph for multi-hop semantic accuracy without cloud DBs | [topoteretes/cognee](https://github.com/topoteretes/cognee) |\n"
+                . "| **6. OpenViking** | **Context Virtual Filesystem** | Transparent VFS memory layer allowing direct inspection & correction via terminal commands (ls, grep) | [volcengine/OpenViking](https://github.com/volcengine/OpenViking) |\n"
+                . "| **7. SimpleMem** | **Lossless Token Compression** | Compresses multi-turn logs into compact timestamped semantic blocks, saving tokens & speeding up inference | [aiming-lab/SimpleMem](https://github.com/aiming-lab/SimpleMem) |\n\n"
+                . "> [!IMPORTANT]\n"
+                . "> **Privacy & Isolation:** All components run strictly on the local laboratory host (`127.0.0.1`). No proprietary test data, test results, or laboratory reports ever leave the internal network.";
+
+            return [
+                'text' => $replyText,
+                'steps' => [
+                    '1. Mem0 & Hindsight: Long-term biomimetic memory and continuous consolidation',
+                    '2. LangGraph: Cyclical dialog state orchestration and self-correction',
+                    '3. Cognee & OpenViking: Knowledge graph relationships and transparent virtual filesystem auditing',
+                    '4. SimpleMem & LocalAI: Lossless token compression and on-premises offline model inference',
+                ],
+                'actions' => [
+                    ['type' => 'open', 'label' => 'View Mem0', 'url' => 'https://github.com/mem0ai/mem0', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'View LangGraph', 'url' => 'https://github.com/langchain-ai/langgraph', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'View LocalAI', 'url' => 'https://github.com/mudler/LocalAI', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'View Hindsight', 'url' => 'https://github.com/vectorize-io/hindsight', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'View Cognee', 'url' => 'https://github.com/topoteretes/cognee', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'View OpenViking', 'url' => 'https://github.com/volcengine/OpenViking', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'View SimpleMem', 'url' => 'https://github.com/aiming-lab/SimpleMem', 'target' => '_blank'],
+                ],
+                'suggestions' => [
+                    'Tell me about Hindsight biomimetic memory',
+                    'How does Cognee build knowledge graphs?',
+                    'Explain OpenViking virtual filesystem',
+                    'How does SimpleMem compress tokens?',
                 ],
             ];
         }
@@ -3404,7 +3545,7 @@ class BotController extends BaseController
         return null;
     }
 
-private function lexusMultiReportIntent(string $text, int $uid): ?array
+    private function lexusMultiReportIntent(string $text, int $uid): ?array
     {
         $low = mb_strtolower(trim($text));
 

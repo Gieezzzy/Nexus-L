@@ -357,6 +357,110 @@ class WorkflowKnowledgeSeeder
                 ],
                 'page_match' => 'brain',
             ],
+            [
+                'kind' => 'playbook',
+                'title' => 'Hindsight: Biomimetic Agent Memory (vectorize-io/hindsight)',
+                'keywords' => 'hindsight, vectorize-io hindsight, biomimetic memory, agent memory tiers, retain recall reflect, continuous memory consolidation, prevent ai amnesia, mental models',
+                'body' => "### \xf0\x9f\xa7\xa0 Hindsight \xe2\x80\x94 Biomimetic Agent Memory\n\n"
+                        . "**Hindsight** is a dedicated agent memory system designed to run entirely locally using your own data infrastructure. It bypasses typical fragile RAG pipelines by creating biological-style multi-tiered memory models.\n\n"
+                        . "#### \xf0\x9f\x8e\xaf What it Solves\n"
+                        . "\xe2\x80\xa2 **Continuous Memory Consolidation:** Prevents \"AI amnesia\" by constantly digesting past interactions into long-term mental models.\n"
+                        . "\xe2\x80\xa2 **Cross-Session Reasoning:** Allows the assistant to synthesize conclusions across different testing days rather than treating every prompt as a blank slate.\n"
+                        . "\xe2\x80\xa2 **100% Local Deployment:** Runs entirely on-premises using your own local database infrastructure without external cloud API dependencies.\n\n"
+                        . "#### \xe2\x9a\x99\xef\xb8\x8f How it Works (The 3-Part Lifecycle)\n"
+                        . "1. **Retain (Observation Extraction):** Ingests raw conversation streams and extracts discrete, verified observations (e.g., specific batch results, machine anomalies).\n"
+                        . "2. **Recall (Hybrid Retrieval):** Merges semantic vector embeddings with exact keyword matching to surface relevant facts precisely when needed.\n"
+                        . "3. **Reflect (Background Consolidation):** Runs lightweight background worker tasks to cross-reference statements, consolidate related findings, and clean out redundant conversational noise.\n\n"
+                        . "\xe2\x80\xa2 **GitHub Repository:** [vectorize-io/hindsight](https://github.com/vectorize-io/hindsight)",
+                'steps' => [
+                    'Retain: Extracts discrete observations from conversation turns.',
+                    'Recall: Merges dense semantic embeddings with sparse keyword matching.',
+                    'Reflect: Consolidates observations into long-term mental models in the background.'
+                ],
+                'actions' => [
+                    ['type' => 'open', 'label' => 'View Hindsight on GitHub', 'url' => 'https://github.com/vectorize-io/hindsight', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'Open AI Brain Console', 'url' => site_url('brain')],
+                ],
+                'page_match' => 'brain',
+            ],
+            [
+                'kind' => 'playbook',
+                'title' => 'Cognee: Graph-Based Cognitive Memory Platform (topoteretes/cognee)',
+                'keywords' => 'cognee, topoteretes cognee, graph based cognitive memory, local knowledge graph, entity relationship tracking, graph nodes memory, semantic connection tracking',
+                'body' => "### \xf0\x9f\x95\xb8\xef\xb8\x8f Cognee \xe2\x80\x94 Graph-Based Cognitive Memory Platform\n\n"
+                        . "**Cognee** is an open-source cognitive platform designed to turn raw conversations, test results, and laboratory documents into an interconnected **local knowledge graph**.\n\n"
+                        . "#### \xf0\x9f\x8e\xaf What it Solves\n"
+                        . "\xe2\x80\xa2 **Relationship & Connection Tracking:** Remembers how different entities connect (e.g. *Supplier X* \xe2\x86\x92 supplies *Rubber Compound Y* \xe2\x86\x92 tested under *VF-A01* \xe2\x86\x92 historical failure in *Week 42*).\n"
+                        . "\xe2\x80\xa2 **High Semantic Precision:** Eliminates vector \"hallucination\" by traversing structured graph edges rather than relying purely on text similarity.\n"
+                        . "\xe2\x80\xa2 **Zero Cloud Costs:** Operates completely on your local machine using small, local CPU-optimized models.\n\n"
+                        . "#### \xe2\x9a\x99\xef\xb8\x8f How it Works\n"
+                        . "1. **Entity & Relation Extraction:** Extracts key entities (test codes, suppliers, chemical compounds, technicians) and their relationships from chat logs and test sheets.\n"
+                        . "2. **Graph Construction:** Builds local graph nodes and edges stored in local graph/relational databases.\n"
+                        . "3. **Multi-Hop Traversal:** Instead of simple string searches, queries hop across connected nodes to find non-obvious historical correlations and root causes.\n\n"
+                        . "\xe2\x80\xa2 **GitHub Repository:** [topoteretes/cognee](https://github.com/topoteretes/cognee)",
+                'steps' => [
+                    'Ingests unstructured laboratory chats, spreadsheets, and test sheets.',
+                    'Extracts entities and relationships using local CPU-optimized models.',
+                    'Builds a traversable knowledge graph for multi-hop relational queries.'
+                ],
+                'actions' => [
+                    ['type' => 'open', 'label' => 'View Cognee on GitHub', 'url' => 'https://github.com/topoteretes/cognee', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'Open AI Brain Universe', 'url' => site_url('brain#universe')],
+                ],
+                'page_match' => 'brain',
+            ],
+            [
+                'kind' => 'playbook',
+                'title' => 'OpenViking: Transparent Context Virtual Filesystem (volcengine/OpenViking)',
+                'keywords' => 'openviking, volcengine openviking, transparent context virtual filesystem, vfs memory, audit agent memory, terminal commands memory, ls tree grep memory, no black box',
+                'body' => "### \xf0\x9f\x97\x82\xef\xb8\x8f OpenViking \xe2\x80\x94 Transparent Context Virtual Filesystem\n\n"
+                        . "**OpenViking** (by Volcengine) is an open-source context database that maps an agent's memory directly into a **transparent virtual filesystem (VFS)** layer.\n\n"
+                        . "#### \xf0\x9f\x8e\xaf What it Solves\n"
+                        . "\xe2\x80\xa2 **The \"Black Box\" Problem:** Solves the opacity of typical vector stores where administrators cannot see or edit what the bot has stored.\n"
+                        . "\xe2\x80\xa2 **Direct Auditability & Correction:** Quality managers can directly inspect, modify, or delete erroneous memories with standard filesystem operations.\n"
+                        . "\xe2\x80\xa2 **Granular Access Control:** File-permission style access control across departments (e.g., technicians vs lab supervisors).\n\n"
+                        . "#### \xe2\x9a\x99\xef\xb8\x8f How it Works\n"
+                        . "1. **Filesystem Mapping:** User preferences, test histories, and machine logs are organized into directories and files (e.g., `/users/staff_01/preferences.json`, `/labrefs/DTP2026/readings.txt`).\n"
+                        . "2. **CLI Inspection:** Administrators can use terminal-style operations (`ls`, `tree`, `read`, `write`, `grep`) to audit memory contents.\n"
+                        . "3. **Precise Overrides:** Correcting an error is as simple as updating a text file inside the virtual filesystem directory.\n\n"
+                        . "\xe2\x80\xa2 **GitHub Repository:** [volcengine/OpenViking](https://github.com/volcengine/OpenViking)",
+                'steps' => [
+                    'Maps agent memory hierarchy into structured virtual folders and files.',
+                    'Enables standard terminal operations (ls, tree, grep) to inspect memory state.',
+                    'Allows administrators to directly edit, sanitize, and audit stored knowledge.'
+                ],
+                'actions' => [
+                    ['type' => 'open', 'label' => 'View OpenViking on GitHub', 'url' => 'https://github.com/volcengine/OpenViking', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'Open Knowledge Management', 'url' => site_url('brain#knowledge')],
+                ],
+                'page_match' => 'brain',
+            ],
+            [
+                'kind' => 'playbook',
+                'title' => 'SimpleMem: Lossless Token-Saving Compression (aiming-lab/SimpleMem)',
+                'keywords' => 'simplemem, aiming-lab simplemem, lossless token saving compression, context window compression, reduce prompt tokens, fast local inference, compact memory blocks',
+                'body' => "### \xe2\x9a\xa1 SimpleMem \xe2\x80\x94 Lossless Token-Saving Context Compression\n\n"
+                        . "**SimpleMem** (by Aiming Lab) is a high-efficiency context compression framework designed to drastically reduce token consumption in multi-turn local conversations.\n\n"
+                        . "#### \xf0\x9f\x8e\xaf What it Solves\n"
+                        . "\xe2\x80\xa2 **Local Inference Latency:** Prevents CPU/GPU slowdowns caused by feeding hundreds of conversational turns into local models.\n"
+                        . "\xe2\x80\xa2 **Context Window Overflow:** Extends the effective conversation length up to 10\xc3\x97 without exceeding the model's context limits.\n"
+                        . "\xe2\x80\xa2 **Hardware Efficiency:** Enables local execution on constrained server hardware with minimal RAM/VRAM footprint.\n\n"
+                        . "#### \xe2\x9a\x99\xef\xb8\x8f How it Works\n"
+                        . "1. **Semantic Distillation:** Analyzes multi-turn dialogue history and strips conversational filler, pleasantries, and duplicated exchanges.\n"
+                        . "2. **Timestamped Semantic Blocks:** Condenses key questions, numerical values, and decisions into compact, timestamped structured facts.\n"
+                        . "3. **Micro-Payload Injection:** Passes only the compressed distillation to the LLM prompt, keeping prompt token payloads exceptionally small while preserving full conversational fidelity.\n\n"
+                        . "\xe2\x80\xa2 **GitHub Repository:** [aiming-lab/SimpleMem](https://github.com/aiming-lab/SimpleMem)",
+                'steps' => [
+                    'Monitors multi-turn conversation length and token budget.',
+                    'Strips conversational fluff and compresses turns into timestamped blocks.',
+                    'Maintains 10x longer continuous dialogue with near-zero latency penalty.'
+                ],
+                'actions' => [
+                    ['type' => 'open', 'label' => 'View SimpleMem on GitHub', 'url' => 'https://github.com/aiming-lab/SimpleMem', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'Open AI Assistant Settings', 'url' => site_url('settings')],
+                ],
+                'page_match' => 'settings',
+            ],
         ];
 
         foreach ($items as $item) {
