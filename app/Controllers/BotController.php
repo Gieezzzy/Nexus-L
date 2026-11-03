@@ -1088,8 +1088,8 @@ class BotController extends BaseController
 
 
         $code = null;// Check for general test method listing queries
-        if (preg_match('/\b(?:list\s+(?:of\s+)?test\s+methods?|what\s+are\s+(?:the\s+)?(?:vf\s+)?test\s+methods?|all\s+(?:vf\s+)?test\s+methods?|show\s+(?:all\s+)?test\s+methods?)\b/i', $low)) {
-            $code = 'VF-INDEX';
+        if (preg_match('/\b(?:list\s+(?:of\s+)?(?:the\s+)?test\s+methods?|what\s+are\s+(?:the\s+)?(?:list\s+of\s+)?(?:vf\s+)?test\s+methods?|what\s+test\s+methods?|all\s+(?:vf\s+)?test\s+methods?|show\s+(?:all\s+)?test\s+methods?|how\s+many\s+test\s+methods?)\b/i', $low)) {
+            $code = 'VF-CATALOG';
         }
         
 
@@ -1595,7 +1595,11 @@ class BotController extends BaseController
 
 
 
-        $isCatalogQuery = (bool) preg_match('/\b(list of vf|all vf|vf catalog|vf test methods|vf standards|list test methods)\b/i', $text);
+        $isCatalogQuery = (bool) preg_match('/\b(?:what\s+(?:are\s+)?(?:the\s+)?(?:list\s+of\s+)?(?:vf\s+)?test\s+methods?|what\s+test\s+methods?|list\s+(?:of\s+)?(?:the\s+)?(?:vf\s+)?test\s+methods?|all\s+(?:vf\s+)?test\s+methods?|vf\s+catalog|vf\s+test\s+methods|vf\s+standards|show\s+(?:all\s+)?(?:vf\s+)?test\s+methods?|how\s+many\s+test\s+methods?)\b/i', $low . ' ' . $text);
+        if ($code === 'VF-CATALOG' || $code === 'VF-INDEX') {
+            $code = null;
+            $isCatalogQuery = true;
+        }
 
 
 
@@ -1627,194 +1631,53 @@ class BotController extends BaseController
 
 
 
-        // Handle Catalog Query
-
-
-
-        if ($isCatalogQuery && ! $code) {
-
-
-
-            $seriesCounts = $db->table('tbl_vf_test_methods')
-
-
-
-                ->select("SUBSTRING(code, 4, 1) as series, category, COUNT(*) as cnt")
-
-
-
-                ->where('code !=', 'MANUAL')
-
-
-
-                ->where('code !=', 'DOC')
-
-
-
-                ->groupBy("series, category")
-
-
-
-                ->orderBy("series", "ASC")
-
-
-
-                ->get()->getResultArray();
-
-
-
-
-
-
-
-            $replyText = "### 📚 VF Test Methods & Laboratory Standards Catalog\n\n"
-
-
-
-                       . "The complete VF Test Methods collection (**DTP-Lab-101 VF Test Methods Updated 2025**) contains 162 official methods and illustrated guides stored in the NEXUS-L database:\n\n";
-
-
-
-
-
-
-
-            $steps = [];
-
-
-
-            foreach ($seriesCounts as $sc) {
-
-
-
-                $sLetter = $sc['series'];
-
-
-
-                if ($sLetter === '') continue;
-
-
-
-                $replyText .= "• **Series {$sLetter} ({$sc['category']}):** {$sc['cnt']} documents\n";
-
-
-
-                $steps[] = "Series {$sLetter}: {$sc['category']} ({$sc['cnt']} files)";
-
-
-
-            }
-
-
-
-
-
-
-
-            $replyText .= "\n💡 *You can ask for any specific test method code (e.g., 'show VF-B01', 'VF-F01 sole adhesion', 'VF-A01 hardness') to instantly view the official standard PDF and illustrated setup guides.*";
-
-
-
-
-
-
-
-            $manualRow = $db->table('tbl_vf_test_methods')->like('file_name', 'Manual')->get()->getRowArray();
-
-
-
-            $actions = [
-
-
-
-                ['type' => 'open', 'label' => 'Open VANS Performance Manual 2026', 'url' => site_url($manualRow ? $manualRow['url_path'] : 'uploads/vf_test_methods/VANS  Footwear Performance Testing Manual 2026.pdf'), 'target' => '_blank'],
-
-
-
-                ['type' => 'open', 'label' => 'Open Lab Test Tracker', 'url' => site_url('dtr?tab=tracker')],
-
-
-
-                ['type' => 'open', 'label' => 'Create Material Test (DTR)', 'url' => site_url('dtr?tab=material')],
-
-
-
-            ];
-
-
-
-
-
-
-
-            return [
-
-
-
-                'text'          => $replyText,
-
-
-
-                'steps'         => $steps,
-
-
-
-                'actions'       => $actions,
-
-
-
-                'files'         => [],
-
-
-
-                'title'         => 'VF Test Methods Catalog',
-
-
-
-                'confidence'    => 100,
-
-
-
-                'related'       => [
-
-
-
-                    ['id' => 0, 'title' => 'VF-B01: Tensile Strength and Elongation'],
-
-
-
-                    ['id' => 0, 'title' => 'VF-F01: Whole Footwear Sole Adhesion'],
-
-
-
-                    ['id' => 0, 'title' => 'VF-C01: DIN Abrasion Resistance'],
-
-
-
-                    ['id' => 0, 'title' => 'VF-D02: Ross Flexing Resistance'],
-
-
-
-                ],
-
-
-
-                'diagnosis'     => null,
-
-
-
-                'knowledge_id'  => null,
-
-
-
-                'suggest_admin' => false,
-
-
-
-            ];
-
-
-
+        // Handle Catalog Query - Full Structured VF Standards Overview
+        if ($isCatalogQuery && ! $code) {
+            $indexRow = $db->table('tbl_vf_test_methods')->where('code', 'VF-INDEX')->orLike('file_name', 'List of Test')->get()->getRowArray();
+            $manualRow = $db->table('tbl_vf_test_methods')->like('file_name', 'Manual')->get()->getRowArray();
+
+            $replyText = "### \xf0\x9f\x93\x9a Complete VF Test Methods & Laboratory Standards Library\n\n"
+                       . "The NEXUS-L Laboratory Information System contains **100 distinct official VF test methods** across **162 standard documents and illustrated pictorial guides** from the **DTP-Lab-101 VF Test Methods Collection (Updated 2025)**:\n\n"
+                       . "| Series | Category & Domain | Scope & Key Test Methods |\n"
+                       . "| :---: | :--- | :--- |\n"
+                       . "| **Series A** | **Physical & Dimensional Properties** | **VF-A01** (Hardness), **VF-A02** (Weight), **VF-A03** (Thickness), **VF-A04** (Specific Gravity / Density) |\n"
+                       . "| **Series B** | **Strength & Mechanical Properties** | **VF-B01** (Tensile & Elongation), **VF-B05** (Die C Tear), **VF-B07** (Trouser Tear), **VF-B10** (Compression Set), **VF-B23** (Knot Slip) |\n"
+                       . "| **Series C** | **Abrasion Resistance** | **VF-C01** (DIN Rotary Drum Abrasion), **VF-C02** (Akron Abrasion), **VF-C03** (Taber Abrasion), **VF-C04** (Martindale Abrasion) |\n"
+                       . "| **Series D** | **Flexing & Fatigue Resistance** | **VF-D01** (Bally Flexing), **VF-D02** (Ross Flexing Cut Growth), **VF-D03** (Demattia Flex), **VF-D04** (Belt Flex) |\n"
+                       . "| **Series E** | **Chemical, Aging & Environmental Fastness** | **VF-E02** (Color Fastness to Crocking/Rubbing), **VF-E03** (UV Light Yellowing), **VF-E19** (PU Hydrolysis Jungle Test) |\n"
+                       . "| **Series F** | **Adhesion & Bond Strength** | **VF-F01** (Whole Footwear Sole Adhesion), **VF-F02** (Upper Bonding Strength), **VF-F05** (Ink Adhesion on Substrates) |\n"
+                       . "| **Series G** | **Assembled Footwear Performance** | **VF-G01** (Whole Shoe Walking Flex Fatigue), **VF-G04** (Dynamic Water Penetration), **VF-G05** (Heel Impact Resistance) |\n"
+                       . "| **Series H** | **Sampling & Material Conditioning** | **VF-H01** (Standard Lab Conditioning at 23\xc2\xb12\xc2\xb0C, 50\xc2\xb15% RH for 24h), **VF-H02** (Specimen Sampling & Preparation) |\n"
+                       . "| **Series I** | **Chemical Analysis & Identification** | **VF-I01** (FTIR Spectrometry), **VF-I02** (Ash Content Determination), **VF-I04** (Solvent Extractables) |\n"
+                       . "| **Series J** | **Electrical & Thermal Safety** | **VF-J01** (Electric Shock Resistance / Dielectric Breakdown), **VF-J02** (Conductive & Antistatic Footwear) |\n"
+                       . "| **Master** | **Master Manuals & Equipment Parameters** | **VANS Footwear Performance Testing Manual 2026**, **Universal Testing Machine (UTM) Speed & Jaw Parameters** |\n\n"
+                       . "> [!TIP]\n"
+                       . "> **Quick Search:** Ask for any specific test method (e.g. `show VF-A01`, `VF-B01 tensile`, `formula for hardness`, `VF-F01 sole adhesion criteria`) to view its official parameters, specimen setup, acceptance criteria, and PDF standards.\n";
+
+            $actions = [
+                ['type' => 'open', 'label' => 'Open Official VF Test Method Index PDF', 'url' => site_url($indexRow ? $indexRow['url_path'] : 'uploads/vf_test_methods/0_List of Test Methods.pdf'), 'target' => '_blank'],
+                ['type' => 'open', 'label' => 'Open VANS Performance Manual 2026', 'url' => site_url($manualRow ? $manualRow['url_path'] : 'uploads/vf_test_methods/VANS  Footwear Performance Testing Manual 2026.pdf'), 'target' => '_blank'],
+                ['type' => 'open', 'label' => 'Open Lab Test Tracker', 'url' => site_url('dtr?tab=tracker')],
+                ['type' => 'open', 'label' => 'Create Material Test (DTR)', 'url' => site_url('dtr?tab=material')],
+            ];
+
+            return [
+                'text'          => $replyText,
+                'steps'         => [
+                    '100 distinct VF test methods across Series A through J',
+                    '162 official standard operating procedures & illustrated guides',
+                    'Full VANS Footwear Performance Testing Manual 2026 available',
+                ],
+                'actions'       => $actions,
+                'suggestions'   => [
+                    'VF-A01: Hardness Test',
+                    'VF-B01: Tensile Strength',
+                    'VF-C01: DIN Rotary Abrasion',
+                    'VF-D02: Ross Flexing Cut Growth',
+                    'VF-F01: Sole Adhesion Criteria',
+                    'VF-H01: Material Conditioning',
+                ],
+            ];
         }
 
 
