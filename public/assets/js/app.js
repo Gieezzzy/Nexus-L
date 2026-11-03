@@ -346,4 +346,53 @@
   };
 
   initBrowserNotificationPrompt();
+
+  // ---- Admin AI Brain Toggle Switch ----
+  document.addEventListener('click', async (e) => {
+    const toggleBtn = e.target.closest('#btn-admin-ai-toggle, .btn-admin-ai-toggle, [data-action="toggle-ai"]');
+    if (!toggleBtn) return;
+    e.preventDefault();
+    const currentEnabled = toggleBtn.dataset.enabled === '1';
+    const targetState = !currentEnabled;
+    toggleBtn.disabled = true;
+    toggleBtn.style.opacity = '0.7';
+
+    try {
+      const csrfMeta = document.querySelector('meta[name="X-CSRF-TOKEN"]');
+      const baseMeta = document.querySelector('meta[name="base-url"]');
+      const baseUrl = (baseMeta?.content || '/').replace(/\/?$/, '/');
+      const res = await fetch(baseUrl + 'bot/toggle-ai', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRF-TOKEN': csrfMeta ? csrfMeta.content : '',
+        },
+        body: JSON.stringify({ enabled: targetState ? 1 : 0 }),
+      });
+      const data = await res.json();
+      if (csrfMeta && data.csrf) csrfMeta.content = data.csrf;
+      if (data.ok) {
+        const isNowOn = !!data.enabled;
+        document.querySelectorAll('#btn-admin-ai-toggle, .btn-admin-ai-toggle, [data-action="toggle-ai"]').forEach((el) => {
+          el.dataset.enabled = isNowOn ? '1' : '0';
+          el.classList.toggle('is-active', isNowOn);
+          el.classList.toggle('is-disabled', !isNowOn);
+          const statusText = el.querySelector('.nx-ai-toggle-status, #nx-ai-status-text');
+          if (statusText) statusText.textContent = isNowOn ? 'ON' : 'OFF';
+        });
+        if (typeof showSiteToast === 'function') {
+          showSiteToast(data.message || (isNowOn ? 'AI Brain turned ON' : 'AI Brain turned OFF'));
+        }
+      } else {
+        alert(data.error || 'Failed to toggle AI Brain.');
+      }
+    } catch (err) {
+      alert('Network error while toggling AI Brain.');
+    } finally {
+      toggleBtn.disabled = false;
+      toggleBtn.style.opacity = '1';
+    }
+  });
+
 })();

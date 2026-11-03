@@ -453,3 +453,68 @@ button .ic,.dsg-btn .ic,.sc-btn .ic,.il-btn .ic{margin-right:4px}
 a, button, [role=button], input, select, textarea, label, summary { touch-action: manipulation; }
 html { -webkit-tap-highlight-color: transparent; }
 img, video { max-width: 100%; }
+
+/* ---- Admin AI Brain Toggle Switch ---- */
+.nx-ai-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: #fff;
+  color: var(--ink);
+  transition: all 0.2s ease;
+  user-select: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.nx-ai-toggle:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
+}
+.nx-ai-toggle.is-active {
+  border-color: #10b981;
+  background: #ecfdf5;
+  color: #065f46;
+}
+.nx-ai-toggle.is-active:hover {
+  background: #d1fae5;
+  border-color: #059669;
+}
+.nx-ai-toggle.is-disabled {
+  border-color: #f87171;
+  background: #fef2f2;
+  color: #991b1b;
+}
+.nx-ai-toggle.is-disabled:hover {
+  background: #fee2e2;
+  border-color: #dc2626;
+}
+.nx-ai-toggle-pulse {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+  background: #10b981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  animation: nxAiPulse 2s infinite cubic-bezier(0.66, 0, 0, 1);
+}
+.nx-ai-toggle.is-disabled .nx-ai-toggle-pulse {
+  background: #ef4444;
+  box-shadow: none;
+  animation: none;
+}
+@keyframes nxAiPulse {
+  to {
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+  }
+}
+.nx-ai-brain-ico {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}

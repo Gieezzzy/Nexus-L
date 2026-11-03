@@ -39,7 +39,7 @@ class Brain
         'edit' => 'edit', 'change' => 'edit', 'modify' => 'edit', 'update' => 'edit',
         'delete' => 'delete', 'remove' => 'delete', 'erase' => 'delete',
         'bonding' => 'bonding', 'shoe' => 'bonding', 'spot' => 'bonding', 'point' => 'point', 'points' => 'point', 'dot' => 'point', 'dots' => 'point',
-        'logo' => 'logo', 'satra' => 'satra', 'vf' => 'vf',
+        'logo' => 'logo', 'satra' => 'logo', 'vf' => 'logo',
         'interlink' => 'interlink', 'intertek' => 'interlink', 'portal' => 'interlink', 'sync' => 'sync', 'synchronize' => 'sync', 'queue' => 'queue', 'queued' => 'queue',
         'designer' => 'designer', 'layout' => 'designer', 'rearrange' => 'designer', 'move' => 'move', 'drag' => 'move',
         'admin' => 'admin', 'administrator' => 'admin', 'supervisor' => 'admin', 'access' => 'permission', 'permission' => 'permission', 'authorized' => 'permission', 'unauthorized' => 'permission', 'denied' => 'permission', 'forbidden' => 'permission',
@@ -55,37 +55,7 @@ class Brain
         'notfound' => 'notfound', '404' => 'notfound', '500' => 'server', '401' => 'login', '403' => 'permission', 'server' => 'server',
         // common typing mistakes (the knowledge uses the correct spelling)
         'responce' => 'response', 'reponse' => 'response', 'respons' => 'response', 'excell' => 'excel', 'exel' => 'excel', 'xcel' => 'excel', 'grap' => 'graph', 'graf' => 'graph', 'grpah' => 'graph', 'chrt' => 'chart',
-        'reprot' => 'report', 'rport' => 'report', 'repot' => 'report', 'reoprt' => 'report', 'repprot' => 'report', 'repurt' => 'report',
-        'imge' => 'image', 'pictur' => 'image', 'picture' => 'image', 'photo' => 'image', 'recieve' => 'receive', 'recipt' => 'receipt', 'calender' => 'calendar',
-        'dowload' => 'download', 'downlaod' => 'download', 'donwload' => 'download', 'dwonload' => 'download', 'expor' => 'export', 'exprot' => 'export',
-        'uplod' => 'load', 'uplaod' => 'load', 'upld' => 'load', 'upoad' => 'load',
-        'snd' => 'send', 'sned' => 'send', 'snt' => 'send',
-        'genrate' => 'new', 'generat' => 'new', 'gnrate' => 'new', 'gnrt' => 'new',
-        'tensl' => 'tensile', 'tensial' => 'tensile', 'tencile' => 'tensile', 'tenslie' => 'tensile', 'tensle' => 'tensile',
-        'elognation' => 'elongation', 'elngation' => 'elongation', 'elongashun' => 'elongation', 'elongat' => 'elongation',
-        'abration' => 'abrasion', 'abrassion' => 'abrasion', 'abrason' => 'abrasion', 'abrashun' => 'abrasion', 'abrad' => 'abrasion',
-        'martindel' => 'martindale', 'martindal' => 'martindale', 'martindle' => 'martindale', 'matindale' => 'martindale', 'tabur' => 'taber',
-        'flexxing' => 'flex', 'felx' => 'flex', 'flx' => 'flex',
-        'hardeness' => 'hardness', 'hardnes' => 'hardness', 'duromter' => 'hardness', 'durometr' => 'hardness',
-        'thikness' => 'thickness', 'tikness' => 'thickness', 'thiknes' => 'thickness', 'thicness' => 'thickness', 'thicknes' => 'thickness',
-        'teer' => 'tear', 'ter' => 'tear', 'trouzer' => 'trouser', 'trauser' => 'trouser', 'stich' => 'stitch',
-        'adheson' => 'bonding', 'adhesion' => 'bonding', 'adhesun' => 'bonding', 'adhezion' => 'bonding', 'adhesiv' => 'bonding', 'adhesive' => 'bonding', 'bonnding' => 'bonding', 'boding' => 'bonding',
-        'hydrolyzis' => 'hydrolysis', 'hidrolysis' => 'hydrolysis', 'hidrolisis' => 'hydrolysis', 'hydrolisis' => 'hydrolysis',
-        'crockin' => 'crocking', 'crokin' => 'crocking', 'crok' => 'crocking',
-        'yelow' => 'yellowing', 'yellowin' => 'yellowing', 'yelowing' => 'yellowing', 'discolorashun' => 'yellowing', 'discolor' => 'yellowing',
-        'wtrproof' => 'waterproof', 'waterprof' => 'waterproof', 'watrproof' => 'waterproof', 'waterprff' => 'waterproof', 'wterproof' => 'waterproof',
-        'hidrostatic' => 'hydrostatic', 'hydrosttic' => 'hydrostatic', 'sentrifuge' => 'centrifuge', 'centrifug' => 'centrifuge',
-        'sohlet' => 'soxhlet', 'soxlet' => 'soxhlet',
-        'electrik' => 'shock', 'elec' => 'shock', 'dieletric' => 'shock', 'dielectric' => 'shock',
-        'shoelase' => 'laces', 'sholace' => 'laces', 'shuelace' => 'laces', 'sholaces' => 'laces', 'shoelases' => 'laces',
-        'aglit' => 'aglet', 'eglet' => 'aglet', 'eylet' => 'eyelet', 'eyelets' => 'eyelet', 'eyelts' => 'eyelet',
-        'zipr' => 'zipper', 'zippr' => 'zipper', 'zippre' => 'zipper',
-        'rubbr' => 'rubber', 'rubr' => 'rubber', 'rubbar' => 'rubber', 'leathr' => 'leather', 'lethr' => 'leather', 'leathe' => 'leather',
-        'aprov' => 'approval', 'aproval' => 'approval', 'aprv' => 'approval', 'apprv' => 'approval', 'approv' => 'approval',
-        'notif' => 'notify', 'notifaction' => 'notify', 'notifcation' => 'notify', 'notfy' => 'notify',
-        'synology' => 'synology', 'syno' => 'synology', 'sinology' => 'synology',
-        'resolt' => 'result', 'reslt' => 'result', 'resut' => 'result',
-        'statictic' => 'stats', 'statistic' => 'stats'
+        'reprot' => 'report', 'rport' => 'report', 'repot' => 'report', 'reoprt' => 'report', 'imge' => 'image', 'pictur' => 'image', 'picture' => 'image', 'photo' => 'image', 'recieve' => 'receive', 'recipt' => 'receipt', 'calender' => 'calendar', 'dowload' => 'download', 'downlaod' => 'download', 'donwload' => 'download', 'expor' => 'export', 'exprot' => 'export',
     ];
 
     // ----------------------------------------------------------------------------------------------- folders
@@ -554,21 +524,7 @@ class Brain
         $best = $hits[0]['score'];
         $c    = (int) round(min(100, ($best / (3.4 * $n + 2)) * 100));
         if (isset($hits[1]) && $hits[1]['score'] > $best * 0.9) {
-            $k0 = $hits[0]['row']['kind'] ?? '';
-            $t0 = $hits[0]['row']['title'] ?? '';
-            $t1 = $hits[1]['row']['title'] ?? '';
-            // If hits[0] and hits[1] are hierarchical or related (e.g. specific method and series overview), do not discount
-            $isHierarchy = ($k0 === 'vf_method' && (stripos($t1, 'Series') !== false || stripos($t1, 'Manual') !== false || stripos($t0, 'Series') !== false));
-            if (! $isHierarchy) {
-                $c = (int) round($c * 0.9);   // two equally good conflicting answers: less sure
-            }
-        }
-
-        // Calibrated confidence target: for VF test methods, active website tasks, and laboratory workflows
-        $k0 = $hits[0]['row']['kind'] ?? '';
-        $s0 = $hits[0]['row']['source'] ?? '';
-        if (($k0 === 'vf_method' || $s0 === 'workflow_seed' || $s0 === 'system_workflow') && $best >= 4.0) {
-            $c = max(90, min(100, (int) round(90 + ($best >= 10.0 ? 10 : ($best - 4.0) * 1.6))));
+            $c = (int) round($c * 0.9);   // two equally good answers: less sure
         }
 
         return $c;

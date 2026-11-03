@@ -151,6 +151,24 @@ class BotController extends BaseController
         }
         $userChatId = $this->say((int) $thread['id'], 'user', (string) ($u['name'] ?? $u['username'] ?? 'User'), $text);
 
+        // Master switch check: if the AI Brain is turned OFF by an admin
+        if (\App\Libraries\SystemSettings::get('ai.enabled', '1') === '0') {
+            $botName = (string) \App\Libraries\SystemSettings::get('ai.name', 'LEXIS AI');
+            $reply = [
+                'title' => 'AI Brain Is Currently Turned OFF',
+                'text'  => "The {$botName} Brain assistant is currently turned OFF by system administrators for maintenance. Laboratory test forms and navigation are still fully operational.",
+                'steps' => [
+                    'Admins can re-enable the AI Brain at any time using the header toggle button or Settings.',
+                    'For immediate help, contact your lab supervisor or click "Talk to an administrator".',
+                ],
+                'suggest_admin' => true,
+            ];
+            $botChatId = $this->say((int) $thread['id'], 'bot', $botName, $reply['text']);
+            $reply['chat_id'] = $botChatId;
+
+            return $this->json(['ok' => true, 'thread_id' => (int) $thread['id'], 'user_chat_id' => $userChatId, 'escalated' => false, 'reply' => $reply]);
+        }
+
         $prev = $this->db()->table('tbl_bot_chats')->select('message')->where(['thread_id' => (int) $thread['id'], 'sender' => 'user'])->where('id <', $userChatId)->orderBy('id', 'DESC')->get(1)->getRowArray();
         $prevUserMsg = (string) ($prev['message'] ?? '');
 
@@ -1948,7 +1966,11 @@ class BotController extends BaseController
     {
         $u  = $this->auth->user();
         $db = $this->db();
-        $out = ['ok' => true, 'user_unread' => (int) ($db->table('tbl_bot_threads')->selectSum('user_unread', 's')->where('user_id', (int) $u['id'])->get()->getRow()->s ?? 0)];
+        $out = [
+            'ok'          => true,
+            'ai_enabled'  => \App\Libraries\SystemSettings::get('ai.enabled', '1') !== '0',
+            'user_unread' => (int) ($db->table('tbl_bot_threads')->selectSum('user_unread', 's')->where('user_id', (int) $u['id'])->get()->getRow()->s ?? 0),
+        ];
         $out['user_live'] = $db->table('tbl_bot_sessions')->where(['user_id' => (int) $u['id'], 'status' => 'open'])->where('last_activity_at >=', date('Y-m-d H:i:s', time() - BotSessions::IDLE))->countAllResults() > 0;
         if ($this->isAdmin()) {
             BotSessions::expire();
@@ -1959,6 +1981,26 @@ class BotController extends BaseController
     }
 
     // ================================================================================ admin console
+
+    /** POST bot/toggle-ai or brain/toggle (admin only) */
+    public function toggleAi()
+    {
+        if (! $this->isAdmin()) {
+            return $this->json(['ok' => false, 'error' => 'Admin role required.'], 403);
+        }
+        $p = $this->input();
+        $current = \App\Libraries\SystemSettings::get('ai.enabled', '1');
+        $newVal = isset($p['enabled']) ? ($p['enabled'] ? '1' : '0') : ($current === '0' ? '1' : '0');
+        \App\Libraries\SystemSettings::set('ai.enabled', $newVal, (string) ($this->auth->user()['username'] ?? 'admin'));
+        \App\Libraries\BrainEvents::log('toggle', 'admin', (int) ($this->auth->user()['id'] ?? 0), null, 'AI Brain turned ' . ($newVal === '1' ? 'ON' : 'OFF'));
+
+        return $this->json([
+            'ok'      => true,
+            'enabled' => $newVal === '1',
+            'status'  => $newVal === '1' ? 'ON' : 'OFF',
+            'message' => 'AI Brain successfully turned ' . ($newVal === '1' ? 'ON' : 'OFF') . '.',
+        ]);
+    }
 
     public function console(): string
     {

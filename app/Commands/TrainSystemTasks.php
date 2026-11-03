@@ -64,17 +64,12 @@ class TrainSystemTasks extends BaseCommand
         $totalQueries = count($dataset);
         CLI::write("Loaded {$totalQueries} realistic user prompts across active website tasks.", 'cyan');
 
-        $epochs = (int) (CLI::getOption('epochs') ?? ($params[0] ?? 45));
-        if ($epochs < 1) {
-            $epochs = 45;
-        }
-
-        // 4. Train Term Weights across deep ML Epochs
-        CLI::write("Training weights with BrainLearn::train() across {$epochs} deep ML epochs...", 'yellow');
+        // 4. Train Term Weights across 10 ML Epochs
+        CLI::write("Training weights with BrainLearn::train() across 10 deep ML epochs...", 'yellow');
         $weightsUpdated = 0;
         $trainedCount = 0;
 
-        for ($epoch = 1; $epoch <= $epochs; $epoch++) {
+        for ($epoch = 1; $epoch <= 10; $epoch++) {
             foreach ($dataset as $item) {
                 $query = $item['q'];
                 $targetSnippet = $item['target'];
@@ -97,10 +92,6 @@ class TrainSystemTasks extends BaseCommand
                 if ($epoch === 1) {
                     $trainedCount++;
                 }
-            }
-
-            if ($epoch === 1 || $epoch % 10 === 0 || $epoch === $epochs) {
-                CLI::write("  -> Epoch {$epoch}/{$epochs} completed ({$weightsUpdated} cumulative weight updates)...", 'light_gray');
             }
         }
 
