@@ -715,7 +715,8 @@ class BotController extends BaseController
 
 
 
-        $intentReply = $this->lexusMultiReportIntent($normText, $uid) ?? $this->artifactIntent($normText, $uid, (int) $thread['id'], (array) $u) ?? $this->vfMethodIntent($normText, $threadContextStr) ?? $this->labRefIntent($normText) ?? $this->approvalReminderIntent($normText, $uid, (array) $u) ?? $this->dbSearchIntent($normText) ?? $this->computeIntent($normText, $prevUserMsg, $lastBotMsg, $threadContextStr);
+        $intentReply = $this->aiSkillsIntent($normText) ??
+            $this->lexusMultiReportIntent($normText, $uid) ?? $this->artifactIntent($normText, $uid, (int) $thread['id'], (array) $u) ?? $this->vfMethodIntent($normText, $threadContextStr) ?? $this->labRefIntent($normText) ?? $this->approvalReminderIntent($normText, $uid, (array) $u) ?? $this->dbSearchIntent($normText) ?? $this->computeIntent($normText, $prevUserMsg, $lastBotMsg, $threadContextStr);
 
 
 
@@ -1075,7 +1076,11 @@ class BotController extends BaseController
 
 
 
-        $low = mb_strtolower(trim($text));
+        $low = mb_strtolower(trim($text));        // Early return for troubleshooting & failure remediation queries (route to WF-REMEDIATION)
+        if (preg_match('/\b(?:why\s+did\s+.*fail|how\s+(?:do|can)\s+we\s+fix|how\s+to\s+fix|remediat|troubleshoot\s+fail)\b/i', $low)) {
+            return null;
+        }
+
 
 
 
@@ -3250,7 +3255,156 @@ class BotController extends BaseController
      *   - Lab Reference anatomy explanation (Facility DTP, Date 20261027, Stage FA = First Article, Line A7)
      *   - Monthly & Span Date summary reports (Pass, Tolerable, Failed breakdown in PPT, Excel, PDF)
      */
-    private function lexusMultiReportIntent(string $text, int $uid): ?array
+        /**
+     * Answers queries regarding the core AI Skills and Architecture:
+     * 1. Mem0 (The Memory Layer for AI - mem0ai/mem0)
+     * 2. LangGraph (Advanced Multi-Turn State Management - langchain-ai/langgraph)
+     * 3. LocalAI (Self-Hosted Local LLM API - mudler/LocalAI)
+     */
+    private function aiSkillsIntent(string $text): ?array
+    {
+        $low = mb_strtolower(trim($text));
+
+        // 1. Specific skill: Mem0
+        if (preg_match('/\b(mem0|mem0ai|memory\s*layer\s*for\s*ai|long\s*term\s*memory\s*for\s*(?:the\s*)?(?:bot|ai))\b/i', $low)) {
+            $replyText = "### \xf0\x9f\xa7\xa0 Mem0 \xe2\x80\x94 The Memory Layer for AI\n\n"
+                . "**Mem0** is the leading open-source project designed specifically to give AI models long-term memory. It automatically tracks user preferences, extracts facts from conversations over time, and stores them efficiently.\n\n"
+                . "#### \xf0\x9f\x8e\xaf What it Solves\n"
+                . "\xe2\x80\xa2 **Long-term memory:** Prevents context loss between different chat sessions.\n"
+                . "\xe2\x80\xa2 **Cross-session continuity:** Remembers previous instructions, standards, and preferences across days and weeks.\n"
+                . "\xe2\x80\xa2 **User profiles & personalization:** Tracks user habits (e.g. preferred report formats, common test methods, language preferences).\n\n"
+                . "#### \xe2\x9a\x99\xef\xb8\x8f How it Works\n"
+                . "1. **Fact Extraction:** Watches the conversation stream and extracts persistent facts (e.g., *\"User frequently tests waffle rubber under VF-A01\"* or *\"User prefers Excel export over PowerPoint\"*).\n"
+                . "2. **Local Vector Storage:** Stores structured memories in local Qdrant vector storage (`C:\\NexusAI\\mem0_qdrant`) and SQLite history (`C:\\NexusAI\\mem0_history.db`).\n"
+                . "3. **Adaptive Injection:** On subsequent turns, Mem0 automatically queries relevant historical memories and injects them back into the active prompt context.\n\n"
+                . "\xe2\x80\xa2 **GitHub Repository:** [mem0ai/mem0](https://github.com/mem0ai/mem0)\n\n"
+                . "> [!TIP]\n> Mem0 is integrated directly into the NEXUS-L LangGraph microservice (`ai-service/app/memory.py`).";
+
+            return [
+                'text' => $replyText,
+                'steps' => [
+                    'Watches conversation stream for salient user facts & preferences',
+                    'Embeds and stores facts in local Qdrant vector database',
+                    'Automatically recalls relevant facts on future query turns',
+                ],
+                'actions' => [
+                    ['type' => 'open', 'label' => 'View Mem0 on GitHub', 'url' => 'https://github.com/mem0ai/mem0', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'Open AI Brain Console', 'url' => site_url('brain')],
+                ],
+                'suggestions' => [
+                    'What is LangGraph in our AI?',
+                    'Explain LocalAI offline LLM',
+                    'Overview of all AI skills',
+                ],
+            ];
+        }
+
+        // 2. Specific skill: LangGraph
+        if (preg_match('/\b(langgraph|langchain\s*langgraph|cyclical\s*graph|multi\s*turn\s*state\s*management|stateful\s*multi\s*actor)\b/i', $low)) {
+            $replyText = "### \xf0\x9f\x94\x84 LangGraph \xe2\x80\x94 Advanced Multi-Turn State Management\n\n"
+                . "**LangGraph** (developed by the LangChain team) is the premier library for building stateful, multi-actor applications and cyclical graph workflows with LLMs. Unlike standard linear chains, LangGraph enables cyclical graphs essential for continuous chat states, error self-correction, and tool loops.\n\n"
+                . "#### \xf0\x9f\x8e\xaf What it Solves\n"
+                . "\xe2\x80\xa2 **Continuous Chat State:** Maintains rich conversation memory across complex multi-turn dialogs.\n"
+                . "\xe2\x80\xa2 **Conversational Routing:** Intelligently routes queries between test method retrieval, report generation, math computations, and approval workflows.\n"
+                . "\xe2\x80\xa2 **Self-Correction & Tool Looping:** Automatically evaluates output validity; if an error or low confidence is detected, it loops back through correction nodes.\n\n"
+                . "#### \xe2\x9a\x99\xef\xb8\x8f How it Works\n"
+                . "LangGraph acts as the assistant's central **brain architecture**:\n"
+                . "1. **State Definition:** An `AgentState` object holds message history, extracted numbers, active lab references, and confidence scores.\n"
+                . "2. **Node Execution:** Input passes through specialized nodes: `memory_node` (Mem0 recall) \xe2\x86\x92 `nlu_node` (intent classification) \xe2\x86\x92 `retrieve_node` (vector & keyword search) \xe2\x86\x92 `eval_node` (accuracy validation).\n"
+                . "3. **Cyclical Feedback:** If the evaluator flags an anomaly, the graph branches back to refine the response before delivering the answer to the user.\n\n"
+                . "\xe2\x80\xa2 **GitHub Repository:** [langchain-ai/langgraph](https://github.com/langchain-ai/langgraph)\n\n"
+                . "> [!TIP]\n> The NEXUS-L microservice executes a custom StateGraph with live Phoenix OpenTelemetry tracing on port `6006`.";
+
+            return [
+                'text' => $replyText,
+                'steps' => [
+                    'StateGraph manages the state machine across all dialog turns',
+                    'Executes memory recall, semantic retrieval, and reranking nodes',
+                    'Loops back for automated self-correction upon confidence thresholds',
+                ],
+                'actions' => [
+                    ['type' => 'open', 'label' => 'View LangGraph on GitHub', 'url' => 'https://github.com/langchain-ai/langgraph', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'Inspect Traces in Phoenix (Port 6006)', 'url' => 'http://127.0.0.1:6006', 'target' => '_blank'],
+                ],
+                'suggestions' => [
+                    'What is Mem0 in our AI?',
+                    'Explain LocalAI offline LLM',
+                    'Overview of all AI skills',
+                ],
+            ];
+        }
+
+        // 3. Specific skill: LocalAI
+        if (preg_match('/\b(localai|mudler\s*localai|self\s*hosted\s*(?:local\s*)?llm|offline\s*(?:local\s*)?(?:llm|model|api))\b/i', $low)) {
+            $replyText = "### \xf0\x9f\x92\xbb LocalAI \xe2\x80\x94 Self-Hosted Local LLM REST API\n\n"
+                . "**LocalAI** is the leading free, open-source drop-in replacement REST API compatible with OpenAI specifications for local and offline CPU/GPU inference. It enables running open-source models completely on-premises without cloud dependencies or external data leaks.\n\n"
+                . "#### \xf0\x9f\x8e\xaf What it Solves\n"
+                . "\xe2\x80\xa2 **Offline & On-Premises Privacy:** Operates 100% locally on your server hardware\xe2\x80\x94no laboratory data ever leaves the internal network.\n"
+                . "\xe2\x80\xa2 **Zero API Fees:** Eliminates recurring cloud API billing and quota limits.\n"
+                . "\xe2\x80\xa2 **Standard API Compatibility:** Drop-in compatibility with OpenAI REST format (`/v1/chat/completions`, `/v1/embeddings`), enabling standard client libraries to interact with local models.\n\n"
+                . "#### \xe2\x9a\x99\xef\xb8\x8f How it Works\n"
+                . "1. **Containerized Model Serving:** Wraps quantized open-weight models (Llama 3, Mistral, Phi-3, Qwen) inside a lightweight local runtime (using `llama.cpp` or ONNX).\n"
+                . "2. **Standard REST Endpoints:** Exposes fast endpoints on `127.0.0.1` for text generation, embeddings, and tool/function calling.\n"
+                . "3. **Zero Configuration Switching:** Applications call standard REST endpoints just like cloud APIs, while all computations execute on local CPU/GPU cores.\n\n"
+                . "\xe2\x80\xa2 **GitHub Repository:** [mudler/LocalAI](https://github.com/mudler/LocalAI)\n\n"
+                . "> [!NOTE]\n> NEXUS-L supports local CPU/GPU inference via LocalAI and Ollama without any cloud API keys.";
+
+            return [
+                'text' => $replyText,
+                'steps' => [
+                    'Runs quantized GGUF/ONNX models directly on local hardware',
+                    'Serves an OpenAI-compatible REST API on localhost',
+                    'Provides 100% data confidentiality for QC test methods and reports',
+                ],
+                'actions' => [
+                    ['type' => 'open', 'label' => 'View LocalAI on GitHub', 'url' => 'https://github.com/mudler/LocalAI', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'Open AI Assistant Settings', 'url' => site_url('settings')],
+                ],
+                'suggestions' => [
+                    'What is Mem0 in our AI?',
+                    'What is LangGraph in our AI?',
+                    'Overview of all AI skills',
+                ],
+            ];
+        }
+
+        // 4. Combined skills overview
+        if (preg_match('/\b(?:skills?\s*(?:of|in)\s*(?:our|the)?\s*ai|ai\s*skills?|core\s*ai\s*skills?|ai\s*brain\s*(?:skills?|stack|architecture)|what\s*are\s*the\s*ai\s*skills)\b/i', $low)) {
+            $replyText = "### \xf0\x9f\x9b\xa1\xef\xb8\x8f Core Skills & Architecture of our AI (LEXUS AI Brain)\n\n"
+                . "The LEXUS AI Brain in NEXUS-L is powered by three specialized open-source technologies for continuous memory, state orchestration, and local offline inference:\n\n"
+                . "| Skill / Technology | Architecture Role | What It Solves | GitHub Repository |\n"
+                . "| :--- | :--- | :--- | :--- |\n"
+                . "| **1. Mem0** | **The Memory Layer for AI** | Long-term memory, cross-session continuity, and user preference tracking across chat sessions | [mem0ai/mem0](https://github.com/mem0ai/mem0) |\n"
+                . "| **2. LangGraph** | **Multi-Turn State Management** | Cyclical graph workflows, conversation routing, self-correction, and tool looping | [langchain-ai/langgraph](https://github.com/langchain-ai/langgraph) |\n"
+                . "| **3. LocalAI** | **Self-Hosted Local LLM API** | Running open-source models (Llama 3, Mistral, Phi-3) 100% offline on your own machine without cloud API fees | [mudler/LocalAI](https://github.com/mudler/LocalAI) |\n\n"
+                . "> [!IMPORTANT]\n"
+                . "> **Privacy & Isolation:** All 3 components run strictly on the local laboratory host (`127.0.0.1`). No proprietary test data, test results, or laboratory reports ever leave the internal network.";
+
+            return [
+                'text' => $replyText,
+                'steps' => [
+                    '1. Mem0 manages user memory and context recall',
+                    '2. LangGraph manages dialog state machines and error self-correction loops',
+                    '3. LocalAI / local runtime hosts quantized models offline without external cloud calls',
+                ],
+                'actions' => [
+                    ['type' => 'open', 'label' => 'View Mem0 on GitHub', 'url' => 'https://github.com/mem0ai/mem0', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'View LangGraph on GitHub', 'url' => 'https://github.com/langchain-ai/langgraph', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'View LocalAI on GitHub', 'url' => 'https://github.com/mudler/LocalAI', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'Open AI Brain Console', 'url' => site_url('brain')],
+                ],
+                'suggestions' => [
+                    'Tell me more about Mem0',
+                    'How does LangGraph work in our system?',
+                    'Explain LocalAI offline deployment',
+                ],
+            ];
+        }
+
+        return null;
+    }
+
+private function lexusMultiReportIntent(string $text, int $uid): ?array
     {
         $low = mb_strtolower(trim($text));
 

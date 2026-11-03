@@ -209,7 +209,7 @@ class WorkflowKnowledgeSeeder
             [
                 'kind' => 'playbook',
                 'title' => 'Comprehensive Failure Remediation Guide: What to Do When a VF Test Fails',
-                'keywords' => 'test failed what to do, remediation plan, failed test procedure, quarantine failed shoes, root cause analysis, qc failure action plan',
+                'keywords' => 'test failed what to do, remediation plan, failed test procedure, quarantine failed shoes, root cause analysis, qc failure action plan, why did the sole adhesion fail, how do we fix this sole bonding separation, fix sole bonding failure, failure remediation',
                 'body' => "### Laboratory Test Failure Protocol & Action Plan\n\n"
                         . "When a test result is marked **FAIL** in NEXUS-L, follow the mandatory VF quality escalation protocol:\n\n"
                         . "1. **Verification Test:** Retest 3 additional specimens from the same production lot to verify if the failure is an isolated defect or a systematic batch issue.\n"
@@ -252,6 +252,110 @@ class WorkflowKnowledgeSeeder
                     ['type' => 'open', 'label' => 'Open Lab Ref Index', 'url' => site_url('dtr?tab=tracker&filter=all')],
                 ],
                 'page_match' => 'dtr',
+            ],
+            [
+                'kind' => 'playbook',
+                'title' => 'Mem0: The Memory Layer for AI (mem0ai/mem0)',
+                'keywords' => 'mem0, mem0ai, memory layer for ai, long term memory, user preferences memory, cross session continuity, user profile memory, vector memory',
+                'body' => "### \xf0\x9f\xa7\xa0 Mem0 \xe2\x80\x94 The Memory Layer for AI\n\n"
+                        . "**Mem0** is the leading open-source project designed specifically to give AI models long-term memory. It automatically tracks user preferences, extracts facts from conversations over time, and stores them efficiently.\n\n"
+                        . "#### \xf0\x9f\x8e\xaf What it Solves\n"
+                        . "\xe2\x80\xa2 **Long-term memory:** Prevents context loss between different chat sessions.\n"
+                        . "\xe2\x80\xa2 **Cross-session continuity:** Remembers previous instructions, standards, and preferences across days and weeks.\n"
+                        . "\xe2\x80\xa2 **User profiles & personalization:** Tracks user habits (e.g. preferred report formats, common test methods, language preferences).\n\n"
+                        . "#### \xe2\x9a\x99\xef\xb8\x8f How it Works\n"
+                        . "1. **Fact Extraction:** Watches the conversation stream and extracts persistent facts (e.g., *\"User frequently tests waffle rubber under VF-A01\"* or *\"User prefers Excel export over PowerPoint\"*).\n"
+                        . "2. **Local Vector Storage:** Stores structured memories in local Qdrant vector storage (`C:\\NexusAI\\mem0_qdrant`) and SQLite history (`C:\\NexusAI\\mem0_history.db`).\n"
+                        . "3. **Adaptive Injection:** On subsequent turns, Mem0 automatically queries relevant historical memories and injects them back into the active prompt context.\n\n"
+                        . "\xe2\x80\xa2 **GitHub Repository:** [mem0ai/mem0](https://github.com/mem0ai/mem0)",
+                'steps' => [
+                    'Mem0 watches conversation turns and extracts salient facts and preferences.',
+                    'Stores embeddings locally in Qdrant on-disk vector store (C:\\NexusAI\\mem0_qdrant).',
+                    'Retrieves relevant user context on future queries to maintain multi-session continuity.'
+                ],
+                'actions' => [
+                    ['type' => 'open', 'label' => 'View Mem0 on GitHub', 'url' => 'https://github.com/mem0ai/mem0', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'Open AI Brain Console', 'url' => site_url('brain')],
+                ],
+                'page_match' => 'brain',
+            ],
+            [
+                'kind' => 'playbook',
+                'title' => 'LangGraph: Advanced Multi-Turn State Management (langchain-ai/langgraph)',
+                'keywords' => 'langgraph, langchain langgraph, multi-turn state management, continuous chat state, cyclical graph, conversational routing, self-correction, tool looping, brain architecture',
+                'body' => "### \xf0\x9f\x94\x84 LangGraph \xe2\x80\x94 Advanced Multi-Turn State Management\n\n"
+                        . "**LangGraph** (developed by the LangChain team) is the premier library for building stateful, multi-actor applications and cyclical graph workflows with LLMs. Unlike standard linear chains, LangGraph enables cyclical graphs essential for continuous chat states, error self-correction, and tool loops.\n\n"
+                        . "#### \xf0\x9f\x8e\xaf What it Solves\n"
+                        . "\xe2\x80\xa2 **Continuous Chat State:** Maintains rich conversation memory across complex multi-turn dialogs.\n"
+                        . "\xe2\x80\xa2 **Conversational Routing:** Intelligently routes queries between test method retrieval, report generation, math computations, and approval workflows.\n"
+                        . "\xe2\x80\xa2 **Self-Correction & Tool Looping:** Automatically evaluates output validity; if an error or low confidence is detected, it loops back through correction nodes.\n\n"
+                        . "#### \xe2\x9a\x99\xef\xb8\x8f How it Works\n"
+                        . "LangGraph acts as the assistant's central \"brain architecture\":\n"
+                        . "1. **State Definition:** An `AgentState` object holds message history, extracted numbers, active lab references, and confidence scores.\n"
+                        . "2. **Node Execution:** Input passes through specialized nodes: `memory_node` (Mem0 recall) \xe2\x86\x92 `nlu_node` (intent classification) \xe2\x86\x92 `retrieve_node` (vector & keyword search) \xe2\x86\x92 `eval_node` (accuracy validation).\n"
+                        . "3. **Cyclical Feedback:** If the evaluator flags an anomaly, the graph branches back to refine the response before delivering the answer to the user.\n\n"
+                        . "\xe2\x80\xa2 **GitHub Repository:** [langchain-ai/langgraph](https://github.com/langchain-ai/langgraph)",
+                'steps' => [
+                    'LangGraph structures AI conversation as a cyclical state machine.',
+                    'Coordinates routing between memory, knowledge retrieval, and evaluation nodes.',
+                    'Validates answers and executes self-correction loops when needed.'
+                ],
+                'actions' => [
+                    ['type' => 'open', 'label' => 'View LangGraph on GitHub', 'url' => 'https://github.com/langchain-ai/langgraph', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'Inspect Traces in Phoenix', 'url' => 'http://127.0.0.1:6006', 'target' => '_blank'],
+                ],
+                'page_match' => 'brain',
+            ],
+            [
+                'kind' => 'playbook',
+                'title' => 'LocalAI: Self-Hosted Local LLM API (mudler/LocalAI)',
+                'keywords' => 'localai, mudler localai, self hosted local llm api, offline model, local inference engine, offline rest api, llama3, mistral, phi3, on premise ai',
+                'body' => "### \xf0\x9f\x92\xbb LocalAI \xe2\x80\x94 Self-Hosted Local LLM REST API\n\n"
+                        . "**LocalAI** is the leading free, open-source drop-in replacement REST API compatible with OpenAI specifications for local and offline CPU/GPU inference. It enables running open-source models completely on-premises without cloud dependencies or external data leaks.\n\n"
+                        . "#### \xf0\x9f\x8e\xaf What it Solves\n"
+                        . "\xe2\x80\xa2 **Offline & On-Premises Privacy:** Operates 100% locally on your server hardware\xe2\x80\x94no data ever leaves the laboratory network.\n"
+                        . "\xe2\x80\xa2 **Zero API Fees:** Eliminates recurring cloud API billing and quota limits.\n"
+                        . "\xe2\x80\xa2 **Standard API Compatibility:** Drop-in compatibility with OpenAI REST format (`/v1/chat/completions`, `/v1/embeddings`), enabling standard client libraries to interact with local models.\n\n"
+                        . "#### \xe2\x9a\x99\xef\xb8\x8f How it Works\n"
+                        . "1. **Containerized Model Serving:** Wraps quantized open-weight models (Llama 3, Mistral, Phi-3, Qwen) inside a lightweight local runtime (using `llama.cpp` or ONNX).\n"
+                        . "2. **Standard REST Endpoints:** Exposes fast endpoints on `127.0.0.1` for text generation, embeddings, and tool/function calling.\n"
+                        . "3. **Zero Configuration Switching:** Applications call standard REST endpoints just like cloud APIs, while all computations execute on local CPU/GPU cores.\n\n"
+                        . "\xe2\x80\xa2 **GitHub Repository:** [mudler/LocalAI](https://github.com/mudler/LocalAI)",
+                'steps' => [
+                    'Deploy LocalAI on the local server or container runtime.',
+                    'Download quantized GGUF weights (Llama 3, Mistral, Phi-3) into the models directory.',
+                    'Configure application endpoints to point to the local port (e.g. http://127.0.0.1:8080/v1).'
+                ],
+                'actions' => [
+                    ['type' => 'open', 'label' => 'View LocalAI on GitHub', 'url' => 'https://github.com/mudler/LocalAI', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'Open AI Assistant Settings', 'url' => site_url('settings')],
+                ],
+                'page_match' => 'settings',
+            ],
+            [
+                'kind' => 'playbook',
+                'title' => 'AI Skills & Architecture Overview: Mem0, LangGraph & LocalAI Integration Stack',
+                'keywords' => 'ai skills, skills of our ai, what are the ai skills, ai brain stack, ai architecture, mem0 langgraph localai, lexus ai skills, ai capabilities',
+                'body' => "### \xf0\x9f\x9b\xa1\xef\xb8\x8f LEXUS AI Brain Core Architecture & Skills\n\n"
+                        . "The intelligence layer of NEXUS-L is built upon three complementary open-source pillars designed for enterprise data security, state continuity, and offline execution:\n\n"
+                        . "| Technology | Core Function & Role | Primary Benefit | GitHub Repository |\n"
+                        . "| :--- | :--- | :--- | :--- |\n"
+                        . "| **Mem0** | **The Memory Layer for AI** | Long-term memory, cross-session user profile tracking & adaptive context injection | [mem0ai/mem0](https://github.com/mem0ai/mem0) |\n"
+                        . "| **LangGraph** | **Multi-Turn State Management** | Cyclical graph workflows, conversation state machine, self-correction & tool routing | [langchain-ai/langgraph](https://github.com/langchain-ai/langgraph) |\n"
+                        . "| **LocalAI** | **Self-Hosted Local LLM API** | 100% offline local inference (Llama 3, Mistral, Phi-3), zero cloud costs & complete privacy | [mudler/LocalAI](https://github.com/mudler/LocalAI) |\n\n"
+                        . "> [!NOTE]\n"
+                        . "> All AI components run entirely on the local laboratory host (`127.0.0.1`). No proprietary test data, test results, or laboratory reports ever leave the internal network.",
+                'steps' => [
+                    'Mem0 provides persistent user preference memory and context recall.',
+                    'LangGraph governs state machines, intent routing, and verification loops.',
+                    'LocalAI / local runtime hosts quantized models offline without external cloud calls.'
+                ],
+                'actions' => [
+                    ['type' => 'open', 'label' => 'View Mem0 on GitHub', 'url' => 'https://github.com/mem0ai/mem0', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'View LangGraph on GitHub', 'url' => 'https://github.com/langchain-ai/langgraph', 'target' => '_blank'],
+                    ['type' => 'open', 'label' => 'View LocalAI on GitHub', 'url' => 'https://github.com/mudler/LocalAI', 'target' => '_blank'],
+                ],
+                'page_match' => 'brain',
             ],
         ];
 
