@@ -682,19 +682,40 @@ class BotController extends BaseController
 
 
 
-        $prev = $this->db()->table('tbl_bot_chats')->select('message')->where(['thread_id' => (int) $thread['id'], 'sender' => 'user'])->where('id <', $userChatId)->orderBy('id', 'DESC')->get(1)->getRowArray();
+        // Multi-turn conversational memory: load recent turns across bot and user
+        $threadHistory = $this->db()->table('tbl_bot_chats')
+            ->select('sender, message')
+            ->where('thread_id', (int) $thread['id'])
+            ->where('id <', $userChatId)
+            ->orderBy('id', 'DESC')
+            ->limit(8)
+            ->get()
+            ->getResultArray();
+        $threadHistory = array_reverse($threadHistory);
+
+        $lastBotMsg = '';
+        $prevUserMsg = '';
+        $threadContextStr = '';
+        foreach ($threadHistory as $chat) {
+            $msg = trim((string) ($chat['message'] ?? ''));
+            if ($msg === '') continue;
+            if ($chat['sender'] === 'bot') {
+                $lastBotMsg = $msg;
+            } elseif ($chat['sender'] === 'user') {
+                $prevUserMsg = $msg;
+            }
+            $threadContextStr .= ' ' . $msg;
+        }
+
+        $normText = $this->normalizePromptTypos($text);
 
 
 
-        $prevUserMsg = (string) ($prev['message'] ?? '');
 
 
 
 
-
-
-
-        $intentReply = $this->lexusMultiReportIntent($text, $uid) ?? $this->artifactIntent($text, $uid, (int) $thread['id'], (array) $u) ?? $this->vfMethodIntent($text) ?? $this->labRefIntent($text) ?? $this->approvalReminderIntent($text, $uid, (array) $u) ?? $this->dbSearchIntent($text) ?? $this->computeIntent($text, $prevUserMsg);
+        $intentReply = $this->lexusMultiReportIntent($normText, $uid) ?? $this->artifactIntent($normText, $uid, (int) $thread['id'], (array) $u) ?? $this->vfMethodIntent($normText, $threadContextStr) ?? $this->labRefIntent($normText) ?? $this->approvalReminderIntent($normText, $uid, (array) $u) ?? $this->dbSearchIntent($normText) ?? $this->computeIntent($normText, $prevUserMsg, $lastBotMsg, $threadContextStr);
 
 
 
@@ -1046,7 +1067,7 @@ class BotController extends BaseController
 
 
 
-    private function vfMethodIntent(string $text): ?array
+    private function vfMethodIntent(string $text, string $threadContext = ''): ?array
 
 
 
@@ -1066,7 +1087,11 @@ class BotController extends BaseController
 
 
 
-        $code = null;
+        $code = null;// Check for general test method listing queries
+        if (preg_match('/\b(?:list\s+(?:of\s+)?test\s+methods?|what\s+are\s+(?:the\s+)?(?:vf\s+)?test\s+methods?|all\s+(?:vf\s+)?test\s+methods?|show\s+(?:all\s+)?test\s+methods?)\b/i', $low)) {
+            $code = 'VF-INDEX';
+        }
+        
 
 
 
@@ -4396,19 +4421,14 @@ private function artifactIntent(string $text, int $uid, int $threadId, array $u)
 
 
 
-    private function dbSearchIntent(string $text): ?array
+    private function dbSearchIntent(string $text): ?array
+    {
+        try {
+            $low = mb_strtolower(trim($text));
+            if (preg_match('/\b(test\s*methods?|vf\s*methods?|vf\s*-\s*[a-z0-9]+|list\s*of\s*test)\b/i', $low)) {
+                return null;
+            }
 
-
-
-    {
-
-
-
-        try {
-
-
-
-            $low = mb_strtolower(trim($text));
 
 
 
@@ -5368,7 +5388,42 @@ private function artifactIntent(string $text, int $uid, int $threadId, array $u)
 
 
 
-    private function computeIntent(string $text, string $prev = ''): ?array
+        /**
+     * Normalizes non-technical user typos and phonetic misspellings.
+     */
+    private function normalizePromptTypos(string $text): string
+    {
+        $map = [
+            '/\bha[dr]d?ness?\b/i' => 'hardness',
+            '/\btensil[e]?s?\b/i' => 'tensile',
+            '/\btenslie\b/i' => 'tensile',
+            '/\belong[at]?[io]{1,2}n\b/i' => 'elongation',
+            '/\belagan[ti]on\b/i' => 'elongation',
+            '/\babras[si]{1,2}on\b/i' => 'abrasion',
+            '/\babration\b/i' => 'abrasion',
+            '/\bflx[in]{1,2}g\b/i' => 'flexing',
+            '/\bcrock[in]{1,2}g\b/i' => 'crocking',
+            '/\bstich\b/i' => 'stitch',
+            '/\btrouz[er]{1,2}\b/i' => 'trouser',
+            '/\bteer\b/i' => 'tear',
+            '/\bhydrol[iy]sis\b/i' => 'hydrolysis',
+            '/\bthicknes\b/i' => 'thickness',
+            '/\bcompress[io]{1,2}n\b/i' => 'compression',
+            '/\bap[pa]{1,2}ratu[s]?s?\b/i' => 'apparatus',
+            '/\bcalclate\b/i' => 'calculate',
+            '/\bcalulate\b/i' => 'calculate',
+            '/\bstandr?ad?\b/i' => 'standard',
+            '/\bstandar\b/i' => 'standard',
+            '/\brequir?ment\b/i' => 'requirement',
+            '/\breportt?\b/i' => 'report',
+            '/\blabref(?:erence)?\b/i' => 'lab reference',
+            '/\btest\s*methd\b/i' => 'test method',
+            '/\btest\s*methed\b/i' => 'test method',
+        ];
+        return preg_replace(array_keys($map), array_values($map), $text);
+    }
+
+private function computeIntent(string $text, string $prev = '', string $lastBotMsg = '', string $threadContext = ''): ?array
 
 
 
@@ -5376,11 +5431,17 @@ private function artifactIntent(string $text, int $uid, int $threadId, array $u)
 
 
 
-        $low = mb_strtolower(trim($text));
-
-
-
-        $comb = mb_strtolower(trim($prev . ' ' . $text));
+        $low = mb_strtolower(trim($text));
+        $comb = mb_strtolower(trim($prev . ' ' . $text . ' ' . $threadContext));
+        // Detect pending calculation from previous bot message
+        $pendingTest = '';
+        if (preg_match('/To calculate the average and evaluate \*\*([^*]+)\*\*/i', $lastBotMsg, $pbm)) {
+            $pendingTest = trim($pbm[1]);
+            $comb .= ' ' . mb_strtolower($pendingTest);
+        } elseif (preg_match('/\b(Hardness|Tensile Strength|Elongation|Trouser Tear|Stitch Tear|Die C Tear|DIN Abrasion|Ross Flex|Static Compression Set)\b/i', $lastBotMsg, $pbm)) {
+            $pendingTest = trim($pbm[1]);
+            $comb .= ' ' . mb_strtolower($pendingTest);
+        }
 
 
 
@@ -5404,14 +5465,8 @@ private function artifactIntent(string $text, int $uid, int $threadId, array $u)
 
 
 
-        if (! $hasComputeWord && ! ($hasTestWord && $hasNumbers && preg_match('/\b(std|standard|readings?|results?|values?|pass|fail|specimen)\b/i', $low))) {
-
-
-
-            return null;
-
-
-
+        if (! $hasComputeWord && ! ($hasTestWord && $hasNumbers) && ! ($pendingTest !== '' && $hasNumbers)) {
+            return null;
         }
 
 
@@ -5504,7 +5559,7 @@ private function artifactIntent(string $text, int $uid, int $threadId, array $u)
 
 
 
-        return $this->computeDirectionalOrGeneric($low, $comb);
+        return $this->computeDirectionalOrGeneric($low, $comb, $pendingTest, $lastBotMsg);
 
 
 
@@ -6724,7 +6779,7 @@ private function artifactIntent(string $text, int $uid, int $threadId, array $u)
 
 
 
-    private function computeDirectionalOrGeneric(string $low, string $comb): array
+    private function computeDirectionalOrGeneric(string $low, string $comb, string $promptedTest = '', string $lastBotMsg = ''): array
 
 
 
@@ -6744,59 +6799,27 @@ private function artifactIntent(string $text, int $uid, int $threadId, array $u)
 
 
 
-        // Detect Standard if specified
-
-
-
-        $std = null;
-
-
-
-        if (preg_match('/\b(?:std|standard|req|requirement)\s*[:=]?\s*(?:>=|<=)?\s*(\d+(?:\.\d+)?)/i', $comb, $sm)) {
-
-
-
-            $std = (float) $sm[1];
-
-
-
-            // Remove STD from numbers list if present
-
-
-
-            if (($key = array_search($std, $nums, true)) !== false && count($nums) > 1) {
-
-
-
-                unset($nums[$key]);
-
-
-
-                $nums = array_values($nums);
-
-
-
-            }
-
-
-
-        }
-
-
-
-
-
-
-
-        // Detect Test Name
-
-
-
-        $testName = 'Material Test';
-
-
-
-        if (preg_match('/\b(tensile)\b/i', $comb)) $testName = 'Tensile Strength';
+        // Detect Standard if specified (enhanced for conversational phrasing like "the standard is 12")
+        $std = null;
+        if (preg_match('/\b(?:the\s+)?(?:std|standard|req|requirement)\s*(?:is\s*[:=]?|[:=])?\s*(?:>=|<=)?\s*(\d+(?:\.\d+)?)/i', $low . ' ' . $comb, $sm)) {
+            $std = (float) $sm[1];
+            // Remove STD from numbers list if present
+            if (($key = array_search($std, $nums, true)) !== false && count($nums) > 1) {
+                unset($nums[$key]);
+                $nums = array_values($nums);
+            }
+        }
+
+        // If numbers were omitted in current turn, check if previous bot message held them
+        if (empty($nums) && preg_match('/(?:Readings|Values|Specimens)\s*:\s*`?([0-9.,\s]+)`?/i', $lastBotMsg, $prm)) {
+            preg_match_all('/\b\d+(?:\.\d+)?\b/', $prm[1], $prmm);
+            $nums = array_map('floatval', $prmm[0] ?? []);
+        }
+
+        // Detect Test Name (prioritize promptedTest from conversation memory)
+        $testName = $promptedTest !== '' ? $promptedTest : 'Material Test';
+        if ($testName === 'Material Test') {
+            if (preg_match('/\b(tensile)\b/i', $comb)) $testName = 'Tensile Strength';
 
 
 
@@ -6824,7 +6847,8 @@ private function artifactIntent(string $text, int $uid, int $threadId, array $u)
 
 
 
-        elseif (preg_match('/\b(hardness)\b/i', $comb)) $testName = 'Hardness';
+        elseif (preg_match('/\b(hardness)\b/i', $comb)) $testName = 'Hardness';
+        }
 
 
 
