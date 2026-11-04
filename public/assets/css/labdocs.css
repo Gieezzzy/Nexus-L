@@ -1,0 +1,77 @@
+/* Laboratory Documents: a register shown as A4 sheets (view, edit, print) */
+.ld { --ld-blue: #0070c0; --ld-line: #000; padding: 4px 0 24px; }
+.ld-bar { display: flex; flex-wrap: wrap; gap: 12px 20px; justify-content: space-between; align-items: flex-start; padding: 12px 16px; border-radius: 14px; margin-bottom: 10px; }
+.ld-bar-l { min-width: 260px; flex: 1 1 360px; }
+.ld-bar-r { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: flex-end; }
+.ld-title { font-size: 16px; }
+.ld-title span { color: var(--muted, #64748b); font-weight: 500; margin-left: 4px; }
+.ld-meta { margin-top: 4px; font-size: 12px; color: var(--muted, #64748b); display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
+.ld-meta code { font-size: 11.5px; }
+.ld-chip { background: rgba(148, 163, 184, .18); border-radius: 999px; padding: 1px 9px; font-size: 11.5px; }
+.ld-hint { margin: 0 0 10px; padding: 8px 12px; border-radius: 10px; background: rgba(0, 112, 192, .10); font-size: 12.5px; }
+.ld-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.ld-btn { border: 1px solid rgba(148, 163, 184, .45); background: rgba(255, 255, 255, .55); color: inherit; border-radius: 9px; padding: 6px 13px; font: inherit; font-size: 13px; cursor: pointer; }
+.ld-btn:hover { background: rgba(255, 255, 255, .9); }
+.ld-btn:focus-visible { outline: 2px solid var(--ld-blue); outline-offset: 2px; }
+.ld-primary { background: var(--ld-blue); border-color: var(--ld-blue); color: #fff; }
+.ld-primary:hover { background: #005a9c; }
+.ld-btn[disabled] { opacity: .55; cursor: wait; }
+.ld-pager { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.ld-pager .ld-btn { padding: 5px 11px; min-width: 34px; }
+.ld-pager .ld-btn.on { background: var(--ld-blue); border-color: var(--ld-blue); color: #fff; }
+.ld-pager .ld-of { font-size: 12px; color: var(--muted, #64748b); margin: 0 4px; }
+
+.ld-drop { position: relative; }
+.ld-menu { position: absolute; z-index: 40; right: 0; top: calc(100% + 4px); min-width: 210px; max-height: 340px; overflow: auto; background: #fff; color: #0f172a; border: 1px solid rgba(148, 163, 184, .5);
+  border-radius: 10px; padding: 6px; box-shadow: 0 12px 32px rgba(15, 23, 42, .22); list-style: none; margin: 0; }
+.ld-menu[hidden] { display: none; }
+.ld-menu label, .ld-menu li { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 7px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.ld-menu label:hover, .ld-menu li:hover { background: rgba(0, 112, 192, .10); }
+.ld-menu li[aria-disabled="true"] { opacity: .4; pointer-events: none; }
+.ld-menu hr { border: 0; border-top: 1px solid rgba(148, 163, 184, .35); margin: 4px 0; }
+.ld-ctx { position: fixed; right: auto; top: auto; }
+
+.ld-stage { overflow-x: auto; padding: 4px 0; }
+.ld-pages { width: 210mm; margin: 0 auto; }
+.ld-sheet { position: relative; width: 210mm; height: 297mm; padding: var(--ld-m, 6.4mm); box-sizing: border-box; background: #fff; color: #000; font: 10.5pt/1.25 Arial, Helvetica, "Microsoft YaHei", "SimSun", sans-serif;
+  box-shadow: 0 6px 28px rgba(15, 23, 42, .22); margin: 0 auto 14px; overflow: hidden; display: none; }
+.ld-sheet.is-active, .ld-all .ld-sheet { display: block; }
+.ld-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 17mm; }
+.ld-head img { max-height: 17mm; max-width: 31mm; object-fit: contain; }
+.ld-head .ld-logo-r { margin-left: auto; }
+.ld-co { flex: 1; text-align: center; line-height: 1.2; }
+.ld-co .cn { font-size: 12pt; letter-spacing: .5px; }
+.ld-co .en { font-size: 14pt; font-weight: 700; }
+.ld-co .ad { font-size: 7.5pt; font-weight: 700; }
+.ld-ttl { text-align: center; font-weight: 700; font-size: 12pt; padding: 2mm 0 1.2mm; border-top: 1px solid var(--ld-line); margin-top: 1.5mm; }
+.ld-gap { height: 1.6mm; }
+.ld-t { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.ld-t th, .ld-t td { border: 1px solid var(--ld-line); padding: 1.1mm 1.8mm; vertical-align: middle; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 10pt; }
+.ld-t th { background: var(--ld-blue); color: #fff; font-weight: 700; text-align: center; font-size: 10.5pt; }
+.ld-t td { background: #fff; }
+.ld-t .a-center { text-align: center; } .ld-t .a-right { text-align: right; } .ld-t .a-left { text-align: left; }
+.ld-t th.a-left { text-align: left; }
+.ld-foot { position: absolute; left: var(--ld-m, 6.4mm); right: var(--ld-m, 6.4mm); bottom: calc(var(--ld-m, 6.4mm) - 1mm); height: 5mm; display: flex; justify-content: space-between; font-size: 8pt; color: #444; }
+.ld-edit [contenteditable="true"] { cursor: text; }
+.ld-edit .ld-t td:hover, .ld-edit .ld-t th:hover { outline: 2px solid rgba(0, 112, 192, .45); outline-offset: -2px; }
+.ld-edit .ld-t [contenteditable="true"]:focus { outline: 2px solid var(--ld-blue); outline-offset: -2px; background: #f0f8ff; color: #000; }
+.ld-edit .ld-t th:focus { background: #005a9c; }
+.ld-measure { position: absolute; left: -99999px; top: 0; visibility: hidden; pointer-events: none; }
+.ld-measure .ld-sheet { display: block; height: auto; margin: 0; box-shadow: none; }
+
+@media (max-width: 760px) { .ld-bar-r { justify-content: flex-start; } }
+
+@media print {
+  #sidebar, #sidebar-backdrop, .shell > header, .shell > .topbar, .foot, .skip-link, .ld-bar, .ld-hint, .ld-ctx, .ld-measure, .sr-only, [id^="bot-"], .bot-fab, .bot-launcher, .bot-panel { display: none !important; }
+  html, body { background: #fff !important; height: auto !important; overflow: visible !important; }
+  .shell { margin: 0 !important; padding: 0 !important; width: auto !important; }
+  main, #main-content { padding: 0 !important; margin: 0 !important; }
+  .ld { padding: 0; }
+  .ld-stage { overflow: visible; padding: 0; }
+  .ld-pages { width: auto; zoom: 1 !important; }
+  .ld-sheet { display: block !important; width: auto; height: auto; min-height: 0; padding: 0; margin: 0; box-shadow: none; overflow: visible; break-after: page; page-break-after: always;
+    height: var(--ld-print-h, 284mm); }
+  .ld-sheet:last-child { break-after: auto; page-break-after: auto; }
+  .ld-foot { left: 0; right: 0; bottom: 0; }
+  .ld-t th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

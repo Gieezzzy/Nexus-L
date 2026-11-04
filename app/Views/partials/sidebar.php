@@ -89,6 +89,30 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
             </a>
             <?php endforeach ?>
         </div>
+        <!-- Laboratory Documents: the registers of the "#" folders of the Lab Documents share (one link per register in dbnexus) -->
+        <?php
+        $labRegs = [];
+        try {
+            $labDb = \Config\Database::connect();
+            if ($labDb->tableExists('tbl_labdoc_registers')) {
+                $labRegs = $labDb->table('tbl_labdoc_registers')->select('code, menu_label')->where('is_active', 1)->orderBy('sort_order')->get()->getResultArray();
+            }
+        } catch (\Throwable $e) {
+            $labRegs = [];
+        }
+        $labCode = $segment === 'labdocs' ? rawurldecode((string) service('uri')->getSegment(2)) : '';
+        ?>
+        <?php if ($labRegs): ?>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
+            <div style="padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Laboratory Documents</div>
+            <?php foreach ($labRegs as $lr): ?>
+            <a href="<?= site_url('labdocs/' . rawurlencode($lr['code'])) ?>" class="nav-link <?= ($segment === 'labdocs' && ($labCode === $lr['code'] || $labCode === '')) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
+                <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5zM14 3v5h5M9 13h6M9 17h6M9 9h2"/></svg>
+                <?= esc($lr['menu_label'] ?: $lr['code']) ?>
+            </a>
+            <?php endforeach ?>
+        </div>
+        <?php endif ?>
     </nav>
 
     <div class="side-foot">

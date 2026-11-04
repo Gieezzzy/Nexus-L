@@ -125,6 +125,11 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
 
     $routes->get('dtr/bonding-access-pdf', 'DtrController::bondingAccessPdf');
 
+    // Laboratory Documents: the registers of the "#" folders of the Lab Documents share
+    $routes->get('labdocs', 'LabDocsController::index', ['as' => 'labdocs']);
+    $routes->get('labdocs/(:segment)', 'LabDocsController::show/$1');
+    $routes->post('labdocs/(:segment)/save', 'LabDocsController::save/$1');
+
     // Material Testing & Cyclic Monitoring Suite (Marc)
     $routes->get('materials', 'MaterialsController::index', ['as' => 'materials']);
     $routes->get('material-testing', 'MaterialsController::index');
