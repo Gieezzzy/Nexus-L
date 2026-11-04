@@ -43,3 +43,4 @@ $canEdit = ! empty($data['canEdit']);
     <div class="ld-measure" id="ld-measure" aria-hidden="true"></div>
 </section>
 <script type="application/json" id="ld-data"><?= json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
+<?= view('labdocs/_revs', ['labRevs' => $labRevs ?? null]) ?>

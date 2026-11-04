@@ -138,11 +138,10 @@
   }
 
   function fit() {                                          // a narrow window scales the sheet down instead of scrolling
-    var stage = document.getElementById('ld-stage');
-    var w = stage.clientWidth - 8, need = 210 * MM;
-    pagesEl.style.zoom = w < need ? String(Math.max(0.3, w / need)) : '1';
+    if (!zoom) zoom = LdZoom(document.getElementById('ld-stage'), pagesEl, function () { return 210 * MM; });
+    zoom.fit();
   }
-  window.addEventListener('resize', fit);
+  var zoom;
 
   // ---------------------------------------------------------------------------------------------- editing
   function colIndex(key) { return state.columns.findIndex(function (c) { return c.key === key; }); }

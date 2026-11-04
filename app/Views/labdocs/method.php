@@ -8,7 +8,7 @@ $canEdit = ! empty($data['canEdit']);
 <section class="ld vd" id="vd" data-code="<?= esc($m['code'], 'attr') ?>">
     <div class="ld-bar glass vd-bar">
         <div class="ld-bar-l">
-            <div class="ld-title"><a class="vd-back" href="<?= esc($data['backUrl'], 'attr') ?>" aria-label="Back to the test methods">‹ Test methods</a>
+            <div class="ld-title"><a class="vd-back" href="<?= esc($data['backUrl'], 'attr') ?>" aria-label="Back">‹ <?= empty($data['method']['spec']) ? 'Test methods' : 'Specification sheets' ?></a>
                 <b><?= esc($m['code']) ?></b> <span><?= esc($m['title']) ?></span></div>
             <div class="ld-meta" id="vd-status" role="status" aria-live="polite">
                 Updated <?= esc($m['rev_label'] ?: '-') ?><?php if ($m['edited_at']): ?> · edited <?= esc(date('d M Y H:i', strtotime((string) $m['edited_at']))) ?> by <?= esc($m['edited_by'] ?: '-') ?> (revision <?= (int) $m['revision_no'] ?>)<?php endif ?>
@@ -56,3 +56,4 @@ $canEdit = ! empty($data['canEdit']);
     <div class="ld-measure" id="vd-measure" aria-hidden="true"></div>
 </section>
 <script type="application/json" id="vd-data"><?= json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
+<?= view('labdocs/_revs', ['labRevs' => $labRevs ?? null]) ?>

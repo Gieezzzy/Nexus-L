@@ -14,7 +14,7 @@
       c.hidden = !ok; if (ok) n++;
     });
     count.textContent = n; none.hidden = n > 0;
-    try { sessionStorage.setItem('vm-filter', JSON.stringify({ q: search.value, s: series })); } catch (e) {}
+    try { sessionStorage.setItem('vm-filter' + location.pathname, JSON.stringify({ q: search.value, s: series })); } catch (e) {}
   }
   search.addEventListener('input', apply);
   Array.prototype.forEach.call(chips, function (b) {
@@ -25,7 +25,7 @@
     });
   });
   try {                                                    // coming back from a method keeps the search and the series
-    var f = JSON.parse(sessionStorage.getItem('vm-filter') || 'null');
+    var f = JSON.parse(sessionStorage.getItem('vm-filter' + location.pathname) || 'null');
     if (f) { search.value = f.q || ''; series = f.s || ''; Array.prototype.forEach.call(chips, function (x) { x.classList.toggle('on', x.dataset.s === series); }); }
   } catch (e) {}
   apply();

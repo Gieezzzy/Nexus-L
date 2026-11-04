@@ -83,6 +83,10 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->post('interlink/proxy', 'InterlinkController::proxy');
     $routes->get('interlink/center/status', 'InterlinkController::centerStatus');
     $routes->post('interlink/center/fill', 'InterlinkController::centerFill');
+    $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
+    $routes->get('interlink/etrf-history', 'InterlinkController::etrfHistory');
+    $routes->post('interlink/center/etrf', 'InterlinkController::centerEtrf');
+    $routes->post('interlink/service/etrf', 'InterlinkServiceController::submitEtrf');
     $routes->get('interlink/service/status', 'InterlinkServiceController::status');
     $routes->post('interlink/service/submit', 'InterlinkServiceController::submit');
     $routes->get('interlink/service/feed', 'InterlinkServiceController::feed');
@@ -134,6 +138,9 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->get('labdocs/(:segment)/ill/(:num)', 'LabDocsController::illustrated/$1/$2');
     $routes->get('labdocs/(:segment)/doc/(:segment)', 'LabDocsController::doc/$1/$2');
     $routes->get('labdocs/(:segment)/file/(:segment)', 'LabDocsController::file/$1/$2');
+    $routes->get('labdocs/(:segment)/b/(:segment)', 'LabDocsController::book/$1/$2');
+    $routes->post('labdocs/(:segment)/b/(:segment)/save', 'LabDocsController::saveBook/$1/$2');
+    $routes->post('labdocs/(:segment)/rev/(:num)/delete', 'LabDocsController::deleteRev/$1/$2');
     $routes->get('labdocs/(:segment)', 'LabDocsController::show/$1');
     $routes->post('labdocs/(:segment)/save', 'LabDocsController::save/$1');
 

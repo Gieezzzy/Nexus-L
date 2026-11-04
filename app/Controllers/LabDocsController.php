@@ -24,6 +24,94 @@ class LabDocsController extends BaseController
         return \Config\Database::connect();
     }
 
+    /** the share the registers live on (forward slashes work for UNC paths in PHP on Windows); the Logs folders are made inside the folder of each register */
+    private const SHARE = '//192.168.32.130/qc lab files/#Lab Documents';
+
+    /** the layout: a revision opened beside the original (in a frame) has no menus */
+    private function layout(): string
+    {
+        return $this->request->getGet('embed') ? 'layouts/bare' : 'layouts/main';
+    }
+
+    /** the saved version asked for with ?rev= (only for this document), or null */
+    private function revSnap(array $reg, string $kind, string $key): ?array
+    {
+        $id = (int) $this->request->getGet('rev');
+
+        return $id > 0 ? ($this->db()->table('tbl_labdoc_revs')->where(['id' => $id, 'register_id' => $reg['id'], 'kind' => $kind, 'doc_key' => $key, 'log_deleted' => 0])->get()->getRowArray() ?: null) : null;
+    }
+
+    /** the list the "Revisions" panel shows (versions whose Logs file was deleted are not listed; their copy stays in the database) */
+    private function revList(array $reg, string $kind, string $key, bool $ro): array
+    {
+        $items = [];
+        if (! $ro) {
+            foreach ($this->db()->table('tbl_labdoc_revs')->select('id, rev_no, saved_at, saved_by, category')->where(['register_id' => $reg['id'], 'kind' => $kind, 'doc_key' => $key, 'log_deleted' => 0])
+                ->orderBy('rev_no', 'DESC')->get()->getResultArray() as $r) {
+                $items[] = ['id' => (int) $r['id'], 'no' => (int) $r['rev_no'], 'at' => date('d M Y H:i', strtotime((string) $r['saved_at'])), 'by' => (string) $r['saved_by'], 'cat' => $r['category']];
+            }
+        }
+
+        return ['items' => $items, 'ro' => $ro, 'canDelete' => $this->canEdit(), 'delUrl' => site_url('labdocs/' . rawurlencode($reg['code']) . '/rev/')];
+    }
+
+    /**
+     * Keeps the version that is about to be replaced: in the database (for good) and in <folder>/Logs/<category>/Rev<N> on the share
+     * (the previous Excel file itself, or the document as a json file). The share is not needed for the save to succeed.
+     *
+     * @param array|string $snapshot
+     */
+    private function archive(array $reg, string $kind, string $key, string $category, $snapshot, ?string $copyFrom, string $user): void
+    {
+        $db  = $this->db();
+        $n   = 1 + (int) ($db->table('tbl_labdoc_revs')->selectMax('rev_no')->where(['register_id' => $reg['id'], 'kind' => $kind, 'doc_key' => $key])->get()->getRow()->rev_no ?? 0);
+        $cat = trim((string) preg_replace('/[^A-Za-z0-9 ._#()+-]+/', '-', $category)) ?: $kind;
+        $dir = self::SHARE . '/' . $reg['folder_name'] . '/Logs/' . $cat . '/Rev' . $n;
+        $json = is_string($snapshot) ? $snapshot : json_encode($snapshot, JSON_UNESCAPED_UNICODE);
+        $ok  = false;
+        try {
+            if (is_dir($dir) || @mkdir($dir, 0775, true)) {
+                $ok = @file_put_contents($dir . '/' . $cat . ' Rev' . $n . '.json', (string) $json) !== false;
+                if ($copyFrom && is_file($copyFrom)) {
+                    $ok = @copy($copyFrom, $dir . '/' . basename(str_replace('/', DIRECTORY_SEPARATOR, $copyFrom))) && $ok;
+                }
+            }
+        } catch (\Throwable) {
+            $ok = false;
+        }
+        $db->table('tbl_labdoc_revs')->insert(['register_id' => $reg['id'], 'kind' => $kind, 'doc_key' => $key, 'category' => mb_substr($category, 0, 250), 'rev_no' => $n, 'snapshot_json' => $json,
+            'log_file' => $ok ? mb_substr($dir, 0, 690) : '', 'saved_by' => $user, 'saved_at' => date('Y-m-d H:i:s')]);
+    }
+
+    /** the trash of the Revisions panel: the files in Logs are deleted, the copy in the database stays */
+    public function deleteRev(string $code, string $id): ResponseInterface
+    {
+        if (! $this->canEdit()) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'message' => 'Only an administrator can delete a revision.', 'csrf' => csrf_hash()]);
+        }
+        $reg = $this->register(rawurldecode($code));
+        $r   = $reg ? $this->db()->table('tbl_labdoc_revs')->where(['id' => (int) $id, 'register_id' => $reg['id'], 'log_deleted' => 0])->get()->getRowArray() : null;
+        if (! $r) {
+            return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'Revision not found.', 'csrf' => csrf_hash()]);
+        }
+        $dir  = (string) $r['log_file'];
+        $note = 'no file in Logs';
+        if ($dir !== '' && str_starts_with($dir, self::SHARE . '/') && str_contains($dir, '/Logs/') && ! str_contains($dir, '..') && is_dir($dir)) {
+            foreach (glob($dir . '/*') ?: [] as $f) {
+                if (is_file($f)) {
+                    @unlink($f);
+                }
+            }
+            $note = @rmdir($dir) ? 'Logs folder deleted' : 'Logs files deleted';
+        }
+        $user = (string) ($this->auth->user()['name'] ?? $this->auth->user()['username'] ?? 'user');
+        $this->db()->table('tbl_labdoc_revs')->where('id', $r['id'])->update(['log_deleted' => 1, 'deleted_by' => $user, 'deleted_at' => date('Y-m-d H:i:s')]);
+        $this->db()->table('tbl_labdoc_log')->insert(['register_id' => $reg['id'], 'action' => 'delete-rev', 'user_name' => $user, 'created_at' => date('Y-m-d H:i:s'),
+            'detail' => mb_substr($r['category'] . ' Rev' . $r['rev_no'] . ': ' . $note . '; the copy in the database is kept', 0, 490)]);
+
+        return $this->response->setJSON(['ok' => true, 'message' => $note, 'csrf' => csrf_hash()]);
+    }
+
     private function canEdit(): bool
     {
         return strcasecmp((string) ($this->auth->user()['role'] ?? ''), 'admin') === 0;
@@ -48,9 +136,20 @@ class LabDocsController extends BaseController
         if (($reg['view_type'] ?? 'register') === 'methods') {
             return $this->methodsPage($reg);
         }
+        if (($reg['view_type'] ?? 'register') === 'books') {
+            return $this->booksPage($reg);
+        }
+        if (($reg['view_type'] ?? 'register') === 'specs') {
+            return $this->specsPage($reg);
+        }
         $cols = $this->db()->table('tbl_labdoc_columns')->where('register_id', $reg['id'])->orderBy('sort_order')->get()->getResultArray();
         $rows = $this->db()->table('tbl_labdoc_rows')->where('register_id', $reg['id'])->orderBy('sort_order')->get()->getResultArray();
-        $log  = $this->db()->table('tbl_labdoc_log')->where('register_id', $reg['id'])->orderBy('id', 'DESC')->get(5)->getResultArray();
+        $snap = $this->revSnap($reg, 'register', '');
+        if ($snap) {
+            $sn   = json_decode((string) $snap['snapshot_json'], true) ?: [];
+            $cols = $sn['cols'] ?? $cols;
+            $rows = $sn['rows'] ?? $rows;
+        }
         $data = [
             'register' => [
                 'code' => $reg['code'], 'title' => $reg['title'], 'companyCn' => $reg['company_cn'], 'companyEn' => $reg['company_en'], 'address' => $reg['address'],
@@ -59,19 +158,20 @@ class LabDocsController extends BaseController
             ],
             'columns' => array_map(static fn ($c) => ['key' => $c['col_key'], 'label' => $c['label'], 'width' => (float) $c['width_pct'], 'align' => $c['align'], 'visible' => (bool) $c['is_visible']], $cols),
             'rows'    => array_map(static fn ($r) => json_decode((string) $r['cells_json'], true) ?: [], $rows),
-            'canEdit' => $this->canEdit(),
+            'canEdit' => $snap ? false : $this->canEdit(),
             'saveUrl' => site_url('labdocs/' . rawurlencode($reg['code']) . '/save'),
         ];
 
         return $this->render('labdocs/register', [
+            'labRevs' => $this->revList($reg, 'register', '', (bool) $snap),
             'title'   => $reg['code'] . ' ' . $reg['title'],
             'withCss' => 'labdocs.css',
-            'withJs'  => ['labdocs.js'],
+            'withJs'  => ['labdocs-zoom.js', 'labdocs-search.js', 'labdocs-revs.js', 'labdocs.js'],
             'reg'     => $reg,
             'data'    => $data,
             'files'   => json_decode((string) $reg['source_files'], true) ?: [],
             'log'     => $log,
-        ]);
+        ], $this->layout());
     }
 
     public function save(string $code): ResponseInterface
@@ -117,6 +217,10 @@ class LabDocsController extends BaseController
         $user = (string) ($this->auth->user()['name'] ?? $this->auth->user()['username'] ?? $this->auth->user()['email'] ?? 'user');
         $now  = date('Y-m-d H:i:s');
         $db   = $this->db();
+        $this->archive($reg, 'register', '', (string) $reg['code'], [
+            'cols' => $db->table('tbl_labdoc_columns')->where('register_id', $reg['id'])->orderBy('sort_order')->get()->getResultArray(),
+            'rows' => $db->table('tbl_labdoc_rows')->where('register_id', $reg['id'])->orderBy('sort_order')->get()->getResultArray(),
+        ], (string) $reg['file_path'], $user);
         $db->transStart();
         $db->table('tbl_labdoc_columns')->where('register_id', $reg['id'])->delete();
         $db->table('tbl_labdoc_rows')->where('register_id', $reg['id'])->delete();
@@ -181,6 +285,21 @@ class LabDocsController extends BaseController
         ]);
     }
 
+    /** #DTP-Lab-103: one card per material specification sheet (name and year) and the Excel files as links */
+    private function specsPage(array $reg): string
+    {
+        $db   = $this->db();
+        $base = site_url('labdocs/' . rawurlencode($reg['code']));
+        $cards = array_map(static fn ($m) => [
+            'code' => $m['code'], 'name' => $m['title'], 'year' => $m['rev_label'], 'pages' => (int) $m['pages'], 'group' => $m['series'],
+            'edited' => $m['edited_at'] ? date('d M Y', strtotime((string) $m['edited_at'])) : null, 'url' => $base . '/m/' . rawurlencode($m['code']),
+        ], $db->table('tbl_vfm_methods')->select('code, series, title, rev_label, edited_at, pages')->where(['register_id' => $reg['id'], 'is_active' => 1])->orderBy('title')->get()->getResultArray());
+        $docs = array_map(static fn ($d) => ['key' => $d['doc_key'], 'label' => $d['label'], 'kind' => $d['kind'], 'url' => $base . '/doc/' . rawurlencode($d['doc_key'])],
+            $db->table('tbl_vfm_docs')->where('register_id', $reg['id'])->orderBy('sort_order')->get()->getResultArray());
+
+        return $this->render('labdocs/specs', ['title' => $reg['code'] . ' ' . $reg['title'], 'withCss' => 'labdocs.css', 'withJs' => ['labdocs-methods.js'], 'reg' => $reg, 'cards' => $cards, 'docs' => $docs]);
+    }
+
     public function method(string $code, string $vf): ResponseInterface|string
     {
         $reg = $this->register(rawurldecode($code));
@@ -192,20 +311,22 @@ class LabDocsController extends BaseController
         $ill  = array_map(static fn ($r) => ['label' => $r['label'], 'url' => $base . '/ill/' . $r['id']],
             $this->db()->table('tbl_vfm_illustrated')->where(['register_id' => $reg['id'], 'code' => $m['code']])->orderBy('label')->get()->getResultArray());
         $revs = $this->db()->table('tbl_vfm_revisions')->select('rev_no, note, saved_by, saved_at')->where('method_id', $m['id'])->orderBy('id', 'DESC')->get(8)->getResultArray();
-        $doc  = json_decode((string) $m['content_json'], true) ?: ['blocks' => [], 'base' => 11, 'margin' => 72];
+        $snap = $this->revSnap($reg, 'method', $m['code']);
+        $doc  = json_decode((string) ($snap['snapshot_json'] ?? $m['content_json']), true) ?: ['blocks' => [], 'base' => 11, 'margin' => 72];
         $data = [
             'method' => ['code' => $m['code'], 'title' => $m['title'], 'rev' => $m['rev_label'], 'pages' => (int) $m['pages'], 'revisionNo' => (int) $m['revision_no'],
-                'editedBy' => $m['edited_by'], 'editedAt' => $m['edited_at']],
-            'doc' => ['base' => (float) ($doc['base'] ?? 11), 'blocks' => $doc['blocks'] ?? []],
+                'editedBy' => $m['edited_by'], 'editedAt' => $m['edited_at'], 'spec' => ($reg['view_type'] ?? '') === 'specs', 'header' => (string) ($doc['headerTitle'] ?? '')],
+            'doc' => ['base' => (float) ($doc['base'] ?? 11), 'orient' => (string) ($doc['orient'] ?? 'portrait'), 'blocks' => $doc['blocks'] ?? []],
             'assets' => base_url('assets/vfm') . '/',
             'logo' => base_url('assets/vfm/_logo.png'),
-            'canEdit' => $this->canEdit(), 'saveUrl' => $base . '/m/' . rawurlencode($m['code']) . '/save', 'restoreUrl' => $base . '/m/' . rawurlencode($m['code']) . '/restore',
+            'canEdit' => $snap ? false : $this->canEdit(), 'saveUrl' => $base . '/m/' . rawurlencode($m['code']) . '/save', 'restoreUrl' => $base . '/m/' . rawurlencode($m['code']) . '/restore',
             'pdfUrl' => $base . '/pdf/' . rawurlencode($m['code']), 'backUrl' => $base, 'illustrated' => $ill,
         ];
 
         return $this->render('labdocs/method', [
-            'title' => $m['code'] . ' ' . $m['title'], 'withCss' => 'labdocs.css', 'withJs' => ['labdocs-method.js'], 'reg' => $reg, 'm' => $m, 'data' => $data, 'revs' => $revs,
-        ]);
+            'title' => $m['code'] . ' ' . $m['title'], 'withCss' => 'labdocs.css', 'withJs' => ['labdocs-zoom.js', 'labdocs-search.js', 'labdocs-revs.js', 'labdocs-method.js'], 'reg' => $reg, 'm' => $m, 'data' => $data, 'revs' => $revs,
+            'labRevs' => $this->revList($reg, 'method', $m['code'], (bool) $snap),
+        ], $this->layout());
     }
 
     public function saveMethod(string $code, string $vf): ResponseInterface
@@ -224,11 +345,13 @@ class LabDocsController extends BaseController
             return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => 'The document is empty or not valid; nothing was saved.', 'csrf' => csrf_hash()]);
         }
         $old  = json_decode((string) $m['content_json'], true) ?: [];
-        $json = json_encode(['base' => (float) ($old['base'] ?? 11), 'pages' => (int) ($old['pages'] ?? 0), 'margin' => (int) ($old['margin'] ?? 72), 'blocks' => $blocks], JSON_UNESCAPED_UNICODE);
+        $json = json_encode(['base' => (float) ($old['base'] ?? 11), 'pages' => (int) ($old['pages'] ?? 0), 'margin' => (int) ($old['margin'] ?? 72), 'orient' => $old['orient'] ?? 'portrait',
+            'headerTitle' => $old['headerTitle'] ?? '', 'blocks' => $blocks], JSON_UNESCAPED_UNICODE);
         $user = (string) ($this->auth->user()['name'] ?? $this->auth->user()['username'] ?? 'user');
         $now  = date('Y-m-d H:i:s');
         $rev  = (int) $m['revision_no'] + 1;
         $db   = $this->db();
+        $this->archive($reg, 'method', $m['code'], (string) $m['title'] !== '' ? $m['code'] . ' ' . $m['title'] : $m['code'], (string) $m['content_json'], null, $user);
         $db->transStart();
         $db->table('tbl_vfm_revisions')->insert(['method_id' => $m['id'], 'rev_no' => $rev, 'content_json' => $json, 'note' => mb_substr((string) ($in['note'] ?? ''), 0, 250), 'saved_by' => $user, 'saved_at' => $now]);
         $db->table('tbl_vfm_methods')->where('id', $m['id'])->update(['content_json' => $json, 'revision_no' => $rev, 'edited_by' => $user, 'edited_at' => $now]);
@@ -256,6 +379,7 @@ class LabDocsController extends BaseController
         $now  = date('Y-m-d H:i:s');
         $rev  = (int) $m['revision_no'] + 1;
         $db   = $this->db();
+        $this->archive($reg, 'method', $m['code'], (string) $m['title'] !== '' ? $m['code'] . ' ' . $m['title'] : $m['code'], (string) $m['content_json'], null, $user);
         $db->table('tbl_vfm_revisions')->insert(['method_id' => $m['id'], 'rev_no' => $rev, 'content_json' => $m['original_json'], 'note' => 'Restored the original (converted from the PDF)', 'saved_by' => $user, 'saved_at' => $now]);
         $db->table('tbl_vfm_methods')->where('id', $m['id'])->update(['content_json' => $m['original_json'], 'revision_no' => $rev, 'edited_by' => $user, 'edited_at' => $now]);
 
@@ -342,6 +466,214 @@ class LabDocsController extends BaseController
     private function vfm(array $reg, string $code): ?array
     {
         return $this->db()->table('tbl_vfm_methods')->where(['register_id' => $reg['id'], 'code' => $code, 'is_active' => 1])->get()->getRowArray() ?: null;
+    }
+
+
+    // ------------------------------------------------------------------------------------------------ workbooks (#DTP-Lab-102)
+
+    private function booksPage(array $reg): ResponseInterface|string
+    {
+        $db    = $this->db();
+        $base  = site_url('labdocs/' . rawurlencode($reg['code']));
+        $one   = $db->table('tbl_labdoc_books')->select('book_key')->where('register_id', $reg['id'])->get()->getResultArray();
+        if (count($one) === 1) {                                    // a folder with one file shows its content straight away
+            return redirect()->to($base . '/b/' . rawurlencode($one[0]['book_key']));
+        }
+        $books = [];
+        foreach ($db->table('tbl_labdoc_books')->where('register_id', $reg['id'])->orderBy('sort_order')->get()->getResultArray() as $b) {
+            $sheets = $db->table('tbl_labdoc_sheets')->select('name, revision_no, edited_at, model_json')->where('book_id', $b['id'])->orderBy('idx')->get()->getResultArray();
+            $rows   = 0;
+            $edited = null;
+            foreach ($sheets as $sh) {
+                $m    = json_decode((string) $sh['model_json'], true) ?: [];
+                $rows += count($m['grid'] ?? []);
+                if ($sh['edited_at'] && ($edited === null || $sh['edited_at'] > $edited)) {
+                    $edited = $sh['edited_at'];
+                }
+            }
+            $books[] = ['key' => $b['book_key'], 'label' => $b['label'], 'file' => $b['file_name'], 'sheets' => array_column($sheets, 'name'), 'rows' => $rows,
+                'modified' => $b['file_mtime'] ? date('d M Y', strtotime((string) $b['file_mtime'])) : null, 'edited' => $edited ? date('d M Y', strtotime((string) $edited)) : null,
+                'status' => $b['file_status'], 'url' => $base . '/b/' . rawurlencode($b['book_key'])];
+        }
+
+        return $this->render('labdocs/books', ['title' => $reg['code'] . ' ' . $reg['title'], 'withCss' => 'labdocs.css', 'reg' => $reg, 'books' => $books]);
+    }
+
+    public function book(string $code, string $key): ResponseInterface|string
+    {
+        $reg = $this->register(rawurldecode($code));
+        $b   = $reg ? $this->db()->table('tbl_labdoc_books')->where(['register_id' => $reg['id'], 'book_key' => rawurldecode($key)])->get()->getRowArray() : null;
+        if (! $reg || ! $b) {
+            return redirect()->to(site_url('labdocs'))->with('error', 'That workbook is not in the database.');
+        }
+        $sheets = [];
+        $snap   = $this->revSnap($reg, 'book', $b['book_key']);
+        if ($snap) {
+            foreach (json_decode((string) $snap['snapshot_json'], true) ?: [] as $m) {
+                $sheets[] = $m;
+            }
+        } else {
+            foreach ($this->db()->table('tbl_labdoc_sheets')->where('book_id', $b['id'])->orderBy('idx')->get()->getResultArray() as $sh) {
+                $m              = json_decode((string) $sh['model_json'], true) ?: [];
+                $m['rev']       = (int) $sh['revision_no'];
+                $sheets[]       = $m;
+            }
+        }
+        $base = site_url('labdocs/' . rawurlencode($reg['code']));
+        $data = [
+            'book' => ['key' => $b['book_key'], 'label' => $b['label'], 'file' => $b['file_name'], 'status' => $b['file_status'], 'updatedAt' => $b['updated_at'], 'updatedBy' => $b['updated_by']],
+            'styles' => json_decode((string) $b['styles_json'], true) ?: [], 'sheets' => $sheets, 'assets' => base_url('assets/labdocs/books/' . $b['book_key']) . '/',
+            'canEdit' => $snap ? false : $this->canEdit(), 'saveUrl' => $base . '/b/' . rawurlencode($b['book_key']) . '/save',
+            'backUrl' => $this->db()->table('tbl_labdoc_books')->where('register_id', $reg['id'])->countAllResults() > 1 ? $base : '',
+        ];
+
+        return $this->render('labdocs/book', ['title' => $b['label'], 'withCss' => 'labdocs.css', 'withJs' => ['labdocs-zoom.js', 'labdocs-search.js', 'labdocs-revs.js', 'labdocs-book.js'], 'reg' => $reg, 'b' => $b, 'data' => $data,
+            'labRevs' => $this->revList($reg, 'book', $b['book_key'], (bool) $snap)], $this->layout());
+    }
+
+    public function saveBook(string $code, string $key): ResponseInterface
+    {
+        $fail = fn (int $status, string $msg) => $this->response->setStatusCode($status)->setJSON(['ok' => false, 'message' => $msg, 'csrf' => csrf_hash()]);
+        if (! $this->canEdit()) {
+            return $fail(403, 'Only an administrator can change the workbooks.');
+        }
+        $reg = $this->register(rawurldecode($code));
+        $db  = $this->db();
+        $b   = $reg ? $db->table('tbl_labdoc_books')->where(['register_id' => $reg['id'], 'book_key' => rawurldecode($key)])->get()->getRowArray() : null;
+        if (! $b) {
+            return $fail(404, 'Workbook not found.');
+        }
+        $in    = $this->request->getJSON(true);
+        $nStyl = count(json_decode((string) $b['styles_json'], true) ?: []);
+        $sent  = is_array($in['sheets'] ?? null) ? $in['sheets'] : [];
+        $clean = [];
+        foreach ($sent as $idx => $m) {
+            $sheet = $db->table('tbl_labdoc_sheets')->where(['book_id' => $b['id'], 'idx' => (int) $idx])->get()->getRowArray();
+            $model = $sheet ? $this->cleanSheet($m, json_decode((string) $sheet['model_json'], true) ?: [], $nStyl) : null;
+            if ($model === null) {
+                return $fail(422, 'Sheet ' . ((int) $idx + 1) . ' is not valid (size, columns or merged cells); nothing was saved.');
+            }
+            $clean[(int) $idx] = $model;
+        }
+        if (! $clean) {
+            return $fail(422, 'Nothing to save.');
+        }
+        $user = (string) ($this->auth->user()['name'] ?? $this->auth->user()['username'] ?? 'user');
+        $now  = date('Y-m-d H:i:s');
+
+        // the version that is replaced: every sheet of the workbook and the Excel file as it is now, into Logs
+        $prev = [];
+        foreach ($db->table('tbl_labdoc_sheets')->where('book_id', $b['id'])->orderBy('idx')->get()->getResultArray() as $sh) {
+            $pm          = json_decode((string) $sh['model_json'], true) ?: [];
+            $pm['rev']   = (int) $sh['revision_no'];
+            $prev[]      = $pm;
+        }
+        $this->archive($reg, 'book', $b['book_key'], (string) $b['label'], $prev, (string) $b['file_path'], $user);
+
+        // the file was deleted from the share: the copy kept in the database is put back first, then it is changed as usual
+        if (! is_file((string) $b['file_path'])) {
+            $blob = '';
+            foreach ($db->table('tbl_labdoc_book_parts')->where('book_id', $b['id'])->orderBy('part')->get()->getResultArray() as $part) {
+                $blob .= $part['data'];
+            }
+            if ($blob !== '') {
+                @mkdir(dirname((string) $b['file_path']), 0775, true);
+                @file_put_contents((string) $b['file_path'], $blob);
+            }
+        }
+
+        // the workbook on the share first; the database keeps what the file now holds
+        $file = \App\Libraries\XlsxSheets::write((string) $b['file_path'], $clean, WRITEPATH . 'labdocs-backups' . DIRECTORY_SEPARATOR . $reg['code'] . DIRECTORY_SEPARATOR . $b['book_key']);
+        $back = [];
+        $db->transStart();
+        foreach ($clean as $idx => $model) {
+            $sheet = $db->table('tbl_labdoc_sheets')->where(['book_id' => $b['id'], 'idx' => $idx])->get()->getRowArray();
+            $db->table('tbl_labdoc_sheet_rev')->insert(['sheet_id' => $sheet['id'], 'rev_no' => (int) $sheet['revision_no'], 'model_json' => $sheet['model_json'], 'saved_by' => $user, 'saved_at' => $now]);
+            $stored = $model;
+            if (! empty($file['ok']) && isset($file['read']['sheets'][$idx])) {
+                $stored = $file['read']['sheets'][$idx];                    // what the file holds now (positions refreshed)
+            }
+            $stored['images'] = $model['images'];                           // the pictures are not read back (they are not edited here)
+            $json = json_encode($stored, JSON_UNESCAPED_UNICODE);
+            $db->table('tbl_labdoc_sheets')->where('id', $sheet['id'])->update(['model_json' => $json, 'revision_no' => (int) $sheet['revision_no'] + 1, 'edited_by' => $user, 'edited_at' => $now, 'name' => $stored['name'] ?? $sheet['name']]);
+            $stored['rev'] = (int) $sheet['revision_no'] + 1;
+            $back[$idx]    = $stored;
+        }
+        $db->table('tbl_labdoc_books')->where('id', $b['id'])->update(['updated_by' => $user, 'updated_at' => $now, 'file_status' => $file['ok'] ? 'updated' : mb_substr($file['message'], 0, 250),
+            'file_synced_at' => $file['ok'] ? $now : $b['file_synced_at']]);
+        $db->table('tbl_labdoc_log')->insert(['register_id' => $reg['id'], 'action' => 'save-book', 'user_name' => $user, 'created_at' => $now,
+            'detail' => mb_substr($b['file_name'] . ': sheets ' . implode(',', array_map(static fn ($i) => $i + 1, array_keys($clean))) . '; file: ' . ($file['ok'] ? 'updated' : $file['message']), 0, 490)]);
+        $db->transComplete();
+        if (! empty($file['ok']) && is_file((string) $b['file_path'])) {            // the copy of the Excel file in the database follows the file
+            $db->table('tbl_labdoc_book_parts')->where('book_id', $b['id'])->delete();
+            foreach (str_split((string) file_get_contents((string) $b['file_path']), 400000) as $pi => $piece) {
+                $db->table('tbl_labdoc_book_parts')->insert(['book_id' => $b['id'], 'part' => $pi, 'data' => $piece]);
+            }
+            $db->table('tbl_labdoc_books')->where('id', $b['id'])->update(['file_size' => (int) filesize((string) $b['file_path'])]);
+        }
+        if (! $db->transStatus()) {
+            return $fail(500, 'The database could not be updated.' . ($file['ok'] ? ' The file on the share WAS updated; save again to bring the database level.' : ''));
+        }
+
+        return $this->response->setJSON(['ok' => true, 'file' => ['ok' => $file['ok'], 'message' => $file['message']], 'sheets' => $back, 'savedAt' => $now, 'by' => $user, 'csrf' => csrf_hash()]);
+    }
+
+    /**
+     * An edited sheet from the browser, checked and reduced to what a sheet may hold; null when it is not usable.
+     *
+     * @param mixed                $m
+     * @param array<string,mixed>  $stored the sheet as it is in the database (the pictures are taken from there)
+     */
+    private function cleanSheet(mixed $m, array $stored, int $nStyles): ?array
+    {
+        if (! is_array($m) || ! is_array($m['grid'] ?? null) || ! is_array($m['cols'] ?? null) || ! is_array($m['rows'] ?? null)) {
+            return null;
+        }
+        $nR = count($m['grid']);
+        $nC = count($m['cols']);
+        if ($nR < 1 || $nR > \App\Libraries\XlsxSheets::MAX_ROWS || $nC < 1 || $nC > \App\Libraries\XlsxSheets::MAX_COLS || count($m['rows']) !== $nR) {
+            return null;
+        }
+        $grid = [];
+        foreach ($m['grid'] as $line) {
+            if (! is_array($line) || count($line) !== $nC) {
+                return null;
+            }
+            $row = [];
+            foreach ($line as $c) {
+                $cell = ['v' => mb_substr(str_replace("\r", '', (string) ($c['v'] ?? '')), 0, 5000), 's' => max(0, min($nStyles - 1, (int) ($c['s'] ?? 0)))];
+                if (isset($c['k']) && preg_match('/^\d{1,5}:\d{1,3}$/', (string) $c['k'])) {
+                    $cell['k'] = (string) $c['k'];
+                }
+                $row[] = $cell;
+            }
+            $grid[] = $row;
+        }
+        $rows = array_map(static fn ($r) => ['h' => isset($r['h']) && (int) $r['h'] > 0 ? min(900, (int) $r['h']) : null, 'k' => isset($r['k']) ? (int) $r['k'] : null], array_values($m['rows']));
+        $cols = array_map(static fn ($c) => ['w' => max(14, min(900, (int) ($c['w'] ?? 64))), 'k' => isset($c['k']) ? (int) $c['k'] : null], array_values($m['cols']));
+        $merges = [];
+        $taken  = [];
+        foreach ($m['merges'] ?? [] as $mg) {
+            if (! is_array($mg) || count($mg) !== 4) {
+                return null;
+            }
+            [$r1, $c1, $r2, $c2] = array_map('intval', $mg);
+            if ($r1 < 1 || $c1 < 1 || $r2 > $nR || $c2 > $nC || $r2 < $r1 || $c2 < $c1 || ($r1 === $r2 && $c1 === $c2)) {
+                return null;
+            }
+            for ($r = $r1; $r <= $r2; $r++) {
+                for ($c = $c1; $c <= $c2; $c++) {
+                    if (isset($taken[$r . ':' . $c])) {
+                        return null;                                                // overlapping merged cells
+                    }
+                    $taken[$r . ':' . $c] = true;
+                }
+            }
+            $merges[] = [$r1, $c1, $r2, $c2];
+        }
+
+        return ['name' => (string) ($stored['name'] ?? ($m['name'] ?? 'Sheet')), 'cols' => $cols, 'rows' => $rows, 'grid' => $grid, 'merges' => $merges, 'images' => $stored['images'] ?? [],
+            'defH' => (int) ($stored['defH'] ?? 20), 'print' => $stored['print'] ?? ['orient' => 'portrait', 'fit' => false]];
     }
 
     /** @return array<string,mixed>|null */

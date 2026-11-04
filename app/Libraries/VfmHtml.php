@@ -92,9 +92,38 @@ class VfmHtml
             } elseif ($t === 'table' && is_array($b['rows'] ?? null) && count($b['rows']) <= 200) {
                 $rows = [];
                 foreach ($b['rows'] as $r) {
-                    $rows[] = array_map(static fn ($c) => self::clean((string) $c), array_slice(array_values((array) $r), 0, 20));
+                    $rows[] = array_map(static function ($c) {
+                        if (! is_array($c)) {
+                            return self::clean((string) $c);
+                        }
+                        $o = ['h' => self::clean((string) ($c['h'] ?? ''))];       // a cell of a specification sheet: text, spans, colour, alignment
+                        if (($c['cs'] ?? 1) > 1) {
+                            $o['cs'] = min(60, (int) $c['cs']);
+                        }
+                        if (($c['rs'] ?? 1) > 1) {
+                            $o['rs'] = min(200, (int) $c['rs']);
+                        }
+                        if (preg_match('/^#[0-9a-fA-F]{6}$/', (string) ($c['bg'] ?? ''))) {
+                            $o['bg'] = $c['bg'];
+                        }
+                        if (($c['al'] ?? '') === 'c') {
+                            $o['al'] = 'c';
+                        }
+                        return $o;
+                    }, array_slice(array_values((array) $r), 0, 60));
                 }
-                $out[] = ['t' => 'table', 'rows' => $rows, 'box' => ! empty($b['box'])];
+                $t = ['t' => 'table', 'rows' => $rows, 'box' => ! empty($b['box'])];
+                foreach (['plain', 'spec', 'span'] as $f) {
+                    if (! empty($b[$f])) {
+                        $t[$f] = true;
+                    }
+                }
+                foreach (['cw', 'rh'] as $f) {
+                    if (is_array($b[$f] ?? null)) {
+                        $t[$f] = array_map(static fn ($x) => round(max(0, min(1000, (float) $x)), 2), array_slice(array_values($b[$f]), 0, 200));
+                    }
+                }
+                $out[] = $t;
             }
         }
         return $out;

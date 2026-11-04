@@ -4,7 +4,10 @@
   var dataEl = document.getElementById('vd-data');
   if (!dataEl) return;
   var D = JSON.parse(dataEl.textContent);
-  var MM = 96 / 25.4, BODY_W = 177.9 * MM, BODY_H = 233.4 * MM;       // inside the margins of US Letter (215.9 x 279.4 mm)
+  var MM = 96 / 25.4;
+  var LAND = D.doc.orient === 'landscape';                          // a specification sheet is landscape, a test method portrait (US Letter)
+  var PW = LAND ? 279.4 : 215.9, PH = LAND ? 215.9 : 279.4, ML = LAND ? 12 : 19, MT = LAND ? 26 : 30, MB = LAND ? 10 : 16;
+  var BODY_W = (PW - 2 * ML) * MM, BODY_H = (PH - MT - MB) * MM;
   var root = document.getElementById('vd');
   var pagesEl = document.getElementById('vd-pages'), measureEl = document.getElementById('vd-measure'), pagerEl = document.getElementById('vd-pager');
   var statusEl = document.getElementById('vd-status'), ctx = document.getElementById('vd-ctx');
@@ -14,27 +17,36 @@
   function clone(x) { return JSON.parse(JSON.stringify(x)); }
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
   function setStatus(msg, bad) { statusEl.textContent = msg; statusEl.style.color = bad ? '#b91c1c' : ''; }
+  root.style.setProperty('--pw', PW + 'mm'); root.style.setProperty('--ph', PH + 'mm'); root.style.setProperty('--ml', ML + 'mm'); root.style.setProperty('--mt', MT + 'mm'); root.style.setProperty('--mb', MB + 'mm');
   var st = document.createElement('style');
-  st.textContent = '@page{size:letter portrait;margin:0}';
+  st.textContent = '@page{size:letter ' + (LAND ? 'landscape' : 'portrait') + ';margin:0}';
   document.head.appendChild(st);
 
   // ---------------------------------------------------------------------------------------------- blocks
-  function blockNode(b, i, editable) {
+  function blockNode(b, i, editable, measuring) {
     var n;
     if (b.t === 'img') {
       n = el('div', 'vb-img'); var im = el('img'); im.src = D.assets + b.src; im.alt = ''; im.style.width = 'min(' + b.w + 'pt,100%)'; n.appendChild(im);
     } else if (b.t === 'table') {
-      n = el('div', 'vb-tbl'); var t = el('table', 'vt' + (b.box ? ' box' : ''));
+      n = el('div', 'vb-tbl'); var t = el('table', 'vt' + (b.box ? ' box' : '') + (b.plain ? ' plain' : '') + (b.spec ? ' spec' : ''));
+      if (b.cw) { var cg = el('colgroup'); b.cw.forEach(function (w) { var k = el('col'); k.style.width = w + '%'; cg.appendChild(k); }); t.appendChild(cg); t.style.tableLayout = 'fixed'; }
       b.rows.forEach(function (r, ri) {
         var tr = el('tr');
+        if (b.rh && b.rh[ri]) tr.style.height = Math.max(8, b.rh[ri]) + 'pt';
         r.forEach(function (c, ci) {
-          var td = el('td'); td.innerHTML = c; td.dataset.r = String(ri); td.dataset.c = String(ci);
+          var td = el('td'), o = typeof c === 'string' ? { h: c } : c;
+          td.innerHTML = o.h || ''; td.dataset.r = String(ri); td.dataset.c = String(ci);
+          if (o.cs > 1) td.colSpan = o.cs;
+          if (o.rs > 1) td.rowSpan = o.rs;
+          if (o.bg && /^#[0-9a-fA-F]{6}$/.test(o.bg)) td.style.backgroundColor = o.bg;
+          if (o.al === 'c') td.style.textAlign = 'center';
           if (editable) td.contentEditable = 'true';
           tr.appendChild(td);
         });
         t.appendChild(tr);
       });
       n.appendChild(t);
+      if (b.spec && fitZ[i] && !measuring) n.style.zoom = String(fitZ[i]);       // a specification table taller than the page is shrunk to fit it
     } else {
       n = el('div', 'vb' + (b.list ? ' li' : '') + (b.al === 'c' ? ' c' : b.al === 'r' ? ' r' : ''));
       n.style.paddingLeft = b.list ? 'calc(' + (b.ind || 0) + 'pt + 1.6em)' : (b.ind || 0) + 'pt';
@@ -50,7 +62,7 @@
     var s = el('div', 'ld-sheet');
     var h = el('div', 'vd-head');
     var lg = el('img'); lg.src = D.logo; lg.alt = ''; h.appendChild(lg);
-    h.appendChild(el('div', 'vt', no === 1 ? 'VF Asia Footwear Laboratory Testing Manual' : D.method.code + ' ' + D.method.title));
+    h.appendChild(el('div', 'vt', no === 1 ? (D.method.header || 'VF Asia Footwear Laboratory Testing Manual') : (D.method.spec ? (D.method.header || D.method.title) : D.method.code + ' ' + D.method.title)));
     s.appendChild(h);
     var body = el('div', 'vd-body');
     idx.forEach(function (i) { body.appendChild(blockNode(blocks[i], i, editable)); });
@@ -63,16 +75,23 @@
   }
 
   // ---------------------------------------------------------------------------------------------- paging
+  var fitZ = {};
   function paginate() {
+    fitZ = {};
     measureEl.innerHTML = '';
     var s = el('div', 'ld-sheet'); s.style.cssText = 'display:block;height:auto;overflow:visible;margin:0';
     var body = el('div', 'vd-body'); body.style.cssText = 'position:static;width:' + BODY_W + 'px;height:auto;overflow:visible';
-    blocks.forEach(function (b, i) { body.appendChild(blockNode(b, i, false)); });
+    blocks.forEach(function (b, i) { body.appendChild(blockNode(b, i, false, true)); });
     s.appendChild(body); measureEl.appendChild(s);
     var kids = body.children, hs = [], top = body.getBoundingClientRect().top, prev = top;
     for (var k = 0; k < kids.length; k++) { var bt = kids[k].getBoundingClientRect().bottom; hs.push(bt - prev); prev = bt; }
     var pages = [[]], used = 0;
     hs.forEach(function (h, i) {
+      if (blocks[i].spec && blocks[i].t === 'table' && used + h > BODY_H) {
+        var room = BODY_H - used - 2;
+        if (used && room / h >= 0.7) { fitZ[i] = room / h; h = room; }
+        else if (h > BODY_H - 2) { fitZ[i] = (BODY_H - 2) / h; h = BODY_H - 2; }
+      }
       var need = h + (isHeading(blocks[i]) && hs[i + 1] ? Math.min(hs[i + 1], 40) : 0);       // a heading never ends a page alone
       if (used + need > BODY_H && pages[pages.length - 1].length) { pages.push([]); used = 0; }
       pages[pages.length - 1].push(i); used += h;
@@ -104,11 +123,11 @@
     btn('All', function () { showAll = !showAll; pagesEl.classList.toggle('ld-all', showAll); show(page); });
     pagerEl.appendChild(el('span', 'ld-of', total + (total === 1 ? ' page' : ' pages') + ' · Letter'));
   }
+  var zoom;
   function fit() {
-    var stage = document.getElementById('vd-stage'), w = stage.clientWidth - 8, need = 215.9 * MM;
-    pagesEl.style.zoom = w < need ? String(Math.max(0.3, w / need)) : '1';
+    if (!zoom) zoom = LdZoom(document.getElementById('vd-stage'), pagesEl, function () { return PW * MM; });
+    zoom.fit();
   }
-  window.addEventListener('resize', fit);
 
   // ---------------------------------------------------------------------------------------------- editing
   function clean(html) { return html.replace(/<div><br><\/div>/gi, '<br>').replace(/<div>/gi, '<br>').replace(/<\/div>/gi, '').replace(/&nbsp;/g, ' ').replace(/ /g, ' '); }
@@ -117,9 +136,13 @@
     if (!edit) return;
     var td = e.target.closest('td'), n = e.target.closest('[data-i]'); if (!n) return;
     var b = blocks[Number(n.dataset.i)]; mark();
-    if (td && b.t === 'table') b.rows[Number(td.dataset.r)][Number(td.dataset.c)] = clean(td.innerHTML);
+    if (td && b.t === 'table') setCell(b, td);
     else if (b.t === 'p') b.html = clean(n.innerHTML);
   });
+  function setCell(b, td) {
+    var r = Number(td.dataset.r), c = Number(td.dataset.c), v = clean(td.innerHTML);
+    if (typeof b.rows[r][c] === 'string') b.rows[r][c] = v; else b.rows[r][c].h = v;
+  }
   pagesEl.addEventListener('focusout', function () {
     if (!edit) return;
     clearTimeout(timer);
@@ -161,10 +184,11 @@
   function move(i, d) { var j = i + d; if (j < 0 || j >= blocks.length) return; var t = blocks[i]; blocks[i] = blocks[j]; blocks[j] = t; mark(); render(); }
   function tbl(i, act, r, c) {
     var b = blocks[i], cols = b.rows[0].length;
-    if (act === 'rowdown') b.rows.splice(r + 1, 0, new Array(cols).fill(''));
-    if (act === 'rowdel') { if (b.rows.length <= 1) { del(i); return; } b.rows.splice(r, 1); }
-    if (act === 'coladd') b.rows.forEach(function (row) { row.splice(c + 1, 0, ''); });
-    if (act === 'coldel') { if (cols <= 1) { del(i); return; } b.rows.forEach(function (row) { row.splice(c, 1); }); }
+    if (b.span) { alert('This table has merged cells: its text can be edited, but rows and columns cannot be added or deleted here.'); return; }
+    if (act === 'rowdown') b.rows.splice(r + 1, 0, new Array(cols).fill('')); if (b.rh) b.rh.splice(r + 1, 0, 0);
+    if (act === 'rowdel') { if (b.rows.length <= 1) { del(i); return; } b.rows.splice(r, 1); if (b.rh) b.rh.splice(r, 1); }
+    if (act === 'coladd') { b.rows.forEach(function (row) { row.splice(c + 1, 0, ''); }); if (b.cw) b.cw.splice(c + 1, 0, 10); }
+    if (act === 'coldel') { if (cols <= 1) { del(i); return; } b.rows.forEach(function (row) { row.splice(c, 1); }); if (b.cw) b.cw.splice(c, 1); }
     mark(); render();
   }
   function openCtx(x, y, items) {
@@ -214,7 +238,7 @@
     document.execCommand(b.dataset.cmd, false, null);
     var n = document.activeElement && document.activeElement.closest('[data-i]');
     if (n) { var bl = blocks[Number(n.dataset.i)], td = document.activeElement.closest('td'); mark();
-      if (td && bl.t === 'table') bl.rows[Number(td.dataset.r)][Number(td.dataset.c)] = clean(td.innerHTML); else if (bl.t === 'p') bl.html = clean(n.innerHTML); }
+      if (td && bl.t === 'table') setCell(bl, td); else if (bl.t === 'p') bl.html = clean(n.innerHTML); }
   });
 
   // ---------------------------------------------------------------------------------------------- toolbar
