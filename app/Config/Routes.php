@@ -126,8 +126,8 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->get('dtr/bonding-access-pdf', 'DtrController::bondingAccessPdf');
 
     // Material Testing & Cyclic Monitoring Suite (Marc)
-    $routes->get('materials', 'WstController::materials', ['as' => 'materials']);
-    $routes->get('material-testing', 'WstController::materials');
+    $routes->get('materials', 'MaterialsController::index', ['as' => 'materials']);
+    $routes->get('material-testing', 'MaterialsController::index');
 
     // Whole Shoe Physical & Monitoring Test Suite (Marc)
     $routes->get('wholeshoe', 'WstController::wholeshoe', ['as' => 'wholeshoe']);

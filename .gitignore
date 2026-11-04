@@ -141,6 +141,10 @@ node_modules/
 # database backups made before data syncs
 writable/backups/
 
+# AI trained weights and checkpoints
+ai-service/brain/
+*.tf
+
 # InterLink background service (C#)
 tools/interlink-service/bin/
 tools/interlink-service/obj/

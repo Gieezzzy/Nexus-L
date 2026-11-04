@@ -152,6 +152,9 @@ class DtrController extends BaseController
         if (! in_array('side', array_map('strtolower', $db->getFieldNames('tbl_dtr_BondingTracker')), true)) {
             $db->query('ALTER TABLE tbl_dtr_BondingTracker ADD COLUMN Side CHAR(1) NULL AFTER `LineNo`');
         }
+        if (! $db->fieldExists('PullTest', 'tbl_dtr_BondingTracker')) {
+            $db->query('ALTER TABLE tbl_dtr_BondingTracker ADD COLUMN PullTest TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN PullTestType VARCHAR(30) NULL AFTER PullTest');
+        }
         if (! $db->fieldExists('Shutdown', 'tbl_dtr_BondingTracker')) {
             // table made before shutdown marking: a Shutdown row has no specimen, so LabRefNo may be empty (a unique key allows many NULLs)
             $db->query('ALTER TABLE tbl_dtr_BondingTracker MODIFY LabRefNo VARCHAR(191) NULL, ADD COLUMN Shutdown TINYINT(1) NOT NULL DEFAULT 0 AFTER Lacking');
@@ -280,7 +283,7 @@ class DtrController extends BaseController
         // Bonding Shoe Collection (tbl_dtr_bonding_info) & Whole Shoe Collection (tbl_dtr_shoe_list)
         $bondingTotal = $db->table('tbl_dtr_bonding_info')->countAllResults();
         $bondingShoes = $db->table('tbl_dtr_bonding_info')
-            ->select('BondingTestID, LabRefNo, ModelStyle, Color, Side, Factory, ProductionDate, TestedDate, Technician, Result, LabNotesComments, POLotNO, ReceivedDate, Remarks')
+            ->select('BondingTestID, LabRefNo, ModelStyle, Color, Side, Factory, ProductionDate, TestedDate, Technician, Result, LabNotesComments, POLotNO, ReceivedDate, Remarks, TestType')
             ->orderBy('BondingTestID', 'DESC')
             ->limit(100)
             ->get()
@@ -882,6 +885,7 @@ class DtrController extends BaseController
         $table   = $db->table('tbl_dtr_bonding_info');
         $saved   = 0;
         $skipped = [];
+        $updated = 0;
 
         foreach ($rows as $r) {
             $line = strtoupper(trim((string) ($r['line'] ?? '')));
@@ -889,12 +893,32 @@ class DtrController extends BaseController
                 continue;
             }
             $side   = (($r['side'] ?? 'L') === 'R') ? 'R' : 'L';
-            $labRef = 'DTP' . str_replace('-', '', $prod) . 'SH' . $building . (int) $m[1] . '-' . $side;
 
-            if ($db->table('tbl_dtr_bonding_info')->where('LabRefNo', $labRef)->countAllResults() > 0) {
-                $skipped[] = $labRef;
-                continue;
+            // the normal bonding specimen (SH) plus one extra record per ticked pull type, each with its own Lab Ref prefix
+            $pullCodes = ['HEEL PULL' => 'HP', 'EYELET' => 'EY', 'D-RING' => 'DR', 'RIVET' => 'RVT'];
+            $variants  = [['SH', '']];
+            foreach (is_array($r['pullTypes'] ?? null) ? $r['pullTypes'] : [] as $pt) {
+                $pt = strtoupper(trim((string) $pt));
+                if (isset($pullCodes[$pt]) && ! in_array([$pullCodes[$pt], $pt], $variants, true)) {
+                    $variants[] = [$pullCodes[$pt], $pt];
+                }
             }
+
+            foreach ($variants as [$prefix, $pullType]) {
+            $labRef = 'DTP' . str_replace('-', '', $prod) . $prefix . $building . (int) $m[1] . '-' . $side;
+
+            if (! empty($r['retest'])) {
+                // a retest is a new record: base Lab Ref + -R01, -R02 ... (next free number)
+                $last = 0;
+                foreach ($db->table('tbl_dtr_bonding_info')->select('LabRefNo')->like('LabRefNo', $labRef . '-R', 'after')->get()->getResultArray() as $x) {
+                    if (preg_match('/-R(\d+)$/', (string) $x['LabRefNo'], $mm)) {
+                        $last = max($last, (int) $mm[1]);
+                    }
+                }
+                $labRef .= '-R' . str_pad((string) ($last + 1), 2, '0', STR_PAD_LEFT);
+            }
+
+            $existing = $db->table('tbl_dtr_bonding_info')->select('BondingTestID')->where('LabRefNo', $labRef)->orderBy('BondingTestID', 'DESC')->get()->getRowArray();
 
             $notes = [];
             if (! empty($r['mtl'])) {
@@ -906,11 +930,14 @@ class DtrController extends BaseController
             if (! empty($r['lacking'])) {
                 $notes[] = 'LACKING';
             }
+            if ($pullType !== '') {
+                $notes[] = 'PULL TEST: ' . $pullType;
+            }
             if ($encodedBy !== '') {
                 $notes[] = 'Encoded by ' . $encodedBy;
             }
 
-            $table->insert([
+            $infoRow = [
                 'LabRefNo'         => $labRef,
                 'Factory'          => 'DATIAN SUBIC SHOES INC. (DTP)',
                 'ModelStyle'       => mb_substr(trim((string) ($r['style'] ?? '')), 0, 191),
@@ -921,10 +948,21 @@ class DtrController extends BaseController
                 'ReceivedDate'     => $collect,
                 'Side'             => $side === 'R' ? 'Right' : 'Left',
                 'Technician'       => mb_substr(trim((string) ($r['tech'] ?? '')), 0, 191),
-                'Remarks'          => mb_substr(trim((string) ($r['type'] ?? '')) . (! empty($r['retest']) ? ' / Retest' : ''), 0, 191),
+                'TestType'         => mb_substr(trim((string) ($r['type'] ?? '')), 0, 50),
+                'MTL'              => mb_substr(trim((string) ($r['mtl'] ?? '')), 0, 191),
+                'EncodedBy'        => $encodedBy,
+                'Remarks'        => mb_substr(trim((string) ($r['type'] ?? '')) . (! empty($r['retest']) ? ' / Retest' : ''), 0, 191),
                 'LabNotesComments' => implode('; ', $notes),
-            ]);
-            $db->table('tbl_dtr_BondingTracker')->ignore(true)->insert([
+            ];
+            if ($existing) {
+                // same line/side/date already collected: refresh the intake fields only (test readings are left untouched)
+                $table->where('BondingTestID', (int) $existing['BondingTestID'])->update($infoRow);
+                $db->table('tbl_dtr_BondingTracker')->where('LabRefNo', $labRef)->delete();
+                $updated++;
+            } else {
+                $table->insert($infoRow);
+            }
+            $db->table('tbl_dtr_BondingTracker')->insert([
                 'LabRefNo'       => $labRef,
                 'Building'       => $building,
                 'LineNo'         => $building . (int) $m[1],
@@ -934,6 +972,8 @@ class DtrController extends BaseController
                 'Colorway'       => mb_substr(trim((string) ($r['color'] ?? '')), 0, 191),
                 'MTL'            => mb_substr(trim((string) ($r['mtl'] ?? '')), 0, 191),
                 'LabTest'        => 'Bonding',
+                'PullTest'       => $pullType !== '' ? 1 : 0,
+                'PullTestType'   => $pullType !== '' ? $pullType : null,
                 'TestType'       => mb_substr(trim((string) ($r['type'] ?? '')), 0, 50),
                 'Technician'     => mb_substr(trim((string) ($r['tech'] ?? '')), 0, 191),
                 'Lacking'        => ! empty($r['lacking']) ? 1 : 0,
@@ -944,14 +984,15 @@ class DtrController extends BaseController
                 'CreatedAt'      => date('Y-m-d H:i:s'),
             ]);
             $saved++;
+            }
         }
 
         $msg = "Saved {$saved} specimen(s) for Building {$building}.";
+        if ($updated) {
+            $msg .= " ({$updated} existing Lab Ref updated.)";
+        }
         if ($down) {
             $msg .= " {$down} line(s) marked SHUTDOWN.";
-        }
-        if ($skipped) {
-            $msg .= ' Skipped (already exist): ' . implode(', ', $skipped) . '.';
         }
 
         return $this->response->setJSON(['ok' => $saved > 0 || $down > 0, 'message' => $msg, 'saved' => $saved, 'skipped' => $skipped, 'csrf' => csrf_hash()]);

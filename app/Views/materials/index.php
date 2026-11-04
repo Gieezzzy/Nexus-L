@@ -9,22 +9,6 @@
      MATERIAL TESTING (LABORATORY MONITORING WORKFLOW)
      ======================================================================= -->
 <section id="dtr-panel-wholeshoetest" class="dtr-panel">
-    <!-- Top Sub-Nav & Category Selection -->
-    <div class="card glass dtr-section-card" style="margin-bottom:16px">
-        <div class="wst-header-banner">
-            <div class="wst-banner-left">
-                <span class="wst-badge">MATERIAL TESTING SUITE</span>
-                <h3 style="margin-top:4px">Laboratory Monitoring &amp; Physical Test Cycles</h3>
-                <p class="muted sm">Material flexing, abrasion, and cyclic performance monitoring workflow.</p>
-            </div>
-            <div class="wst-banner-right">
-                <button type="button" class="dtr-btn dtr-btn-primary" id="btn-wst-open-new-modal" style="padding:10px 20px;font-weight:700">
-                    <svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> + New Test
-                </button>
-            </div>
-        </div>
-    </div>
-
     <!-- SUB-VIEW 1: TEST LIST / QUEUE -->
     <div id="wst-view-list" class="wst-subview">
         <!-- Quick KPI Summary Strip -->
@@ -58,16 +42,20 @@
             </div>
         </div>
 
-        <div class="card glass dtr-section-card">
-            <!-- Category Tabs -->
-        <div class="wst-category-tabs wst-tabs-in-card" role="tablist">
-            <button type="button" class="wst-cat-tab active" data-wst-cat="martindale-abrasion">Martindale Abrasion</button>
-            <button type="button" class="wst-cat-tab" data-wst-cat="taber-abrasion">Taber Abrasion</button>
-            <button type="button" class="wst-cat-tab" data-wst-cat="lace-abrasion">Lace Abrasion</button>
-            <button type="button" class="wst-cat-tab" data-wst-cat="crocking">Crocking</button>
-            <button type="button" class="wst-cat-tab" data-wst-cat="bally-flex">Bally Flexing</button>
-            <button type="button" class="wst-cat-tab" data-wst-cat="ross-flex">Ross Flexing</button>
+        <!-- Category Tabs -->
+        <div class="dtr-subtabs" role="tablist">
+            <button type="button" role="tab" class="dtr-subtab active" data-wst-cat="martindale-abrasion"><svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg> Martindale Abrasion</button>
+            <button type="button" role="tab" class="dtr-subtab" data-wst-cat="taber-abrasion"><svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg> Taber Abrasion</button>
+            <button type="button" role="tab" class="dtr-subtab" data-wst-cat="lace-abrasion"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg> Lace Abrasion</button>
+            <button type="button" role="tab" class="dtr-subtab" data-wst-cat="crocking"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg> Crocking</button>
+            <button type="button" role="tab" class="dtr-subtab" data-wst-cat="bally-flex"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> Bally Flexing</button>
+            <button type="button" role="tab" class="dtr-subtab" data-wst-cat="ross-flex"><svg class="ic" aria-hidden="true"><use href="#i-database"/></svg> Ross Flexing</button>
+            <button type="button" class="dtr-btn dtr-btn-primary dtr-subtabs-right" id="btn-wst-open-new-modal" style="font-weight:600">
+                <svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> + New Test
+            </button>
         </div>
+
+        <div class="card glass dtr-section-card">
                 <div class="dtr-card-head" style="margin-bottom:14px">
                 <!-- Row 1: Search Input + Category + Outcome + Status Dropdowns -->
                 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -134,7 +122,7 @@
                             <th style="text-align:right">ACTION</th>
                         </tr>
                     </thead>
-                    <tbody id="wst-list-tbody" data-nx-load>
+                    <tbody id="wst-list-tbody">
                         <tr><td colspan="8" class="muted" style="text-align:center;padding:24px">Loading test sessions...</td></tr>
                     </tbody>
                 </table>
@@ -360,6 +348,16 @@
                                 </tbody>
                             </table>
                         </div>
+
+                        <!-- Minimalist Color Status Legend Strip -->
+                        <div class="wst-legend-strip" style="display:flex;align-items:center;gap:18px;margin-top:10px;padding:6px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:11.5px;color:#475569">
+                            <span style="font-weight:700;text-transform:uppercase;letter-spacing:0.04em;font-size:10px;color:#64748b">Legend:</span>
+                            <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:3px;background:#86efac;border:1px solid #4ade80;display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:#15803d;font-weight:800">✓</span> Passed / Monitored</span>
+                            <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:3px;background:#eff6ff;border:1.5px solid #3b82f6"></span> Current Target</span>
+                            <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:3px;background:repeating-linear-gradient(45deg,#e5e7eb,#e5e7eb 3px,#f3f4f6 3px,#f3f4f6 6px);border:1px solid #cbd5e1"></span> Stopped Specimen</span>
+                            <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:3px;background:#ffffff;border:1px solid #cbd5e1"></span> Pending Checkpoint</span>
+                            <span style="margin-left:auto;font-size:11px;color:#94a3b8"><svg class="ic" aria-hidden="true" style="width:12px;height:12px;vertical-align:middle;margin-right:2px"><use href="#i-help"/></svg> Click cell to log or view inspection</span>
+                        </div>
                     </div>
 
                     <!-- Collapsible Drawer: Environmental & Station Specs -->
@@ -409,13 +407,6 @@
                         <!-- Destructive / Safety Action (Red Outline with Distinct Separation) -->
                         <button type="button" class="dtr-btn wst-btn-danger-outline" id="btn-wst-modal-stop" style="width:100%">
                             <svg class="ic" aria-hidden="true"><use href="#i-close"/></svg> Stop Entire Test
-                        </button>
-
-                        <hr style="border:none;border-top:1px solid #e2e8f0;margin:6px 0">
-
-                        <!-- Report Action -->
-                        <button type="button" class="dtr-btn wst-btn-secondary" id="btn-wst-modal-print" style="width:100%">
-                            <svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg> Print Summary
                         </button>
                     </div>
                 </div>

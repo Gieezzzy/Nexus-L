@@ -174,7 +174,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                         <th>Overall Result</th>
                     </tr>
                 </thead>
-                <tbody id="dtr-tracker-tbody" data-nx-load>
+                <tbody id="dtr-tracker-tbody">
                     <?php foreach ($recentReports as $r): ?>
                         <?php
                             $resUpper = strtoupper((string) ($r['overall_result'] ?? 'PASS'));
@@ -218,7 +218,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
     <?php $subTab = in_array($subTab ?? '', ['containers', 'materials', 'bonding', 'shoes'], true) ? $subTab : 'bonding'; ?>
     <div class="dtr-subtabs" role="tablist">
         <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'bonding' ? 'active' : '' ?>" data-subtab="bonding"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> Bonding Shoe Collection</button>
-        <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'shoes' ? 'active' : '' ?>" data-subtab="shoes"><svg class="ic" aria-hidden="true"><use href="#i-database"/></svg> Whole Shoe Collection</button>
+        <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'shoes' ? 'active' : '' ?>" data-subtab="shoes"><svg class="ic" aria-hidden="true"><use href="#i-shoe"/></svg> Whole Shoe Collection</button>
         <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'containers' ? 'active' : '' ?>" data-subtab="containers"><svg class="ic" aria-hidden="true"><use href="#i-box"/></svg> IQC Container Receiving Log</button>
         <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'materials' ? 'active' : '' ?>" data-subtab="materials"><svg class="ic" aria-hidden="true"><use href="#i-clipboard"/></svg> IQC Materials Master Queue</button>
         <a href="<?= site_url('interlink') ?>" class="dtr-btn dtr-btn-outline dtr-subtabs-right">
@@ -317,13 +317,13 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                         <?php foreach ($bondingShoes as $b): ?>
                             <?php $bRes = strtoupper((string) ($b['Result'] ?? '')); $bCls = $bRes === 'FAIL' ? 'b-err' : ($bRes === 'TOLERABLE' ? 'b-warn' : 'b-ok'); ?>
                             <tr>
-                                <td class="mono"><button type="button" class="dtr-dl-btn" data-dl-labref="<?= esc($b['LabRefNo'] ?? '', 'attr') ?>" title="Download Bonding Test-VF report" aria-label="Download report"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 11v6"/><path d="m9 14 3 3 3-3"/></svg></button> <b><?= esc($b['LabRefNo'] ?? '') ?></b></td>
+                                <td class="mono"><button type="button" class="dtr-dl-btn" data-dl-labref="<?= esc($b['LabRefNo'] ?? '', 'attr') ?>" title="Download Bonding Test-VF report" aria-label="Download report"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 11v6"/><path d="m9 14 3 3 3-3"/></svg></button> <a href="#" class="dtr-labref-link" data-open-bonding="<?= (int) ($b['BondingTestID'] ?? 0) ?>" title="Open in Shoe Bonding (U60)"><b><?= esc($b['LabRefNo'] ?? '') ?></b></a></td>
                                 <td class="mono"><b><?= esc($b['POLotNO'] ?? '') ?></b></td>
                                 <td><?= esc($b['ModelStyle'] ?? '') ?></td>
                                 <td><?= esc($b['Color'] ?? '') ?></td>
                                 <td class="mono"><?= preg_match('/MTL ([^;]+)/', (string) ($b['LabNotesComments'] ?? ''), $mm) ? esc(trim($mm[1])) : '' ?></td>
                                 <td><?= preg_match('/^DTP\d{8}[A-Z]{2}([A-Z])(\d+)/i', (string) ($b['LabRefNo'] ?? ''), $lm) ? esc('Bldg ' . strtoupper($lm[1]) . ' / ' . strtoupper($lm[1]) . (int) $lm[2]) : '' ?></td>
-                                <td><?= esc(trim(str_replace('/ Retest', '', (string) ($b['Remarks'] ?? '')))) ?></td>
+                                <td><?= esc((string) ($b['TestType'] ?? '')) ?></td>
                                 <td><?= esc(substr((string) ($b['ReceivedDate'] ?? ''), 0, 10)) ?></td>
                                 <td><?= esc(substr((string) ($b['ProductionDate'] ?? ''), 0, 10)) ?></td>
                                 <td><?= esc(substr((string) ($b['TestedDate'] ?? ''), 0, 10)) ?></td>
@@ -361,7 +361,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                     <tbody>
                         <?php foreach ($wholeShoes as $s): ?>
                             <tr>
-                                <td class="mono"><?php if (! empty($s['LabRefNo'])): ?><?php if (! empty($s['WholeshoeLabRefNo'])): ?><button type="button" class="dtr-dl-btn" data-dl-labref="<?= esc($s['WholeshoeLabRefNo'], 'attr') ?>" data-dl-route="dtr/wholeshoe-report-pdf" data-dl-suffix="Whole-Footwear-Test-Results" title="Download Whole Footwear Test Results" aria-label="Download report"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 11v6"/><path d="m9 14 3 3 3-3"/></svg></button> <?php endif ?><b><?= esc($s['LabRefNo']) ?></b><?php endif ?></td>
+                                <td class="mono"><?php if (! empty($s['LabRefNo'])): ?><?php if (! empty($s['WholeshoeLabRefNo'])): ?><button type="button" class="dtr-dl-btn" data-dl-labref="<?= esc($s['WholeshoeLabRefNo'], 'attr') ?>" data-dl-route="dtr/wholeshoe-report-pdf" data-dl-suffix="Whole-Footwear-Test-Results" title="Download Whole Footwear Test Results" aria-label="Download report"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 11v6"/><path d="m9 14 3 3 3-3"/></svg></button> <?php endif ?><a href="#" class="dtr-labref-link" data-open-wholeshoe="<?= esc($s['LabRefNo'], 'attr') ?>" title="Open in Whole Shoe"><b><?= esc($s['LabRefNo']) ?></b></a><?php endif ?></td>
                                 <td class="mono"><b><?= esc($s['ProdCode'] ?? '') ?></b></td>
                                 <td><?= esc($s['StyleNo'] ?? '') ?></td>
                                 <td><?= esc($s['Colorway'] ?? '') ?></td>
@@ -961,7 +961,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                     </div>
 
                     <div class="vf-sheet-grid vf-sheet-grid--extra">
-                        <div class="vf-sheet-cell"><label>* Age Category <span class="cn">年龄分类</span></label>
+                        <div class="vf-sheet-cell vf-cell-off"><label>* Age Category <span class="cn">年龄分类</span></label>
                             <select name="AgeCategory" id="bf_AgeCategory">
                                 <option value="ADULT">ADULT (35 Spots)</option>
                                 <option value="CHILDREN">CHILDREN (24 Spots)</option>
@@ -969,14 +969,14 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                                 <option value="TODDLER">TODDLER (14 Spots)</option>
                             </select>
                         </div>
-                        <div class="vf-sheet-cell"><label>* Standard Spec (kgf/cm)</label>
+                        <div class="vf-sheet-cell vf-cell-off"><label>* Standard Spec (kgf/cm)</label>
                             <select name="STD" id="bf_STD">
                                 <option value="3.0">3.0 kgf/cm (Adult / VF-F01)</option>
                                 <option value="2.5">2.5 kgf/cm (Children)</option>
                                 <option value="2.0">2.0 kgf/cm (Kids/Toddler)</option>
                             </select>
                         </div>
-                        <div class="vf-sheet-cell"><label>Shoe Side</label>
+                        <div class="vf-sheet-cell vf-cell-off"><label>Shoe Side</label>
                             <select name="Side" id="bf_Side">
                                 <option value="Left">Left</option>
                                 <option value="Right">Right</option>
@@ -1370,7 +1370,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                 <tr><td>Send by (提供方):</td><td><input type="hidden" id="ws-tests"></td><td>Technician(技术人员) :</td><td><input type="text" id="ws-tech" list="dtr-tech-list" autocomplete="off"></td></tr>
             </table>
 
-            <div id="ws-sections" data-nx-load></div>
+            <div id="ws-sections"></div>
 
             <table class="wsf-t wsf-foot"><tr>
                 <td class="wsf-cm">Comments备注 :<textarea id="ws-comments" rows="3"></textarea></td>
@@ -1465,7 +1465,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                             <th style="text-align:right">ACTION</th>
                         </tr>
                     </thead>
-                    <tbody id="wst-list-tbody" data-nx-load>
+                    <tbody id="wst-list-tbody">
                         <tr><td colspan="8" class="muted" style="text-align:center;padding:24px">Loading test sessions...</td></tr>
                     </tbody>
                 </table>
@@ -1628,7 +1628,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                         <th>Thickness Max</th>
                     </tr>
                 </thead>
-                <tbody id="exp-standards-tbody" data-nx-load>
+                <tbody id="exp-standards-tbody">
                     <tr><td colspan="6" class="muted" style="text-align:center;padding:12px">Select a Material Type above or click "Run Smart Standards &amp; Lookup" to view matching specifications.</td></tr>
                 </tbody>
             </table>
@@ -1667,7 +1667,6 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                 <label for="dtr-intake-production">Production Date</label>
                 <input type="date" id="dtr-intake-production" value="<?= date('Y-m-d') ?>">
             </div>
-            <label class="dtr-intake-match"><input type="checkbox" id="dtr-intake-match" checked> Match collection date</label>
             <div class="dtr-intake-field" style="margin-left:auto">
                 <label for="dtr-intake-encoder">Encoded By</label>
                 <input type="text" id="dtr-intake-encoder" value="<?= esc((string) (service('auth')->user()['name'] ?? ''), 'attr') ?>" placeholder="Name of encoder" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;min-width:220px">
@@ -1678,10 +1677,10 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                 <thead>
                     <tr>
                         <th>Active</th><th>Line</th><th>Side</th><th>Lab Ref No</th><th>Production Code</th><th>Style</th><th>Colorway</th><th>MTL #</th>
-                        <th>Shoe Master</th><th>Laboratory Test</th><th>Technician</th><th>Test Type</th><th>Lacking</th><th>Retest Details</th>
+                        <th>Shoe Master</th><th>Technician</th><th>Test Type</th><th>Pull Type</th><th>Lacking</th><th>Retest Details</th>
                     </tr>
                 </thead>
-                <tbody id="dtr-intake-tbody" data-nx-load></tbody>
+                <tbody id="dtr-intake-tbody"></tbody>
             </table>
         </div>
         <div class="dtr-modal-footer">
@@ -1730,7 +1729,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                 <thead>
                     <tr><th>Active</th><th>Line</th><th>Side</th><th>Test Type Lab Ref No</th><th>Production Code</th><th>Style No.</th><th>Colorway</th><th>MTL #</th><th>Shoe Master</th><th>No. of Shoes</th><th>Test Type</th></tr>
                 </thead>
-                <tbody id="dtr-wshoe-tbody" data-nx-load></tbody>
+                <tbody id="dtr-wshoe-tbody"></tbody>
             </table>
         </div>
         <div class="dtr-modal-footer">
@@ -1773,7 +1772,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                 <thead>
                     <tr><th>Type of Materials</th><th>Material Name</th><th>Container No.</th><th>Prod Code</th><th>Processing No.</th><th>Quantity (Materials Received)</th><th>Estimated Timeline (Finish Testing)</th></tr>
                 </thead>
-                <tbody id="dtr-mrec-tbody" data-nx-load></tbody>
+                <tbody id="dtr-mrec-tbody"></tbody>
             </table>
         </div>
         <div class="dtr-modal-footer">
@@ -1797,7 +1796,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
             </div>
             <table class="dtr-table" style="width:100%">
                 <thead><tr><th>Lab Ref No.</th><th>Style</th><th>Color</th><th>Result</th><th>Mode of Failure</th><th>Analysis / Reason</th><th>Tested</th><th></th></tr></thead>
-                <tbody id="dtr-retest-tbody" data-nx-load></tbody>
+                <tbody id="dtr-retest-tbody"></tbody>
             </table>
         </div>
         <div class="dtr-modal-footer">

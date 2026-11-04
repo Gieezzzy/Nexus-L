@@ -9,17 +9,6 @@
      WHOLE SHOE TEST (LABORATORY MONITORING WORKFLOW)
      ======================================================================= -->
 <section id="dtr-panel-wholeshoetest" class="dtr-panel">
-    <!-- Top Sub-Nav & Category Selection -->
-    <div class="card glass dtr-section-card" style="margin-bottom:16px">
-        <div class="wst-header-banner">
-            <div class="wst-banner-left">
-                <span class="wst-badge">WHOLE SHOE TEST SUITE</span>
-                <h3 style="margin-top:4px">Whole Shoe Testing &amp; Monitoring</h3>
-                <p class="muted sm">Whole shoe hydrolysis, heat aging, washing, UV light exposure, flexing, and deep test monitoring workflow.</p>
-            </div>
-        </div>
-    </div>
-
     <!-- SUB-VIEW 1: TEST LIST / QUEUE -->
     <div id="wst-view-list" class="wst-subview">
         <!-- Quick KPI Summary Strip -->
@@ -53,16 +42,20 @@
             </div>
         </div>
 
-        <div class="card glass dtr-section-card">
-            <!-- Category Tabs -->
-        <div class="wst-category-tabs wst-tabs-in-card" role="tablist">
-            <button type="button" class="wst-cat-tab active" data-wst-cat="hydrolysis">Hydrolysis</button>
-            <button type="button" class="wst-cat-tab" data-wst-cat="heat-aging">Heat Aging</button>
-            <button type="button" class="wst-cat-tab" data-wst-cat="washing">Washing</button>
-            <button type="button" class="wst-cat-tab" data-wst-cat="uv-light">UV Light</button>
-            <button type="button" class="wst-cat-tab" data-wst-cat="flexing">Flexing</button>
-            <button type="button" class="wst-cat-tab" data-wst-cat="deeptest">Deep Test</button>
+        <!-- Category Tabs -->
+        <div class="dtr-subtabs" role="tablist">
+            <button type="button" role="tab" class="dtr-subtab active" data-wst-cat="hydrolysis"><svg class="ic" aria-hidden="true"><use href="#i-droplet"/></svg> Hydrolysis</button>
+            <button type="button" role="tab" class="dtr-subtab" data-wst-cat="heat-aging"><svg class="ic" aria-hidden="true"><use href="#i-thermometer"/></svg> Heat Aging</button>
+            <button type="button" role="tab" class="dtr-subtab" data-wst-cat="washing"><svg class="ic" aria-hidden="true"><use href="#i-washing-machine"/></svg> Washing</button>
+            <button type="button" role="tab" class="dtr-subtab" data-wst-cat="uv-light"><svg class="ic" aria-hidden="true"><use href="#i-lamp"/></svg> UV Light</button>
+            <button type="button" role="tab" class="dtr-subtab" data-wst-cat="flexing"><svg class="ic" aria-hidden="true"><use href="#i-shoe-flex"/></svg> Flexing</button>
+            <button type="button" role="tab" class="dtr-subtab" data-wst-cat="deeptest"><svg class="ic" aria-hidden="true"><use href="#i-bucket"/></svg> Deep Test</button>
+            <button type="button" class="dtr-btn dtr-btn-primary dtr-subtabs-right" id="btn-wst-open-new-modal" style="font-weight:600">
+                <svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> + New Test
+            </button>
         </div>
+
+        <div class="card glass dtr-section-card">
                 <div class="dtr-card-head" style="margin-bottom:14px">
                 <!-- Row 1: Search Input + Category + Outcome + Status Dropdowns -->
                 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -130,7 +123,7 @@
                             <th style="text-align:right">ACTION</th>
                         </tr>
                     </thead>
-                    <tbody id="wst-list-tbody" data-nx-load>
+                    <tbody id="wst-list-tbody">
                         <tr><td colspan="8" class="muted" style="text-align:center;padding:24px">Loading test sessions...</td></tr>
                     </tbody>
                 </table>
@@ -279,13 +272,6 @@
                         <!-- Destructive / Safety Action (Red Outline with Distinct Separation) -->
                         <button type="button" class="dtr-btn wst-btn-danger-outline" id="btn-wst-modal-stop" style="width:100%">
                             <svg class="ic" aria-hidden="true"><use href="#i-close"/></svg> Stop Entire Test
-                        </button>
-
-                        <hr style="border:none;border-top:1px solid #e2e8f0;margin:6px 0">
-
-                        <!-- Report Action -->
-                        <button type="button" class="dtr-btn wst-btn-secondary" id="btn-wst-modal-print" style="width:100%">
-                            <svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg> Print Summary
                         </button>
                     </div>
                 </div>

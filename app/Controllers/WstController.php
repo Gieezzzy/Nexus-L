@@ -101,12 +101,12 @@ class WstController extends BaseController
     ];
 
     /**
-     * GET /materials
-     * Top-level Material Testing & Monitoring page
+     * GET /wholeshoe
+     * Top-level Whole Shoe Test & Monitoring page
      */
     public function index(): string
     {
-        return $this->materials();
+        return $this->wholeshoe();
     }
 
     /**

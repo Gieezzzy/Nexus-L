@@ -57,7 +57,7 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
         <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
             <div style="padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Tests</div>
             <a href="<?= site_url('materials') ?>" class="nav-link <?= in_array((string) $segment, ['materials', 'material-testing'], true) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
-                <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/></svg>
+                <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M12 2l10 5-10 5L2 7l10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
                 Material Testing
             </a>
             <a href="<?= site_url('wholeshoe') ?>" class="nav-link <?= in_array((string) $segment, ['wholeshoe', 'whole-shoe-test'], true) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
@@ -77,7 +77,7 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
             $labLinks = [
                 ['tab' => 'labtracker',  'label' => 'Lab Tracker',            'icon' => 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 12h6M9 16h6'],
                 ['tab' => 'bonding',     'label' => 'Shoe Bonding (U60)',     'icon' => 'M13 10V3L4 14h7v7l9-11h-7z'],
-                ['tab' => 'wholeshoe',   'label' => 'Whole Shoe',             'icon' => 'M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z'],
+                ['tab' => 'wholeshoe',   'label' => 'Whole Shoe',             'icon' => 'M3 18h18v-2H3v2zm19-4c0-1.1-.9-2-2-2h-2.5l-3-4.5c-.4-.6-1-1-1.7-1H8c-.8 0-1.5.5-1.8 1.2L4 12H3c-1.1 0-2 .9-2 2v2h21v-2z'],
                 ['tab' => 'material',    'label' => 'Material Tests',         'icon' => 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10'],
                 ['tab' => 'tracker',     'label' => 'Digital Test Report',    'icon' => 'M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z'],
                 ['tab' => 'calculators', 'label' => 'Calculators & Standards', 'icon' => 'M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z'],

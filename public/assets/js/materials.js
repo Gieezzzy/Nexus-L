@@ -44,7 +44,7 @@
     return res.json();
   };
 
-  let currentWstCategory = $('.wst-cat-tab.active')?.dataset?.wstCat || 'martindale-abrasion';
+  let currentWstCategory = $('.dtr-subtab[data-wst-cat].active, .wst-cat-tab.active')?.dataset?.wstCat || 'martindale-abrasion';
   let currentWstTestId = null;
   let activeWstGroup = 'dry';
 
@@ -201,7 +201,7 @@
     wstFilters.category = val;
     if (val !== 'all') {
       currentWstCategory = val;
-      $$('.wst-cat-tab').forEach((t) => {
+      $$('.dtr-subtab[data-wst-cat], .wst-cat-tab').forEach((t) => {
         t.classList.toggle('active', t.dataset.wstCat === val);
       });
       const title = val.replace('-', ' ').toUpperCase();
@@ -209,7 +209,7 @@
       if ($('#wst-new-cat')) $('#wst-new-cat').value = val;
       refreshNextLabref();
     } else {
-      $$('.wst-cat-tab').forEach((t) => t.classList.remove('active'));
+      $$('.dtr-subtab[data-wst-cat], .wst-cat-tab').forEach((t) => t.classList.remove('active'));
     }
     loadWstRecords();
   });
@@ -252,7 +252,7 @@
     if ($('#wst-filter-to')) $('#wst-filter-to').value = '';
     if ($('#wst-filter-category')) $('#wst-filter-category').value = currentWstCategory;
 
-    $$('.wst-cat-tab').forEach((t) => {
+    $$('.dtr-subtab[data-wst-cat], .wst-cat-tab').forEach((t) => {
       t.classList.toggle('active', t.dataset.wstCat === currentWstCategory);
     });
 
@@ -261,9 +261,9 @@
   });
 
   // Switch category tabs
-  $$('.wst-cat-tab').forEach((tab) => {
+  $$('.dtr-subtab[data-wst-cat], .wst-cat-tab').forEach((tab) => {
     tab.addEventListener('click', () => {
-      $$('.wst-cat-tab').forEach((t) => t.classList.remove('active'));
+      $$('.dtr-subtab[data-wst-cat], .wst-cat-tab').forEach((t) => t.classList.remove('active'));
       tab.classList.add('active');
       currentWstCategory = tab.dataset.wstCat;
       wstFilters.category = currentWstCategory;
@@ -413,7 +413,7 @@
   $('#wst-new-date')?.addEventListener('change', refreshNextLabref);
   $('#wst-new-cat')?.addEventListener('change', (e) => {
     currentWstCategory = e.target.value;
-    $$('.wst-cat-tab').forEach((t) => t.classList.toggle('active', t.dataset.wstCat === currentWstCategory));
+    $$('.dtr-subtab[data-wst-cat], .wst-cat-tab').forEach((t) => t.classList.toggle('active', t.dataset.wstCat === currentWstCategory));
     refreshNextLabref();
   });
 
@@ -485,13 +485,41 @@
       if (isRun && !isDone) {
         startBtn?.classList.add('hidden');
         runningBar?.classList.remove('hidden');
+        if (findingsBtn) {
+          findingsBtn.classList.remove('wst-btn-secondary');
+          findingsBtn.classList.add('dtr-btn-primary');
+          findingsBtn.style.background = '#2563eb';
+          findingsBtn.style.borderColor = '#2563eb';
+          findingsBtn.style.color = '#ffffff';
+        }
       } else {
         startBtn?.classList.remove('hidden');
         runningBar?.classList.add('hidden');
         if (startBtn) {
-          startBtn.disabled = isDone;
-          startBtn.style.opacity = isDone ? '0.45' : '1';
-          startBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
+          if (isDone) {
+            startBtn.disabled = true;
+            startBtn.style.background = '#f1f5f9';
+            startBtn.style.borderColor = '#cbd5e1';
+            startBtn.style.color = '#16a34a';
+            startBtn.style.opacity = '1';
+            startBtn.style.cursor = 'default';
+            startBtn.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-check"/></svg> Test Completed';
+          } else {
+            startBtn.disabled = false;
+            startBtn.style.background = '#16a34a';
+            startBtn.style.borderColor = '#16a34a';
+            startBtn.style.color = '#ffffff';
+            startBtn.style.opacity = '1';
+            startBtn.style.cursor = 'pointer';
+            startBtn.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> RUN / START';
+          }
+        }
+        if (findingsBtn) {
+          findingsBtn.classList.remove('dtr-btn-primary');
+          findingsBtn.classList.add('wst-btn-secondary');
+          findingsBtn.style.background = '';
+          findingsBtn.style.borderColor = '';
+          findingsBtn.style.color = '';
         }
       }
 
@@ -631,21 +659,67 @@
       html += `<tr class="${rowClass}"><td class="mono sample-label" style="font-weight:700">${specimenLabel}</td>`;
       cycles.forEach((c) => {
         const isRecorded = rec.includes(c);
+        const isTarget = (!isRecorded && !isStopped && c === activeCycle);
         let cellClass = 'cycle-cell';
+        let cellContent = '';
+        let titleAttr = '';
 
         if (isRecorded) {
           cellClass += ' is-recorded';
+          cellContent = '✓';
+          const fInfo = state?.findings?.[activeWstGroup]?.[s]?.[c];
+          if (fInfo) {
+            titleAttr = `Specimen ${s}-${curr.prefix} · ${Number(c).toLocaleString()} Cycles: ${fInfo.findings || 'Passed'} (${fInfo.result || 'PASS'})${fInfo.by ? ' by ' + fInfo.by : ''}`;
+          } else {
+            titleAttr = `Specimen ${s}-${curr.prefix} · ${Number(c).toLocaleString()} Cycles: Passed Checkpoint`;
+          }
         } else if (isStopped) {
           cellClass += ' is-stopped';
+          titleAttr = `Specimen ${s}-${curr.prefix} was stopped prior to this checkpoint.`;
+        } else if (isTarget) {
+          cellClass += ' is-target';
+          titleAttr = `Next target checkpoint for Specimen ${s}-${curr.prefix}: ${Number(c).toLocaleString()} Cycles. Click to log findings.`;
+        } else {
+          titleAttr = `Specimen ${s}-${curr.prefix} · ${Number(c).toLocaleString()} Cycles: Pending checkpoint`;
         }
 
-        html += `<td class="${cellClass}" data-group="${activeWstGroup}" data-sample="${s}" data-cycle="${c}"></td>`;
+        html += `<td class="${cellClass}" data-group="${activeWstGroup}" data-sample="${s}" data-cycle="${c}" title="${titleAttr}">${cellContent}</td>`;
       });
       html += `</tr>`;
     }
 
     html += `</tbody></table>`;
     tableWrap.innerHTML = html;
+
+    // Direct cell click handler: Quick log or view findings
+    tableWrap.querySelectorAll('.cycle-cell').forEach((td) => {
+      td.addEventListener('click', () => {
+        const sampleNum = parseInt(td.dataset.sample, 10);
+        const cycleNum = parseInt(td.dataset.cycle, 10);
+        const isRecorded = td.classList.contains('is-recorded');
+        const isStopped = td.classList.contains('is-stopped');
+
+        if (isStopped) {
+          showToast(`Specimen ${sampleNum}-${curr.prefix} is stopped.`, 'warn');
+          return;
+        }
+
+        if (isRecorded) {
+          const fInfo = state?.findings?.[activeWstGroup]?.[sampleNum]?.[cycleNum];
+          const desc = fInfo ? `${fInfo.findings || 'Passed'} [${fInfo.result || 'PASS'}]` : 'Passed Checkpoint';
+          showToast(`Specimen ${sampleNum}-${curr.prefix} @ ${Number(cycleNum).toLocaleString()} Cycles: ${desc}`);
+          return;
+        }
+
+        // Open findings modal focused on this sample and cycle
+        openFindingsModal();
+        if ($('#wst-findings-cycle')) $('#wst-findings-cycle').value = cycleNum;
+        if ($('#wst-findings-start')) $('#wst-findings-start').value = sampleNum;
+        if ($('#wst-findings-end')) $('#wst-findings-end').value = sampleNum;
+        $('#wst-findings-presets')?.querySelectorAll('.lf-range-preset').forEach((p) => p.classList.remove('is-active'));
+        updateFindingsRangeLabel();
+      });
+    });
   };
 
   // Findings modal controls

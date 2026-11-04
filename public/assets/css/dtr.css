@@ -2289,3 +2289,25 @@
   border: 1px solid #bae6fd;
   white-space: nowrap;
 }
+
+/* specimen intake: 15 columns (Pull Test / Pull Type added, Laboratory Test removed) */
+.dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(1) { width: 4% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(2) { width: 6% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(3) { width: 5% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(4) { width: 11% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(5) { width: 7% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(6) { width: 7% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(7) { width: 7% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(8) { width: 6% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(9) { width: 6% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(10) { width: 11% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(11) { width: 8% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(12) { width: 4% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(13) { width: 7% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(14) { width: 4% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(15) { width: 7% !important; } 
+.dtr-intake-table:not(.dtr-wshoe-table) td:nth-child(12), .dtr-intake-table:not(.dtr-wshoe-table) td:nth-child(14) { padding-left: 2px; padding-right: 2px; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(12), .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(14) { padding-left: 2px; padding-right: 2px; text-align: center; } .dtr-intake-table:not(.dtr-wshoe-table) input[type=checkbox] { width: 16px; height: 16px; }
+
+
+/* specimen intake: 14 columns - Pull Type is one checkbox group (each ticked type is saved as its own Lab Ref) */
+.dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(1) { width: 4% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(2) { width: 4% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(3) { width: 5% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(4) { width: 11% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(5) { width: 6% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(6) { width: 6% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(7) { width: 6% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(8) { width: 5% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(9) { width: 6% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(10) { width: 9% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(11) { width: 8% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(12) { width: 13% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(13) { width: 4% !important; } .dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(14) { width: 13% !important; }
+.dtr-intake-table:not(.dtr-wshoe-table) textarea.ik-retest-note { height: 46px; font-size: 12.5px; padding: 5px 8px; }
+.dtr-intake-table:not(.dtr-wshoe-table) td:nth-child(12), .dtr-intake-table:not(.dtr-wshoe-table) td:nth-child(14) { padding-left: 2px; padding-right: 2px; }
+.dtr-intake-table:not(.dtr-wshoe-table) td:nth-child(14) { padding-left: 4px; padding-right: 4px; }
+.dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(12) { text-align: left; }
+.dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(14) { text-align: left; }
+.dtr-intake-table:not(.dtr-wshoe-table) th:nth-child(13) { padding-left: 2px; padding-right: 2px; text-align: center; }
+.dtr-intake-table:not(.dtr-wshoe-table) td:nth-child(13) { padding-left: 2px; padding-right: 2px; text-align: center; }
+.ik-pulls { font-size: 12px; line-height: 1.5; }
+.ik-pulls label { display: inline-flex; align-items: center; gap: 3px; margin-right: 8px; white-space: nowrap; cursor: pointer; }
+
+.dtr-labref-link { color: inherit; text-decoration: none; }
+.dtr-labref-link:hover b { color: #1d4ed8; text-decoration: underline; }
+
+.vf-sheet-cell.vf-cell-off { display: none !important; }

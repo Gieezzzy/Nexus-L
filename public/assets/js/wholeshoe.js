@@ -44,7 +44,7 @@
     return res.json();
   };
 
-  let currentWstCategory = $('.wst-cat-tab.active')?.dataset?.wstCat || 'hydrolysis';
+  let currentWstCategory = $('.dtr-subtab[data-wst-cat].active, .wst-cat-tab.active')?.dataset?.wstCat || 'hydrolysis';
   let currentWstTestId = null;
   let activeWstGroup = 'dry';
 
@@ -207,7 +207,7 @@
     wstFilters.category = val;
     if (val !== 'all') {
       currentWstCategory = val;
-      $$('.wst-cat-tab').forEach((t) => {
+      $$('.dtr-subtab[data-wst-cat], .wst-cat-tab').forEach((t) => {
         t.classList.toggle('active', t.dataset.wstCat === val);
       });
       const title = val.replace('-', ' ').toUpperCase();
@@ -215,7 +215,7 @@
       if ($('#wst-new-cat')) $('#wst-new-cat').value = val;
       refreshNextLabref();
     } else {
-      $$('.wst-cat-tab').forEach((t) => t.classList.remove('active'));
+      $$('.dtr-subtab[data-wst-cat], .wst-cat-tab').forEach((t) => t.classList.remove('active'));
     }
     loadWstRecords();
   });
@@ -258,7 +258,7 @@
     if ($('#wst-filter-to')) $('#wst-filter-to').value = '';
     if ($('#wst-filter-category')) $('#wst-filter-category').value = currentWstCategory;
 
-    $$('.wst-cat-tab').forEach((t) => {
+    $$('.dtr-subtab[data-wst-cat], .wst-cat-tab').forEach((t) => {
       t.classList.toggle('active', t.dataset.wstCat === currentWstCategory);
     });
 
@@ -267,9 +267,9 @@
   });
 
   // Switch category tabs
-  $$('.wst-cat-tab').forEach((tab) => {
+  $$('.dtr-subtab[data-wst-cat], .wst-cat-tab').forEach((tab) => {
     tab.addEventListener('click', () => {
-      $$('.wst-cat-tab').forEach((t) => t.classList.remove('active'));
+      $$('.dtr-subtab[data-wst-cat], .wst-cat-tab').forEach((t) => t.classList.remove('active'));
       tab.classList.add('active');
       currentWstCategory = tab.dataset.wstCat;
       wstFilters.category = currentWstCategory;
@@ -433,7 +433,7 @@
   $('#wst-new-date')?.addEventListener('change', refreshNextLabref);
   $('#wst-new-cat')?.addEventListener('change', (e) => {
     currentWstCategory = e.target.value;
-    $$('.wst-cat-tab').forEach((t) => t.classList.toggle('active', t.dataset.wstCat === currentWstCategory));
+    $$('.dtr-subtab[data-wst-cat], .wst-cat-tab').forEach((t) => t.classList.toggle('active', t.dataset.wstCat === currentWstCategory));
     refreshNextLabref();
   });
 

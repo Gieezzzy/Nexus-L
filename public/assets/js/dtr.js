@@ -130,10 +130,10 @@
           <td><input type="text" class="ik-color" placeholder="Enter colorway"></td>
           <td><input type="text" class="ik-mtl" placeholder="Enter MTL #"></td>
           <td><button type="button" class="dtr-btn dtr-btn-outline ik-lib">Library</button></td>
-          <td><b>Bonding</b></td>
           <td><input type="text" class="ik-tech" list="dtr-tech-list" placeholder="Technician" autocomplete="off"></td>
           <td><select class="ik-type"><option>DAILY</option><option>TECH TRIAL</option><option>FIRST CASE</option><option>RETEST</option></select></td>
-          <td><label style="display:flex;align-items:center;gap:6px;font-weight:600"><input type="checkbox" class="ik-lacking"> Lacking</label></td>
+          <td class="ik-pulls"><label><input type="checkbox" class="ik-pt" value="HEEL PULL"> Heel Pull</label><label><input type="checkbox" class="ik-pt" value="EYELET"> Eyelet</label><label><input type="checkbox" class="ik-pt" value="D-RING"> D-Ring</label><label><input type="checkbox" class="ik-pt" value="RIVET"> Rivet</label></td>
+          <td style="text-align:center"><input type="checkbox" class="ik-lacking" aria-label="Lacking"></td>
           <td><textarea class="ik-retest-note" rows="2" placeholder="Retest details"></textarea></td>
         </tr>`;
   const renderIntakeRows = () => {
@@ -151,12 +151,14 @@
     const d = ($('#dtr-intake-production')?.value || '').replace(/-/g, '');
     $$('#dtr-intake-tbody tr').forEach((tr) => {
       const side = tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L';
-      tr.querySelector('.ik-labref').textContent = d ? `DTP${d}SH${tr.dataset.line}-${side}` : '';
+      const isRetest = tr.querySelector('.ik-type').value === 'RETEST' || tr.querySelector('.ik-retest-note').value.trim() !== '';
+      tr.querySelector('.ik-labref').textContent = d ? `DTP${d}SH${tr.dataset.line}-${side}${isRetest ? '-R01' : ''}` : '';   // retest: -R01, -R02... (the server picks the next free number)
     });
   };
 
   const openIntake = () => {
     intake.building = 'A';
+    intakeProdTouched = false;
     $$('#dtr-intake-building button').forEach((x) => x.classList.toggle('active', x.dataset.building === 'A'));
     if (intakeEl.msg) intakeEl.msg.textContent = '';
     renderIntakeRows();
@@ -176,21 +178,17 @@
     });
   });
 
+  let intakeProdTouched = false;   // production date follows the collection date until it is edited by hand
   const syncIntakeDates = () => {
-    if ($('#dtr-intake-match')?.checked) $('#dtr-intake-production').value = $('#dtr-intake-collection').value;
+    if (!intakeProdTouched) $('#dtr-intake-production').value = $('#dtr-intake-collection').value;
     const label = $('#dtr-intake-batch-label');
     if (label) label.textContent = `${intake.building} • ${$('#dtr-intake-collection').value}`;
     refreshIntakeLabRefs();
   };
   $('#dtr-intake-collection')?.addEventListener('change', syncIntakeDates);
-  $('#dtr-intake-production')?.addEventListener('change', refreshIntakeLabRefs);
-  $('#dtr-intake-match')?.addEventListener('change', () => {
-    $('#dtr-intake-production').disabled = $('#dtr-intake-match').checked;
-    syncIntakeDates();
-  });
+  $('#dtr-intake-production')?.addEventListener('change', () => { intakeProdTouched = true; refreshIntakeLabRefs(); });
   // L / R toggle changes the -L / -R ending
   intakeEl.tbody?.addEventListener('click', (e) => { if (e.target.closest('.dtr-side-toggle')) setTimeout(refreshIntakeLabRefs, 0); });
-  if ($('#dtr-intake-production')) $('#dtr-intake-production').disabled = true;
 
   // Library picker: searches tbl_dtr_shoe_list (Production Code / Style / Colorway / MTL)
   let libPanel = null;
@@ -313,6 +311,7 @@
     if (!tr) return;
     if (e.target.classList.contains('ik-active')) tr.classList.toggle('inactive', !e.target.checked);
     if (e.target.classList.contains('ik-tech')) e.target.value = withMachineNo(e.target.value);
+    if (e.target.classList.contains('ik-type') || e.target.classList.contains('ik-retest-note')) refreshIntakeLabRefs();
     if (e.target.classList.contains('ik-type') && e.target.value === 'RETEST') {
       retestRow = tr;
       retestEl.search.value = '';
@@ -334,6 +333,7 @@
         color: tr.querySelector('.ik-color').value.trim(),
         mtl: tr.querySelector('.ik-mtl').value.trim(),
         test: 'Bonding',
+        pullTypes: [...tr.querySelectorAll('.ik-pt:checked')].map((c) => c.value),
         tech: withMachineNo(tr.querySelector('.ik-tech').value.trim()),
         type: tr.querySelector('.ik-type').value,
         retestNote: tr.querySelector('.ik-retest-note').value.trim().replace(/\s*\n\s*/g, ' | '),
@@ -735,6 +735,33 @@
       e.preventDefault();
       $('#dtr-tracker-btn-search')?.click();
     }
+  });
+
+  // Lab Ref No in the Bonding Shoe Collection list -> opens that record in Shoe Bonding (U60)
+  document.addEventListener('click', async (e) => {
+    const a = e.target.closest('[data-open-bonding]');
+    if (!a) return;
+    e.preventDefault();
+    const id = a.dataset.openBonding;
+    if (!id || id === '0') return;
+    switchTab('bonding');
+    setReportKind('bonding');
+    await loadBondingRecordList(id);
+    await loadSingleBondingRecord(id);
+  });
+
+  // Lab Ref No in the Whole Shoe Collection list -> opens that Lab Ref in the Whole Shoe report page
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('[data-open-wholeshoe]');
+    if (!a) return;
+    e.preventDefault();
+    const ref = a.dataset.openWholeshoe;
+    const sel = $('#ws-labref');
+    if (!ref || !sel) return;
+    switchTab('wholeshoe');
+    if (![...sel.options].some((o) => o.value === ref)) sel.add(new Option(ref, ref));   // older than the picker's newest-100 list
+    sel.value = ref;
+    sel.dispatchEvent(new Event('change'));
   });
 
   // Open a clicked record in Material Form or Bonding Form
@@ -1483,6 +1510,16 @@
         if (el) el.value = rec[k] ?? '';
       });
       $$('#dtr-bonding-form [name^="cf_"]').forEach((el) => { el.value = (res.customValues || {})[el.name] ?? ''; });
+      // Specimen Intake records keep the Production Code in the ETRF box: show it beside PO/Lot No instead
+      // PO/Lot No shows "Production Code / MTL #"
+      if ($('#bf_POLotNO') && /^DTP\d{8}[A-Z]{2,}[AB]\d+-[LR](-R\d+)?$/i.test(rec.LabRefNo || '')) {
+        const noteMtl = (rec.MTL || '').trim() || ((rec.LabNotesComments || '').match(/MTL ([^;]+)/) || [])[1]?.trim() || '';
+        const swapped = !!rec.ETRFNo;   // older intake rows: code in ETRF No, MTL in PO/Lot No
+        const code = (swapped ? rec.ETRFNo : (rec.POLotNO || '')).trim();
+        const mtl = noteMtl || (swapped ? (rec.POLotNO || '').trim() : '');
+        $('#bf_POLotNO').value = mtl ? `${code} / ${mtl}` : code;
+        if (swapped && $('#bf_ETRFNo')) $('#bf_ETRFNo').value = '';
+      }
       if ($('#bf_Technician')) $('#bf_Technician').value = withMachineNo($('#bf_Technician').value);   // add the machine no. to older records
 
       for (let i = 1; i <= 35; i++) {
@@ -1571,6 +1608,7 @@
     $$('#dtr-bonding-form [name]').forEach((inp) => {
       if (inp.name) fields[inp.name] = inp.value;
     });
+    if (fields.POLotNO) fields.POLotNO = fields.POLotNO.split(' / ')[0].trim();   // the field shows "Production Code / MTL #"; only the code is stored
     const bondingPoints = {
       UTFMin: $('#bp_UTFMin')?.value || null,
       UTFMax: $('#bp_UTFMax')?.value || null,
@@ -2337,6 +2375,25 @@
     clearTimeout(formSketchTimer);
     formSketchTimer = setTimeout(renderFormSketch, 120);
   }
+  // Spot 1 sits on the START marker and the numbering carries on from there (the layouts number from another spot).
+  function rotateSpotsToStart(cfg, vec) {
+    if (!cfg || !vec || !vec.vector || !vec.start || !vec.dots) return;
+    ['utf', 'fto'].forEach((k) => {
+      const dots = vec.dots[k] || {};
+      const idx = Object.keys(cfg[k] || {}).map(Number).filter((i) => dots[i]).sort((a, b) => a - b);
+      if (idx.length < 3) return;
+      let best = 0; let bd = Infinity;
+      idx.forEach((i, p) => {
+        const d = Math.hypot(dots[i].x - vec.start.x, dots[i].y - vec.start.y);
+        if (d < bd) { bd = d; best = p; }
+      });
+      if (best === 0) return;
+      const boxes = {}; const nd = {};
+      idx.forEach((n, p) => { const src = idx[(best + p) % idx.length]; boxes[n] = cfg[k][src]; nd[n] = dots[src]; });
+      Object.assign(cfg[k], boxes);
+      vec.dots[k] = Object.assign({}, dots, nd);
+    });
+  }
   async function renderFormSketch() {
     const leftEl = $('#vf-diag-left');
     const rightEl = $('#vf-diag-right');
@@ -2435,6 +2492,8 @@
         cfg.pointsCount = spotCount;
       }
     }
+
+    rotateSpotsToStart(cfg, vec);
 
     const colour = (val) => {
       const v = evaluateSpotVerdict(parseFloat(val), std);
@@ -2577,6 +2636,8 @@
         }
       } catch (e) { /* default layout */ }
     }
+
+    rotateSpotsToStart(cfg, layoutVec);
 
     // Spot Color logic
     // blue = pass, amber = tolerable, red = fail (same rules as the result)
