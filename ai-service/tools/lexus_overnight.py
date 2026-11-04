@@ -97,7 +97,7 @@ def cycle(n: int, force_train: bool) -> None:
     new_weights = False
     if changed or force_train or n % 2 == 0:
         # every other cycle (and whenever the documents changed) a new batch of generated questions joins the training pool
-        out = step(["tools/train_lexus.py", "--save", "--more"], 4 * 3600)
+        out = step(["tools/train_lexus.py", "--save", "--more", "--epochs", "45", "--trials", "40"], 4 * 3600)
         keep = [ln for ln in out.splitlines() if ln.startswith(("generated", "questions", "current", "best", "blend", "chosen", "train", "val", "test", "real", "saved", "not saved"))]
         for ln in keep:
             log("  " + ln.strip())

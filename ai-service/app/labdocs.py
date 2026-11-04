@@ -303,15 +303,18 @@ def _english() -> set[str]:
 
 
 def _lev(a: str, b: str, cap: int) -> int:
-    """Edit distance, giving up (cap + 1) as soon as it exceeds cap."""
+    """Edit distance where two swapped neighbouring letters count once ("psased" -> "passed"), giving up (cap + 1) as soon as it exceeds cap."""
+    prev2: list[int] | None = None
     prev = list(range(len(b) + 1))
     for i, ca in enumerate(a, 1):
         cur = [i] + [0] * len(b)
         for j, cb in enumerate(b, 1):
             cur[j] = min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb))
+            if prev2 is not None and i > 1 and j > 1 and ca == b[j - 2] and a[i - 2] == cb:
+                cur[j] = min(cur[j], prev2[j - 2] + 1)
         if min(cur) > cap:
             return cap + 1
-        prev = cur
+        prev2, prev = prev, cur
     return prev[-1]
 
 

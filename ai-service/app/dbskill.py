@@ -87,10 +87,17 @@ MONTHS = {m.lower(): i for i, m in enumerate(["January", "February", "March", "A
                                                 "October", "November", "December"], 1)}
 MONTHS.update({k[:3]: v for k, v in list(MONTHS.items())})
 _COUNT = re.compile(r"\b(how many|how much|count|total|number of|ilan|ilang|summary|statistics|stats|tally|breakdown|rate|percent(?:age)?)\b", re.I)
-_LIST = re.compile(r"\b(list|show|find|search|give me|display|latest|recent|newest|last \d+|pakita|ipakita|hanapin)\b", re.I)
+_LIST = re.compile(r"\b(list|show|find|search|give me|display|latest|recent|newest|last \d+|pakita|ipakita|hanapin|all|every|each|lahat|complete|full|"
+                   r"which|what are (the|my|all|our)|what('s| is) (the|my|all)|get me|pull (all|up|out|me|the|my|a list|reports?)|fetch (all|me|the|my)|bring up|yung mga|mga)\b", re.I)
+_ALL = re.compile(r"\b(all|every|each|lahat|complete|full)\b", re.I)
+_APPROVAL = re.compile(r"\b(for approval|pending approvals?|awaiting approvals?|waiting for (my |the |an? )?(approvals?|signatures?|sign)|need(s|ing)? (my |an? )?(approval|signature)|"
+                       r"to be (approved|signed)|unsigned|not (yet )?(signed|approved)|who (has|have) not signed|hasn'?t signed|haven'?t signed|"
+                       r"approved reports?|signed reports?|rejected reports?|declined reports?|expired (approval|link)s?|pending signatures?|"
+                       r"for signature|for sign[\s-]?off|for verification|unverified)\b", re.I)
+_ACTION = re.compile(r"\b(resend|re-?send|remind|follow[\s-]?up|send again|notify|chase|nudge|how (do|to|can|should)|paano)\b", re.I)
 _REPORTISH = re.compile(r"\b(reports?|lab ?refs?|lab references?|tests?|samples?|results?|fail\w*|pass\w*|tolerable|records?|submissions?|materials? tested|nexus|database|system)\b", re.I)
 # a question about a test procedure or specification ("how many readings", "how many hours"), which the documents answer
-_DOCISH = re.compile(r"\b(hours?|minutes?|seconds?|readings?|specimens?|cycles?|mm|cm|kg|newtons?|speed|temperature|humidity|times|layers?|"
+_DOCISH = re.compile(r"\b(size|gap|strength|resistance|slider|hours?|minutes?|seconds?|readings?|specimens?|cycles?|mm|cm|kg|newtons?|speed|temperature|humidity|times|layers?|"
                      r"steps?|procedure|method|requirement|standard value|conditioning|jaws?|weights? of|days? before)\b", re.I)
 _SCHEMA = re.compile(r"\b(what|which|list)\b.*\b(tables?|database|columns?|fields?)\b.*\b(nexus|system|database|have|stored|are there)\b"
                      r"|\bwhere (is|are) .+ (stored|saved|kept)\b", re.I)
@@ -149,7 +156,12 @@ def parse(question: str) -> dict[str, Any] | None:
         return {"kind": "labref", "ref": ref.group(1).upper()}
     if _SCHEMA.search(t):
         return {"kind": "schema"}
-    if _FLOW.search(t) and _FLOW_OF.search(t) and not _DOCISH.search(t):
+    if _APPROVAL.search(t) and not _ACTION.search(t):
+        what = ("pending" if re.search(r"not (yet )?(signed|approved)|unsigned|who (has|have) not|hasn'?t signed|haven'?t signed", t)
+                else "rejected" if re.search(r"rejected|declined", t) else "expired" if re.search(r"expired", t)
+                else "approved" if re.search(r"\b(approved|signed) reports?\b", t) else "pending")
+        return {"kind": "approvals", "what": what, "count": bool(_COUNT.search(t))}
+    if (_FLOW.search(t) and _FLOW_OF.search(t) or _FLOW_Q.search(t)) and not _DOCISH.search(t) and not _ACTION.search(t.replace("how does", "").replace("how do", "").replace("paano", "")):
         return {"kind": "flow"}
     m = re.search(r"\b(?:material code|mat(?:erial)? ?code|item code)\s*(?:is|:|=|of|for)?\s*([A-Z0-9][A-Z0-9\-./]{2,30})", question, re.I)
     if m:
@@ -187,8 +199,10 @@ def parse(question: str) -> dict[str, Any] | None:
         return None                                                      # a procedure or specification question: the documents answer it
     if _COUNT.search(t) and (reportish or f):
         return {"kind": "count", **f}
-    if _LIST.search(t) and reportish and (f or re.search(r"\b(latest|recent|newest|last \d+)\b", t)):
-        return {"kind": "list", **f}
+    if _LIST.search(t) and reportish and (f.get("result") or f.get("period") or f.get("supplier") or f.get("technician") or f.get("style") or re.search(r"\b(reports?|lab ?refs?|latest|recent|newest|last \d+)\b", t)):
+        return {"kind": "list", "all": bool(_ALL.search(t)), **f}
+    if f.get("result") and (reportish or f.get("category") or f.get("period")) and not re.search(r"\b(what|why|meaning|mean|define|definition|standard|requirement)\b", t):
+        return {"kind": "list", "all": bool(_ALL.search(t)), **f}                      # "tolerable bonding", "fail fabric this month"
     if re.search(r"\b(database|db|sa system|in the system|in nexus)\b", t) and f:
         return {"kind": "list", **f}
     return None
@@ -303,9 +317,10 @@ def listing(f: dict[str, Any], limit: int = 15) -> dict[str, Any]:
     if not rows:
         last = _latest()
         return {"text": f"From the NEXUS-L database: no reports match ({scope})." + (f" The latest report was finished on {last}." if last else ""), "rows": 0}
-    lines = [f"- {r['lab_ref_no']} | {r['cat']} | {(r['material_description'] or r['model_style'] or '-')[:45]} | {r['supplier'][:30] or '-'} | "
-             f"{r['overall_result'] or '-'} | {r['finished_date'] or '-'}" + (f" | {r['technician']}" if r['technician'] else "") for r in rows]
-    more = f"\n\nShowing the latest {len(rows)} of {int(n):,}. Ask for a Lab Reference to see all its results." if int(n) > len(rows) else ""
+    lines = [f"{i}. {r['lab_ref_no']} | {r['cat']} | {(r['material_description'] or r['model_style'] or '-')[:45]} | {r['supplier'][:30] or '-'} | "
+             f"{r['overall_result'] or '-'} | {r['finished_date'] or '-'}" + (f" | {r['technician']}" if r['technician'] else "") for i, r in enumerate(rows, 1)]
+    more = (f"\n\nShowing the latest {len(rows)} of {int(n):,}. Say \"export them to Excel\" for the whole list, or give a Lab Reference (or a number) to see all its results."
+            if int(n) > len(rows) else "\n\nGive a number or a Lab Reference to see all its results.")
     return {"text": f"From the NEXUS-L database ({scope}):\n\nLab Ref | Report | Material | Supplier | Result | Finished\n" + "\n".join(lines) + more, "rows": int(n)}
 
 
@@ -359,7 +374,36 @@ TABLES = {
 }
 
 
+def approvals(what: str = "pending", count: bool = False, limit: int = 10) -> dict[str, Any]:
+    """The reports waiting for a signature (or approved, rejected, expired), newest first, numbered the way the chat can point back to."""
+    cond = {"pending": "a.status = 'pending'", "expired": "a.status = 'pending' AND a.expires_at < NOW()", "approved": "a.status = 'approved'",
+            "rejected": "a.status IN ('rejected','declined','denied')"}[what]
+    label = {"pending": "waiting for approval", "expired": "waiting for approval with an expired link", "approved": "approved", "rejected": "rejected"}[what]
+    join = f"tbl_dtr_report_approvals a LEFT JOIN {U} u ON u.lab_ref_no COLLATE utf8mb4_general_ci = a.lab_ref_no COLLATE utf8mb4_general_ci"
+    total = int(run(f"SELECT COUNT(*) AS n FROM tbl_dtr_report_approvals a WHERE {cond}")[0]["n"])
+    if not total:
+        return {"text": f"From the NEXUS-L database: no report is {label} right now."
+                + (" Open a finished report and press \"Request approval (QR)\" to send it to the signatories." if what == "pending" else ""), "rows": 0}
+    rows = run(f"SELECT a.lab_ref_no, a.status, a.requested_name, a.requested_at, a.expires_at, a.decided_name, a.decided_at, a.required_name, "
+               f"u.model_style, u.material_description, u.form_category FROM {join} WHERE {cond} ORDER BY a.id DESC LIMIT {int(limit)}")
+    lines = []
+    for i, r in enumerate(rows, 1):
+        what1 = (r["model_style"] or r["material_description"] or r["form_category"] or "")[:50]
+        if r["status"] == "approved":
+            tail = f"approved by {r['decided_name'] or '-'} on {r['decided_at'][:16]}"
+        else:
+            tail = f"requested by {r['requested_name'] or '-'} on {r['requested_at'][:16]}, waiting for {r['required_name'] or 'a signatory'}"
+        lines.append(f"{i}. {r['lab_ref_no']}" + (f" - {what1}" if what1 else "") + f" - {tail}")
+    head = (f"{total} report{'s' if total != 1 else ''} {'is' if total == 1 else 'are'} {label}." if count
+            else (f"Showing the latest {len(rows)} of {total} reports {label}:" if total > len(rows) else f"{total} report{'s' if total != 1 else ''} {label}:"))
+    tail = "" if what == "approved" else "\n\nTo remind the signatories, say \"resend approval for #1\" (or for a Lab Reference)."
+    return {"text": "From the NEXUS-L database:\n\n" + head + "\n\n" + "\n".join(lines) + tail, "rows": total}
+
+
 _FLOW = re.compile(r"\b(flow|workflow|process|lifecycle|life cycle|stages?|daloy|proseso)\b", re.I)
+_FLOW_Q = re.compile(r"\b(how (does|do|is|are)\b.*\b(samples?|reports?|materials?|shoes?|tests?)\b.*\b(go|goes|move|moves|pass|passes|travel|flow|flows|handled|processed|work|works)\b|"
+                     r"what happens (after|when|next|to (a|the|my) (sample|report|test))|steps? from .* to .*|end[\s-]to[\s-]end|journey of|\b(dumadaan|dumaan|napupunta)\b.*\b(sample|report|lab)\b|paano (dumadaan|napupunta)|"
+                     r"ano ang (proseso|daloy|flow)|walk me through (the )?(system|process|flow|lab))\b", re.I)
 _FLOW_OF = re.compile(r"\b(reports?|lab ?refs?|lab references?|samples?|materials? testing|nexus(?:-l)?|the system|sa system|dtr)\b", re.I)
 
 
@@ -406,8 +450,10 @@ def answer(question: str) -> dict[str, Any] | None:
             out = labref(p["ref"])
         elif kind == "count":
             out = count(p)
+        elif kind == "approvals":
+            out = approvals(p["what"], p.get("count", False))
         elif kind == "list":
-            out = listing(p)
+            out = listing(p, 40 if p.get("all") else 15)
         elif kind == "material":
             out = material(p["code"])
         elif kind == "interlink":

@@ -7,7 +7,7 @@ from typing import Any, Literal
 from langgraph.graph import END, StateGraph
 from opentelemetry import trace
 
-from app import calibration, context, db, dbskill, labdocs, memory, requirements, rerank, store
+from app import calibration, context, db, dbskill, glossary, labdocs, memory, methods, requirements, rerank, store
 from app import nlu as nlu_mod
 from app.config import settings
 from app.nlu import nlu_node, rule_node
@@ -271,18 +271,33 @@ def first_node(state: AgentState) -> AgentState:
     """Before anything else: the reply to "which one do you mean?" (a number, or a detail that narrows the last question), and questions
     about the laboratory's own data ("how many failed this month", a Lab Reference), which the NEXUS-L database answers exactly."""
     q, sid = state["question"], state.get("session_id", "")
+    # politeness and Taglish openers carry no meaning ("paano po", "pa-check po", "sir"); a typo-corrected copy is the second try of every skill
+    q = re.sub(r"\b(po|opo|pa-?check|pakisabi|paki|sir|maam|ma'am|pls|please)\b", " ", q, flags=re.I)
+    q = re.sub(r"^\s*(paano|ano|saan)\s+(?=(what|who|how|can|does|is|are|which|show|list|give|where)\b)", "", q.strip(), flags=re.I).strip() or state["question"]
+    qc = labdocs.clean_question(q)
+    both = lambda fn, *a: (fn(qc, *a) if qc.lower() != q.lower() else None) or fn(q, *a)       # noqa: E731
     picked = labdocs.choose(sid, q)
     if picked and picked["confidence"] >= labdocs.THRESHOLD or (picked and picked.get("clarify")):
         how = f"option {picked['chosen']}" if picked.get("chosen") else f"narrowed '{picked.get('narrowed', '')[:40]}'"
         return {"route": "agent", "confidence": picked["confidence"], "payload": _doc_payload(picked), "trace": [f"clarified:{how} -> {picked['source']['file']}"]}
     # "the standard for eyelets": the requirement row itself, not the whole test method (and "adult casual?" right after it)
-    req = requirements.answer(q, sid)
+    gl = both(glossary.answer)
+    if gl:
+        return {"route": "agent", "confidence": 0.97, "trace": [f"glossary:{gl['kind']}"], "payload": {"text": gl["text"], "steps": [], "kb_id": None, "confidence": 0.97, "route": "agent", "source": "glossary"}}
+    req = both(requirements.answer, sid)
     if req:
         return {"route": "agent", "confidence": req["confidence"], "trace": [f"requirements:{req['source']['file']} {req['source']['loc']}"],
                 "payload": {"text": req["text"], "steps": [], "kb_id": None, "confidence": req["confidence"], "route": "agent", "source": "documents",
                             "document": req["source"], "citations": [{"source_id": f"labdoc:{req['source']['path']}#{req['source']['loc']}", "quote": req["excerpt"]}]}}
+    # a test method by code or by what it tests ("what is VF-B04", "test for hydrolysis"): name, group, what it measures, its requirement
+    meth = both(methods.answer)
+    if meth:
+        src = meth.get("source")
+        return {"route": "agent", "confidence": 0.97, "trace": [f"methods:{meth.get('code', meth['kind'])}"],
+                "payload": {"text": meth["text"], "steps": [], "kb_id": None, "confidence": 0.97, "route": "agent", "source": "documents" if src else "database",
+                            **({"document": src, "citations": [{"source_id": f"labdoc:{src['path']}#{src['loc']}", "quote": meth["text"][:200]}]} if src else {})}}
     # "open DTP..." stays the button that opens the report (rule route); a Lab Reference in any other question is looked up
-    data = None if (nlu_mod.local_parse(q).name == "open_report" and not re.search(r"\b(result|results|reading|readings|status|detail|details|complete|clearly|all)\b", q, re.I)) else dbskill.answer(q)
+    data = None if (nlu_mod.local_parse(q).name == "open_report" and not re.search(r"\b(result|results|reading|readings|status|detail|details|complete|clearly|all)\b", q, re.I)) else both(dbskill.answer)
     if data:
         return {"route": "agent", "confidence": 0.99, "trace": [f"database:{data['kind']} rows={data.get('rows', data.get('found', 0))}"],
                 "payload": {"text": data["text"], "steps": [], "kb_id": None, "confidence": 0.99, "route": "agent", "source": "database", "kind": data["kind"],

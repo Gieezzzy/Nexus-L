@@ -256,8 +256,10 @@ def main() -> None:
     print(f"current ranking: val acc {base['val']['accuracy']:.1%}  test acc {base['test']['accuracy']:.1%}  real {base['real']['accuracy']:.1%}")
 
     trials = []
-    for i in range(1, TRIALS + 1):
-        epochs, lr = rnd.randint(35, 45), rnd.choice([0.01, 0.02, 0.03, 0.05, 0.08])
+    arg = lambda n, d: int(sys.argv[sys.argv.index(n) + 1]) if n in sys.argv else d          # noqa: E731
+    fixed_epochs, trials_n = arg("--epochs", 0), arg("--trials", TRIALS)                     # --epochs 45 --trials 40
+    for i in range(1, trials_n + 1):
+        epochs, lr = fixed_epochs or rnd.randint(35, 45), rnd.choice([0.01, 0.02, 0.03, 0.05, 0.08])
         w0 = w_cur * np.array([rnd.uniform(0.7, 1.3) for _ in FEATS]) if i > 1 else w_cur.copy()
         l2 = rnd.choice([0.001, 0.01, 0.05, 0.2, 0.5])
         w = train(tr + rl * REAL_WEIGHT, w0, epochs, lr, rnd, l2)  # the real lab questions count most: they are what technicians ask

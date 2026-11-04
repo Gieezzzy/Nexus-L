@@ -1407,8 +1407,8 @@ class BotController extends BaseController
 
 
 
-        $intentReply = $this->aiSkillsIntent($normText) ??
-            $this->lexusMultiReportIntent($normText, $uid) ?? $this->artifactIntent($normText, $uid, (int) $thread['id'], (array) $u) ?? $this->vfMethodIntent($normText, $threadContextStr) ?? $this->labRefIntent($normText) ?? $this->approvalReminderIntent($normText, $uid, (array) $u) ?? $this->dbSearchIntent($normText) ?? $this->computeIntent($normText, $prevUserMsg, $lastBotMsg, $threadContextStr);
+        $intentReply = \App\Libraries\BotApprovals::listIntent($normText, $uid, $this->db()) ?? \App\Libraries\BotApprovals::emailIntent($normText) ?? $this->aiSkillsIntent($normText) ??
+            $this->lexusMultiReportIntent($normText, $uid) ?? $this->artifactIntent($normText, $uid, (int) $thread['id'], (array) $u) ?? $this->vfMethodIntent($normText, $threadContextStr) ?? $this->labRefIntent($normText) ?? $this->approvalReminderIntent($normText, $uid, (array) $u, $lastBotMsg) ?? $this->dbSearchIntent($normText) ?? $this->computeIntent($normText, $prevUserMsg, $lastBotMsg, $threadContextStr);
 
 
 
@@ -4638,7 +4638,7 @@ private function labRefIntent(string $text): ?array
 
 
 
-    private function approvalReminderIntent(string $text, int $uid, array $u): ?array
+    private function approvalReminderIntent(string $text, int $uid, array $u, string $lastBotMsg = ''): ?array
 
 
 
@@ -4679,53 +4679,14 @@ private function labRefIntent(string $text): ?array
 
 
         $isReminder = (bool) (
-
-
-
-
-
-
-
-            (preg_match('/\b(resend|send|remind|notify|alert|ping|forward)\b/i', $low) &&
-
-
-
-
-
-
-
-             preg_match('/\b(approv|signator|manager|supervisor)/i', $low)) ||
-
-
-
-
-
-
-
-            preg_match('/\b(approval\s*reminder|remind\s*approver|resend\s*approval|notify\s*approver)\b/i', $low)
-
-
-
-
-
-
-
+            (preg_match('/\b(re[\s-]?send|send|remind|notify|alert|ping|forward|follow[\s-]?up|chase|nudge|paalala|ipaalala|ulitin)\b/i', $low) &&
+             preg_match('/\b(approv|signator|manager|supervisor|verif|sign(ature|[\s-]?off)?\b|qr\b)/i', $low)) ||
+            preg_match('/\b(approval\s*reminder|remind\s*approver|re[\s-]?send\s*approval|notify\s*approver)\b/i', $low)
         );
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        // "how do I send this report to the manager" asks for the steps; it must never send anything
+        if ($isReminder && \App\Libraries\BotApprovals::isHowTo($low)) {
+            $isReminder = false;
+        }
         if (! $isReminder) {
 
 
@@ -4806,63 +4767,12 @@ private function labRefIntent(string $text): ?array
 
 
 
-        $targetLab = null;
-
-
-
-
-
-
-
-        if (preg_match('/\b(DTP\d{8}[A-Z0-9]{2,}(?:-[LR])?)\b/i', $text, $m)) {
-
-
-
-
-
-
-
-            $targetLab = strtoupper($m[1]);
-
-
-
-
-
-
-
+        $resolved = \App\Libraries\BotApprovals::resolveTarget($text, $lastBotMsg);
+        if ($resolved['ambiguous']) {
+            return \App\Libraries\BotApprovals::askWhich($resolved['candidates']);       // "this report", but no single report to point back to
         }
-
-
-
-
-
-
-
-        $targetApp = null;
-
-
-
-
-
-
-
-        if (preg_match('/\b(APP[-_0-9A-Z]{3,})\b/i', $text, $am)) {
-
-
-
-
-
-
-
-            $targetApp = strtoupper($am[1]);
-
-
-
-
-
-
-
-        }
+        $targetLab = $resolved['lab'];
+        $targetApp = $resolved['app'];
 
 
 
