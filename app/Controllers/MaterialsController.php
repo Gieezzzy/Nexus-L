@@ -2,8 +2,8 @@
 
 namespace App\Controllers;
 
-use App\Models\WstTestModel;
-use App\Models\WstTestResultModel;
+use App\Models\MaterialTestModel;
+use App\Models\MaterialTestResultModel;
 use CodeIgniter\HTTP\ResponseInterface;
 
 /**

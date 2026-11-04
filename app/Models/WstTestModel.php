@@ -32,6 +32,7 @@ class WstTestModel extends Model
         'temperature',
         'humidity',
         'remarks',
+        'recorded_remarks',
     ];
 
     protected $validationRules = [

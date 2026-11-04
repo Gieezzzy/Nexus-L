@@ -2,8 +2,8 @@
 
 namespace App\Controllers;
 
-use App\Models\WstTestModel;
-use App\Models\WstTestResultModel;
+use App\Models\MaterialTestModel;
+use App\Models\MaterialTestResultModel;
 use App\Libraries\TestCatalog;
 use CodeIgniter\HTTP\ResponseInterface;
 
@@ -271,7 +271,7 @@ class WstController extends BaseController
         $fromDate = trim((string) ($filters['from_date'] ?? ''));
         $toDate   = trim((string) ($filters['to_date'] ?? ''));
 
-        $model   = new WstTestModel();
+        $model   = new MaterialTestModel();
         $builder = $model->builder();
 
         if ($suite === 'wholeshoe') {
@@ -315,7 +315,7 @@ class WstController extends BaseController
         $testIds = array_column($allRows, 'id');
         $resultsByTestId = [];
         if (! empty($testIds)) {
-            $resultsModel = new WstTestResultModel();
+            $resultsModel = new MaterialTestResultModel();
             $results = $resultsModel->whereIn('test_id', $testIds)->findAll();
             foreach ($results as $res) {
                 $resultsByTestId[$res['test_id']][] = $res;
@@ -542,7 +542,7 @@ class WstController extends BaseController
      */
     public function record(int $id): ResponseInterface
     {
-        $model  = new WstTestModel();
+        $model  = new MaterialTestModel();
         $record = $model->find($id);
 
         if (! $record) {
@@ -653,7 +653,7 @@ class WstController extends BaseController
             $labref = $this->generateLabref($category, $type, $date);
         }
 
-        $model = new WstTestModel();
+        $model = new MaterialTestModel();
 
         // Check uniqueness safely
         if ($model->where('labreference', $labref)->first()) {
@@ -719,7 +719,7 @@ class WstController extends BaseController
      */
     public function start(int $id): ResponseInterface
     {
-        $model  = new WstTestModel();
+        $model  = new MaterialTestModel();
         $record = $model->find($id);
 
         if (! $record) {
@@ -740,7 +740,7 @@ class WstController extends BaseController
      */
     public function stop(int $id): ResponseInterface
     {
-        $model  = new WstTestModel();
+        $model  = new MaterialTestModel();
         $record = $model->find($id);
 
         if (! $record) {
@@ -762,7 +762,7 @@ class WstController extends BaseController
         // Set all unrecorded or running sample rows for this test session to completed/stopped
         $category = $record['category'] ?? 'bally-flex';
         $groups   = $this->buildGroups($record, $category);
-        $resultsModel = new WstTestResultModel();
+        $resultsModel = new MaterialTestResultModel();
 
         foreach ($groups as $gKey => $g) {
             $count = (int) ($g['count'] ?? 0);
@@ -807,7 +807,7 @@ class WstController extends BaseController
      */
     public function stopSample(int $id): ResponseInterface
     {
-        $model  = new WstTestModel();
+        $model  = new MaterialTestModel();
         $record = $model->find($id);
 
         if (! $record) {
@@ -824,7 +824,7 @@ class WstController extends BaseController
             ]);
         }
 
-        $resultsModel = new WstTestResultModel();
+        $resultsModel = new MaterialTestResultModel();
         $now  = date('Y-m-d H:i:s');
         $tech = $this->getCurrentTechnician();
         $stoppedCount = 0;
@@ -893,7 +893,7 @@ class WstController extends BaseController
      */
     public function state(int $id): ResponseInterface
     {
-        $model  = new WstTestModel();
+        $model  = new MaterialTestModel();
         $record = $model->find($id);
 
         if (! $record) {
@@ -923,7 +923,7 @@ class WstController extends BaseController
     {
         $payload = $this->request->getJSON(true) ?? $this->request->getPost();
 
-        $model  = new WstTestModel();
+        $model  = new MaterialTestModel();
         $record = $model->find($id);
 
         if (! $record) {
@@ -941,7 +941,7 @@ class WstController extends BaseController
             return $this->response->setStatusCode(422)->setJSON(['success' => false, 'message' => 'Cycle must be greater than zero']);
         }
 
-        $resultsModel = new WstTestResultModel();
+        $resultsModel = new MaterialTestResultModel();
         $tech         = $this->getCurrentTechnician();
         $recordedBy   = $tech['technician'];
         $now          = date('Y-m-d H:i:s');
@@ -1135,7 +1135,7 @@ class WstController extends BaseController
         $code = $material['code'] ?? 'LEL';
         $base = 'DTP' . str_replace('-', '', $date) . $code;
 
-        $model = new WstTestModel();
+        $model = new MaterialTestModel();
         $rows  = $model->select('labreference')->like('labreference', $base, 'after')->findAll();
         $names = array_column($rows, 'labreference');
 
@@ -1188,7 +1188,7 @@ class WstController extends BaseController
 
     private function loadState(int $testId, string $labref, array $groups): array
     {
-        $resultsModel = new WstTestResultModel();
+        $resultsModel = new MaterialTestResultModel();
         $rows = $resultsModel->where('test_id', $testId)->findAll();
 
         $recorded      = [];
