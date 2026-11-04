@@ -127,6 +127,13 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
 
     // Laboratory Documents: the registers of the "#" folders of the Lab Documents share
     $routes->get('labdocs', 'LabDocsController::index', ['as' => 'labdocs']);
+    $routes->get('labdocs/(:segment)/m/(:segment)', 'LabDocsController::method/$1/$2');
+    $routes->post('labdocs/(:segment)/m/(:segment)/save', 'LabDocsController::saveMethod/$1/$2');
+    $routes->post('labdocs/(:segment)/m/(:segment)/restore', 'LabDocsController::restoreMethod/$1/$2');
+    $routes->get('labdocs/(:segment)/pdf/(:segment)', 'LabDocsController::pdf/$1/$2');
+    $routes->get('labdocs/(:segment)/ill/(:num)', 'LabDocsController::illustrated/$1/$2');
+    $routes->get('labdocs/(:segment)/doc/(:segment)', 'LabDocsController::doc/$1/$2');
+    $routes->get('labdocs/(:segment)/file/(:segment)', 'LabDocsController::file/$1/$2');
     $routes->get('labdocs/(:segment)', 'LabDocsController::show/$1');
     $routes->post('labdocs/(:segment)/save', 'LabDocsController::save/$1');
 

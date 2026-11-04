@@ -75,3 +75,67 @@
   .ld-foot { left: 0; right: 0; bottom: 0; }
   .ld-t th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* ---- #DTP-Lab-101 VF test methods: cards ---- */
+.vm-search { min-width: 260px; padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(148,163,184,.5); font: inherit; font-size: 13px; background: rgba(255,255,255,.7); color: inherit; }
+.vm-docs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.vm-doc { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px; background: rgba(8,65,111,.10); color: #08416f; font-size: 13px; font-weight: 600; text-decoration: none; border: 1px solid rgba(8,65,111,.25); }
+.vm-doc:hover { background: #08416f; color: #fff; }
+.vm-doc-k { font-size: 10px; font-weight: 700; letter-spacing: .05em; background: #08416f; color: #fff; border-radius: 6px; padding: 1px 6px; }
+.vm-doc:hover .vm-doc-k { background: #fff; color: #08416f; }
+.vm-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.vm-chip { border: 1px solid rgba(148,163,184,.5); background: rgba(255,255,255,.6); color: inherit; border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 12.5px; cursor: pointer; }
+.vm-chip.on { background: #08416f; border-color: #08416f; color: #fff; }
+.vm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
+.vm-card { position: relative; background: #08416f; color: #fff; border-radius: 16px; display: flex; flex-direction: column; min-height: 200px; box-shadow: 0 4px 14px rgba(8,65,111,.28); transition: transform .12s, box-shadow .12s; }
+.vm-card:hover { transform: translateY(-3px); box-shadow: 0 10px 26px rgba(8,65,111,.38); }
+.vm-card:focus-within { outline: 3px solid #7c3aed; outline-offset: 2px; }
+.vm-main { display: flex; flex-direction: column; gap: 6px; padding: 18px 18px 10px; color: inherit; text-decoration: none; flex: 1; }
+.vm-main:focus-visible { outline: none; }
+.vm-code { font-size: 26px; font-weight: 800; letter-spacing: .02em; }
+.vm-name { font-size: 15px; font-weight: 600; line-height: 1.25; }
+.vm-upd { margin-top: auto; font-size: 12px; opacity: .85; }
+.vm-foot { display: flex; align-items: center; gap: 8px; padding: 0 14px 14px; }
+.vm-btn { border: 1px solid rgba(255,255,255,.55); background: transparent; color: #fff; border-radius: 9px; padding: 5px 12px; font: inherit; font-size: 12.5px; text-decoration: none; cursor: pointer; }
+.vm-btn:hover { background: #fff; color: #08416f; }
+.vm-pg { margin-left: auto; font-size: 11.5px; opacity: .75; }
+.vm-none { text-align: center; color: var(--muted, #64748b); padding: 30px; }
+.vm-pop { position: fixed; right: auto; top: auto; z-index: 60; }
+.vm-pop a { display: block; padding: 7px 12px; border-radius: 7px; color: inherit; text-decoration: none; font-size: 13px; }
+.vm-pop a:hover { background: rgba(8,65,111,.10); }
+
+/* ---- a test method as a normal, locked form (US Letter pages) ---- */
+.vd-back { font-size: 12.5px; margin-right: 10px; color: var(--muted, #64748b); text-decoration: none; }
+.vd-back:hover { text-decoration: underline; }
+.vd-fmt { display: inline-flex; gap: 4px; }
+.vd-menu-a { display: block; width: 100%; text-align: left; background: none; border: 0; font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 7px; color: inherit; text-decoration: none; cursor: pointer; white-space: normal; }
+.vd-menu-a:hover { background: rgba(0,112,192,.10); }
+.vd-menu-h { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #64748b; padding: 4px 10px; }
+.vd-menu-t { font-size: 12px; padding: 3px 10px; color: #334155; white-space: normal; max-width: 280px; }
+.vd-pages { width: 215.9mm; }
+.vd-pages .ld-sheet { width: 215.9mm; height: 279.4mm; font: 11pt/1.3 Arial, Helvetica, sans-serif; padding: 0; }
+.vd-pages .ld-sheet.is-active, .vd-pages.ld-all .ld-sheet { display: block; }
+.vd-head { position: absolute; left: 19mm; right: 19mm; top: 9mm; display: flex; align-items: center; gap: 4mm; }
+.vd-head img { height: 17mm; width: auto; }
+.vd-head .vt { font: 700 18pt/1.1 Cambria, Georgia, "Times New Roman", serif; color: #1f2937; }
+.vd-body { position: absolute; left: 19mm; right: 19mm; top: 30mm; bottom: 16mm; overflow: hidden; }
+.vd-foot { position: absolute; left: 19mm; right: 19mm; bottom: 8mm; display: flex; justify-content: space-between; font: 700 9pt Arial, sans-serif; border-top: 0; }
+.vb { margin: 0; padding: 1.4pt 0; text-align: left; overflow-wrap: anywhere; white-space: pre-wrap; }
+.vb.c { text-align: center; } .vb.r { text-align: right; }
+.vb.li { text-indent: -1.6em; }
+.vb-img { padding: 3pt 0; text-align: center; }
+.vb-img img { max-width: 100%; max-height: 220mm; height: auto; }
+.vt { width: 100%; border-collapse: collapse; table-layout: auto; margin: 3pt 0; }
+.vt td { border: 1px solid #000; padding: 1.5mm 2mm; vertical-align: top; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 10pt; }
+.vt.box td { font-size: 11pt; padding: 2.5mm 3mm; border-width: 1.5px; width: 50%; }
+.vd-edit [contenteditable="true"] { cursor: text; outline: 1px dashed rgba(0,112,192,.35); outline-offset: 1px; }
+.vd-edit [contenteditable="true"]:focus { outline: 2px solid #0070c0; background: #f0f8ff; }
+.dv-h { font-size: 15px; margin: 16px 0 6px; }
+.dv-wrap { overflow: auto; max-width: 100%; background: #fff; border-radius: 10px; box-shadow: 0 2px 10px rgba(15,23,42,.12); }
+.dv-t { border-collapse: collapse; font-size: 12.5px; color: #0f172a; }
+.dv-t td { border: 1px solid #cbd5e1; padding: 4px 8px; vertical-align: top; min-width: 60px; }
+@media print {
+  .vd-pages { width: auto; }
+  .vd-pages .ld-sheet { width: 215.9mm; height: 279mm; margin: 0; }
+  body.vd-printing .dv-wrap { box-shadow: none; }
+}

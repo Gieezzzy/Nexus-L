@@ -217,6 +217,19 @@ class LabDocXlsx
         }
     }
 
+    /** @return list<string> the sheet names of a workbook, in order */
+    public static function sheetNames(string $path): array
+    {
+        $z = new ZipArchive();
+        if ($z->open($path) !== true) {
+            return [];
+        }
+        $wb = (string) $z->getFromName('xl/workbook.xml');
+        $z->close();
+        preg_match_all('/<sheet [^>]*name="([^"]*)"/', $wb, $m);
+        return array_map(static fn ($n) => html_entity_decode($n, ENT_QUOTES | ENT_XML1), $m[1] ?? []);
+    }
+
     public static function extract(string $path, string $part, string $to): bool
     {
         $z = new ZipArchive();
