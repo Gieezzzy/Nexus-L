@@ -49,6 +49,13 @@
           var rb = border(s.grid[m[0] - 1][m[3] - 1].s, 'right'), bb = border(s.grid[m[2] - 1][m[1] - 1].s, 'bottom');   // the frame of a merged cell comes from its far edges
           td.style.cssText = (rb ? rb + ';' : '') + (bb ? bb : '');
         }
+        // like Excel: text that does not wrap runs on over the empty cells to its right instead of being cut off
+        var st = D.styles[cell.s || 0] || '';
+        if (cell.v && !m && !/pre-wrap/.test(st) && !/text-align:(center|right)/.test(st) && !/^[-+\d.,%\s]+$/.test(cell.v)) {
+          var k = ci + 1;
+          while (k < line.length && !line[k].v && !covered[r + ':' + (k + 1)] && !span[r + ':' + (k + 1)]) k++;
+          if (k > ci + 1) td.style.overflow = 'visible';
+        }
         if (edit) td.contentEditable = 'true';
         tr.appendChild(td);
       });
@@ -63,7 +70,15 @@
     tableEl = build();
     paper.appendChild(tableEl);
     root.classList.toggle('bk-edit', edit);
-    tabs(); fit();
+    tabs(); fitText(); fit();
+  }
+  // a cell whose text is longer than the cell (and cannot run on into empty cells next to it) shows all of its text on several lines instead of cutting it
+  function fitText() {
+    var hit = [];
+    tableEl.querySelectorAll('td').forEach(function (td) {
+      if (td.textContent && td.style.overflow !== 'visible' && td.scrollWidth > td.clientWidth + 1 && getComputedStyle(td).whiteSpace === 'nowrap') hit.push(td);
+    });
+    hit.forEach(function (td) { td.classList.add('bk-wrapfix'); });
   }
   // zoom: the sheet opens fitted to the width of the window; the buttons, Ctrl + mouse wheel and the scroll bars change the view
   var Z = 1, stage = document.getElementById('bk-stage'), zl = document.getElementById('bk-zl');

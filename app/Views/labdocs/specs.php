@@ -38,7 +38,7 @@ $hue = static fn (string $y): int => $hues[(int) $y % count($hues)];
 
     <div class="vm-grid" id="vm-grid">
         <?php foreach ($cards as $c): ?>
-            <article class="vm-card" data-s="<?= esc($c['year'], 'attr') ?>" style="--h:<?= $hue((string) $c['year']) ?>" data-t="<?= esc(mb_strtolower($c['name'] . ' ' . $c['year']), 'attr') ?>">
+            <article class="vm-card"<?php if (!empty($c['thumb'])): ?> data-prev="<?= esc($c['thumb'], 'attr') ?>"<?php endif ?> data-s="<?= esc($c['year'], 'attr') ?>" style="--h:<?= $hue((string) $c['year']) ?>" data-t="<?= esc(mb_strtolower($c['name'] . ' ' . $c['year']), 'attr') ?>">
                 <a class="vm-main" href="<?= esc($c['url'], 'attr') ?>" aria-label="Open <?= esc($c['name'], 'attr') ?>">
                     <span class="vm-code vm-spec-name"><?= esc($c['name']) ?></span>
                     <span class="vm-upd">Year <b><?= esc($c['year'] ?: '-') ?></b><?php if ($c['edited']): ?> · edited <?= esc($c['edited']) ?><?php endif ?></span>

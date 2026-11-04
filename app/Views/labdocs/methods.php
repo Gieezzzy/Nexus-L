@@ -38,7 +38,7 @@ $kindLabel = ['pdf' => 'PDF', 'xlsx' => 'Excel', 'docx' => 'Word'];
 
     <div class="vm-grid" id="vm-grid">
         <?php foreach ($cards as $c): ?>
-            <article class="vm-card" data-code="<?= esc($c['code'], 'attr') ?>" data-s="<?= esc($c['series'], 'attr') ?>" data-t="<?= esc(mb_strtolower($c['code'] . ' ' . $c['title'] . ' ' . $c['rev']), 'attr') ?>">
+            <article class="vm-card"<?php if (!empty($c['thumb'])): ?> data-prev="<?= esc($c['thumb'], 'attr') ?>"<?php endif ?> data-code="<?= esc($c['code'], 'attr') ?>" data-s="<?= esc($c['series'], 'attr') ?>" data-t="<?= esc(mb_strtolower($c['code'] . ' ' . $c['title'] . ' ' . $c['rev']), 'attr') ?>">
                 <a class="vm-main" href="<?= esc($c['url'], 'attr') ?>" aria-label="Open <?= esc($c['code'] . ' ' . $c['title'], 'attr') ?>">
                     <span class="vm-code"><?= esc($c['code']) ?></span>
                     <span class="vm-name"><?= esc($c['title']) ?></span>

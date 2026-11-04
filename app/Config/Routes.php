@@ -141,6 +141,9 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->get('labdocs/(:segment)/b/(:segment)', 'LabDocsController::book/$1/$2');
     $routes->post('labdocs/(:segment)/b/(:segment)/save', 'LabDocsController::saveBook/$1/$2');
     $routes->post('labdocs/(:segment)/rev/(:num)/delete', 'LabDocsController::deleteRev/$1/$2');
+    $routes->get('labdocs/(:segment)/v/(:num)', 'LabDocsController::fileView/$1/$2');
+    $routes->get('labdocs/(:segment)/f/(:num)', 'LabDocsController::fileGet/$1/$2');
+    $routes->get('labdocs/(:segment)/thumb/(:num)', 'LabDocsController::thumb/$1/$2');
     $routes->get('labdocs/(:segment)', 'LabDocsController::show/$1');
     $routes->post('labdocs/(:segment)/save', 'LabDocsController::save/$1');
 

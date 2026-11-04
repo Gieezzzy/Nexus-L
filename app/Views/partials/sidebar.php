@@ -126,6 +126,19 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
 </aside>
 <div id="sidebar-backdrop" class="backdrop hidden"></div>
 <script>
+/* the menu keeps its scroll position from page to page; with no saved position the active link is brought into view */
+(function () {
+  var n = document.querySelector('#sidebar .nav'); if (!n) return;
+  var k = 'nx.side.scroll', v = null;
+  try { v = sessionStorage.getItem(k); } catch (e) {}
+  if (v !== null) n.scrollTop = parseInt(v, 10) || 0;
+  else { var a = n.querySelector('.active, [aria-current]'); if (a) n.scrollTop = Math.max(0, a.offsetTop - n.clientHeight / 2); }
+  function save() { try { sessionStorage.setItem(k, String(n.scrollTop)); } catch (e) {} }
+  n.addEventListener('scroll', save, { passive: true });
+  window.addEventListener('pagehide', save);
+})();
+</script>
+<script>
 // expandable sidebar groups (Analytics): the open / closed state is remembered per browser
 document.querySelectorAll('.nav-group').forEach(function (g) {
   var btn = g.querySelector('.nav-group-toggle'), box = g.querySelector('.nav-group-items'), chev = g.querySelector('.nav-chev');

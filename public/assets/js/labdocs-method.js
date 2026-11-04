@@ -285,9 +285,28 @@
   };
   window.addEventListener('beforeunload', function (e) { if (edit && dirty) { e.preventDefault(); e.returnValue = ''; } });
   document.getElementById('vd-print').onclick = function () {
+    if (pdfOn && pdfFrame && pdfFrame.contentWindow) { try { pdfFrame.contentWindow.focus(); pdfFrame.contentWindow.print(); return; } catch (e) {} }
     if (edit && document.activeElement) document.activeElement.blur();
     var was = showAll; showAll = true; pagesEl.classList.add('ld-all');
     setTimeout(function () { window.print(); showAll = was; pagesEl.classList.toggle('ld-all', showAll); show(page); }, 60);
   };
+  // two ways to look at the document: the PDF itself (exactly as it is, with the browser's own zoom, search and print) or the editable version rebuilt from it
+  var modeBtn = document.getElementById('vd-mode'), pdfFrame = null, pdfOn = false;
+  function setMode(pdf) {
+    pdfOn = pdf;
+    var stage = document.getElementById('vd-stage');
+    if (pdf && !pdfFrame) {
+      pdfFrame = document.createElement('iframe'); pdfFrame.className = 'vd-pdfframe'; pdfFrame.title = 'PDF';
+      pdfFrame.src = D.pdfUrl + '#view=FitH'; stage.parentNode.insertBefore(pdfFrame, stage.nextSibling);
+    }
+    if (pdfFrame) pdfFrame.hidden = !pdf;
+    stage.hidden = pdf; pagerEl.hidden = pdf; root.classList.toggle('vd-pdfmode', pdf);
+    document.querySelectorAll('.ld-find, .bk-zoom').forEach(function (n) { n.hidden = pdf; });
+    if (modeBtn) { modeBtn.textContent = pdf ? 'Editable view' : 'PDF view'; modeBtn.title = pdf ? 'The document rebuilt as text you can edit' : 'The PDF exactly as it is'; }
+    if (!pdf) { window.dispatchEvent(new Event('resize')); }
+  }
+  if (modeBtn) modeBtn.onclick = function () { setMode(!pdfOn); };
+  if (editBtn) editBtn.addEventListener('click', function () { if (pdfOn) setMode(false); }, true);          // editing always happens in the editable view
   render();
+  if (modeBtn && !D.method.isRev && !D.method.revisionNo) setMode(true);                        // an unedited document opens as the PDF
 })();

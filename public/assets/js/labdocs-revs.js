@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   var node = document.getElementById('ld-revs');
-  var stage = document.getElementById('ld-stage') || document.getElementById('vd-stage') || document.getElementById('bk-stage');
+  var stage = document.querySelector('[data-ld-stage]') || document.getElementById('ld-stage') || document.getElementById('vd-stage') || document.getElementById('bk-stage');
   if (!node || !stage) return;
   var R; try { R = JSON.parse(node.textContent); } catch (e) { return; }
   if (!R || R.ro) return;                                              // a revision shown in the frame has no panel of its own

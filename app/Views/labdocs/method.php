@@ -22,6 +22,7 @@ $canEdit = ! empty($data['canEdit']);
                     <button type="button" class="ld-btn" data-cmd="italic" title="Italic"><i>I</i></button>
                     <button type="button" class="ld-btn" data-cmd="underline" title="Underline"><u>U</u></button>
                 </span>
+                <button type="button" class="ld-btn" id="vd-mode" title="The PDF exactly as it is">PDF view</button>
                 <?php if ($canEdit): ?>
                     <button type="button" class="ld-btn" id="vd-edit">Edit</button>
                     <button type="button" class="ld-btn ld-primary" id="vd-save" hidden>Save</button>

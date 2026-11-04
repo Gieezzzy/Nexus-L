@@ -142,8 +142,12 @@ class LabDocsController extends BaseController
         if (($reg['view_type'] ?? 'register') === 'specs') {
             return $this->specsPage($reg);
         }
+        if (($reg['view_type'] ?? 'register') === 'files') {
+            return $this->filesPage($reg);
+        }
         $cols = $this->db()->table('tbl_labdoc_columns')->where('register_id', $reg['id'])->orderBy('sort_order')->get()->getResultArray();
         $rows = $this->db()->table('tbl_labdoc_rows')->where('register_id', $reg['id'])->orderBy('sort_order')->get()->getResultArray();
+        $log  = $this->db()->table('tbl_labdoc_log')->where('register_id', $reg['id'])->orderBy('id', 'DESC')->get(5)->getResultArray();
         $snap = $this->revSnap($reg, 'register', '');
         if ($snap) {
             $sn   = json_decode((string) $snap['snapshot_json'], true) ?: [];
@@ -266,13 +270,14 @@ class LabDocsController extends BaseController
         foreach ($db->table('tbl_vfm_illustrated')->where('register_id', $reg['id'])->orderBy('label')->get()->getResultArray() as $r) {
             $ill[$r['code']][] = ['id' => (int) $r['id'], 'label' => $r['label'], 'url' => site_url('labdocs/' . rawurlencode($reg['code']) . '/ill/' . $r['id'])];
         }
-        $rows = $db->table('tbl_vfm_methods')->select('code, series, title, rev_label, rev_date, edited_at, edited_by, pages, revision_no')
+        $tm   = $this->thumbMap($reg);
+        $rows = $db->table('tbl_vfm_methods')->select('code, series, title, rev_label, rev_date, edited_at, edited_by, pages, revision_no, cache_file')
             ->where(['register_id' => $reg['id'], 'is_active' => 1])->orderBy('code')->get()->getResultArray();
         $base = site_url('labdocs/' . rawurlencode($reg['code']));
         $cards = array_map(static fn ($m) => [
             'code' => $m['code'], 'series' => $m['series'], 'title' => $m['title'], 'rev' => $m['rev_label'], 'revDate' => $m['rev_date'], 'pages' => (int) $m['pages'],
             'edited' => $m['edited_at'] ? date('d M Y', strtotime((string) $m['edited_at'])) : null, 'url' => $base . '/m/' . rawurlencode($m['code']),
-            'ill' => $ill[$m['code']] ?? [],
+            'ill' => $ill[$m['code']] ?? [], 'thumb' => $tm[$m['cache_file']] ?? null,
         ], $rows);
         $docs = array_map(static fn ($d) => ['key' => $d['doc_key'], 'label' => $d['label'], 'kind' => $d['kind'], 'url' => $base . '/doc/' . rawurlencode($d['doc_key'])],
             $db->table('tbl_vfm_docs')->where('register_id', $reg['id'])->orderBy('sort_order')->get()->getResultArray());
@@ -280,7 +285,7 @@ class LabDocsController extends BaseController
         $meta['sections'] = ($meta['sections'] ?? []) + ['H' => 'Sampling and Material Conditioning', 'I' => 'Chemical Analysis and Identification', 'J' => 'Electrical and Thermal Safety'];
 
         return $this->render('labdocs/methods', [
-            'title' => $reg['code'] . ' ' . $reg['title'], 'withCss' => 'labdocs.css', 'withJs' => ['labdocs-methods.js'],
+            'title' => $reg['code'] . ' ' . $reg['title'], 'withCss' => 'labdocs.css', 'withJs' => ['labdocs-methods.js', 'labdocs-preview.js'],
             'reg' => $reg, 'cards' => $cards, 'docs' => $docs, 'sections' => $meta['sections'] ?? [],
         ]);
     }
@@ -290,14 +295,15 @@ class LabDocsController extends BaseController
     {
         $db   = $this->db();
         $base = site_url('labdocs/' . rawurlencode($reg['code']));
+        $tm   = $this->thumbMap($reg);
         $cards = array_map(static fn ($m) => [
             'code' => $m['code'], 'name' => $m['title'], 'year' => $m['rev_label'], 'pages' => (int) $m['pages'], 'group' => $m['series'],
-            'edited' => $m['edited_at'] ? date('d M Y', strtotime((string) $m['edited_at'])) : null, 'url' => $base . '/m/' . rawurlencode($m['code']),
-        ], $db->table('tbl_vfm_methods')->select('code, series, title, rev_label, edited_at, pages')->where(['register_id' => $reg['id'], 'is_active' => 1])->orderBy('title')->get()->getResultArray());
+            'edited' => $m['edited_at'] ? date('d M Y', strtotime((string) $m['edited_at'])) : null, 'url' => $base . '/m/' . rawurlencode($m['code']), 'thumb' => $tm[$m['cache_file']] ?? null,
+        ], $db->table('tbl_vfm_methods')->select('code, series, title, rev_label, edited_at, pages, cache_file')->where(['register_id' => $reg['id'], 'is_active' => 1])->orderBy('title')->get()->getResultArray());
         $docs = array_map(static fn ($d) => ['key' => $d['doc_key'], 'label' => $d['label'], 'kind' => $d['kind'], 'url' => $base . '/doc/' . rawurlencode($d['doc_key'])],
             $db->table('tbl_vfm_docs')->where('register_id', $reg['id'])->orderBy('sort_order')->get()->getResultArray());
 
-        return $this->render('labdocs/specs', ['title' => $reg['code'] . ' ' . $reg['title'], 'withCss' => 'labdocs.css', 'withJs' => ['labdocs-methods.js'], 'reg' => $reg, 'cards' => $cards, 'docs' => $docs]);
+        return $this->render('labdocs/specs', ['title' => $reg['code'] . ' ' . $reg['title'], 'withCss' => 'labdocs.css', 'withJs' => ['labdocs-methods.js', 'labdocs-preview.js'], 'reg' => $reg, 'cards' => $cards, 'docs' => $docs]);
     }
 
     public function method(string $code, string $vf): ResponseInterface|string
@@ -315,7 +321,7 @@ class LabDocsController extends BaseController
         $doc  = json_decode((string) ($snap['snapshot_json'] ?? $m['content_json']), true) ?: ['blocks' => [], 'base' => 11, 'margin' => 72];
         $data = [
             'method' => ['code' => $m['code'], 'title' => $m['title'], 'rev' => $m['rev_label'], 'pages' => (int) $m['pages'], 'revisionNo' => (int) $m['revision_no'],
-                'editedBy' => $m['edited_by'], 'editedAt' => $m['edited_at'], 'spec' => ($reg['view_type'] ?? '') === 'specs', 'header' => (string) ($doc['headerTitle'] ?? '')],
+                'editedBy' => $m['edited_by'], 'editedAt' => $m['edited_at'], 'spec' => ($reg['view_type'] ?? '') === 'specs', 'isRev' => (bool) $snap, 'header' => (string) ($doc['headerTitle'] ?? '')],
             'doc' => ['base' => (float) ($doc['base'] ?? 11), 'orient' => (string) ($doc['orient'] ?? 'portrait'), 'blocks' => $doc['blocks'] ?? []],
             'assets' => base_url('assets/vfm') . '/',
             'logo' => base_url('assets/vfm/_logo.png'),
@@ -452,6 +458,11 @@ class LabDocsController extends BaseController
     {
         $path = $this->cachePath($rel);
         if ($path === null) {
+            $f = $this->db()->table('tbl_labdoc_files')->select('id, ext')->where('src_key', $rel)->get()->getRowArray();
+            if ($f) {
+                return $this->sendDbFile((int) $f['id'], $name, $download);
+            }
+
             return $this->response->setStatusCode(404)->setBody('The file is not in the cache; run php spark vfm:import again.');
         }
         $types = ['pdf' => 'application/pdf', 'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
@@ -468,6 +479,139 @@ class LabDocsController extends BaseController
         return $this->db()->table('tbl_vfm_methods')->where(['register_id' => $reg['id'], 'code' => $code, 'is_active' => 1])->get()->getRowArray() ?: null;
     }
 
+
+    // ------------------------------------------------------------------------------------------------ folders of files (#DTP-Lab-108)
+
+    private const TYPES = ['pdf' => 'application/pdf', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'gif' => 'image/gif',
+        'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'doc' => 'application/msword', 'xls' => 'application/vnd.ms-excel', 'zip' => 'application/zip'];
+
+    /** one level of the folder tree: its folders and files as cards; ?p= is the folder, ?q= a search over every folder */
+    private function filesPage(array $reg): string
+    {
+        $db   = $this->db();
+        $base = site_url('labdocs/' . rawurlencode($reg['code']));
+        $p    = trim(str_replace('\\', '/', (string) $this->request->getGet('p')), '/');
+        $q    = trim((string) $this->request->getGet('q'));
+        if (str_contains($p, '..')) {
+            $p = '';
+        }
+        $sel = 'id, folder, name, ext, file_size, file_mtime, (thumb IS NOT NULL) AS has_thumb';
+        $folders = [];
+        if ($q !== '') {
+            $rows = $db->table('tbl_labdoc_files')->select($sel)->where('register_id', $reg['id'])->groupStart()->like('name', $q)->orLike('folder', $q)->groupEnd()->orderBy('folder')->orderBy('name')->get(300)->getResultArray();
+        } else {
+            $rows = $db->table('tbl_labdoc_files')->select($sel)->where(['register_id' => $reg['id'], 'folder' => $p])->orderBy('name')->get()->getResultArray();
+            $like = $p === '' ? '' : $p . '/';
+            $all  = $db->table('tbl_labdoc_files')->select('folder, COUNT(*) AS n')->where('register_id', $reg['id'])->groupBy('folder')->get()->getResultArray();
+            foreach ($all as $a) {
+                if ($a['folder'] === '' || ($like !== '' && ! str_starts_with($a['folder'], $like)) || $a['folder'] === $p) {
+                    continue;
+                }
+                $name = explode('/', substr($a['folder'], strlen($like)))[0];
+                $folders[$name] = ($folders[$name] ?? 0) + (int) $a['n'];
+            }
+            ksort($folders, SORT_NATURAL | SORT_FLAG_CASE);
+        }
+        usort($rows, static fn ($a, $b) => strnatcasecmp($a['folder'] . '/' . $a['name'], $b['folder'] . '/' . $b['name']));
+        $bookKeys = array_column($db->table('tbl_labdoc_books')->select('book_key')->where('register_id', $reg['id'])->get()->getResultArray(), 'book_key');
+        $files    = array_map(static function ($f) use ($base, $bookKeys) {
+            $view = in_array($f['ext'], ['pdf', 'jpg', 'jpeg', 'png', 'gif'], true);
+            $url  = $view ? $base . '/v/' . $f['id'] : (in_array('f' . $f['id'], $bookKeys, true) ? $base . '/b/f' . $f['id'] : $base . '/f/' . $f['id'] . '?dl=1');
+
+            return ['name' => $f['name'], 'ext' => $f['ext'], 'folder' => $f['folder'], 'size' => (int) $f['file_size'], 'date' => $f['file_mtime'] ? date('d M Y', strtotime((string) $f['file_mtime'])) : '',
+                'url' => $url, 'open' => $view || in_array('f' . $f['id'], $bookKeys, true), 'thumb' => $f['has_thumb'] ? $base . '/thumb/' . $f['id'] : null];
+        }, $rows);
+        $parent = $p === '' ? '' : (str_contains($p, '/') ? $base . '?p=' . rawurlencode(substr($p, 0, (int) strrpos($p, '/'))) : $base);
+        $crumbs = [];
+        $acc    = '';
+        foreach ($p === '' ? [] : explode('/', $p) as $seg) {
+            $acc     .= ($acc === '' ? '' : '/') . $seg;
+            $crumbs[] = ['name' => $seg, 'url' => $base . '?p=' . rawurlencode($acc)];
+        }
+        $fl = [];
+        foreach ($folders as $name => $n) {
+            $fl[] = ['name' => $name, 'count' => $n, 'url' => $base . '?p=' . rawurlencode(($p === '' ? '' : $p . '/') . $name)];
+        }
+
+        return $this->render('labdocs/files', ['title' => $reg['code'] . ' ' . $reg['title'], 'withCss' => 'labdocs.css', 'withJs' => ['labdocs-preview.js'],
+            'reg' => $reg, 'folders' => $fl, 'files' => $files, 'crumbs' => $crumbs, 'q' => $q, 'base' => $base, 'parent' => $q !== '' ? $base : $parent]);
+    }
+
+    /** a PDF or picture of a folder register in the same page frame as the other documents: back to its folder, previous / next file, zoom, print, download */
+    public function fileView(string $code, string $id): ResponseInterface|string
+    {
+        $reg = $this->register(rawurldecode($code));
+        $db  = $this->db();
+        $f   = $reg ? $db->table('tbl_labdoc_files')->select('id, folder, name, ext, file_size, file_mtime')->where(['id' => (int) $id, 'register_id' => $reg['id']])->get()->getRowArray() : null;
+        if (! $f) {
+            return redirect()->to(site_url('labdocs'))->with('error', 'That file is not in the database.');
+        }
+        $base = site_url('labdocs/' . rawurlencode($reg['code']));
+        $sib  = $db->table('tbl_labdoc_files')->select('id, name')->where(['register_id' => $reg['id'], 'folder' => $f['folder']])->whereIn('ext', ['pdf', 'jpg', 'jpeg', 'png', 'gif'])->get()->getResultArray();
+        usort($sib, static fn ($a, $b) => strnatcasecmp($a['name'], $b['name']));
+        $ids = array_column($sib, 'id');
+        $at  = array_search((string) $f['id'], array_map('strval', $ids), true);
+        $nav = static fn ($i) => isset($ids[$i]) ? $base . '/v/' . $ids[$i] : null;
+        $data = [
+            'file' => ['id' => (int) $f['id'], 'name' => $f['name'], 'ext' => $f['ext'], 'folder' => $f['folder'], 'size' => (int) $f['file_size'], 'at' => $at === false ? 0 : $at + 1, 'of' => count($ids),
+                'date' => $f['file_mtime'] ? date('d M Y H:i', strtotime((string) $f['file_mtime'])) : ''],
+            'pdf' => $f['ext'] === 'pdf', 'src' => $base . '/f/' . $f['id'], 'download' => $base . '/f/' . $f['id'] . '?dl=1',
+            'prev' => $at === false ? null : $nav($at - 1), 'next' => $at === false ? null : $nav($at + 1),
+            'backUrl' => $f['folder'] === '' ? $base : $base . '?p=' . rawurlencode($f['folder']),
+        ];
+
+        return $this->render('labdocs/fileview', ['title' => $f['name'], 'withCss' => 'labdocs.css', 'withJs' => ['labdocs-zoom.js', 'labdocs-revs.js', 'labdocs-fileview.js'], 'reg' => $reg, 'data' => $data,
+            'labRevs' => $this->revList($reg, 'file', (string) $f['id'], false)], $this->layout());
+    }
+
+    /** a file of a folder register, from the database copy */
+    public function fileGet(string $code, string $id): ResponseInterface
+    {
+        $reg = $this->register(rawurldecode($code));
+        $f   = $reg ? $this->db()->table('tbl_labdoc_files')->select('id, name, ext')->where(['id' => (int) $id, 'register_id' => $reg['id']])->get()->getRowArray() : null;
+
+        return $f ? $this->sendDbFile((int) $f['id'], (string) $f['name'], $this->request->getGet('dl') !== null || ! in_array($f['ext'], ['pdf', 'jpg', 'jpeg', 'png', 'gif'], true)) : $this->response->setStatusCode(404)->setBody('Not found');
+    }
+
+    /** the preview picture of a file (first page of a PDF, small copy of a picture) */
+    public function thumb(string $code, string $id): ResponseInterface
+    {
+        $reg = $this->register(rawurldecode($code));
+        $f   = $reg ? $this->db()->table('tbl_labdoc_files')->select('thumb')->where(['id' => (int) $id, 'register_id' => $reg['id']])->get()->getRowArray() : null;
+        if (! $f || $f['thumb'] === null) {
+            return $this->response->setStatusCode(404)->setBody('No preview');
+        }
+
+        return $this->response->setHeader('Content-Type', 'image/jpeg')->setHeader('Cache-Control', 'private, max-age=86400')->setHeader('X-Content-Type-Options', 'nosniff')->setBody($f['thumb']);
+    }
+
+    private function sendDbFile(int $id, string $name, bool $download): ResponseInterface
+    {
+        $f = $this->db()->table('tbl_labdoc_files')->select('ext')->where('id', $id)->get()->getRowArray();
+        if (! $f) {
+            return $this->response->setStatusCode(404)->setBody('Not found');
+        }
+        $body = '';
+        foreach ($this->db()->table('tbl_labdoc_file_parts')->select('data')->where('file_id', $id)->orderBy('part')->get()->getResultArray() as $part) {
+            $body .= $part['data'];
+        }
+
+        return $this->response->setHeader('Content-Type', self::TYPES[$f['ext']] ?? 'application/octet-stream')
+            ->setHeader('Content-Disposition', ($download ? 'attachment' : 'inline') . "; filename*=UTF-8''" . rawurlencode($name))->setHeader('X-Content-Type-Options', 'nosniff')->setBody($body);
+    }
+
+    /** thumbnail addresses for the cards of 101 / 103: cache name => url */
+    private function thumbMap(array $reg): array
+    {
+        $base = site_url('labdocs/' . rawurlencode($reg['code']));
+        $out  = [];
+        foreach ($this->db()->table('tbl_labdoc_files')->select('id, src_key')->where('register_id', $reg['id'])->where('src_key !=', '')->where('thumb IS NOT NULL', null, false)->get()->getResultArray() as $r) {
+            $out[$r['src_key']] = $base . '/thumb/' . $r['id'];
+        }
+
+        return $out;
+    }
 
     // ------------------------------------------------------------------------------------------------ workbooks (#DTP-Lab-102)
 
@@ -524,11 +668,23 @@ class LabDocsController extends BaseController
             'book' => ['key' => $b['book_key'], 'label' => $b['label'], 'file' => $b['file_name'], 'status' => $b['file_status'], 'updatedAt' => $b['updated_at'], 'updatedBy' => $b['updated_by']],
             'styles' => json_decode((string) $b['styles_json'], true) ?: [], 'sheets' => $sheets, 'assets' => base_url('assets/labdocs/books/' . $b['book_key']) . '/',
             'canEdit' => $snap ? false : $this->canEdit(), 'saveUrl' => $base . '/b/' . rawurlencode($b['book_key']) . '/save',
-            'backUrl' => $this->db()->table('tbl_labdoc_books')->where('register_id', $reg['id'])->countAllResults() > 1 ? $base : '',
+            'backUrl' => $this->bookBack($reg, $b, $base),
         ];
 
         return $this->render('labdocs/book', ['title' => $b['label'], 'withCss' => 'labdocs.css', 'withJs' => ['labdocs-zoom.js', 'labdocs-search.js', 'labdocs-revs.js', 'labdocs-book.js'], 'reg' => $reg, 'b' => $b, 'data' => $data,
             'labRevs' => $this->revList($reg, 'book', $b['book_key'], (bool) $snap)], $this->layout());
+    }
+
+    /** where "back" goes from a workbook: the folder it sits in (folder registers), the list of workbooks (several), or nowhere (one) */
+    private function bookBack(array $reg, array $b, string $base): string
+    {
+        if (($reg['view_type'] ?? '') === 'files' && preg_match('/^f(\d+)$/', (string) $b['book_key'], $m)) {
+            $f = $this->db()->table('tbl_labdoc_files')->select('folder')->where('id', (int) $m[1])->get()->getRowArray();
+
+            return $f && $f['folder'] !== '' ? $base . '?p=' . rawurlencode($f['folder']) : $base;
+        }
+
+        return $this->db()->table('tbl_labdoc_books')->where('register_id', $reg['id'])->countAllResults() > 1 ? $base : '';
     }
 
     public function saveBook(string $code, string $key): ResponseInterface
