@@ -89,30 +89,53 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
             </a>
             <?php endforeach ?>
         </div>
-        <!-- Laboratory Documents: the registers of the "#" folders of the Lab Documents share (one link per register in dbnexus) -->
+        <!-- Laboratory Documents (the numbered "#" folders) and Other Documents (every other folder of the share): one link per register in dbnexus, each group collapsible -->
         <?php
-        $labRegs = [];
+        $labGroups = ['lab' => ['title' => 'Laboratory Documents', 'regs' => []], 'other' => ['title' => 'Other Documents', 'regs' => []]];
         try {
             $labDb = \Config\Database::connect();
             if ($labDb->tableExists('tbl_labdoc_registers')) {
-                $labRegs = $labDb->table('tbl_labdoc_registers')->select('code, menu_label')->where('is_active', 1)->orderBy('sort_order')->get()->getResultArray();
+                $hasGrp = $labDb->fieldExists('grp', 'tbl_labdoc_registers');
+                foreach ($labDb->table('tbl_labdoc_registers')->select('code, menu_label' . ($hasGrp ? ', grp' : ''))->where('is_active', 1)->orderBy('sort_order')->orderBy('menu_label')->get()->getResultArray() as $lr) {
+                    $labGroups[($lr['grp'] ?? 'lab') === 'other' ? 'other' : 'lab']['regs'][] = $lr;
+                }
             }
         } catch (\Throwable $e) {
-            $labRegs = [];
         }
         $labCode = $segment === 'labdocs' ? rawurldecode((string) service('uri')->getSegment(2)) : '';
         ?>
-        <?php if ($labRegs): ?>
-        <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
-            <div style="padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Laboratory Documents</div>
-            <?php foreach ($labRegs as $lr): ?>
-            <a href="<?= site_url('labdocs/' . rawurlencode($lr['code'])) ?>" class="nav-link <?= ($segment === 'labdocs' && ($labCode === $lr['code'] || $labCode === '')) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
+        <?php foreach ($labGroups as $lgKey => $lg): if (! $lg['regs']) { continue; }
+            $lgHere = $segment === 'labdocs' && ($labCode === '' ? $lgKey === 'lab' : in_array($labCode, array_column($lg['regs'], 'code'), true)); ?>
+        <details class="side-group" data-grp="<?= esc($lgKey, 'attr') ?>"<?= $lgHere ? ' open data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
+            <summary class="side-group-h" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer;list-style:none">
+                <span><?= esc($lg['title']) ?> <span style="font-weight:600;opacity:.7">(<?= count($lg['regs']) ?>)</span></span>
+                <svg class="side-group-c" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:14px;height:14px;transition:transform .15s ease-out" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+            </summary>
+            <?php foreach ($lg['regs'] as $lr): ?>
+            <a href="<?= site_url('labdocs/' . rawurlencode($lr['code'])) ?>" class="nav-link <?= ($segment === 'labdocs' && ($labCode === $lr['code'] || ($labCode === '' && $lgKey === 'lab' && $lr === $lg['regs'][0]))) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
                 <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5zM14 3v5h5M9 13h6M9 17h6M9 9h2"/></svg>
                 <?= esc($lr['menu_label'] ?: $lr['code']) ?>
             </a>
             <?php endforeach ?>
-        </div>
-        <?php endif ?>
+        </details>
+        <?php endforeach ?>
+        <style>
+            .side-group > summary::-webkit-details-marker { display: none; }
+            .side-group[open] .side-group-c { transform: rotate(180deg); }
+            .side-group > summary:focus-visible { outline: 2px solid var(--brand, #35618f); outline-offset: 2px; border-radius: 6px; }
+            @media (prefers-reduced-motion: reduce) { .side-group-c { transition: none !important; } }
+        </style>
+        <script>
+        /* each group opens and closes on its click and remembers it; the group of the page being viewed is always open */
+        (function () {
+          document.querySelectorAll('#sidebar .side-group').forEach(function (d) {
+            var k = 'nx.side.grp.' + d.dataset.grp, v = null;
+            try { v = localStorage.getItem(k); } catch (e) {}
+            if (!d.dataset.here) d.open = v === '1';
+            d.addEventListener('toggle', function () { try { localStorage.setItem(k, d.open ? '1' : '0'); } catch (e) {} });
+          });
+        })();
+        </script>
     </nav>
 
     <div class="side-foot">

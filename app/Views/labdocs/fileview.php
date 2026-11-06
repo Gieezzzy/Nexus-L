@@ -25,11 +25,19 @@ $size = $f['size'] >= 1048576 ? round($f['size'] / 1048576, 1) . ' MB' : max(1, 
         </div>
     </div>
     <div class="ld-stage fv-stage" id="fv-stage" data-ld-stage>
-        <?php if ($data['pdf']): ?>
+        <?php if ($data['text']): ?>
+            <div class="fv-text" id="fv-text">
+                <?php if ($data['text']['kind'] === 'csv'): ?>
+                    <table class="fv-csv"><tbody>
+                        <?php foreach ($data['text']['rows'] as $ri => $row): ?><tr><?php foreach ($row as $c): ?><<?= $ri === 0 ? 'th' : 'td' ?>><?= esc($c) ?></<?= $ri === 0 ? 'th' : 'td' ?>><?php endforeach ?></tr><?php endforeach ?>
+                    </tbody></table>
+                <?php else: ?><pre><?= esc($data['text']['raw'] ?? '') ?></pre><?php endif ?>
+            </div>
+        <?php elseif ($data['pdf']): ?>
             <iframe class="fv-pdf" id="fv-frame" title="<?= esc($f['name'], 'attr') ?>" src="<?= esc($data['src'], 'attr') ?>#view=FitH"></iframe>
         <?php else: ?>
             <div class="fv-img" id="fv-img"><img id="fv-pic" src="<?= esc($data['src'], 'attr') ?>" alt="<?= esc($f['name'], 'attr') ?>"></div>
         <?php endif ?>
     </div>
 </section>
-<?= view('labdocs/_revs', ['labRevs' => $labRevs ?? null]) ?>
+<?= view('labdocs/_revs', ['labRevs' => $labRevs ?? null, 'labCollab' => $labCollab ?? null]) ?>

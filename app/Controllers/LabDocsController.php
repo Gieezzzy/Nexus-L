@@ -61,7 +61,7 @@ class LabDocsController extends BaseController
      *
      * @param array|string $snapshot
      */
-    private function archive(array $reg, string $kind, string $key, string $category, $snapshot, ?string $copyFrom, string $user): void
+    private function archive(array $reg, string $kind, string $key, string $category, $snapshot, ?string $copyFrom, string $user, ?string $copyName = null): void
     {
         $db  = $this->db();
         $n   = 1 + (int) ($db->table('tbl_labdoc_revs')->selectMax('rev_no')->where(['register_id' => $reg['id'], 'kind' => $kind, 'doc_key' => $key])->get()->getRow()->rev_no ?? 0);
@@ -73,7 +73,7 @@ class LabDocsController extends BaseController
             if (is_dir($dir) || @mkdir($dir, 0775, true)) {
                 $ok = @file_put_contents($dir . '/' . $cat . ' Rev' . $n . '.json', (string) $json) !== false;
                 if ($copyFrom && is_file($copyFrom)) {
-                    $ok = @copy($copyFrom, $dir . '/' . basename(str_replace('/', DIRECTORY_SEPARATOR, $copyFrom))) && $ok;
+                    $ok = @copy($copyFrom, $dir . '/' . ($copyName ?? basename(str_replace('/', DIRECTORY_SEPARATOR, $copyFrom)))) && $ok;
                 }
             }
         } catch (\Throwable) {
@@ -112,9 +112,86 @@ class LabDocsController extends BaseController
         return $this->response->setJSON(['ok' => true, 'message' => $note, 'csrf' => csrf_hash()]);
     }
 
+    /** a colour for each person, the same on every screen (cursor, ring of the avatar) */
+    private const COLORS = ['#e5533d', '#2f80ed', '#16a34a', '#a855f7', '#f59e0b', '#0ea5a5', '#db2777', '#65a30d', '#7c3aed', '#0369a1'];
+
+    /** what the page needs to show who else has the document open and to warn about newer saves */
+    private function collabInfo(array $reg, string $kind, string $key, bool $ro = false): array
+    {
+        $u = $this->auth->user() ?? [];
+
+        return ['doc' => $kind . '|' . $reg['code'] . '|' . $key, 'token' => $this->docToken($kind, $reg, $key), 'ro' => $ro, 'url' => site_url('labdocs/presence'),
+            'me' => ['id' => (int) ($u['id'] ?? 0), 'name' => (string) ($u['name'] ?? $u['username'] ?? 'User'), 'color' => self::COLORS[((int) ($u['id'] ?? 0)) % count(self::COLORS)]],
+            'canEdit' => $this->canEdit()];
+    }
+
+    /** a value that changes whenever the document is saved (the page keeps the one it loaded and compares) */
+    private function docToken(string $kind, array $reg, string $key): string
+    {
+        $db = $this->db();
+        if ($kind === 'method') {
+            $m = $db->table('tbl_vfm_methods')->select('revision_no')->where(['register_id' => $reg['id'], 'code' => $key])->get()->getRowArray();
+
+            return (string) ($m['revision_no'] ?? '0');
+        }
+        if ($kind === 'book') {
+            $revs = $db->query('SELECT s.revision_no FROM tbl_labdoc_sheets s JOIN tbl_labdoc_books b ON b.id = s.book_id WHERE b.register_id = ? AND b.book_key = ? ORDER BY s.idx', [$reg['id'], $key])->getResultArray();
+
+            return implode(',', array_column($revs, 'revision_no'));
+        }
+        if ($kind === 'register') {
+            $r = $db->table('tbl_labdoc_registers')->select('updated_at')->where('id', $reg['id'])->get()->getRowArray();
+
+            return (string) ($r['updated_at'] ?? '');
+        }
+
+        return '';
+    }
+
+    /** who has a document open (every few seconds each open page reports where its cursor is and gets everybody else back) */
+    public function presence(): ResponseInterface
+    {
+        $in  = $this->request->getJSON(true) ?: [];
+        $doc = (string) ($in['doc'] ?? '');
+        $u   = $this->auth->user();
+        if (! $u || ! preg_match('/^(register|method|book|file)\|[A-Za-z0-9_.-]{1,60}\|[A-Za-z0-9_.-]{0,100}$/', $doc)) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false]);
+        }
+        $db  = $this->db();
+        $now = date('Y-m-d H:i:s');
+        $uid = (int) $u['id'];
+        $name = (string) ($u['name'] ?? $u['username'] ?? 'User');
+        $db->query('INSERT INTO tbl_labdoc_presence (doc_key, user_id, name, roles, pos, editing, seen_at) VALUES (?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name = VALUES(name), roles = VALUES(roles), pos = VALUES(pos), editing = VALUES(editing), seen_at = VALUES(seen_at)',
+            [$doc, $uid, mb_substr($name, 0, 120), mb_substr((string) ($u['role'] ?? ''), 0, 120), mb_substr((string) ($in['pos'] ?? ''), 0, 300), ! empty($in['editing']) ? 1 : 0, $now]);
+        if (random_int(1, 20) === 1) {
+            $db->query('DELETE FROM tbl_labdoc_presence WHERE seen_at < ?', [date('Y-m-d H:i:s', time() - 300)]);
+        }
+        $users = [];
+        foreach ($db->query('SELECT user_id, name, roles, pos, editing FROM tbl_labdoc_presence WHERE doc_key = ? AND seen_at >= ? ORDER BY name', [$doc, date('Y-m-d H:i:s', time() - 12)])->getResultArray() as $r) {
+            $users[] = ['id' => (int) $r['user_id'], 'name' => $r['name'], 'roles' => \App\Libraries\LabDocRoles::label((string) $r['roles']), 'pos' => $r['pos'], 'editing' => (bool) $r['editing'],
+                'color' => self::COLORS[((int) $r['user_id']) % count(self::COLORS)], 'me' => (int) $r['user_id'] === $uid];
+        }
+        [$kind, $code, $key] = explode('|', $doc);
+        $reg   = $this->register($code);
+        $token = $reg ? $this->docToken($kind, $reg, $key) : '';
+        $by    = '';
+        if ($reg) {
+            $row = $db->table('tbl_labdoc_log')->select('user_name, created_at')->where('register_id', $reg['id'])->like('action', 'save', 'after')->orderBy('id', 'DESC')->get(1)->getRowArray();
+            $by  = $row ? $row['user_name'] : '';
+        }
+
+        return $this->response->setJSON(['ok' => true, 'users' => $users, 'token' => $token, 'by' => $by]);
+    }
+
+    private function conflict(string $by, ?string $at): ResponseInterface
+    {
+        return $this->response->setStatusCode(409)->setJSON(['ok' => false, 'conflict' => true, 'by' => $by, 'at' => $at ? date('d M Y H:i', strtotime($at)) : '',
+            'message' => 'Somebody saved a newer version of this document after you opened it.', 'csrf' => csrf_hash()]);
+    }
+
     private function canEdit(): bool
     {
-        return strcasecmp((string) ($this->auth->user()['role'] ?? ''), 'admin') === 0;
+        return \App\Libraries\LabDocRoles::canEdit((string) ($this->auth->user()['role'] ?? ''));
     }
 
     public function index(): ResponseInterface|string
@@ -163,14 +240,16 @@ class LabDocsController extends BaseController
             'columns' => array_map(static fn ($c) => ['key' => $c['col_key'], 'label' => $c['label'], 'width' => (float) $c['width_pct'], 'align' => $c['align'], 'visible' => (bool) $c['is_visible']], $cols),
             'rows'    => array_map(static fn ($r) => json_decode((string) $r['cells_json'], true) ?: [], $rows),
             'canEdit' => $snap ? false : $this->canEdit(),
+            'base'    => (string) $reg['updated_at'],
             'saveUrl' => site_url('labdocs/' . rawurlencode($reg['code']) . '/save'),
         ];
 
         return $this->render('labdocs/register', [
             'labRevs' => $this->revList($reg, 'register', '', (bool) $snap),
+            'labCollab' => $this->collabInfo($reg, 'register', '', (bool) $snap),
             'title'   => $reg['code'] . ' ' . $reg['title'],
             'withCss' => 'labdocs.css',
-            'withJs'  => ['labdocs-zoom.js', 'labdocs-search.js', 'labdocs-revs.js', 'labdocs.js'],
+            'withJs'  => ['labdocs-collab.js', 'labdocs-zoom.js', 'labdocs-search.js', 'labdocs-revs.js', 'labdocs.js'],
             'reg'     => $reg,
             'data'    => $data,
             'files'   => json_decode((string) $reg['source_files'], true) ?: [],
@@ -188,6 +267,11 @@ class LabDocsController extends BaseController
             return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'Register not found.', 'csrf' => csrf_hash()]);
         }
         $in   = $this->request->getJSON(true);
+        if (empty($in['force']) && isset($in['base']) && (string) $in['base'] !== (string) $reg['updated_at']) {
+            $last = $this->db()->table('tbl_labdoc_log')->select('user_name')->where('register_id', $reg['id'])->like('action', 'save', 'after')->orderBy('id', 'DESC')->get(1)->getRowArray();
+
+            return $this->conflict((string) ($last['user_name'] ?? ''), (string) $reg['updated_at']);
+        }
         $cols = is_array($in['columns'] ?? null) ? $in['columns'] : [];
         $rows = is_array($in['rows'] ?? null) ? $in['rows'] : [];
         if ($cols === [] || count($cols) > 30 || count($rows) > 1500) {
@@ -330,8 +414,9 @@ class LabDocsController extends BaseController
         ];
 
         return $this->render('labdocs/method', [
-            'title' => $m['code'] . ' ' . $m['title'], 'withCss' => 'labdocs.css', 'withJs' => ['labdocs-zoom.js', 'labdocs-search.js', 'labdocs-revs.js', 'labdocs-method.js'], 'reg' => $reg, 'm' => $m, 'data' => $data, 'revs' => $revs,
+            'title' => $m['code'] . ' ' . $m['title'], 'withCss' => 'labdocs.css', 'withJs' => ['labdocs-collab.js', 'labdocs-zoom.js', 'labdocs-search.js', 'labdocs-revs.js', 'labdocs-method.js'], 'reg' => $reg, 'm' => $m, 'data' => $data, 'revs' => $revs,
             'labRevs' => $this->revList($reg, 'method', $m['code'], (bool) $snap),
+            'labCollab' => $this->collabInfo($reg, 'method', $m['code'], (bool) $snap),
         ], $this->layout());
     }
 
@@ -346,6 +431,9 @@ class LabDocsController extends BaseController
             return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'Test method not found.', 'csrf' => csrf_hash()]);
         }
         $in     = $this->request->getJSON(true);
+        if (empty($in['force']) && isset($in['base']) && (int) $in['base'] !== (int) $m['revision_no']) {
+            return $this->conflict((string) ($m['edited_by'] ?? ''), $m['edited_at'] ?? null);
+        }
         $blocks = \App\Libraries\VfmHtml::blocks($in['blocks'] ?? null);
         if ($blocks === null || $blocks === []) {
             return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => 'The document is empty or not valid; nothing was saved.', 'csrf' => csrf_hash()]);
@@ -465,12 +553,22 @@ class LabDocsController extends BaseController
 
             return $this->response->setStatusCode(404)->setBody('The file is not in the cache; run php spark vfm:import again.');
         }
-        $types = ['pdf' => 'application/pdf', 'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-        $ext   = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
 
-        return $this->response->setHeader('Content-Type', $types[$ext] ?? 'application/octet-stream')
-            ->setHeader('Content-Disposition', ($download ? 'attachment' : 'inline') . '; filename="' . str_replace('"', '', $name) . '"')
-            ->setHeader('X-Content-Type-Options', 'nosniff')->setBody((string) file_get_contents($path));
+        return $this->streamOut($ext, $name, $download, (int) filesize($path), md5($path . '|' . filesize($path) . '|' . filemtime($path)), static function (int $from, int $to) use ($path): void {
+            $h = fopen($path, 'rb');
+            fseek($h, $from);
+            for ($left = $to - $from + 1; $left > 0 && ! feof($h);) {
+                $chunk = fread($h, min(262144, $left));
+                if ($chunk === false || $chunk === '') {
+                    break;
+                }
+                echo $chunk;
+                $left -= strlen($chunk);
+                flush();
+            }
+            fclose($h);
+        });
     }
 
     /** @return array<string,mixed>|null */
@@ -499,11 +597,11 @@ class LabDocsController extends BaseController
         $sel = 'id, folder, name, ext, file_size, file_mtime, (thumb IS NOT NULL) AS has_thumb';
         $folders = [];
         if ($q !== '') {
-            $rows = $db->table('tbl_labdoc_files')->select($sel)->where('register_id', $reg['id'])->groupStart()->like('name', $q)->orLike('folder', $q)->groupEnd()->orderBy('folder')->orderBy('name')->get(300)->getResultArray();
+            $rows = $db->table('tbl_labdoc_files')->select($sel)->where(['register_id' => $reg['id'], 'src_key' => '', 'deleted_at' => null])->groupStart()->like('name', $q)->orLike('folder', $q)->groupEnd()->orderBy('folder')->orderBy('name')->get(300)->getResultArray();
         } else {
-            $rows = $db->table('tbl_labdoc_files')->select($sel)->where(['register_id' => $reg['id'], 'folder' => $p])->orderBy('name')->get()->getResultArray();
+            $rows = $db->table('tbl_labdoc_files')->select($sel)->where(['register_id' => $reg['id'], 'folder' => $p, 'src_key' => '', 'deleted_at' => null])->orderBy('name')->get()->getResultArray();
             $like = $p === '' ? '' : $p . '/';
-            $all  = $db->table('tbl_labdoc_files')->select('folder, COUNT(*) AS n')->where('register_id', $reg['id'])->groupBy('folder')->get()->getResultArray();
+            $all  = $db->table('tbl_labdoc_files')->select('folder, COUNT(*) AS n')->where(['register_id' => $reg['id'], 'src_key' => '', 'deleted_at' => null])->groupBy('folder')->get()->getResultArray();
             foreach ($all as $a) {
                 if ($a['folder'] === '' || ($like !== '' && ! str_starts_with($a['folder'], $like)) || $a['folder'] === $p) {
                     continue;
@@ -511,16 +609,26 @@ class LabDocsController extends BaseController
                 $name = explode('/', substr($a['folder'], strlen($like)))[0];
                 $folders[$name] = ($folders[$name] ?? 0) + (int) $a['n'];
             }
+            foreach ($db->table('tbl_labdoc_folders')->select('path')->where('register_id', $reg['id'])->get()->getResultArray() as $fo) {      // folders made here (maybe still empty)
+                if (($like === '' || str_starts_with($fo['path'], $like)) && $fo['path'] !== $p) {
+                    $name = explode('/', substr($fo['path'], strlen($like)))[0];
+                    $folders[$name] = $folders[$name] ?? 0;
+                }
+            }
             ksort($folders, SORT_NATURAL | SORT_FLAG_CASE);
         }
         usort($rows, static fn ($a, $b) => strnatcasecmp($a['folder'] . '/' . $a['name'], $b['folder'] . '/' . $b['name']));
+        $conv     = [];
+        foreach ($db->table('tbl_labdoc_files')->select('src_key')->where(['register_id' => $reg['id']])->like('src_key', 'conv:', 'after')->get()->getResultArray() as $c) {
+            $conv[(int) substr($c['src_key'], 5)] = true;
+        }
         $bookKeys = array_column($db->table('tbl_labdoc_books')->select('book_key')->where('register_id', $reg['id'])->get()->getResultArray(), 'book_key');
-        $files    = array_map(static function ($f) use ($base, $bookKeys) {
-            $view = in_array($f['ext'], ['pdf', 'jpg', 'jpeg', 'png', 'gif'], true);
+        $files    = array_map(static function ($f) use ($base, $bookKeys, $conv) {
+            $view = in_array($f['ext'], ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'csv', 'txt'], true) || (in_array($f['ext'], ['doc', 'docx', 'ppt', 'pptx'], true) && isset($conv[(int) $f['id']]));
             $url  = $view ? $base . '/v/' . $f['id'] : (in_array('f' . $f['id'], $bookKeys, true) ? $base . '/b/f' . $f['id'] : $base . '/f/' . $f['id'] . '?dl=1');
 
             return ['name' => $f['name'], 'ext' => $f['ext'], 'folder' => $f['folder'], 'size' => (int) $f['file_size'], 'date' => $f['file_mtime'] ? date('d M Y', strtotime((string) $f['file_mtime'])) : '',
-                'url' => $url, 'open' => $view || in_array('f' . $f['id'], $bookKeys, true), 'thumb' => $f['has_thumb'] ? $base . '/thumb/' . $f['id'] : null];
+                'url' => $url, 'id' => (int) $f['id'], 'open' => $view || in_array('f' . $f['id'], $bookKeys, true), 'thumb' => $f['has_thumb'] ? $base . '/thumb/' . $f['id'] : null];
         }, $rows);
         $parent = $p === '' ? '' : (str_contains($p, '/') ? $base . '?p=' . rawurlencode(substr($p, 0, (int) strrpos($p, '/'))) : $base);
         $crumbs = [];
@@ -534,8 +642,9 @@ class LabDocsController extends BaseController
             $fl[] = ['name' => $name, 'count' => $n, 'url' => $base . '?p=' . rawurlencode(($p === '' ? '' : $p . '/') . $name)];
         }
 
-        return $this->render('labdocs/files', ['title' => $reg['code'] . ' ' . $reg['title'], 'withCss' => 'labdocs.css', 'withJs' => ['labdocs-preview.js'],
-            'reg' => $reg, 'folders' => $fl, 'files' => $files, 'crumbs' => $crumbs, 'q' => $q, 'base' => $base, 'parent' => $q !== '' ? $base : $parent]);
+        return $this->render('labdocs/files', ['title' => $reg['code'] . ' ' . $reg['title'], 'withCss' => 'labdocs.css', 'withJs' => ['labdocs-collab.js', 'labdocs-preview.js', 'labdocs-files.js'],
+            'reg' => $reg, 'folders' => $fl, 'files' => $files, 'crumbs' => $crumbs, 'q' => $q, 'base' => $base, 'canEdit' => $this->canEdit(), 'curPath' => $p,
+            'labCollab' => null, 'parent' => $q !== '' ? $base : $parent]);
     }
 
     /** a PDF or picture of a folder register in the same page frame as the other documents: back to its folder, previous / next file, zoom, print, download */
@@ -548,21 +657,311 @@ class LabDocsController extends BaseController
             return redirect()->to(site_url('labdocs'))->with('error', 'That file is not in the database.');
         }
         $base = site_url('labdocs/' . rawurlencode($reg['code']));
-        $sib  = $db->table('tbl_labdoc_files')->select('id, name')->where(['register_id' => $reg['id'], 'folder' => $f['folder']])->whereIn('ext', ['pdf', 'jpg', 'jpeg', 'png', 'gif'])->get()->getResultArray();
+        $sib  = $db->table('tbl_labdoc_files')->select('id, name')->where(['register_id' => $reg['id'], 'folder' => $f['folder'], 'src_key' => ''])->whereIn('ext', ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'doc', 'docx', 'ppt', 'pptx', 'csv', 'txt'])->get()->getResultArray();
         usort($sib, static fn ($a, $b) => strnatcasecmp($a['name'], $b['name']));
         $ids = array_column($sib, 'id');
         $at  = array_search((string) $f['id'], array_map('strval', $ids), true);
         $nav = static fn ($i) => isset($ids[$i]) ? $base . '/v/' . $ids[$i] : null;
+        $showId = (int) $f['id'];                                   // the file whose bytes the viewer shows: the PDF made from a Word document, or the file itself
+        $isPdf  = $f['ext'] === 'pdf';
+        $text   = null;
+        if (in_array($f['ext'], ['doc', 'docx', 'ppt', 'pptx'], true)) {
+            $cv = $db->table('tbl_labdoc_files')->select('id')->where(['register_id' => $reg['id'], 'src_key' => 'conv:' . $f['id']])->get()->getRowArray();
+            if (! $cv) {
+                return redirect()->to($base . '/f/' . $f['id'] . '?dl=1');
+            }
+            $showId = (int) $cv['id'];
+            $isPdf  = true;
+        } elseif (in_array($f['ext'], ['csv', 'txt'], true)) {
+            $raw = '';
+            foreach ($db->table('tbl_labdoc_file_parts')->select('data')->where('file_id', $f['id'])->orderBy('part')->get(3)->getResultArray() as $part) {
+                $raw .= $part['data'];
+            }
+            $raw  = mb_convert_encoding(substr($raw, 0, 1200000), 'UTF-8', 'UTF-8, Windows-1252');
+            $text = ['kind' => $f['ext'], 'rows' => []];
+            if ($f['ext'] === 'csv') {
+                foreach (array_slice(preg_split('/\r\n|\n|\r/', $raw) ?: [], 0, 2000) as $ln) {
+                    if ($ln !== '') {
+                        $text['rows'][] = array_map(static fn ($c) => (string) $c, str_getcsv($ln, strpos($ln, ';') !== false && substr_count($ln, ';') > substr_count($ln, ',') ? ';' : ',', '"', ''));
+                    }
+                }
+            } else {
+                $text['raw'] = mb_substr($raw, 0, 200000);
+            }
+        }
         $data = [
             'file' => ['id' => (int) $f['id'], 'name' => $f['name'], 'ext' => $f['ext'], 'folder' => $f['folder'], 'size' => (int) $f['file_size'], 'at' => $at === false ? 0 : $at + 1, 'of' => count($ids),
                 'date' => $f['file_mtime'] ? date('d M Y H:i', strtotime((string) $f['file_mtime'])) : ''],
-            'pdf' => $f['ext'] === 'pdf', 'src' => $base . '/f/' . $f['id'], 'download' => $base . '/f/' . $f['id'] . '?dl=1',
+            'pdf' => $isPdf, 'text' => $text, 'src' => $base . '/f/' . $showId, 'download' => $base . '/f/' . $f['id'] . '?dl=1',
             'prev' => $at === false ? null : $nav($at - 1), 'next' => $at === false ? null : $nav($at + 1),
             'backUrl' => $f['folder'] === '' ? $base : $base . '?p=' . rawurlencode($f['folder']),
         ];
 
-        return $this->render('labdocs/fileview', ['title' => $f['name'], 'withCss' => 'labdocs.css', 'withJs' => ['labdocs-zoom.js', 'labdocs-revs.js', 'labdocs-fileview.js'], 'reg' => $reg, 'data' => $data,
-            'labRevs' => $this->revList($reg, 'file', (string) $f['id'], false)], $this->layout());
+        return $this->render('labdocs/fileview', ['title' => $f['name'], 'withCss' => 'labdocs.css', 'withJs' => ['labdocs-collab.js', 'labdocs-zoom.js', 'labdocs-search.js', 'labdocs-revs.js', 'labdocs-fileview.js'], 'reg' => $reg, 'data' => $data,
+            'labRevs' => $this->revList($reg, 'file', (string) $f['id'], false), 'labCollab' => $this->collabInfo($reg, 'file', (string) $f['id'], false)], $this->layout());
+    }
+
+    // ------------------------------------------------------------------------------------------------ editing a folder of files (Encoder, Manager, Supervisor, Admin)
+
+    private const BLOCKED = ['exe', 'bat', 'cmd', 'com', 'msi', 'dll', 'ps1', 'vbs', 'js', 'jse', 'php', 'phtml', 'scr', 'sh', 'jar', 'hta', 'lnk'];
+    private const MAX_UPLOAD = 62914560;                       // 60 MB
+
+    private function folderGuard(string $code): array
+    {
+        $reg = $this->register(rawurldecode($code));
+        if (! $this->canEdit()) {
+            return [null, $this->response->setStatusCode(403)->setJSON(['ok' => false, 'message' => 'Your role can view the documents but not change them.', 'csrf' => csrf_hash()])];
+        }
+        if (! $reg || ($reg['view_type'] ?? '') !== 'files') {
+            return [null, $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'Folder register not found.', 'csrf' => csrf_hash()])];
+        }
+
+        return [$reg, null];
+    }
+
+    private function cleanPath(string $p): ?string
+    {
+        $p = trim(str_replace('\\', '/', $p), '/');
+        if ($p === '') {
+            return '';
+        }
+        foreach (explode('/', $p) as $seg) {
+            if ($seg === '' || $seg === '.' || $seg === '..' || preg_match('/[<>:"|?*\x00-\x1f]/', $seg) || mb_strlen($seg) > 120) {
+                return null;
+            }
+        }
+
+        return mb_strlen($p) > 480 ? null : $p;
+    }
+
+    private function userName(): string
+    {
+        return (string) ($this->auth->user()['name'] ?? $this->auth->user()['username'] ?? 'user');
+    }
+
+    public function newFolder(string $code): ResponseInterface
+    {
+        [$reg, $err] = $this->folderGuard($code);
+        if ($err) {
+            return $err;
+        }
+        $in   = $this->request->getJSON(true) ?: [];
+        $base = $this->cleanPath((string) ($in['p'] ?? ''));
+        $name = trim((string) ($in['name'] ?? ''));
+        if ($base === null || $name === '' || $this->cleanPath($name) === null || str_contains($name, '/') || str_contains($name, '\\')) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => 'Give the folder a name without \ / : * ? " < > |', 'csrf' => csrf_hash()]);
+        }
+        $path = ($base === '' ? '' : $base . '/') . $name;
+        $db   = $this->db();
+        if ($db->table('tbl_labdoc_folders')->where(['register_id' => $reg['id'], 'path' => $path])->countAllResults() === 0) {
+            $db->table('tbl_labdoc_folders')->insert(['register_id' => $reg['id'], 'path' => $path, 'created_by' => $this->userName(), 'created_at' => date('Y-m-d H:i:s')]);
+        }
+        $made = @mkdir(self::SHARE . '/' . $reg['folder_name'] . '/' . $path, 0775, true) || is_dir(self::SHARE . '/' . $reg['folder_name'] . '/' . $path);
+        $db->table('tbl_labdoc_log')->insert(['register_id' => $reg['id'], 'action' => 'new-folder', 'user_name' => $this->userName(), 'created_at' => date('Y-m-d H:i:s'), 'detail' => mb_substr($path . ($made ? '' : ' (not created on the share)'), 0, 490)]);
+
+        return $this->response->setJSON(['ok' => true, 'onShare' => $made, 'csrf' => csrf_hash()]);
+    }
+
+    public function upload(string $code): ResponseInterface
+    {
+        [$reg, $err] = $this->folderGuard($code);
+        if ($err) {
+            return $err;
+        }
+        $db  = $this->db();
+        $dir = $this->cleanPath((string) $this->request->getPost('p'));
+        if ($dir === null) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => 'That folder is not valid.', 'csrf' => csrf_hash()]);
+        }
+        $user = $this->userName();
+        $now  = date('Y-m-d H:i:s');
+        $done = [];
+        $bad  = [];
+        $disk = ($reg['grp'] ?? 'lab') === 'other';
+        foreach ($this->request->getFileMultiple('files') ?: [] as $up) {
+            $name = trim(str_replace(['\\', '/'], '-', (string) $up->getClientName()));
+            $ext  = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+            if (! $up->isValid() || $name === '' || preg_match('/[<>:"|?*\x00-\x1f]/', $name)) {
+                $bad[] = $name . ' (not accepted)';
+                continue;
+            }
+            if (in_array($ext, self::BLOCKED, true)) {
+                $bad[] = $name . ' (this kind of file is not allowed)';
+                continue;
+            }
+            if ($up->getSize() > self::MAX_UPLOAD) {
+                $bad[] = $name . ' (over 60 MB)';
+                continue;
+            }
+            $tmp = $up->getTempName();
+            $cur = $db->table('tbl_labdoc_files')->where(['register_id' => $reg['id'], 'folder' => $dir, 'name' => $name, 'src_key' => ''])->get()->getRowArray();
+            if ($cur) {                                            // the same name: the old file is kept as a revision (database + Logs folder)
+                $old = tempnam(sys_get_temp_dir(), 'lab');
+                $fh  = fopen($old, 'wb');
+                foreach ($db->table('tbl_labdoc_file_parts')->select('data')->where('file_id', $cur['id'])->orderBy('part')->get()->getResultArray() as $pt) {
+                    fwrite($fh, $pt['data']);
+                }
+                fclose($fh);
+                $oldCopy = $old;
+                if ($cur['disk_path'] && $this->cachePath((string) $cur['disk_path']) !== null) {
+                    $oldCopy = (string) $this->cachePath((string) $cur['disk_path']);
+                }
+                $this->archive($reg, 'file', (string) $cur['id'], ($dir === '' ? '' : $dir . '/') . $name, ['name' => $name, 'size' => (int) $cur['file_size'], 'saved' => $cur['file_mtime']], $oldCopy, $user, basename($name));
+                @unlink($old);
+            }
+            $data = ['register_id' => $reg['id'], 'folder' => $dir, 'name' => mb_substr($name, 0, 250), 'ext' => $ext, 'file_size' => $up->getSize(), 'file_mtime' => $now, 'deleted_at' => null, 'deleted_by' => null, 'thumb' => null, 'src_key' => ''];
+            if ($cur) {
+                $db->table('tbl_labdoc_files')->where('id', $cur['id'])->update($data);
+                $fid = (int) $cur['id'];
+            } else {
+                $db->table('tbl_labdoc_files')->insert($data);
+                $fid = (int) $db->insertID();
+            }
+            $db->table('tbl_labdoc_file_parts')->where('file_id', $fid)->delete();
+            if ($disk) {
+                $rel = 'other/' . preg_replace('/[^A-Za-z0-9._-]+/', '-', $reg['code']) . '/' . $fid . ($ext !== '' ? '.' . $ext : '');
+                @mkdir(dirname(WRITEPATH . 'labdocs/' . $rel), 0775, true);
+                copy($tmp, WRITEPATH . 'labdocs/' . $rel);
+                $db->table('tbl_labdoc_files')->where('id', $fid)->update(['disk_path' => $rel]);
+            } else {
+                $h = fopen($tmp, 'rb');
+                for ($i = 0; $h && ! feof($h); $i++) {
+                    $piece = fread($h, 400000);
+                    if ($piece === false || $piece === '') {
+                        break;
+                    }
+                    $db->table('tbl_labdoc_file_parts')->insert(['file_id' => $fid, 'part' => $i, 'data' => $piece]);
+                }
+                if ($h) {
+                    fclose($h);
+                }
+            }
+            $thumb = $this->makeThumb($tmp, $ext);
+            if ($thumb !== null) {
+                $db->table('tbl_labdoc_files')->where('id', $fid)->update(['thumb' => $thumb]);
+            }
+            $target = self::SHARE . '/' . $reg['folder_name'] . '/' . ($dir === '' ? '' : $dir . '/');       // also onto the share, when it can be written
+            if ((is_dir($target) || @mkdir($target, 0775, true)) && @copy($tmp, $target . $name)) {
+                $done[] = $name;
+            } else {
+                $done[] = $name . ' (kept in NEXUS-L; not copied to the share)';
+            }
+            $db->table('tbl_labdoc_log')->insert(['register_id' => $reg['id'], 'action' => $cur ? 'replace-file' : 'upload', 'user_name' => $user, 'created_at' => $now, 'detail' => mb_substr(($dir === '' ? '' : $dir . '/') . $name, 0, 490)]);
+        }
+
+        return $this->response->setJSON(['ok' => $done !== [], 'done' => $done, 'bad' => $bad, 'message' => $done === [] ? 'Nothing was uploaded: ' . implode(', ', $bad) : '', 'csrf' => csrf_hash()]);
+    }
+
+    /** a small preview of an uploaded picture (PDF and Office previews are made by the import tools) */
+    private function makeThumb(string $path, string $ext): ?string
+    {
+        if (! in_array($ext, ['jpg', 'jpeg', 'png', 'gif'], true) || ! function_exists('imagecreatefromstring')) {
+            return null;
+        }
+        $im = @imagecreatefromstring((string) @file_get_contents($path));
+        if (! $im) {
+            return null;
+        }
+        $w = imagesx($im);
+        $h = imagesy($im);
+        $k = min(1, 360 / max($w, 1));
+        $t = imagecreatetruecolor((int) max(1, $w * $k), (int) max(1, $h * $k));
+        imagecopyresampled($t, $im, 0, 0, 0, 0, imagesx($t), imagesy($t), $w, $h);
+        ob_start();
+        imagejpeg($t, null, 72);
+
+        return (string) ob_get_clean();
+    }
+
+    public function deleteFile(string $code, string $id): ResponseInterface
+    {
+        [$reg, $err] = $this->folderGuard($code);
+        if ($err) {
+            return $err;
+        }
+        $f = $this->db()->table('tbl_labdoc_files')->select('id, name, folder')->where(['id' => (int) $id, 'register_id' => $reg['id'], 'deleted_at' => null])->get()->getRowArray();
+        if (! $f) {
+            return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'File not found.', 'csrf' => csrf_hash()]);
+        }
+        $user = $this->userName();
+        $this->db()->table('tbl_labdoc_files')->where('id', $f['id'])->update(['deleted_at' => date('Y-m-d H:i:s'), 'deleted_by' => $user]);
+        $this->db()->table('tbl_labdoc_log')->insert(['register_id' => $reg['id'], 'action' => 'delete-file', 'user_name' => $user, 'created_at' => date('Y-m-d H:i:s'), 'detail' => mb_substr(($f['folder'] === '' ? '' : $f['folder'] . '/') . $f['name'] . ' (the copy in the database is kept)', 0, 490)]);
+
+        return $this->response->setJSON(['ok' => true, 'csrf' => csrf_hash()]);
+    }
+
+    /** looks in the folder on the share for files that are new or changed and takes them in (no previews: those come from the import tools) */
+    public function refresh(string $code): ResponseInterface
+    {
+        [$reg, $err] = $this->folderGuard($code);
+        if ($err) {
+            return $err;
+        }
+        @set_time_limit(180);
+        $root = self::SHARE . '/' . $reg['folder_name'];
+        if (! is_dir($root)) {
+            return $this->response->setStatusCode(502)->setJSON(['ok' => false, 'message' => 'The folder on the share cannot be reached from the server right now.', 'csrf' => csrf_hash()]);
+        }
+        $db   = $this->db();
+        $disk = ($reg['grp'] ?? 'lab') === 'other';
+        $new  = $changed = $skipped = 0;
+        $it   = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS));
+        foreach ($it as $f) {
+            $name = $f->getFilename();
+            $ext  = strtolower($f->getExtension());
+            if (! $f->isFile() || str_starts_with($name, '~$') || in_array($ext, ['db', 'ini', 'lnk', 'tmp'], true) || in_array($ext, self::BLOCKED, true)) {
+                continue;
+            }
+            $full = str_replace('\\', '/', $f->getPathname());
+            $rel  = ltrim(substr($full, strlen(str_replace('\\', '/', $root))), '/');
+            $dir  = str_contains($rel, '/') ? substr($rel, 0, (int) strrpos($rel, '/')) : '';
+            $mt   = date('Y-m-d H:i:s', $f->getMTime());
+            $cur  = $db->table('tbl_labdoc_files')->select('id, file_size, file_mtime, deleted_at')->where(['register_id' => $reg['id'], 'folder' => $dir, 'name' => $name, 'src_key' => ''])->get()->getRowArray();
+            if ($cur && ($cur['deleted_at'] !== null || ((int) $cur['file_size'] === $f->getSize() && $cur['file_mtime'] === $mt))) {
+                continue;                                          // already here (or deleted in NEXUS-L: it stays deleted)
+            }
+            if ($f->getSize() > self::MAX_UPLOAD * 2) {
+                $skipped++;
+                continue;
+            }
+            $data = ['register_id' => $reg['id'], 'folder' => $dir, 'name' => $name, 'ext' => $ext, 'file_size' => $f->getSize(), 'file_mtime' => $mt, 'src_key' => ''];
+            if ($cur) {
+                $db->table('tbl_labdoc_files')->where('id', $cur['id'])->update($data);
+                $fid = (int) $cur['id'];
+                $changed++;
+            } else {
+                $db->table('tbl_labdoc_files')->insert($data);
+                $fid = (int) $db->insertID();
+                $new++;
+            }
+            $db->table('tbl_labdoc_file_parts')->where('file_id', $fid)->delete();
+            if ($disk) {
+                $dst = 'other/' . preg_replace('/[^A-Za-z0-9._-]+/', '-', $reg['code']) . '/' . $fid . ($ext !== '' ? '.' . $ext : '');
+                @mkdir(dirname(WRITEPATH . 'labdocs/' . $dst), 0775, true);
+                if (@copy($f->getPathname(), WRITEPATH . 'labdocs/' . $dst)) {
+                    $db->table('tbl_labdoc_files')->where('id', $fid)->update(['disk_path' => $dst]);
+                }
+            } else {
+                $h = fopen($f->getPathname(), 'rb');
+                for ($i = 0; $h && ! feof($h); $i++) {
+                    $piece = fread($h, 400000);
+                    if ($piece === false || $piece === '') {
+                        break;
+                    }
+                    $db->table('tbl_labdoc_file_parts')->insert(['file_id' => $fid, 'part' => $i, 'data' => $piece]);
+                }
+                if ($h) {
+                    fclose($h);
+                }
+            }
+            $thumb = $this->makeThumb($f->getPathname(), $ext);
+            if ($thumb !== null) {
+                $db->table('tbl_labdoc_files')->where('id', $fid)->update(['thumb' => $thumb]);
+            }
+        }
+        $db->table('tbl_labdoc_log')->insert(['register_id' => $reg['id'], 'action' => 'refresh', 'user_name' => $this->userName(), 'created_at' => date('Y-m-d H:i:s'), 'detail' => "{$new} new, {$changed} changed, {$skipped} too big"]);
+
+        return $this->response->setJSON(['ok' => true, 'new' => $new, 'changed' => $changed, 'skipped' => $skipped, 'csrf' => csrf_hash()]);
     }
 
     /** a file of a folder register, from the database copy */
@@ -588,17 +987,88 @@ class LabDocsController extends BaseController
 
     private function sendDbFile(int $id, string $name, bool $download): ResponseInterface
     {
-        $f = $this->db()->table('tbl_labdoc_files')->select('ext')->where('id', $id)->get()->getRowArray();
+        $db = $this->db();
+        $f  = $db->table('tbl_labdoc_files')->select('ext, disk_path, file_size, file_mtime')->where('id', $id)->get()->getRowArray();
         if (! $f) {
             return $this->response->setStatusCode(404)->setBody('Not found');
         }
-        $body = '';
-        foreach ($this->db()->table('tbl_labdoc_file_parts')->select('data')->where('file_id', $id)->orderBy('part')->get()->getResultArray() as $part) {
-            $body .= $part['data'];
-        }
+        $etag = md5($id . '|' . $f['file_size'] . '|' . $f['file_mtime']);
+        if (! empty($f['disk_path']) && $this->cachePath((string) $f['disk_path']) !== null) {            // a copy on the server's disk
+            $path = (string) $this->cachePath((string) $f['disk_path']);
 
-        return $this->response->setHeader('Content-Type', self::TYPES[$f['ext']] ?? 'application/octet-stream')
-            ->setHeader('Content-Disposition', ($download ? 'attachment' : 'inline') . "; filename*=UTF-8''" . rawurlencode($name))->setHeader('X-Content-Type-Options', 'nosniff')->setBody($body);
+            return $this->streamOut((string) $f['ext'], $name, $download, (int) filesize($path), $etag, static function (int $from, int $to) use ($path): void {
+                $h = fopen($path, 'rb');
+                fseek($h, $from);
+                for ($left = $to - $from + 1; $left > 0 && ! feof($h);) {
+                    $chunk = fread($h, min(262144, $left));
+                    if ($chunk === false || $chunk === '') {
+                        break;
+                    }
+                    echo $chunk;
+                    $left -= strlen($chunk);
+                    flush();
+                }
+                fclose($h);
+            });
+        }
+        $size = (int) ($db->query('SELECT SUM(LENGTH(data)) AS n FROM tbl_labdoc_file_parts WHERE file_id = ?', [$id])->getRow()->n ?? 0);
+
+        return $this->streamOut((string) $f['ext'], $name, $download, $size, $etag, static function (int $from, int $to) use ($db, $id): void {
+            $ps = 400000;                                                                               // every piece is 400 KB except the last
+            foreach ($db->query('SELECT part, data FROM tbl_labdoc_file_parts WHERE file_id = ? AND part BETWEEN ? AND ? ORDER BY part', [$id, intdiv($from, $ps), intdiv($to, $ps)])->getResultArray() as $r) {
+                $start = (int) $r['part'] * $ps;
+                $a     = max($from, $start) - $start;
+                $b     = min($to, $start + strlen($r['data']) - 1) - $start;
+                if ($b >= $a) {
+                    echo substr($r['data'], $a, $b - $a + 1);
+                    flush();
+                }
+            }
+        });
+    }
+
+    /**
+     * Sends a file: small ones the normal way, big ones (or a Range request, which the browser's PDF viewer makes) piece by piece, so the server never
+     * holds the whole file in memory. A file that did not change is answered with 304 (the browser keeps its copy).
+     */
+    private function streamOut(string $ext, string $name, bool $download, int $size, string $etag, callable $emit): ResponseInterface
+    {
+        $res = $this->response->setHeader('Content-Type', self::TYPES[$ext] ?? 'application/octet-stream')
+            ->setHeader('Content-Disposition', ($download ? 'attachment' : 'inline') . "; filename*=UTF-8''" . rawurlencode($name))
+            ->setHeader('X-Content-Type-Options', 'nosniff')->setHeader('Accept-Ranges', 'bytes')->setHeader('ETag', '"' . $etag . '"')->setHeader('Cache-Control', 'private, max-age=0, must-revalidate');
+        if (trim($this->request->getHeaderLine('If-None-Match')) === '"' . $etag . '"') {
+            return $res->setStatusCode(304);
+        }
+        $from   = 0;
+        $to     = max(0, $size - 1);
+        $status = 200;
+        $range  = $this->request->getHeaderLine('Range');
+        if ($range !== '' && $size > 0 && preg_match('/bytes=(\d*)-(\d*)/', $range, $m)) {
+            if ($m[1] !== '') {
+                $from = (int) $m[1];
+                $to   = $m[2] !== '' ? min((int) $m[2], $size - 1) : $size - 1;
+            } elseif ($m[2] !== '') {
+                $from = max(0, $size - (int) $m[2]);
+            }
+            if ($from > $to || $from >= $size) {
+                return $res->setStatusCode(416)->setHeader('Content-Range', 'bytes */' . $size);
+            }
+            $status = 206;
+            $res->setHeader('Content-Range', "bytes {$from}-{$to}/{$size}");
+        }
+        if ($status === 200 && $size <= 8 * 1048576) {                                                  // small: the normal way
+            ob_start();
+            $emit(0, max(0, $size - 1));
+
+            return $res->setBody((string) ob_get_clean());
+        }
+        $res->setStatusCode($status)->setHeader('Content-Length', (string) ($to - $from + 1));
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        $res->sendHeaders();
+        $emit($from, $to);
+        exit;
     }
 
     /** thumbnail addresses for the cards of 101 / 103: cache name => url */
@@ -657,22 +1127,26 @@ class LabDocsController extends BaseController
                 $sheets[] = $m;
             }
         } else {
-            foreach ($this->db()->table('tbl_labdoc_sheets')->where('book_id', $b['id'])->orderBy('idx')->get()->getResultArray() as $sh) {
-                $m              = json_decode((string) $sh['model_json'], true) ?: [];
-                $m['rev']       = (int) $sh['revision_no'];
-                $sheets[]       = $m;
+            foreach ($this->db()->table('tbl_labdoc_sheets')->select('idx, name, revision_no')->where('book_id', $b['id'])->orderBy('idx')->get()->getResultArray() as $k => $sh) {
+                if ($k === 0) {                                      // the first sheet comes with the page, the others are fetched when their tab is opened
+                    $m = json_decode((string) $this->db()->table('tbl_labdoc_sheets')->select('model_json')->where(['book_id' => $b['id'], 'idx' => $sh['idx']])->get()->getRowArray()['model_json'], true) ?: [];
+                    $m['rev'] = (int) $sh['revision_no'];
+                    $sheets[] = $m;
+                } else {
+                    $sheets[] = ['name' => $sh['name'], 'rev' => (int) $sh['revision_no'], 'lazy' => true];
+                }
             }
         }
         $base = site_url('labdocs/' . rawurlencode($reg['code']));
         $data = [
             'book' => ['key' => $b['book_key'], 'label' => $b['label'], 'file' => $b['file_name'], 'status' => $b['file_status'], 'updatedAt' => $b['updated_at'], 'updatedBy' => $b['updated_by']],
             'styles' => json_decode((string) $b['styles_json'], true) ?: [], 'sheets' => $sheets, 'assets' => base_url('assets/labdocs/books/' . $b['book_key']) . '/',
-            'canEdit' => $snap ? false : $this->canEdit(), 'saveUrl' => $base . '/b/' . rawurlencode($b['book_key']) . '/save',
+            'canEdit' => $snap ? false : $this->canEdit(), 'saveUrl' => $base . '/b/' . rawurlencode($b['book_key']) . '/save', 'sheetUrl' => $base . '/b/' . rawurlencode($b['book_key']) . '/sheet/',
             'backUrl' => $this->bookBack($reg, $b, $base),
         ];
 
-        return $this->render('labdocs/book', ['title' => $b['label'], 'withCss' => 'labdocs.css', 'withJs' => ['labdocs-zoom.js', 'labdocs-search.js', 'labdocs-revs.js', 'labdocs-book.js'], 'reg' => $reg, 'b' => $b, 'data' => $data,
-            'labRevs' => $this->revList($reg, 'book', $b['book_key'], (bool) $snap)], $this->layout());
+        return $this->render('labdocs/book', ['title' => $b['label'], 'withCss' => 'labdocs.css', 'withJs' => ['labdocs-collab.js', 'labdocs-zoom.js', 'labdocs-search.js', 'labdocs-revs.js', 'labdocs-book.js'], 'reg' => $reg, 'b' => $b, 'data' => $data,
+            'labRevs' => $this->revList($reg, 'book', $b['book_key'], (bool) $snap), 'labCollab' => $this->collabInfo($reg, 'book', $b['book_key'], (bool) $snap)], $this->layout());
     }
 
     /** where "back" goes from a workbook: the folder it sits in (folder registers), the list of workbooks (several), or nowhere (one) */
@@ -685,6 +1159,22 @@ class LabDocsController extends BaseController
         }
 
         return $this->db()->table('tbl_labdoc_books')->where('register_id', $reg['id'])->countAllResults() > 1 ? $base : '';
+    }
+
+    /** one sheet of a workbook (the page asks for a sheet when its tab is opened) */
+    public function sheet(string $code, string $key, string $idx): ResponseInterface
+    {
+        $reg = $this->register(rawurldecode($code));
+        $db  = $this->db();
+        $b   = $reg ? $db->table('tbl_labdoc_books')->select('id')->where(['register_id' => $reg['id'], 'book_key' => rawurldecode($key)])->get()->getRowArray() : null;
+        $sh  = $b ? $db->table('tbl_labdoc_sheets')->where(['book_id' => $b['id'], 'idx' => (int) $idx])->get()->getRowArray() : null;
+        if (! $sh) {
+            return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'Sheet not found.']);
+        }
+        $m        = json_decode((string) $sh['model_json'], true) ?: [];
+        $m['rev'] = (int) $sh['revision_no'];
+
+        return $this->response->setHeader('Cache-Control', 'private, no-cache')->setJSON(['ok' => true, 'sheet' => $m]);
     }
 
     public function saveBook(string $code, string $key): ResponseInterface
@@ -713,6 +1203,14 @@ class LabDocsController extends BaseController
         }
         if (! $clean) {
             return $fail(422, 'Nothing to save.');
+        }
+        if (empty($in['force']) && is_array($in['base'] ?? null)) {
+            foreach (array_keys($clean) as $idx) {
+                $cur = $db->table('tbl_labdoc_sheets')->select('revision_no, edited_by, edited_at')->where(['book_id' => $b['id'], 'idx' => $idx])->get()->getRowArray();
+                if ($cur && isset($in['base'][$idx]) && (int) $in['base'][$idx] !== (int) $cur['revision_no']) {
+                    return $this->conflict((string) ($cur['edited_by'] ?? ''), $cur['edited_at'] ?? null);
+                }
+            }
         }
         $user = (string) ($this->auth->user()['name'] ?? $this->auth->user()['username'] ?? 'user');
         $now  = date('Y-m-d H:i:s');

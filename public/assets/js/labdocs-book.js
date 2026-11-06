@@ -65,7 +65,19 @@
     return t;
   }
 
+  // a sheet that has not been fetched yet (workbooks with many sheets load one sheet at a time)
+  function load(i) {
+    setStatus('Loading sheet ' + (i + 1) + ' of ' + sheets.length + '…');
+    return fetch(D.sheetUrl + i, { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (!j.ok) throw new Error(); sheets[i] = j.sheet; setStatus(''); })
+      .catch(function () { setStatus('That sheet could not be loaded. Try again.', true); throw new Error('load'); });
+  }
   function render() {
+    if (sheets[cur] && sheets[cur].lazy) { load(cur).then(render, function () {}); return; }
+    doRender();
+  }
+  function doRender() {
     paper.innerHTML = '';
     tableEl = build();
     paper.appendChild(tableEl);
@@ -101,13 +113,70 @@
     e.preventDefault();
     setZoom(Z + (e.deltaY < 0 ? 0.1 : -0.1));
   }, { passive: false });
+  var MANY = 7;                                                      // up to 6 sheets: a tab for each; more: one compact switcher
   function tabs() {
     tabsEl.innerHTML = '';
+    tabsEl.classList.toggle('bk-many', sheets.length >= MANY);
+    var st = document.getElementById('bk-stage');                  // many sheets: the switcher sits under the sheet, like the sheet tabs of Excel; few: tabs above it
+    if (st && st.parentNode) { if (sheets.length >= MANY) { if (tabsEl.previousElementSibling !== st) st.parentNode.insertBefore(tabsEl, st.nextSibling); } else if (tabsEl.nextElementSibling !== st && tabsEl.parentNode === st.parentNode) st.parentNode.insertBefore(tabsEl, st); }
+    if (sheets.length >= MANY) { switcher(); return; }
     sheets.forEach(function (s, i) {
       var b = el('button', 'bk-tab' + (i === cur ? ' on' : '') + (dirty[i] ? ' dirty' : ''), s.name); b.type = 'button'; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(i === cur));
       b.onclick = function () { if (i === cur) return; cur = i; render(); };
       tabsEl.appendChild(b);
     });
+  }
+  // many sheets: one control (previous | current sheet and its place in the book | next) and a searchable list of every sheet instead of a wall of tabs
+  var IC = {
+    left: '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    right: '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    down: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.5 6 8 10.5 12.5 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    search: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m10.5 10.5 3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    check: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  };
+  function switcher() {
+    function go(i) { if (i < 0 || i >= sheets.length || i === cur) return; cur = i; render(); }
+    var bar = el('div', 'bk-sw-bar'), prev = el('button', 'bk-sw-nav'), next = el('button', 'bk-sw-nav'), cap = el('button', 'bk-sw-cur'), pop = el('div', 'bk-sw'), sw = el('label', 'bk-sw-s'), q = el('input', 'bk-sw-q'), list = el('ul', 'bk-sw-l');
+    prev.type = next.type = cap.type = 'button'; prev.innerHTML = IC.left; next.innerHTML = IC.right;
+    prev.title = 'Previous sheet'; next.title = 'Next sheet'; prev.setAttribute('aria-label', 'Previous sheet'); next.setAttribute('aria-label', 'Next sheet');
+    prev.disabled = cur === 0; next.disabled = cur === sheets.length - 1;
+    cap.setAttribute('aria-haspopup', 'listbox'); cap.setAttribute('aria-expanded', 'false'); cap.title = 'Choose a sheet';
+    cap.appendChild(el('span', 'bk-sw-name', sheets[cur].name + (dirty[cur] ? ' •' : '')));
+    var meta = el('span', 'bk-sw-meta'); meta.appendChild(el('span', '', (cur + 1) + ' / ' + sheets.length)); meta.insertAdjacentHTML('beforeend', IC.down); cap.appendChild(meta);
+    q.type = 'search'; q.placeholder = 'Find a sheet'; q.setAttribute('aria-label', 'Find a sheet'); q.autocomplete = 'off';
+    sw.insertAdjacentHTML('beforeend', IC.search); sw.appendChild(q);
+    pop.hidden = true; pop.appendChild(sw); pop.appendChild(list);
+    function fill() {
+      var f = q.value.trim().toLowerCase(), n = 0; list.innerHTML = '';
+      sheets.forEach(function (sh, i) {
+        if (f && sh.name.toLowerCase().indexOf(f) < 0) return;
+        var li = el('li'), b = el('button', 'bk-sw-i' + (i === cur ? ' on' : '')); b.type = 'button'; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', String(i === cur));
+        b.appendChild(el('span', 'bk-sw-no', String(i + 1))); b.appendChild(el('span', 'bk-sw-nm', sh.name + (dirty[i] ? ' •' : '')));
+        if (i === cur) b.insertAdjacentHTML('beforeend', IC.check);
+        b.onclick = function () { pop.hidden = true; go(i); }; li.appendChild(b); list.appendChild(li); n++;
+      });
+      if (!n) list.appendChild(el('li', 'bk-sw-none', 'No sheet matches.'));
+    }
+    function openPop() { pop.hidden = false; bar.classList.add('open'); cap.setAttribute('aria-expanded', 'true'); q.value = ''; fill(); q.focus(); var on = list.querySelector('.on'); if (on) on.scrollIntoView({ block: 'center' }); }
+    function shut() { pop.hidden = true; bar.classList.remove('open'); cap.setAttribute('aria-expanded', 'false'); }
+    cap.onclick = function (e) { e.stopPropagation(); if (pop.hidden) openPop(); else shut(); };
+    prev.onclick = function () { go(cur - 1); }; next.onclick = function () { go(cur + 1); };
+    q.addEventListener('input', fill);
+    q.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { shut(); cap.focus(); }
+      if (e.key === 'Enter') { var f = list.querySelector('.bk-sw-i'); if (f) f.click(); }
+      if (e.key === 'ArrowDown') { var f2 = list.querySelector('.bk-sw-i'); if (f2) { e.preventDefault(); f2.focus(); } }
+    });
+    list.addEventListener('keydown', function (e) {
+      var b = document.activeElement; if (!b || !b.classList.contains('bk-sw-i')) return;
+      var li = b.parentNode, to = e.key === 'ArrowDown' ? li.nextElementSibling : e.key === 'ArrowUp' ? li.previousElementSibling : null;
+      if (to) { e.preventDefault(); var t = to.querySelector('.bk-sw-i'); if (t) t.focus(); } else if (e.key === 'ArrowUp') { q.focus(); }
+      if (e.key === 'Escape') { shut(); cap.focus(); }
+    });
+    pop.addEventListener('click', function (e) { e.stopPropagation(); });
+    document.addEventListener('click', function () { if (!pop.hidden) shut(); });
+    bar.appendChild(prev); bar.appendChild(cap); bar.appendChild(next); bar.appendChild(pop);
+    tabsEl.appendChild(bar);
   }
   function placeImages() {                                           // pictures sit over the cell they are anchored to
     paper.querySelectorAll('.bk-img').forEach(function (n) { n.remove(); });
@@ -289,22 +358,20 @@
   };
   if (saveBtn) saveBtn.onclick = function () {
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-    var out = {};
-    Object.keys(dirty).forEach(function (i) { var m = clone(sheets[i]); delete m.rev; out[i] = m; });
+    var out = {}, base = {};
+    Object.keys(dirty).forEach(function (i) { var m = clone(sheets[i]); base[i] = m.rev; delete m.rev; out[i] = m; });
     if (!Object.keys(out).length) { setEdit(false); setStatus('Nothing was changed.'); return; }
     saveBtn.disabled = true; setStatus('Saving…');
-    var meta = document.querySelector('meta[name="X-CSRF-TOKEN"]');
-    fetch(D.saveUrl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': meta ? meta.content : '' }, body: JSON.stringify({ sheets: out }) })
-      .then(function (r) { return r.json().catch(function () { return { ok: false, message: 'The server answered with an error (' + r.status + ').' }; }); })
+    LdCollab.post(D.saveUrl, { sheets: out, base: base })
       .then(function (j) {
-        if (meta && j.csrf) meta.content = j.csrf;
         saveBtn.disabled = false;
         if (!j.ok) { setStatus(j.message || 'Not saved.', true); return; }
+        LdCollab.adopt();
         Object.keys(j.sheets || {}).forEach(function (i) { sheets[i] = j.sheets[i]; });
         backup = null; setEdit(false);
         setStatus('Saved in the database (' + Object.keys(j.sheets).length + ' sheet' + (Object.keys(j.sheets).length === 1 ? '' : 's') + '). ' + (j.file && j.file.ok ? 'The Excel file on the share was updated (a backup copy was kept).'
           : 'The Excel file on the share was NOT updated: ' + (j.file ? j.file.message : 'unknown') + ' Press Edit and Save again once that is fixed.'), !(j.file && j.file.ok));
-      }).catch(function () { saveBtn.disabled = false; setStatus('The server could not be reached. Nothing was saved.', true); });
+      });
   };
   window.addEventListener('beforeunload', function (e) { if (edit && Object.keys(dirty).length) { e.preventDefault(); e.returnValue = ''; } });
 
@@ -316,5 +383,13 @@
     pageStyle.textContent = '@page{size:A4 ' + (land ? 'landscape' : 'portrait') + ';margin:' + M + 'mm}@media print{.bk-t{zoom:' + z.toFixed(4) + '}}';
     setTimeout(function () { window.print(); setZoom(Z); }, 60);
   };
+  function colName(n) { var s = ''; while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
+  LdCollab.bind({
+    root: paper,
+    posOf: function (t) { var td = t.closest && t.closest('td'); return td && td.dataset.r ? 's' + cur + ':' + td.dataset.r + ':' + td.dataset.c : null; },
+    find: function (pos) { var m = /^s(\d+):(\d+):(\d+)$/.exec(pos); return m && Number(m[1]) === cur ? paper.querySelector('td[data-r="' + m[2] + '"][data-c="' + m[3] + '"]') : null; },
+    describe: function (pos) { var m = /^s(\d+):(\d+):(\d+)$/.exec(pos); return m && sheets[m[1]] ? sheets[m[1]].name + ' · ' + colName(Number(m[3])) + m[2] : ''; },
+    editing: function () { return edit; }
+  });
   render();
 })();

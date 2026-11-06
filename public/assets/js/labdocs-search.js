@@ -1,7 +1,7 @@
 /* Search inside an open Laboratory Document: every match is highlighted, Enter / the arrows go from one to the next (and to its page) */
 (function () {
   'use strict';
-  var box = document.getElementById('ld-pages') || document.getElementById('vd-pages') || document.getElementById('bk-paper');
+  var box = document.getElementById('ld-pages') || document.getElementById('vd-pages') || document.getElementById('bk-paper') || document.getElementById('fv-text');
   var tools = document.querySelector('.ld-tools');
   if (!box || !tools) return;
   var hits = [], cur = -1, q = '';

@@ -312,21 +312,17 @@
   if (saveBtn) saveBtn.onclick = function () {
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     saveBtn.disabled = true; setStatus('Saving…');
-    var meta = document.querySelector('meta[name="X-CSRF-TOKEN"]');
-    fetch(D.saveUrl, {
-      method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': meta ? meta.content : '' },
-      body: JSON.stringify({ columns: state.columns, rows: state.rows })
-    }).then(function (r) { return r.json().catch(function () { return { ok: false, message: 'The server answered with an error (' + r.status + ').' }; }); })
+    LdCollab.post(D.saveUrl, { columns: state.columns, rows: state.rows, base: D.base })
       .then(function (j) {
-        if (meta && j.csrf) meta.content = j.csrf;
         saveBtn.disabled = false;
         if (!j.ok) { setStatus(j.message || 'Not saved.', true); return; }
+        if (j.savedAt) D.base = j.savedAt;
+        LdCollab.adopt();
         state.rows = state.rows.filter(function (r) { return state.columns.some(function (c) { return String(r[c.key] || '') !== ''; }); });
         backup = null; dirty = false; setEdit(false);
         setStatus('Saved in the database (' + j.rows + ' rows, ' + j.columns + ' columns). ' + (j.file && j.file.ok ? 'The workbook on the share was updated (a backup copy was kept).'
           : 'The workbook on the share was NOT updated: ' + (j.file ? j.file.message : 'unknown') + ' Press Edit and Save again once that is fixed.'), !(j.file && j.file.ok));
-      }).catch(function () { saveBtn.disabled = false; setStatus('The server could not be reached. Nothing was saved.', true); });
+      });
   };
   window.addEventListener('beforeunload', function (e) { if (edit && dirty) { e.preventDefault(); e.returnValue = ''; } });
 
@@ -336,5 +332,12 @@
     setTimeout(function () { window.print(); showAll = was; pagesEl.classList.toggle('ld-all', showAll); show(page); }, 60);
   };
 
+  LdCollab.bind({
+    root: pagesEl,
+    posOf: function (t) { var c = t.closest && t.closest('[data-r][data-k]'); return c ? c.dataset.r + '~' + c.dataset.k : null; },
+    find: function (pos) { var m = /^(-?\d+)~(.+)$/.exec(pos); return m ? pagesEl.querySelector('[data-r="' + m[1] + '"][data-k="' + m[2] + '"]') : null; },
+    describe: function (pos) { var m = /^(-?\d+)~/.exec(pos); return m ? (Number(m[1]) < 0 ? 'in the header' : 'in row ' + (Number(m[1]) + 1)) : ''; },
+    editing: function () { return edit; }
+  });
   render();
 })();

@@ -36,7 +36,7 @@ class LabDocsImportBooks extends BaseCommand
         $force  = CLI::getOption('force') !== null || in_array('--force', $params, true);
         $folder = null;
         foreach (scandir(self::ROOT) ?: [] as $d) {
-            if (str_starts_with($d, $prefix) && is_dir(self::ROOT . '\\' . $d)) {
+            if (str_starts_with(strtolower($d), strtolower($prefix)) && is_dir(self::ROOT . '\\' . $d)) {
                 $folder = $d;
                 break;
             }
@@ -48,8 +48,9 @@ class LabDocsImportBooks extends BaseCommand
         if (isset(self::BOOKS[$prefix])) {
             [$code, $title, $menu, $books] = self::BOOKS[$prefix];
         } else {                                                    // any other "#" folder: every Excel file in it is a workbook
-            $code  = ltrim($prefix, '#');
-            $title = trim((string) preg_replace('/^#?DTP-Lab-\\d+\\s*/', '', $folder));
+            $codeOpt = CLI::getOption('code');
+            $code    = is_string($codeOpt) && $codeOpt !== '' ? $codeOpt : (preg_match('/^#?DTP-Lab-(\d+)/i', $folder, $cm) ? 'DTP-Lab-' . $cm[1] : ltrim($prefix, '#'));
+            $title = trim((string) preg_replace('/^#?DTP-Lab-\\d+\\s*/i', '', $folder));
             $menu  = $code . ' ' . $title;
             $books = [];
             foreach (scandir(self::ROOT . '\\' . $folder) ?: [] as $f) {

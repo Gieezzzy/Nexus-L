@@ -131,6 +131,7 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
 
     // Laboratory Documents: the registers of the "#" folders of the Lab Documents share
     $routes->get('labdocs', 'LabDocsController::index', ['as' => 'labdocs']);
+    $routes->post('labdocs/presence', 'LabDocsController::presence');
     $routes->get('labdocs/(:segment)/m/(:segment)', 'LabDocsController::method/$1/$2');
     $routes->post('labdocs/(:segment)/m/(:segment)/save', 'LabDocsController::saveMethod/$1/$2');
     $routes->post('labdocs/(:segment)/m/(:segment)/restore', 'LabDocsController::restoreMethod/$1/$2');
@@ -139,6 +140,7 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->get('labdocs/(:segment)/doc/(:segment)', 'LabDocsController::doc/$1/$2');
     $routes->get('labdocs/(:segment)/file/(:segment)', 'LabDocsController::file/$1/$2');
     $routes->get('labdocs/(:segment)/b/(:segment)', 'LabDocsController::book/$1/$2');
+    $routes->get('labdocs/(:segment)/b/(:segment)/sheet/(:num)', 'LabDocsController::sheet/$1/$2/$3');
     $routes->post('labdocs/(:segment)/b/(:segment)/save', 'LabDocsController::saveBook/$1/$2');
     $routes->post('labdocs/(:segment)/rev/(:num)/delete', 'LabDocsController::deleteRev/$1/$2');
     $routes->get('labdocs/(:segment)/v/(:num)', 'LabDocsController::fileView/$1/$2');

@@ -387,3 +387,90 @@ mark.ld-hit.cur { background: rgba(251, 146, 60, .75); box-shadow: 0 0 0 2px rgb
 a.ld-btn { text-decoration: none; display: inline-flex; align-items: center; }
 .fl-up { margin-right: 8px; }
 @media print { .fv-bar { display: none !important; } .fv-pdf { height: auto; } }
+
+/* the back button of every lab document: a clear button, not a faint link */
+.vd-back { display: inline-flex; align-items: center; gap: 4px; margin: 0 12px 0 0; padding: 6px 14px 6px 10px; min-height: 34px; font-size: 14px; font-weight: 600; line-height: 1;
+  color: #fff; background: linear-gradient(180deg, #4a76a6, #35618f); border: 1px solid #2b4f77; border-radius: 10px; text-decoration: none; vertical-align: middle;
+  box-shadow: 0 3px 10px rgba(43,79,119,.28), inset 0 1px 0 rgba(255,255,255,.3); }
+.vd-back:hover { background: linear-gradient(180deg, #5481b1, #2b4f77); text-decoration: none; color: #fff; }
+.vd-back:focus-visible { outline: 3px solid rgba(53,97,143,.5); outline-offset: 2px; }
+@media print { .vd-back { display: none !important; } }
+
+.fv-text { background: #fff; border-radius: 10px; box-shadow: 0 4px 16px rgba(30,41,59,.12); padding: 10px; overflow: auto; max-height: calc(100vh - 200px); }
+.fv-text pre { margin: 0; font: 12.5px/1.45 ui-monospace, Consolas, monospace; white-space: pre-wrap; color: #1e293b; }
+.fv-csv { border-collapse: collapse; font-size: 12.5px; color: #1e293b; }
+.fv-csv th, .fv-csv td { border: 1px solid #d5dbe5; padding: 3px 8px; white-space: nowrap; text-align: left; }
+.fv-csv th { background: #eef2f8; position: sticky; top: 0; }
+
+/* workbooks with many sheets: one pill control (same glass, height and radius as the toolbar buttons) above the sheet, aligned with its left edge */
+.bk-tabs.bk-many { display: block; margin: 2px 0 10px; }
+.bk-sw-bar { position: relative; display: flex; align-items: stretch; width: min(100%, 560px); height: 34px; border-radius: 999px; border: 1px solid var(--g-line, rgba(100,116,139,.3));
+  background: linear-gradient(180deg, rgba(255,255,255,.92), rgba(241,245,251,.78)); box-shadow: 0 1px 2px rgba(15,23,42,.06), inset 0 1px 0 #fff; color: var(--g-ink, #1e293b); }
+.bk-sw-bar.open { border-color: #35618f; box-shadow: 0 0 0 3px rgba(53,97,143,.18), inset 0 1px 0 #fff; }
+.bk-sw-nav, .bk-sw-cur { display: flex; align-items: center; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; transition: background-color .15s ease-out; }
+.bk-sw-nav { flex: 0 0 40px; justify-content: center; color: #475569; }
+.bk-sw-nav:first-child { border-radius: 999px 0 0 999px; }
+.bk-sw-nav:nth-child(3) { border-radius: 0 999px 999px 0; }
+.bk-sw-cur { flex: 1 1 auto; min-width: 0; gap: 12px; padding: 0 14px; font-size: 13.5px; text-align: left; border-left: 1px solid rgba(100,116,139,.22); border-right: 1px solid rgba(100,116,139,.22); }
+.bk-sw-nav:hover:not(:disabled), .bk-sw-cur:hover { background: rgba(53,97,143,.09); }
+.bk-sw-nav:disabled { opacity: .35; cursor: default; }
+.bk-sw-nav:focus-visible, .bk-sw-cur:focus-visible { outline: 2px solid #35618f; outline-offset: -2px; }
+.bk-sw-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.bk-sw-meta { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; color: #64748b; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.bk-sw { position: absolute; z-index: 60; top: 40px; left: 0; width: 100%; padding: 8px; border-radius: 16px; background: rgba(255,255,255,.98); border: 1px solid rgba(100,116,139,.28); box-shadow: 0 14px 34px rgba(15,23,42,.16), 0 2px 6px rgba(15,23,42,.08); }
+.bk-sw[hidden] { display: none; }
+.bk-sw-s { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; margin-bottom: 6px; border-radius: 999px; border: 1px solid rgba(100,116,139,.3); background: #f8fafc; color: #64748b; }
+.bk-sw-s:focus-within { border-color: #35618f; box-shadow: 0 0 0 3px rgba(53,97,143,.16); }
+.bk-sw-q { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: inherit; font-size: 13.5px; color: #1e293b; }
+.bk-sw-l { list-style: none; margin: 0; padding: 0; max-height: min(52vh, 420px); overflow: auto; }
+.bk-sw-i { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 34px; padding: 4px 10px; border: 0; border-radius: 10px; background: none; font: inherit; font-size: 13.5px; color: #1e293b; text-align: left; cursor: pointer; }
+.bk-sw-i:hover { background: rgba(53,97,143,.1); }
+.bk-sw-i.on { background: rgba(53,97,143,.14); font-weight: 600; color: #274a70; }
+.bk-sw-i:focus-visible { outline: 2px solid #35618f; outline-offset: -2px; }
+.bk-sw-no { flex: 0 0 26px; text-align: right; color: #94a3b8; font-size: 12px; font-variant-numeric: tabular-nums; }
+.bk-sw-nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bk-sw-none { padding: 10px; font-size: 13px; color: #64748b; }
+@media (prefers-reduced-motion: reduce) { .bk-sw-nav, .bk-sw-cur { transition: none; } }
+@media print { .bk-tabs { display: none !important; } }
+
+/* the sheet switcher of a workbook with many sheets: compact, under the sheet (like Excel's sheet tabs), its list opens upwards */
+.bk-tabs.bk-many { margin: 8px 0 0; }
+.bk-sw-bar { display: inline-flex; width: auto; height: 30px; }
+.bk-sw-nav { flex: 0 0 32px; }
+.bk-sw-cur { flex: 0 0 auto; width: 240px; padding: 0 12px; font-size: 13px; gap: 10px; }
+.bk-sw-meta { font-size: 12px; }
+.bk-sw { top: auto; bottom: 36px; width: 340px; max-width: 92vw; }
+@media (max-width: 520px) { .bk-sw-bar { display: flex; width: 100%; } .bk-sw-cur { flex: 1 1 auto; width: auto; } }
+
+/* scrolling inside an area stays inside it: at its top or bottom the page behind does not start to scroll */
+.ld-stage, .bk-stage, .vd-stage, .fv-stage, .fv-text, .ld-revs, .bk-sw-l, .ld-menu, .vm-pop, .ld-frame, .vm-grid { overscroll-behavior: contain; }
+.ld-menu, .bk-sw-l, .ld-revs, .fv-text { overscroll-behavior-y: contain; }
+
+/* ---- people on the same document ---- */
+.ld-who { display: inline-flex; align-items: center; padding: 3px 4px; margin-right: 10px; border: 0; background: none; border-radius: 999px; cursor: pointer; vertical-align: middle; }
+.ld-who:hover { background: rgba(53,97,143,.1); }
+.ld-who:focus-visible { outline: 3px solid rgba(53,97,143,.5); outline-offset: 2px; }
+.ld-av { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; color: #fff; font-size: 11.5px; font-weight: 700; letter-spacing: .02em;
+  border: 2px solid #fff; box-shadow: 0 1px 3px rgba(15,23,42,.3); box-sizing: border-box; }
+.ld-av.is-editing::after { content: ""; position: absolute; right: -2px; bottom: -2px; width: 9px; height: 9px; border-radius: 50%; background: #16a34a; border: 2px solid #fff; }
+.ld-av-more { background: #64748b; }
+.ld-who-dlg { min-width: 320px; }
+.ld-who-l { list-style: none; margin: 4px 0 14px; padding: 0; display: grid; gap: 10px; max-height: 50vh; overflow: auto; }
+.ld-who-l li { display: flex; align-items: center; gap: 12px; }
+.ld-who-t { display: flex; flex-direction: column; font-size: 12.5px; color: #64748b; line-height: 1.3; }
+.ld-who-t b { font-size: 14px; color: #1e293b; }
+.ld-cursors { position: fixed; inset: 0; pointer-events: none; z-index: 40; }
+.ld-cur { position: fixed; box-sizing: border-box; border: 2px solid; border-radius: 3px; transition: left .25s ease-out, top .25s ease-out; }
+.ld-cur-t { position: absolute; left: -2px; top: -18px; padding: 1px 6px; border-radius: 4px 4px 4px 0; color: #fff; font-size: 11px; font-weight: 600; white-space: nowrap; line-height: 16px; }
+.ld-newer { display: flex; align-items: center; gap: 12px; margin: 8px 0; padding: 8px 14px; border-radius: 12px; background: rgba(245, 158, 11, .14); border: 1px solid rgba(180, 120, 20, .35); color: #5b3b05; font-size: 13.5px; }
+.ld-newer[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { .ld-cur { transition: none; } }
+@media print { .ld-who, .ld-cursors, .ld-newer { display: none !important; } }
+
+.fl-tools { margin-right: 10px; }
+.fl-card { position: relative; }
+.fl-del { position: absolute; top: 10px; right: 10px; display: none; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; border: 1px solid rgba(155,59,59,.4); background: rgba(255,255,255,.95); color: #9b3b3b; cursor: pointer; box-shadow: 0 2px 8px rgba(15,23,42,.2); }
+.fl-card:hover .fl-del, .fl-del:focus-visible { display: inline-flex; }
+.fl-del:hover { background: #fdecec; }
+.fl-more { text-align: center; margin: 14px 0; }
+@media (hover: none) { .fl-del { display: inline-flex; } }

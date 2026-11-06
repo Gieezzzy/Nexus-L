@@ -37,6 +37,7 @@ def thumb_img(path, out):
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     root, out = sys.argv[1], sys.argv[2]
     os.makedirs(out, exist_ok=True)
     idx, n, bad = {}, 0, 0

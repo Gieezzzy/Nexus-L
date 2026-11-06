@@ -260,19 +260,14 @@
   }
   if (editBtn) editBtn.onclick = function () { backup = clone(blocks); setEdit(true); setStatus('Editing. Changes are kept only when you press Save.'); };
   if (cancelBtn) cancelBtn.onclick = function () { if (dirty && !confirm('Discard the changes?')) return; blocks = backup ? clone(backup) : blocks; setEdit(false); setStatus('Changes discarded.'); };
-  function post(url, body, done) {
-    var meta = document.querySelector('meta[name="X-CSRF-TOKEN"]');
-    fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': meta ? meta.content : '' }, body: JSON.stringify(body || {}) })
-      .then(function (r) { return r.json().catch(function () { return { ok: false, message: 'The server answered with an error (' + r.status + ').' }; }); })
-      .then(function (j) { if (meta && j.csrf) meta.content = j.csrf; done(j); })
-      .catch(function () { done({ ok: false, message: 'The server could not be reached. Nothing was saved.' }); });
-  }
+  function post(url, body, done) { LdCollab.post(url, body || {}).then(done); }
   if (saveBtn) saveBtn.onclick = function () {
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     saveBtn.disabled = true; setStatus('Saving…');
-    post(D.saveUrl, { blocks: blocks.filter(function (b) { return !(b.t === 'p' && !String(b.html || '').replace(/<br>/g, '').trim()); }) }, function (j) {
+    post(D.saveUrl, { base: D.method.revisionNo, blocks: blocks.filter(function (b) { return !(b.t === 'p' && !String(b.html || '').replace(/<br>/g, '').trim()); }) }, function (j) {
       saveBtn.disabled = false;
       if (!j.ok) { setStatus(j.message || 'Not saved.', true); return; }
+      D.method.revisionNo = j.revision; LdCollab.adopt();
       blocks = blocks.filter(function (b) { return !(b.t === 'p' && !String(b.html || '').replace(/<br>/g, '').trim()); });
       backup = null; setEdit(false);
       setStatus('Saved in the database as revision ' + j.revision + '. The original PDF is unchanged and stays available with "Open PDF".');
@@ -307,6 +302,14 @@
   }
   if (modeBtn) modeBtn.onclick = function () { setMode(!pdfOn); };
   if (editBtn) editBtn.addEventListener('click', function () { if (pdfOn) setMode(false); }, true);          // editing always happens in the editable view
+  LdCollab.bind({
+    root: pagesEl,
+    posOf: function (t) { var b = t.closest && t.closest('[data-i]'); if (!b) return null; var td = t.closest('td'); return 'b' + b.dataset.i + (td && td.dataset.r !== undefined ? ':' + td.dataset.r + ':' + td.dataset.c : ''); },
+    find: function (pos) { var m = /^b(\d+)(?::(\d+):(\d+))?$/.exec(pos); if (!m) return null; var b = pagesEl.querySelector('[data-i="' + m[1] + '"]'); if (!b) return null;
+      return m[2] !== undefined ? (b.querySelector('td[data-r="' + m[2] + '"][data-c="' + m[3] + '"]') || b) : b; },
+    describe: function (pos) { return /:/.test(pos) ? 'in a table cell' : 'in a paragraph'; },
+    editing: function () { return edit; }
+  });
   render();
   if (modeBtn && !D.method.isRev && !D.method.revisionNo) setMode(true);                        // an unedited document opens as the PDF
 })();

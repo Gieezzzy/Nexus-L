@@ -35,8 +35,14 @@ class LabDocsImportFiles extends BaseCommand
             return;
         }
         $folder = null;
-        foreach (scandir(self::ROOT) ?: [] as $d) {
-            if (str_starts_with($d, $arg) && is_dir(self::ROOT . '/' . $d)) {
+        foreach (scandir(self::ROOT) ?: [] as $d) {                          // the exact folder name first, then a name that starts with it
+            if (strcasecmp($d, $arg) === 0 && is_dir(self::ROOT . '/' . $d)) {
+                $folder = $d;
+                break;
+            }
+        }
+        foreach ($folder === null ? (scandir(self::ROOT) ?: []) : [] as $d) {
+            if (str_starts_with(strtolower($d), strtolower($arg)) && is_dir(self::ROOT . '/' . $d)) {
                 $folder = $d;
                 break;
             }
@@ -45,12 +51,27 @@ class LabDocsImportFiles extends BaseCommand
             CLI::error("No folder starting with {$arg} on the share.");
             return;
         }
-        $code  = ltrim($arg, '#');
+        $codeOpt = CLI::getOption('code');
+        if (is_string($codeOpt) && $codeOpt !== '') {
+            $code = $codeOpt;
+        } elseif (preg_match('/^#?DTP-Lab-(\d+)/i', $folder, $cm)) {
+            $code = 'DTP-Lab-' . $cm[1];
+        } else {
+            $code = ltrim($arg, '#');
+        }
+        $this->disk = CLI::getOption('disk') !== null;                      // keep the files as copies on the server's disk, not in the database (big folders)
+        $grp        = CLI::getOption('group');
+        $grp        = is_string($grp) && $grp !== '' ? $grp : 'lab';
+        $tagOpt = CLI::getOption('tag');
+        $tag    = is_string($tagOpt) && $tagOpt !== '' ? $tagOpt : (string) (int) preg_replace('/\D/', '', $code);
         $title = trim((string) preg_replace('/^#?DTP-Lab-\d+\s*/', '', $folder));
         $now   = date('Y-m-d H:i:s');
         $reg   = $db->table('tbl_labdoc_registers')->where('code', $code)->get()->getRowArray();
         $row   = ['code' => $code, 'view_type' => 'files', 'menu_label' => $code . ' ' . $title, 'title' => $title, 'folder_name' => $folder, 'file_path' => '', 'sheet_name' => '',
-            'sort_order' => (int) preg_replace('/\D/', '', $code), 'is_active' => 1, 'updated_by' => 'import', 'updated_at' => $now];
+            'sort_order' => $grp === 'lab' ? (int) preg_replace('/\D/', '', $code) : 1000, 'is_active' => 1, 'updated_by' => 'import', 'updated_at' => $now, 'grp' => $grp];
+        if ($grp !== 'lab') {
+            $row['menu_label'] = $folder;
+        }
         if ($reg) {
             $db->table('tbl_labdoc_registers')->where('id', $reg['id'])->update($row);
             $rid = (int) $reg['id'];
@@ -58,13 +79,18 @@ class LabDocsImportFiles extends BaseCommand
             $db->table('tbl_labdoc_registers')->insert($row);
             $rid = (int) $db->insertID();
         }
-        $thumbDir = 'E:/NexusAI/vfm/thumbs' . (int) preg_replace('/\D/', '', $code);
+        $this->diskDir = preg_replace('/[^A-Za-z0-9._-]+/', '-', $code);
+        $thumbDir = 'E:/NexusAI/vfm/thumbs' . $tag;
         $thumbs   = is_file($thumbDir . '/index.json') ? (json_decode((string) file_get_contents($thumbDir . '/index.json'), true) ?: []) : [];
+        $convDir  = 'E:/NexusAI/vfm/conv' . $tag;                          // Word documents as PDF (lab_docpdf.py) and the first page of those
+        $conv     = is_file($convDir . '/index.json') ? (json_decode((string) file_get_contents($convDir . '/index.json'), true) ?: []) : [];
+        $cthDir   = 'E:/NexusAI/vfm/thumbsconv' . $tag;
+        $cth      = is_file($cthDir . '/index.json') ? (json_decode((string) file_get_contents($cthDir . '/index.json'), true) ?: []) : [];
         $root     = self::ROOT . '/' . $folder;
         $new      = $same = 0;
         $it       = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS));
         foreach ($it as $f) {
-            if (! $f->isFile() || str_starts_with($f->getFilename(), '~$') || strcasecmp($f->getFilename(), 'Thumbs.db') === 0) {
+            if (! $f->isFile() || str_starts_with($f->getFilename(), '~$') || in_array(strtolower($f->getExtension()), ['db', 'ini', 'lnk', 'tmp'], true)) {
                 continue;
             }
             $full = str_replace('\\', '/', $f->getPathname());
@@ -73,7 +99,8 @@ class LabDocsImportFiles extends BaseCommand
             $name = $f->getFilename();
             $mt   = date('Y-m-d H:i:s', $f->getMTime());
             $cur  = $db->table('tbl_labdoc_files')->select('id, file_size, file_mtime')->where(['register_id' => $rid, 'folder' => $dir, 'name' => $name])->get()->getRowArray();
-            if ($cur && (int) $cur['file_size'] === $f->getSize() && $cur['file_mtime'] === $mt) {
+            if ($cur && (int) $cur['file_size'] === $f->getSize() && $cur['file_mtime'] === $mt
+                && ! (isset($conv[$rel]) && ! $db->table('tbl_labdoc_files')->where(['register_id' => $rid, 'src_key' => 'conv:' . $cur['id']])->countAllResults())) {
                 $same++;
                 continue;
             }
@@ -89,11 +116,34 @@ class LabDocsImportFiles extends BaseCommand
                 $fid = (int) $db->insertID();
             }
             $this->store($db, $fid, $f->getPathname());
+            if (isset($conv[$rel]) && str_ends_with($conv[$rel], '.xlsx') && is_file($convDir . '/' . $conv[$rel])) {      // an old .xls: opened as sheets from its .xlsx copy (kept next to the cache)
+                $keep = WRITEPATH . 'labdocs/xls/' . $code . '/' . $fid . '.xlsx';
+                @mkdir(dirname($keep), 0775, true);
+                copy($convDir . '/' . $conv[$rel], $keep);
+                $bk = 'f' . $fid;
+                $db->table('tbl_labdoc_books')->where(['register_id' => $rid, 'book_key' => $bk])->delete();
+                $this->book($db, $rid, $bk, ['name' => $name], $keep);
+            } elseif (isset($conv[$rel]) && is_file($convDir . '/' . $conv[$rel])) {          // a Word document also gets its PDF, which is what the viewer shows
+                $cd = ['register_id' => $rid, 'folder' => '', 'name' => $name . '.pdf', 'ext' => 'pdf', 'file_size' => filesize($convDir . '/' . $conv[$rel]), 'file_mtime' => $mt, 'src_key' => 'conv:' . $fid,
+                    'thumb' => isset($cth[$conv[$rel]]) && is_file($cthDir . '/' . $cth[$conv[$rel]]) ? file_get_contents($cthDir . '/' . $cth[$conv[$rel]]) : null];
+                $cc = $db->table('tbl_labdoc_files')->where(['register_id' => $rid, 'src_key' => 'conv:' . $fid])->get()->getRowArray();
+                if ($cc) {
+                    $db->table('tbl_labdoc_files')->where('id', $cc['id'])->update($cd);
+                    $cid = (int) $cc['id'];
+                } else {
+                    $db->table('tbl_labdoc_files')->insert($cd);
+                    $cid = (int) $db->insertID();
+                }
+                $this->store($db, $cid, $convDir . '/' . $conv[$rel]);
+                if ($cd['thumb'] !== null) {
+                    $db->table('tbl_labdoc_files')->where('id', $fid)->update(['thumb' => $cd['thumb']]);
+                }
+            }
             $new++;
         }
         // the Excel files open in the same editable sheet view as the workbooks of the other folders (book key f<file id>)
         $books = 0;
-        foreach ($db->table('tbl_labdoc_files')->where(['register_id' => $rid, 'ext' => 'xlsx'])->get()->getResultArray() as $x) {
+        foreach ($db->table('tbl_labdoc_files')->where('register_id', $rid)->whereIn('ext', ['xlsx', 'xlsm'])->get()->getResultArray() as $x) {
             $key = 'f' . $x['id'];
             if ($db->table('tbl_labdoc_books')->where(['register_id' => $rid, 'book_key' => $key])->countAllResults() > 0) {
                 continue;
@@ -150,8 +200,21 @@ class LabDocsImportFiles extends BaseCommand
         CLI::write("{$code}: {$new} files stored in the database, {$same} unchanged, {$miss} not in the cache", 'green');
     }
 
+    private bool $disk = false;
+    private string $diskDir = '';
+
     private function store($db, int $fid, string $path): void
     {
+        if ($this->disk) {                                                    // a copy on the disk: writable/labdocs/other/<code>/<id>.<ext>
+            $dst = 'other/' . $this->diskDir . '/' . $fid . '.' . strtolower(pathinfo($path, PATHINFO_EXTENSION));
+            @mkdir(dirname(WRITEPATH . 'labdocs/' . $dst), 0775, true);
+            if (@copy($path, WRITEPATH . 'labdocs/' . $dst)) {
+                $db->table('tbl_labdoc_file_parts')->where('file_id', $fid)->delete();
+                $db->table('tbl_labdoc_files')->where('id', $fid)->update(['disk_path' => $dst]);
+
+                return;
+            }
+        }
         $db->table('tbl_labdoc_file_parts')->where('file_id', $fid)->delete();
         $h = fopen($path, 'rb');
         $i = 0;
@@ -177,11 +240,25 @@ class LabDocsImportFiles extends BaseCommand
             CLI::write($file['name'] . ': no sheet could be read (damaged Excel file); it stays a download', 'red');
             return false;
         }
+        if (strlen((string) json_encode($m['styles'])) > 450000) {
+            CLI::write($file['name'] . ': too many cell styles to show as a sheet; the file stays a download', 'yellow');
+            return false;
+        }
+        foreach ($m['sheets'] as $sh) {                                       // one statement is limited to 1 MB by the database server
+            if (strlen((string) json_encode($sh, JSON_UNESCAPED_UNICODE)) > 990000) {
+                CLI::write($file['name'] . ': a sheet is too large to show as a sheet; the file stays a download', 'yellow');
+                return false;
+            }
+        }
         $db->table('tbl_labdoc_books')->insert(['register_id' => $rid, 'book_key' => $key, 'label' => pathinfo($file['name'], PATHINFO_FILENAME), 'file_name' => $file['name'], 'file_path' => $path,
             'styles_json' => json_encode($m['styles']), 'sheet_count' => count($m['sheets']), 'file_size' => (int) filesize($path), 'file_mtime' => date('Y-m-d H:i:s', (int) filemtime($path)), 'sort_order' => 0]);
         $bid = (int) $db->insertID();
         foreach ($m['sheets'] as $i => $sh) {
-            $db->table('tbl_labdoc_sheets')->insert(['book_id' => $bid, 'idx' => $i, 'name' => $sh['name'], 'model_json' => json_encode($sh, JSON_UNESCAPED_UNICODE)]);
+            $db->table('tbl_labdoc_sheets')->insert(['book_id' => $bid, 'idx' => $i, 'name' => $sh['name'], 'model_json' => '']);
+            $sid = (int) $db->insertID();
+            foreach (str_split((string) json_encode($sh, JSON_UNESCAPED_UNICODE), 200000) as $piece) {      // in pieces: one statement is limited to 1 MB
+                $db->query('UPDATE tbl_labdoc_sheets SET model_json = CONCAT(model_json, ?) WHERE id = ?', [$piece, $sid]);
+            }
         }
         foreach (str_split((string) file_get_contents($path), 400000) as $pi => $piece) {
             $db->table('tbl_labdoc_book_parts')->insert(['book_id' => $bid, 'part' => $pi, 'data' => $piece]);
