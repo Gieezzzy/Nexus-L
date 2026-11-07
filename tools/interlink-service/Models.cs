@@ -9,8 +9,10 @@ public sealed class JobRequest
     public string ApplicationNo { get; set; } = "";
     public string LabRefNo { get; set; } = "";
     public string ReportNo { get; set; } = "";
-    /// <summary>"add" = a new report, "edit" = the current report (InterLink's Add / Edit menu)</summary>
+    /// <summary>"add" = a new report, "edit" = the current report (InterLink's Add / Edit menu), "etrf" = create eTRF</summary>
     public string Mode { get; set; } = "edit";
+    /// <summary>Which InterLink account to run this job with (dtp_qcasst@dtshoes.com or dtp_lab@dtshoes.com)</summary>
+    public string Account { get; set; } = "";
     public string UserName { get; set; } = "";
     /// <summary>NEXUS-L's own approval check, asked again right before Save: no approval, no Save</summary>
     public string VerifyUrl { get; set; } = "";

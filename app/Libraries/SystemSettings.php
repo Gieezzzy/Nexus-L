@@ -19,6 +19,15 @@ class SystemSettings
      *
      * @return array<string,array<string,mixed>>
      */
+    /** the service address the next job goes to, as chosen under Settings > Service ("Send the payload to") */
+    public static function serviceUrl(): string
+    {
+        $t = (string) self::get('interlink.service.target', 'custom');
+        $u = $t === '43' ? (string) self::get('interlink.service.url_43', '') : ($t === '45' ? (string) self::get('interlink.service.url_45', '') : (string) self::get('interlink.service.url', ''));
+
+        return rtrim(trim($u), '/');
+    }
+
     public static function definitions(): array
     {
         $d = static fn (string $cat, string $label, string $type, $default, string $help = '') => compact('cat', 'label', 'type', 'default', 'help');
@@ -26,7 +35,10 @@ class SystemSettings
         return [
             // --- the InterLink background service (the C# program) -----------------------------------------------------------------
             'interlink.service.enabled' => $d('service', 'Send reports through the background service', 'bool', '1', 'Off = the browser extension does the sending instead.'),
-            'interlink.service.url'     => $d('service', 'Service address (IP and port that receives the payload)', 'url', '', 'For example http://192.168.32.43:5077 - the IP and port set in the service program.'),
+            'interlink.service.target'  => $d('service', 'Send the payload to', 'select:custom,43,45', 'custom', '43 = the address below for the .43 computer, 45 = the one for the .45 computer, custom = the free address further down. The next job goes to the one chosen here; jobs already waiting stay where they are.'),
+            'interlink.service.url_43'  => $d('service', 'Service address on .43', 'url', 'http://192.168.32.43:5077', 'IP and port set in the service program running on the .43 computer.'),
+            'interlink.service.url_45'  => $d('service', 'Service address on .45', 'url', 'http://192.168.32.45:5077', 'IP and port set in the service program running on the .45 computer.'),
+            'interlink.service.url'     => $d('service', 'Service address (custom)', 'url', '', 'Used only when "Send the payload to" is custom, for example http://192.168.32.50:5077.'),
             'interlink.service.key'     => $d('service', 'Shared key', 'password', '', 'Must be the same key as in the service program\'s settings.'),
 
             // --- the values a new InterLink report starts with ---------------------------------------------------------------------
@@ -57,6 +69,9 @@ class SystemSettings
             'interlink.applicant_email'   => $d('defaults', 'eTRF applicant e-mail', 'text', 'dtp_lab@dtshoes.com'),
             'interlink.applicant_phone'   => $d('defaults', 'eTRF applicant phone', 'text', '(047) 252-2899'),
             'interlink.cost_centre'       => $d('defaults', 'eTRF cost centre', 'text', 'VF-P0676'),
+            'order_summary.path'          => $d('defaults', 'Order Summary PDF folder', 'text', '\\\\192.168.32.130\\qc lab files\\#ORDER SUMMARY', 'Folder with the MTL running-style PDFs. New or changed PDFs are read on the next lookup.'),
+            'order_summary.share_user'    => $d('defaults', 'Order Summary share user', 'text', '', 'Only needed when the web server cannot open the folder by itself (a service session does not share your Windows login). Example: 192.168.32.130\\user'),
+            'order_summary.share_pass'    => $d('defaults', 'Order Summary share password', 'password', ''),
 
             // --- report approval ---------------------------------------------------------------------------------------------------
             'approval.link_minutes'      => $d('approval', 'Approval link works for (minutes)', 'number', '60', 'The QR / link sent to the Manager / Supervisor expires after this time.'),

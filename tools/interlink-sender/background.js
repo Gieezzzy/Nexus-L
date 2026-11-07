@@ -992,6 +992,8 @@ async function fillNormalFormEtrf(etrf) {
     };
 
     const fields = (etrf && etrf.fields) || {};
+    // A saved template (bonding, WHOLE SHOE TEST ...) carries its author's Product ID (an MTL#). Never let it ride along into another request.
+    if (!String(fields.TRPT_PRODUCT_ID || '').trim()) setField('TRPT_PRODUCT_ID', '');
     let filled = 0;
     for (const [code, val] of Object.entries(fields)) {
       if (val === '' || val == null) continue;
@@ -1039,9 +1041,17 @@ async function fillNormalFormEtrf(etrf) {
           [...tr.children].forEach((td, idx) => {                    // then by the column heading
             const keys = HEAD[headers[idx] || ''];
             if (!keys) return;
-            const inp = td.querySelector('input[type="text"]:not([readonly]), textarea:not([readonly]), select, input[type="text"]');
-            const v = inp ? keys.map((k) => r[k]).find((x) => x != null && x !== '') : null;
-            if (inp && v != null && v !== '') setNative(inp, v);
+            const v = keys.map((k) => r[k]).find((x) => x != null && x !== '');
+            if (v == null || v === '') return;
+            const cellInputs = [...td.querySelectorAll('input[type="text"], textarea, select')];
+            cellInputs.forEach((inp) => {
+              setNative(inp, v);
+              const baseId = String(inp.id || '').replace(/_I$/, '');
+              const ctrl = baseId && window[baseId];
+              if (ctrl && typeof ctrl.SetValue === 'function') {
+                try { ctrl.SetValue(String(v)); if (typeof ctrl.SetText === 'function') ctrl.SetText(String(v)); } catch (e) {}
+              }
+            });
           });
           rowsFilled++;
         });
@@ -1116,12 +1126,13 @@ async function pressNormalFormCommit(action) {
 
 /** Verifies whether NormalFormWithHeader.aspx accepted the eTRF and extracts the generated Application No. (A00...) if present. */
 function checkNormalFormSubmitted() {
-  const errs = [...document.querySelectorAll('.dxeErrorCell,.dxeErrorFrame td,[id*="ErrorMessage" i],.validation-summary-errors')]
-    .filter((e) => e.offsetParent !== null && e.textContent.trim() && e.textContent.trim() !== '*');
+  const errs = [...document.querySelectorAll('.dxeErrorCell,.dxeErrorFrame td,[id*="ErrorMessage" i],.validation-summary-errors,.dxpc-content')]
+    .filter((e) => e.offsetParent !== null && e.textContent.trim() && e.textContent.trim() !== '*' && (/missing|required|invalid|error|cannot/i.test(e.textContent) || !e.classList.contains('dxpc-content')));
   if (errs.length) {
-    return { ok: false, message: errs.map((e) => e.textContent.trim()).slice(0, 4).join('; ') };
+    return { ok: false, message: errs.map((e) => e.textContent.replace(/\s+/g, ' ').trim()).slice(0, 4).join('; ') };
   }
   const bodyText = (document.body && document.body.innerText) || '';
-  const m = bodyText.match(/\b(A\d{8,12})\b/);
+  const inpVals = [...document.querySelectorAll('input[type="text"],input[type="hidden"]')].map((i) => i.value || '').join(' ');
+  const m = (bodyText + ' ' + inpVals + ' ' + location.href).match(/\b(A\d{8,12})\b/);
   return { ok: true, appNo: m ? m[1] : '' };
 }

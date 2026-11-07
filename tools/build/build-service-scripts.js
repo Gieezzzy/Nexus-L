@@ -18,7 +18,7 @@ for (const name of NAMES) {
   out.push(...src.slice(start, end + 1));
 }
 out.push(...lines(path.join(__dirname, 'service-extra.js')).filter((l) => !l.startsWith('//')));
-NAMES.push('readGridRow', 'readNotices');
+NAMES.push('readGridRow', 'readNotices', 'lovInventory', 'lovHarvest', 'lovPick');
 out.push(`  return { ${NAMES.join(', ')} };`, '})();', '');
 const target = path.join(__dirname, '..', 'interlink-service', 'Scripts', 'interlink-core.js');
 fs.writeFileSync(target, out.join('\n'));

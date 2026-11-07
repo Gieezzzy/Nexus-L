@@ -55,6 +55,15 @@ public sealed class Notifier
         }
     }
 
+    /// <summary>one JSON post to NEXUS-L with the service key (used for the pick lists); throws when NEXUS-L does not accept it</summary>
+    public async Task PostJsonAsync(string url, object body)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(body) };
+        req.Headers.Add("X-Service-Key", _key);
+        using var res = await _http.SendAsync(req);
+        if (!res.IsSuccessStatusCode) throw new InvalidOperationException($"NEXUS-L answered {(int)res.StatusCode} to the pick list upload.");
+    }
+
     public async Task ReportAsync(JobRequest job, JobStatus st)
     {
         if (string.IsNullOrWhiteSpace(job.CallbackUrl)) return;

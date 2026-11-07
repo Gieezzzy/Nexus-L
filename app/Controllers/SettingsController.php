@@ -97,7 +97,7 @@ class SettingsController extends BaseController
             return $this->deny();
         }
         $p   = $this->request->getJSON(true) ?? [];
-        $url = rtrim(trim((string) ($p['url'] ?? '')) ?: (string) SystemSettings::get('interlink.service.url', ''), '/');
+        $url = rtrim(trim((string) ($p['url'] ?? '')) ?: SystemSettings::serviceUrl(), '/');
         $key = trim((string) ($p['key'] ?? '')) ?: (string) SystemSettings::get('interlink.service.key', '');
         if ($url === '') {
             return $this->json(['ok' => false, 'error' => 'Enter the service address first (IP and port).'], 422);

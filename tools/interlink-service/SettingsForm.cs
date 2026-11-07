@@ -4,12 +4,12 @@ using System.Text.Json;
 
 namespace NexusInterlinkService;
 
-/// <summary>The properties of the service: the address that receives NEXUS-L's payload, the key, NEXUS-L's address. Save keeps them for every start.</summary>
+/// <summary>The properties of the service: the address that receives NEXUS-L's payload, the key, NEXUS-L's address, and the two InterLink account Login buttons.</summary>
 public sealed class SettingsForm : Form
 {
     private readonly ServiceHost _host;
     private readonly Func<Task<bool>> _restart;
-    private readonly Action _signIn;
+    private readonly Action<string> _signIn;
     private readonly Action _showLog;
     private readonly Action _toggleActivity;
     private readonly ComboBox _ip = new() { DropDownStyle = ComboBoxStyle.DropDown, Width = 260 };
@@ -18,21 +18,24 @@ public sealed class SettingsForm : Form
     private readonly TextBox _nexus = new() { Width = 360 };
     private readonly CheckBox _headless = new() { Text = "Invisible browser (untick to watch it work, for testing)", AutoSize = true };
     private readonly CheckBox _startup = new() { Text = "Start with Windows", AutoSize = true };
-    private readonly TextBox _envLines = new() { Multiline = true, ReadOnly = true, Width = 460, Height = 52, BackColor = Color.White, Font = new Font("Consolas", 9f) };
-    private readonly Label _status = new() { AutoSize = false, Width = 470, Height = 40, ForeColor = Color.DimGray };
+    private readonly TextBox _envLines = new() { Multiline = true, ReadOnly = true, Width = 480, Height = 50, BackColor = Color.White, Font = new Font("Consolas", 9f) };
+    private readonly Label _statusAsst = new() { AutoSize = true, ForeColor = Color.DimGray, Text = "Checking..." };
+    private readonly Label _statusLab = new() { AutoSize = true, ForeColor = Color.DimGray, Text = "Checking..." };
+    private readonly Label _status = new() { AutoSize = false, Width = 490, Height = 40, ForeColor = Color.DimGray };
+    private readonly System.Windows.Forms.Timer _pollTimer = new() { Interval = 3500 };
 
-    public SettingsForm(ServiceHost host, Func<Task<bool>> restart, Action signIn, Action showLog, Action toggleActivity)
+    public SettingsForm(ServiceHost host, Func<Task<bool>> restart, Action<string> signIn, Action showLog, Action toggleActivity)
     {
         _host = host;
         _showLog = showLog;
         _toggleActivity = toggleActivity;
         _restart = restart;
         _signIn = signIn;
-        Text = "NEXUS-L InterLink service - settings";
+        Text = "NEXUS-L InterLink service - settings & accounts";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(500, 560);
+        ClientSize = new Size(520, 680);
         Font = new Font("Segoe UI", 9f);
 
         var y = 14;
@@ -43,32 +46,49 @@ public sealed class SettingsForm : Form
         _ip.Items.Add("0.0.0.0");
         foreach (var a in AppSettings.LocalIPv4()) _ip.Items.Add(a);
         Put(_ip, y); Put(new Label { Text = "Port", AutoSize = true }, y + 4, 290); Put(_port, y, 330); y += 28;
-        Put(new Label { Text = "0.0.0.0 = every address of this computer. Pick one address to receive only on it.", AutoSize = true, ForeColor = Color.DimGray }, y); y += 30;
+        Put(new Label { Text = "0.0.0.0 = every address of this computer. Pick one address to receive only on it.", AutoSize = true, ForeColor = Color.DimGray }, y); y += 28;
 
         L("Shared key (the same one goes into NEXUS-L)", y); y += 22;
         Put(_key, y);
         var show = new CheckBox { Text = "Show", AutoSize = true }; show.CheckedChanged += (_, _) => _key.UseSystemPasswordChar = !show.Checked; Put(show, y + 3, 384); y += 28;
         var gen = new Button { Text = "New key", Width = 90 }; gen.Click += (_, _) => { _key.Text = AppSettings.NewKey(); RefreshEnv(); };
-        Put(gen, y); y += 36;
+        Put(gen, y); y += 34;
 
         L("NEXUS-L address (where results and approval checks go)", y); y += 22;
-        Put(_nexus, y); y += 34;
+        Put(_nexus, y); y += 32;
 
         Put(_headless, y); y += 24;
-        Put(_startup, y); y += 32;
+        Put(_startup, y); y += 30;
 
         L("Put these two lines in NEXUS-L's .env file", y); y += 22;
-        Put(_envLines, y); y += 58;
+        Put(_envLines, y); y += 54;
         var copy = new Button { Text = "Copy the lines", Width = 120 }; copy.Click += (_, _) => { Clipboard.SetText(_envLines.Text); _status.Text = "Copied."; };
-        Put(copy, y); y += 40;
+        Put(copy, y); y += 36;
+
+        // Dedicated InterLink Accounts Section
+        L("InterLink Accounts (Login per Account)", y); y += 24;
+
+        var btnAsst = new Button { Text = $"Login: {InterlinkRunner.AccountLabAsst}", Width = 230, Height = 30, BackColor = Color.FromArgb(239, 246, 255) };
+        btnAsst.Click += (_, _) => _signIn(InterlinkRunner.AccountLabAsst);
+        Put(btnAsst, y);
+        Put(_statusAsst, y + 7, 256);
+        y += 32;
+        Put(new Label { Text = "   Used for: VF eTRF - Material, Product, Product WHOLE SHOE TEST, bonding", AutoSize = true, ForeColor = Color.DimGray }, y);
+        y += 24;
+
+        var btnLab = new Button { Text = $"Login: {InterlinkRunner.AccountLab}", Width = 230, Height = 30, BackColor = Color.FromArgb(239, 246, 255) };
+        btnLab.Click += (_, _) => _signIn(InterlinkRunner.AccountLab);
+        Put(btnLab, y);
+        Put(_statusLab, y + 7, 256);
+        y += 32;
+        Put(new Label { Text = "   Used for: VF eTRF - PULLTESTTemplate", AutoSize = true, ForeColor = Color.DimGray }, y);
+        y += 28;
 
         var save = new Button { Text = "Save and restart", Width = 130, Height = 30 }; save.Click += async (_, _) => await SaveAsync();
-        var signin = new Button { Text = "Sign in to InterLink...", Width = 150, Height = 30 }; signin.Click += (_, _) => _signIn();
-        var check = new Button { Text = "Check", Width = 80, Height = 30 }; check.Click += async (_, _) => await CheckAsync();
-        Put(save, y); Put(signin, y, 156); Put(check, y, 312); y += 36;
+        var check = new Button { Text = "Check status", Width = 100, Height = 30 }; check.Click += async (_, _) => await CheckAsync();
         var log = new Button { Text = "Log...", Width = 80, Height = 30 }; log.Click += (_, _) => _showLog();
-        var act = new Button { Text = "Show / hide what it is doing", Width = 200, Height = 30 }; act.Click += (_, _) => _toggleActivity();
-        Put(log, y); Put(act, y, 106); y += 40;
+        var act = new Button { Text = "Show / hide activity", Width = 150, Height = 30 }; act.Click += (_, _) => _toggleActivity();
+        Put(save, y); Put(check, y, 154); Put(log, y, 262); Put(act, y, 350); y += 38;
         Put(_status, y);
 
         var s = AppSettings.Load();
@@ -81,6 +101,9 @@ public sealed class SettingsForm : Form
         foreach (var c in new Control[] { _ip, _port, _key }) { c.TextChanged += (_, _) => RefreshEnv(); }
         _port.ValueChanged += (_, _) => RefreshEnv();
         RefreshEnv();
+        _pollTimer.Tick += async (_, _) => { if (Visible) await CheckAsync(true); };
+        _pollTimer.Start();
+        FormClosed += (_, _) => _pollTimer.Dispose();
         _ = CheckAsync();
     }
 
@@ -126,8 +149,24 @@ public sealed class SettingsForm : Form
             var root = JsonDocument.Parse(json).RootElement;
             var signedIn = root.TryGetProperty("signedIn", out var si) && si.GetBoolean();
             var waiting = root.TryGetProperty("waiting", out var w) ? w.GetInt32() : 0;
-            _status.ForeColor = signedIn ? Color.SeaGreen : Color.DarkOrange;
-            _status.Text = $"Running on {s.Url}. InterLink sign-in: {(signedIn ? "saved" : "NOT done yet - press \"Sign in to InterLink\"")}. Waiting: {waiting}.";
+
+            var asstOk = signedIn;
+            var labOk = signedIn;
+            if (root.TryGetProperty("accounts", out var accs) && accs.ValueKind == JsonValueKind.Object)
+            {
+                if (accs.TryGetProperty(InterlinkRunner.AccountLabAsst, out var a1) && a1.TryGetProperty("signedIn", out var s1))
+                    asstOk = s1.GetBoolean();
+                if (accs.TryGetProperty(InterlinkRunner.AccountLab, out var a2) && a2.TryGetProperty("signedIn", out var s2))
+                    labOk = s2.GetBoolean();
+            }
+
+            _statusAsst.ForeColor = asstOk ? Color.SeaGreen : Color.DarkOrange;
+            _statusAsst.Text = asstOk ? "Signed in (ready)" : "NOT signed in — click Login";
+            _statusLab.ForeColor = labOk ? Color.SeaGreen : Color.DarkOrange;
+            _statusLab.Text = labOk ? "Signed in (ready)" : "NOT signed in — click Login";
+
+            _status.ForeColor = (asstOk && labOk) ? Color.SeaGreen : (signedIn ? Color.DarkOrange : Color.Firebrick);
+            _status.Text = $"Running on {s.Url}. Waiting jobs: {waiting}. Accounts signed in: {(asstOk ? "labasst " : "")}{(labOk ? "lab" : (!asstOk ? "none" : ""))}.";
         }
         catch
         {

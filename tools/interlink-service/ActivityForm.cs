@@ -18,7 +18,7 @@ public sealed class ActivityForm : Form
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 700 };
     private string _lastStamp = "";
 
-    public ActivityForm(ServiceHost host)
+    public ActivityForm(ServiceHost host, Action<string>? signIn = null, Action? showSettings = null)
     {
         _host = host;
         Text = "NEXUS-L InterLink service - background task";
@@ -26,13 +26,22 @@ public sealed class ActivityForm : Form
         TopMost = true;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
-        ClientSize = new Size(470, 330);
+        ClientSize = new Size(510, 355);
         var wa = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
         Location = new Point(wa.Right - Width - 12, wa.Bottom - Height - 12);       // bottom right, like a small status panel
 
-        var foot = new Panel { Dock = DockStyle.Bottom, Height = 40, Padding = new Padding(8, 6, 12, 6) };
+        var foot = new Panel { Dock = DockStyle.Bottom, Height = 44, Padding = new Padding(8, 6, 12, 6) };
+        var btnAsst = new Button { Text = "Login: dtp_qcasst", Width = 132, Height = 28, Left = 8, Top = 8, BackColor = Color.FromArgb(239, 246, 255) };
+        btnAsst.Click += (_, _) => signIn?.Invoke(InterlinkRunner.AccountLabAsst);
+        var btnLab = new Button { Text = "Login: dtp_lab", Width = 114, Height = 28, Left = 146, Top = 8, BackColor = Color.FromArgb(239, 246, 255) };
+        btnLab.Click += (_, _) => signIn?.Invoke(InterlinkRunner.AccountLab);
+        var btnCfg = new Button { Text = "Settings...", Width = 80, Height = 28, Left = 266, Top = 8 };
+        btnCfg.Click += (_, _) => showSettings?.Invoke();
         _hide.Dock = DockStyle.Right;
         _hide.Click += (_, _) => Hide();
+        foot.Controls.Add(btnAsst);
+        foot.Controls.Add(btnLab);
+        foot.Controls.Add(btnCfg);
         foot.Controls.Add(_hide);
 
         Controls.Add(_list);

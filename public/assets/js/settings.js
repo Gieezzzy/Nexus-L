@@ -113,7 +113,7 @@
     const msg = $('#st-service-msg');
     say(msg, 'Testing...');
     try {
-      const j = await api('settings/service/test', { url: $('#st-interlink-service-url').value, key: $('#st-interlink-service-key').value });
+      const j = await api('settings/service/test', { url: ({ 43: '#st-interlink-service-url_43', 45: '#st-interlink-service-url_45' }[$('#st-interlink-service-target').value] ? $({ 43: '#st-interlink-service-url_43', 45: '#st-interlink-service-url_45' }[$('#st-interlink-service-target').value]).value : $('#st-interlink-service-url').value), key: $('#st-interlink-service-key').value });
       if (!j.reachable) { say(msg, 'The service did not answer at that address' + (j.error ? ' (' + j.error + ')' : '') + '. Is the program running, and is the port open?', 'bad'); return; }
       const parts = [`Reachable (version ${j.version || '?'})`, j.keyOk ? 'key accepted' : 'the key was REFUSED - it must match the service program', j.signedIn ? 'InterLink sign-in saved' : 'InterLink sign-in NOT done yet', `${j.waiting} waiting`];
       say(msg, parts.join(' · '), j.keyOk && j.signedIn ? 'ok' : 'bad');

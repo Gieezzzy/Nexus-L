@@ -289,6 +289,17 @@ button .ic,.dsg-btn .ic,.sc-btn .ic,.il-btn .ic{margin-right:4px}
   html.side-collapsed .side .nav>div>div:first-child{display:none}
   html.side-collapsed .side .nav>div{margin-top:6px!important;padding-top:6px!important}
   html.side-collapsed .side-foot{padding:10px 6px}
+  /* collapsed: no chevrons, no inline sub-menu (it showed as a stray bar); a group's sub-menu opens as a flyout beside its icon on hover / focus */
+  html.side-collapsed .side .side-group-h{justify-content:center!important;padding:4px 0!important}
+  html.side-collapsed .side .side-group-h>span{display:none!important}
+  html.side-collapsed .side .nav-chev{display:none!important}
+  /* lab documents: file icon with its number below it (101, 102 ...) */
+  html.side-collapsed .side .nav-link:has(.nav-num){flex-direction:column;gap:1px;padding:7px 0 5px!important}
+  html.side-collapsed .side .nav-link .nav-num{display:block;font-size:10px!important;font-weight:700;line-height:1.1;letter-spacing:.02em;color:inherit;opacity:.85}
+  html.side-collapsed .side .nav-group-items{display:none!important}
+  html.side-collapsed .side .nav-group.fly .nav-group-items{display:block!important;position:fixed;left:68px;min-width:190px;margin:0!important;padding:6px!important;border:1px solid rgba(148,163,184,.35)!important;border-radius:10px;background:#f4f7fb;box-shadow:0 10px 28px rgba(15,23,42,.18);z-index:60}
+  html.side-collapsed .side .nav-group.fly .nav-group-items .nav-link{font-size:12.5px!important;justify-content:flex-start;gap:8px;padding:8px 12px!important;white-space:nowrap}
+  html.side-collapsed .side .nav-group:has(.nav-group-items .nav-link.active)>.nav-group-toggle{background:rgba(37,99,235,.12);color:#1d4ed8}
 }
 @media (prefers-reduced-motion:reduce){.side,.shell{transition:none}}
 
@@ -524,3 +535,5 @@ img, video { max-width: 100%; }
   height: 15px;
   flex-shrink: 0;
 }
+
+.nav-link .nav-num{display:none}

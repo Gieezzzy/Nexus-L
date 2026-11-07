@@ -73,13 +73,47 @@ public sealed class ServiceHost
         }
 
         // health: no key, nothing private
-        app.MapGet("/health", (JobQueue q) => Results.Ok(new
+        app.MapGet("/health", (JobQueue q) =>
         {
-            ok = true,
-            waiting = q.Waiting,                 // waiting + the one running
-            signedIn = File.Exists(InterlinkRunner.SessionFile(app.Configuration)),
-            version = typeof(ServiceHost).Assembly.GetName().Version?.ToString(3),
-        }));
+            var asstOk = InterlinkRunner.IsAccountSignedIn(app.Configuration, InterlinkRunner.AccountLabAsst);
+            var labOk = InterlinkRunner.IsAccountSignedIn(app.Configuration, InterlinkRunner.AccountLab);
+            var anyOk = asstOk || labOk || File.Exists(InterlinkRunner.SessionFile(app.Configuration));
+            return Results.Ok(new
+            {
+                ok = true,
+                waiting = q.Waiting,                 // waiting + the one running
+                signedIn = anyOk,
+                accounts = new Dictionary<string, object>
+                {
+                    [InterlinkRunner.AccountLabAsst] = new
+                    {
+                        email = InterlinkRunner.AccountLabAsst,
+                        signedIn = asstOk,
+                        templates = new[] { "VF eTRF - Material", "VF eTRF - Product", "VF eTRF - Product WHOLE SHOE TEST", "VF eTRF - bonding" },
+                    },
+                    [InterlinkRunner.AccountLab] = new
+                    {
+                        email = InterlinkRunner.AccountLab,
+                        signedIn = labOk,
+                        templates = new[] { "VF eTRF - PULLTESTTemplate" },
+                    },
+                },
+                version = typeof(ServiceHost).Assembly.GetName().Version?.ToString(3),
+            });
+        });
+
+        // Launch the visible sign-in browser on the service computer for one of the two InterLink accounts
+        app.MapPost("/signin", async (HttpRequest http) =>
+        {
+            if (!KeyOk(http)) return Results.Json(new { ok = false, error = "Wrong or missing service key." }, statusCode: 401);
+            JsonNode? body = null;
+            try { body = await JsonNode.ParseAsync(http.Body); } catch { }
+            var rawAcc = (string?)body?["account"] ?? "";
+            var normAcc = InterlinkRunner.NormalizeAccount(rawAcc);
+            if (string.IsNullOrEmpty(normAcc)) normAcc = InterlinkRunner.AccountLabAsst;
+            TrayContext.SignInToInterlink(normAcc);
+            return Results.Ok(new { ok = true, account = normAcc, message = $"Opened InterLink login window on service computer for {normAcc}." });
+        });
 
         // NEXUS-L hands over one report to submit
         app.MapPost("/jobs", async (HttpRequest http, JobQueue q) =>
@@ -95,7 +129,8 @@ public sealed class ServiceHost
                 ApplicationNo = (string?)o["application_no"] ?? "",
                 LabRefNo = (string?)o["lab_ref_no"] ?? "",
                 ReportNo = (string?)o["report_no"] ?? "",
-                Mode = (string?)o["mode"] == "etrf" ? "etrf" : ((string?)o["mode"] == "add" ? "add" : "edit"),
+                Mode = (string?)o["mode"] is "etrf" or "lov" ? (string)o["mode"]! : ((string?)o["mode"] == "add" ? "add" : "edit"),
+                Account = (string?)o["account"] ?? "",
                 UserName = (string?)o["user_name"] ?? "",
                 VerifyUrl = (string?)o["verify_url"] ?? "",
                 CallbackUrl = (string?)o["callback_url"] ?? "",

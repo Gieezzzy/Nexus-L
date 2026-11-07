@@ -1477,14 +1477,41 @@ JS;
                 ->like('lab_ref_no', $q)
                 ->orLike('tr_no', $q)
                 ->orLike('material_code', $q)
+                ->orLike('material_description', $q)
                 ->orLike('model_style', $q)
                 ->orLike('material_type', $q)
                 ->orLike('supplier', $q)
+                ->orLike('po_lot_no', $q)
                 ->orLike('mtl_no', $q)
                 ->groupEnd();
         }
 
         $rows = $builder->orderBy('id', 'DESC')->limit($limit)->get()->getResultArray();
+
+        // Batch-enrich missing mtl_no from tbl_dtr_shoe_list via po_lot_no (ProdCode)
+        $missingPo = [];
+        foreach ($rows as $r) {
+            if (empty($r['mtl_no']) && ! empty($r['po_lot_no'])) {
+                $missingPo[trim((string) $r['po_lot_no'])] = true;
+            }
+        }
+        if ($missingPo !== []) {
+            $shoes = $db->table('tbl_dtr_shoe_list')->select('ProdCode, MTL')->whereIn('ProdCode', array_keys($missingPo))->get()->getResultArray();
+            $poToMtl = [];
+            foreach ($shoes as $s) {
+                if (! empty($s['ProdCode']) && ! empty($s['MTL'])) {
+                    $poToMtl[trim((string) $s['ProdCode'])] = trim((string) $s['MTL']);
+                }
+            }
+            foreach ($rows as &$r) {
+                $po = trim((string) ($r['po_lot_no'] ?? ''));
+                if (empty($r['mtl_no']) && $po !== '' && isset($poToMtl[$po])) {
+                    $r['mtl_no'] = $poToMtl[$po];
+                }
+            }
+            unset($r);
+        }
+
         $totalCount = $db->table('tbl_dtr_unified_labrefs')->countAllResults();
 
         return $this->response->setJSON([
@@ -1919,58 +1946,76 @@ JS;
      */
     public const ETRF_TEMPLATES = [
         'eTRF-Mat' => [
-            'code'         => 'eTRF-Mat',
-            'label'        => 'VF eTRF - Material',
-            'sample_type'  => 'Material',
-            'menu_targets' => ['VF eTRF - Material'],
-            'test_package' => '',
-            'individual'   => '',
-            'age_group'    => 'Adult',
+            'code'           => 'eTRF-Mat',
+            'label'          => 'VF eTRF - Material',
+            'sample_type'    => 'Material',
+            'account'        => 'dtp_qcasst@dtshoes.com',
+            'contact_person' => 'Danica Agbuya',
+            'email'          => 'dtp_qcasst@dtshoes.com',
+            'menu_targets'   => ['VF eTRF - Material'],
+            'test_package'   => '',
+            'individual'     => '',
+            'age_group'      => 'Adult',
         ],
         'eTRF-Prod' => [
-            'code'         => 'eTRF-Prod',
-            'label'        => 'VF eTRF - Product',
-            'sample_type'  => 'Finished Product',
-            'menu_targets' => ['VF eTRF - Product'],
-            'test_package' => 'VANS Pull Strength',
-            'individual'   => '',
-            'age_group'    => 'Adult',
+            'code'           => 'eTRF-Prod',
+            'label'          => 'VF eTRF - Product',
+            'sample_type'    => 'Finished Product',
+            'account'        => 'dtp_qcasst@dtshoes.com',
+            'contact_person' => 'Danica Agbuya',
+            'email'          => 'dtp_qcasst@dtshoes.com',
+            'menu_targets'   => ['VF eTRF - Product'],
+            'test_package'   => '*Select Individual Test Item',
+            'individual'     => '',
+            'age_group'      => 'Adult',
         ],
         'eTRF-PULL' => [
-            'code'         => 'eTRF-PULL',
-            'label'        => 'VF eTRF - PULLTESTTemplate',
-            'sample_type'  => 'Finished Product',
-            'menu_targets' => ['VF eTRF - PULLTESTTemplate'],
-            'test_package' => 'VANS Pull Strength',
-            'individual'   => '',
-            'age_group'    => 'Adult',
+            'code'           => 'eTRF-PULL',
+            'label'          => 'VF eTRF - PULLTESTTemplate',
+            'sample_type'    => 'Finished Product',
+            'account'        => 'dtp_lab@dtshoes.com',
+            'contact_person' => 'Faye Ann Elaysa',
+            'email'          => 'dtp_lab@dtshoes.com',
+            'menu_targets'   => ['VF eTRF - PULLTESTTemplate'],
+            'test_package'   => 'VANS Pull Strength',
+            'individual'     => '',
+            'age_group'      => 'Adult',
         ],
         'VF eTRF-bonding' => [
-            'code'         => 'VF eTRF-bonding',
-            'label'        => 'VF eTRF - bonding',
-            'sample_type'  => 'Finished Product',
-            'menu_targets' => ['VF eTRF - bonding'],
-            'test_package' => 'VANS Pull Strength',
-            'individual'   => 'VF-F01 Whole Shoe Sole Bonding (UTF / FTO / FiTO)',
-            'age_group'    => 'Adult',
+            'code'           => 'VF eTRF-bonding',
+            'label'          => 'VF eTRF - bonding',
+            'sample_type'    => 'Finished Product',
+            'account'        => 'dtp_qcasst@dtshoes.com',
+            'contact_person' => 'Danica Agbuya',
+            'email'          => 'dtp_qcasst@dtshoes.com',
+            'menu_targets'   => ['VF eTRF - bonding'],
+            'test_package'   => 'VANS Bonding Strength',
+            'individual'     => '',
+            'age_group'      => 'Adult',
         ],
         'VF eTRF-Whole Shoe' => [
-            'code'         => 'VF eTRF-Whole Shoe',
-            'label'        => 'VF eTRF - Product WHOLE SHOE TEST',
-            'sample_type'  => 'Finished Product',
-            'menu_targets' => ['VF eTRF - Product WHOLE SHOE TEST'],
-            'test_package' => 'VANS Pull Strength',
-            'individual'   => 'Whole Shoe Test (Heat Aging / Hydrolysis / Flexing / Bonding)',
-            'age_group'    => 'Adult',
+            'code'           => 'VF eTRF-Whole Shoe',
+            'label'          => 'VF eTRF - Product WHOLE SHOE TEST',
+            'sample_type'    => 'Finished Product',
+            'account'        => 'dtp_qcasst@dtshoes.com',
+            'contact_person' => 'Danica Agbuya',
+            'email'          => 'dtp_qcasst@dtshoes.com',
+            'menu_targets'   => ['VF eTRF - Product WHOLE SHOE TEST'],
+            'test_package'   => 'VANS Whole Shoe Performance',
+            'individual'     => '',
+            'age_group'      => 'Adult',
         ],
         'VF eTRF - Product (Adult)' => [
-            'code'         => 'VF eTRF - Product (Adult)',
-            'label'        => 'VF eTRF - Product (Adult)',
-            'sample_type'  => 'Finished Product',
-            'menu_targets' => ['VF eTRF - Product (Adult)', 'VF eTRF - PULLTESTTemplate', 'VF eTRF - Product'],
-            'test_package' => 'VANS Pull Strength',
-            'individual'   => '',
-            'age_group'    => 'Adult',
+            'code'           => 'VF eTRF - Product (Adult)',
+            'label'          => 'VF eTRF - Product (Adult)',
+            'sample_type'    => 'Finished Product',
+            'account'        => 'dtp_qcasst@dtshoes.com',
+            'contact_person' => 'Danica Agbuya',
+            'email'          => 'dtp_qcasst@dtshoes.com',
+            'menu_targets'   => ['VF eTRF - Product (Adult)', 'VF eTRF - PULLTESTTemplate', 'VF eTRF - Product'],
+            'test_package'   => 'VANS Pull Strength',
+            'individual'     => '',
+            'age_group'      => 'Adult',
         ],
     ];
 
@@ -2123,7 +2168,7 @@ JS;
         $this->ensureEtrfTables();
         $s    = (array) ($body['summary'] ?? []);
         $f    = (array) ($body['fields'] ?? []);
-        $user = (array) ($this->auth ? $this->auth->user() : []);
+        $user = (array) (isset($this->auth) && $this->auth ? $this->auth->user() : []);
         $now  = date('Y-m-d H:i:s');
 
         $this->il()->table('tbl_interlink_etrf_requests')->insert([
@@ -2185,6 +2230,80 @@ JS;
         return $this->response->setJSON(['ok' => true, 'rows' => $rows, 'csrf' => csrf_hash()]);
     }
 
+    /** GET interlink/dsr-search?q=...&prod_code=... : searches DSR/CFM Excel files on \\192.168.0.8\团队文件-確認dsr and tbl_dtr_dsr */
+    public function dsrSearch()
+    {
+        $q    = trim((string) ($this->request->getGet('q') ?? ''));
+        $prod = trim((string) ($this->request->getGet('prod_code') ?? ''));
+        $res  = \App\Libraries\DsrShareService::search($q, $prod);
+
+        return $this->response->setJSON($res + ['csrf' => csrf_hash()]);
+    }
+
+    /** GET interlink/order-summary?mtl=VN000... : season ticks and details of an MTL# from the #ORDER SUMMARY PDFs (re-read when a PDF changes; no mtl = file list only) */
+    public function orderSummary()
+    {
+        $mtl = trim((string) ($this->request->getGet('mtl') ?? ''));
+
+        return $this->response->setJSON(\App\Libraries\OrderSummaryService::lookup($mtl) + ['csrf' => csrf_hash()]);
+    }
+
+    /** GET interlink/dsr-file?rel_path=...&file=...&mtl_no=...&force=... : parses and returns the header + BOM component rows of a DSR/CFM Excel file */
+    public function dsrFile()
+    {
+        $file  = trim((string) ($this->request->getGet('rel_path') ?? $this->request->getGet('file') ?? ''));
+        $mtl   = trim((string) ($this->request->getGet('mtl_no') ?? ''));
+        $force = (bool) $this->request->getGet('force');
+        $res   = \App\Libraries\DsrShareService::getFileDetails($file, $mtl, $force);
+        if (empty($res['ok'])) {
+            $errMsg = $res['error'] ?? $res['message'] ?? 'Could not read DSR file.';
+            return $this->response->setStatusCode(404)->setJSON($res + ['error' => $errMsg, 'csrf' => csrf_hash()]);
+        }
+
+        return $this->response->setJSON($res + ['csrf' => csrf_hash()]);
+    }
+
+    /** POST interlink/dsr-sync {folder?: "S27"} : scans a folder on \\192.168.0.8\团队文件-確認dsr into tbl_dtr_dsr_files */
+    public function dsrSync()
+    {
+        $p      = $this->request->getJSON(true) ?? $this->request->getPost();
+        $folder = trim((string) ($p['folder'] ?? 'S27'));
+        if (! \App\Libraries\DsrShareService::ensureMounted()) {
+            return $this->response->setStatusCode(502)->setJSON(['ok' => false, 'error' => 'Could not connect to DSR share ' . \App\Libraries\DsrShareService::shareRoot(), 'csrf' => csrf_hash()]);
+        }
+        $db   = $this->il();
+        \App\Libraries\DsrShareService::ensureTables($db);
+        $root = \App\Libraries\DsrShareService::shareRoot();
+        $dirs = $folder !== '' && $folder !== 'all' ? [$folder] : ['S27', 'S26', 'F27', 'F25', '202604收到的DSR', '202603收到的DSR', '202602收到的DSR', '202601收到的DSR'];
+        $now  = date('Y-m-d H:i:s');
+        $cnt  = 0;
+        foreach ($dirs as $d) {
+            $full = $root . '\\' . $d;
+            if (! is_dir($full)) {
+                continue;
+            }
+            $it = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($full, \FilesystemIterator::SKIP_DOTS),
+                \RecursiveIteratorIterator::SELF_FIRST
+            );
+            foreach ($it as $fi) {
+                if (! $fi->isFile()) {
+                    continue;
+                }
+                $fn = $fi->getFilename();
+                if (str_starts_with($fn, '~$') || ! preg_match('/\.xlsx?$/i', $fn)) {
+                    continue;
+                }
+                $fp  = $fi->getPathname();
+                $rel = ltrim(substr($fp, strlen($root)), '\\/');
+                \App\Libraries\DsrShareService::registerShareFile($db, $fp, $rel, $d, $now);
+                $cnt++;
+            }
+        }
+
+        return $this->response->setJSON(['ok' => true, 'indexed' => $cnt, 'folder' => $folder, 'csrf' => csrf_hash()]);
+    }
+
     /** GET interlink/etrf-preview?lab_ref_no=...&etrf_type=... */
     public function etrfPreview()
     {
@@ -2206,7 +2325,7 @@ JS;
         $tpl = [];
         foreach (['eTRF-Mat', 'eTRF-Prod', 'eTRF-PULL', 'VF eTRF-bonding', 'VF eTRF-Whole Shoe'] as $k) {
             $t = self::ETRF_TEMPLATES[$k];
-            $tpl[] = ['code' => $t['code'], 'label' => $t['label'], 'sample_type' => $t['sample_type'], 'package' => $t['test_package'], 'individual' => $t['individual']];
+            $tpl[] = ['code' => $t['code'], 'label' => $t['label'], 'sample_type' => $t['sample_type'], 'account' => $t['account'], 'package' => $t['test_package'], 'individual' => $t['individual']];
         }
 
         return $this->render('interlink/etrf', ['title' => 'InterLink - VF eTRF', 'withCss' => 'interlink.css', 'withJs' => ['interlink_etrf.js'], 'templates' => $tpl]);
@@ -2234,6 +2353,78 @@ JS;
         }
 
         return $this->response->setStatusCode($r['code'])->setJSON($r['body'] + ['csrf' => csrf_hash()]);
+    }
+
+    /**
+     * Maps a NEXUS-L DTR material category/slug to the exact InterLink 2.0 Material Type option.
+     */
+    public static function mapInterlinkMaterialType(string $rawType, string $slug = '', string $desc = ''): string
+    {
+        $exactOptions = [
+            'Bottom Components (Outsole / Midsole / Footbed / Foxing Tape)',
+            'Fabric',
+            'Leather',
+            'Synthetic Leather / PU / TPU',
+            'Foam / EVA / Sponge',
+            'Laces / Webbing / Tapes / Thread',
+            'Hardware & trims',
+            'Labels / Heat Transfers / Prints',
+            'Packaging',
+        ];
+        foreach ($exactOptions as $opt) {
+            if (strcasecmp(trim($rawType), $opt) === 0) {
+                return $opt;
+            }
+        }
+        $hay = strtolower($rawType . ' ' . $slug . ' ' . $desc);
+        if (str_contains($hay, 'foxing') || str_contains($hay, 'heel logo') || str_contains($hay, 'fthl') || str_contains($hay, 'outsole') || str_contains($hay, 'midsole') || str_contains($hay, 'footbed') || str_contains($hay, 'insole') || str_contains($hay, 'rubber') || str_contains($hay, 'sklfm')) {
+            return 'Bottom Components (Outsole / Midsole / Footbed / Foxing Tape)';
+        }
+        if (str_contains($hay, 'box') || str_contains($hay, 'carton') || str_contains($hay, 'packaging') || str_contains($hay, 'tissue') || str_contains($hay, 'hangtag')) {
+            return 'Packaging';
+        }
+        if (str_contains($hay, 'synthetic') || str_contains($hay, 'pu ') || str_contains($hay, 'tpu')) {
+            return 'Synthetic Leather / PU / TPU';
+        }
+        if (str_contains($hay, 'leather') || str_contains($hay, 'suede') || str_contains($hay, 'nubuck') || str_contains($hay, 'split')) {
+            return 'Leather';
+        }
+        if (str_contains($hay, 'lace') || str_contains($hay, 'webbing') || str_contains($hay, 'tape') || str_contains($hay, 'thread') || str_contains($hay, 'wst') || str_contains($hay, 'velcro') || str_contains($hay, 'gore') || str_contains($hay, 'elastic')) {
+            return 'Laces / Webbing / Tapes / Thread';
+        }
+        if (str_contains($hay, 'hardware') || str_contains($hay, 'eyelet') || str_contains($hay, 'buckle') || str_contains($hay, 'zipper') || str_contains($hay, 'grommet') || str_contains($hay, 'hook')) {
+            return 'Hardware & trims';
+        }
+        if (str_contains($hay, 'label') || str_contains($hay, 'heat transfer') || str_contains($hay, 'screenprint') || str_contains($hay, 'embroidery')) {
+            return 'Labels / Heat Transfers / Prints';
+        }
+        if (str_contains($hay, 'foam') || str_contains($hay, 'eva') || str_contains($hay, 'sponge') || str_contains($hay, 'ortholite')) {
+            return 'Foam / EVA / Sponge';
+        }
+        if (str_contains($hay, 'fabric') || str_contains($hay, 'canvas') || str_contains($hay, 'mesh') || str_contains($hay, 'textile') || str_contains($hay, 'woven') || str_contains($hay, 'knit') || str_contains($hay, 'lining') || str_contains($hay, 'drill') || str_contains($hay, 'fleece')) {
+            return 'Fabric';
+        }
+
+        return trim($rawType) !== '' ? trim($rawType) : 'Fabric';
+    }
+
+    /**
+     * Maps a NEXUS-L DTR material category/slug to the default InterLink 2.0 Test Package (`CAL_CDTL_5`).
+     */
+    public static function mapInterlinkTestPackage(string $rawType, string $slug = '', string $desc = ''): string
+    {
+        $hay = strtolower($rawType . ' ' . $slug . ' ' . $desc);
+        if (str_contains($hay, 'foxing') || str_contains($hay, 'heel logo') || $slug === 'fthl') {
+            return 'VANS Foxing Tape - Rubber';
+        }
+        if (str_contains($hay, 'outsole') || $slug === 'rubber') {
+            return 'VANS Outsole - Rubber';
+        }
+        if (str_contains($hay, 'box') || str_contains($hay, 'carton') || $slug === 'box') {
+            return 'Carton Box (#ODUSACB)';
+        }
+
+        return '';
     }
 
     /**
@@ -2288,25 +2479,36 @@ JS;
             return $default;
         };
 
-        $user = (array) ($this->auth ? $this->auth->user() : []);
-        $contactName = $pick(['contact_person', 'APPT_CONTACT'], (string) ($user['name'] ?? ''));
+        $user = (array) (isset($this->auth) && $this->auth ? $this->auth->user() : []);
+        $defaultContact = (string) ($tpl['contact_person'] ?? ($tpl['account'] === 'dtp_lab@dtshoes.com' ? 'Faye Ann Elaysa' : 'Danica Agbuya'));
+        $contactName = $pick(['contact_person', 'APPT_CONTACT'], $defaultContact ?: (string) ($user['name'] ?? ''));
         $companyName = $pick(['company_name', 'JOB_STD_APP_DESC'], (string) \App\Libraries\SystemSettings::get('interlink.company_name', 'KEY TRADE CO., LTD'));
         $interlinkCode = $pick(['interlink_code', 'JOB_STD_APP'], (string) \App\Libraries\SystemSettings::get('interlink.interlink_code', 'E126863'));
-        $vendorName  = $pick(['vendor_name', 'TRPT_SUPPLIER_NAME'], (string) \App\Libraries\SystemSettings::get('interlink.vendor_name', 'KEY TRADE CO., LTD'));
-        $vendorId    = $pick(['vendor_id', 'SUPPLIER_ID'], (string) \App\Libraries\SystemSettings::get('interlink.vendor_id', '0000507450'));
-        $factoryName = $pick(['factory_name', 'TRPT_FACTORY_NAME'], (string) \App\Libraries\SystemSettings::get('interlink.factory_name', 'DATIAN SUBIC SHOES INC.'));
-        $factoryId   = $pick(['factory_id', 'FACTORY_ID'], (string) \App\Libraries\SystemSettings::get('interlink.factory_id', '0000507452'));
-        $supplierName = $pick(['supplier_name', 'MSTA_FIELD_6', 'Supplier', 'supplier'], $vendorName);
-        $supplierId   = $pick(['supplier_id', 'MSTA_FIELD_10', 'SupplierCode', 'SupplierID'], $vendorId);
+        $vendorName  = $pick(['vendor_name', 'TRPT_SUPPLIER_NAME'], $isMaterial
+            ? 'OWN SOURCE SUPPLIER'
+            : (string) \App\Libraries\SystemSettings::get('interlink.vendor_name', 'KEY TRADE CO., LTD'));
+        $vendorId    = $pick(['vendor_id', 'SUPPLIER_ID'], $isMaterial
+            ? 'G00000'
+            : (string) \App\Libraries\SystemSettings::get('interlink.vendor_id', '0000507450'));
+        $factoryName = $pick(['factory_name', 'TRPT_FACTORY_NAME'], $isMaterial
+            ? 'OWN SOURCE SUPPLIER'
+            : (string) \App\Libraries\SystemSettings::get('interlink.factory_name', 'DATIAN SUBIC SHOES INC.'));
+        $factoryId   = $pick(['factory_id', 'FACTORY_ID'], $isMaterial
+            ? 'G00000000000F001'
+            : (string) \App\Libraries\SystemSettings::get('interlink.factory_id', '0000507452'));
+        $supplierName = $pick(['supplier_name', 'MSTA_FIELD_6', 'vendor_name'], $isMaterial ? 'OWN SOURCE SUPPLIER' : $vendorName);
+        $supplierId   = $pick(['supplier_id', 'MSTA_FIELD_10', 'vendor_id'], $isMaterial ? 'G00000' : $vendorId);
         $brandName   = $pick(['buyer_brand', 'TRPT_CDI_BRAND_NAME', 'Brand', 'Customer'], (string) \App\Libraries\SystemSettings::get('interlink.buyer_brand', 'Vans'));
         $season      = $pick(['season', 'TRPT_SEASON', 'REF_FLD17', 'Season'], (string) \App\Libraries\SystemSettings::get('interlink.season', 'S27'));
         $testStage   = $pick(['test_stage', 'TRPT_TESTING_STATUS', 'TestStage', 'Stage'], (string) \App\Libraries\SystemSettings::get('interlink.test_stage', 'Production'));
         $exportTo    = $pick(['product_export_to', 'CAL_PO_COUNTRY'], (string) \App\Libraries\SystemSettings::get('interlink.product_export_to', 'APAC - Non China'));
-        $countryOrig = $pick(['country_of_origin', 'TRPT_COUNTRY_ORIGIN'], (string) \App\Libraries\SystemSettings::get('interlink.country_of_origin', 'Philippines'));
+        $rawCountry  = $pick(['country_of_origin', 'TRPT_COUNTRY_ORIGIN', "Supplier's Country", 'SupplierCountry', 'supplier_country'], $isMaterial ? 'CHINA' : 'Philippines');
+        $countryOrig = $isMaterial ? strtoupper($rawCountry) : (strcasecmp($rawCountry, 'PHILIPPINES') === 0 ? 'Philippines' : $rawCountry);
+        $sourcingOff = $pick(['sourcing_office', 'E1_TEXT_023', 'DETOX_SUPPLIER_COUNTRY'], 'ASO');
         $ageGroup    = $pick(['age_group', 'TRPT_AGE_RANGE', 'AgeGroup'], $tpl['age_group'] ?: 'Adult');
-        $sizeCat     = strtoupper($pick(['size_category', 'REF_FLD21', 'Gender', 'Category'], 'UNISEX'));
-        if (! in_array($sizeCat, ['UNISEX', 'MALE', 'FEMALE', 'MENS', 'WOMENS', 'KIDS', 'TODDLER', 'CHILDREN', 'ADULT'], true)) {
-            $sizeCat = 'UNISEX';
+        $sizeCat     = strtoupper($pick(['size_category', 'REF_FLD21', 'Gender', 'Category'], $isMaterial ? 'UNISEX' : 'UA'));
+        if (! in_array($sizeCat, ['UA', 'UNISEX', 'MALE', 'FEMALE', 'MENS', 'WOMENS', 'KIDS', 'TODDLER', 'CHILDREN', 'ADULT'], true)) {
+            $sizeCat = 'UA';
         }
         $genderCode  = match ($sizeCat) {
             'FEMALE', 'WOMENS' => 'WOMENS',
@@ -2314,21 +2516,53 @@ JS;
             default            => 'UNISEX',
         };
 
-        $styleNo     = $pick(['style_no', 'REF_FLD16', 'ModelStyle', 'Model No/Style', 'Style', 'model_style'], '');
+        $poLotNo     = $pick(['po_lot_no', 'PO/Lot No', 'PO/LotNo', 'POLotNO', 'POLotNo', 'ProdCode', 'ProductionCode'], '');
+        $mtlNo       = $pick(['mtl_no', 'MTL', 'MTL#', 'MTL_DSR'], '');
+        if ($mtlNo === '' && $poLotNo !== '') {
+            $shoeLookup = $this->il()->table('tbl_dtr_shoe_list')->where('ProdCode', $poLotNo)->orderBy('ID', 'DESC')->get(1)->getRowArray();
+            if ($shoeLookup && ! empty($shoeLookup['MTL'])) {
+                $mtlNo = trim((string) $shoeLookup['MTL']);
+            }
+        }
+
+        $styleNo     = $pick(['style_no', 'REF_FLD16', 'ModelStyle', 'Model No/Style', 'Style', 'model_style'], (! $isMaterial && $mtlNo !== '') ? $mtlNo : '');
         $productName = $pick(['product_name', 'style_name', 'REF_FLD23', 'Material Description', 'MaterialDescription', 'ModelName', 'material_description'], $styleNo);
         $colorDesc   = $pick(['colorway_name', 'color_description', 'REF_FLD24', 'Color', 'Colorway', 'color'], '');
         $colorCode   = $pick(['color_code', 'REF_FLD18', 'ColorCode'], '');
-        // a style color number is the style plus its color code, only when BOTH are known; nothing is guessed from the color name
-        $styleColorNo = $pick(['style_color_no', 'REF_FLD19', 'StyleColorNo', 'ProductionCode', 'MTL', 'mtl_no'], ($styleNo !== '' && $colorCode !== '') ? $styleNo . $colorCode : '');
+        // Extract embedded Coloro code (e.g. 045-89-02) from Material Description or Color if colorCode is still blank
+        if ($colorCode === '' && preg_match('/\b(\d{2,3}-\d{2}-\d{2})\b/', $productName . ' ' . $colorDesc, $ccm)) {
+            $colorCode = $ccm[1];
+        }
+        // a style color number is the MTL# or the style plus its color code
+        $styleColorNo = $pick(['style_color_no', 'REF_FLD19', 'StyleColorNo', 'MTL', 'mtl_no'], $mtlNo !== '' ? $mtlNo : (($styleNo !== '' && $colorCode !== '') ? $styleNo . $colorCode : ''));
+        // For Product templates with a Vans 11-char MTL/StyleColorNo (e.g. VN000E96BJN), extract the 3-char color code (BJN) if colorCode is blank
+        if ($colorCode === '' && ! $isMaterial && preg_match('/^VN[A-Z0-9]{6}([A-Z0-9]{3})$/i', $styleColorNo ?: $mtlNo, $vcm)) {
+            $colorCode = strtoupper($vcm[1]);
+        }
+        if ($styleNo === '' && ! $isMaterial && $styleColorNo !== '') {
+            $styleNo = $styleColorNo;
+        }
 
-        $matCode      = $pick(['material_code', 'MaterialCode', 'Material Code', 'MTL', 'mtl_no'], '');
+        $matCode      = $pick(['material_code', 'MaterialCode', 'Material Code', 'VFMaterialCode_DSR'], '');
         $matDesc      = $pick(['material_name', 'material_description', 'Material Description', 'MaterialDescription'], $productName);
-        $matType      = $pick(['material_type', 'MaterialType', 'Material Type', 'form_category'], (string) ($cfgT['label'] ?? ''));
-        $matSubType   = $pick(['material_sub_type', 'CAL_CDTL_8'], '');
-        $endUse       = $pick(['end_use', 'CAL_CDTL_1', 'Application', 'Component'], '');
-        $weight       = $pick(['weight', 'Weight', 'WeightAve'], '');
+        $rawMatType   = $pick(['material_type', 'MaterialType', 'Material Type', 'form_category'], (string) ($cfgT['label'] ?? ''));
+        $matType      = $isMaterial ? self::mapInterlinkMaterialType($rawMatType, $slug) : $rawMatType;
+        $matSubType   = $pick(['material_sub_type', 'CAL_CDTL_8'], $isMaterial ? \App\Libraries\DsrShareService::inferMaterialSubType('', $rawMatType, $matDesc) : '');
+        $endUse       = $pick(['end_use', 'CAL_CDTL_1', 'Application', 'Component', 'ComponentorLocation_DSR'], '');
+        $finishing    = $pick(['finishing', 'TXT_FINISH', 'FINISHING'], '');
+        $reqSpecNo    = $pick(['requirement_spec_no', 'CAL_UPC', 'REQ_SPEC_NO'], '');
+        $cutWidth     = $pick(['cuttable_width', 'E1_TEXT_053'], '');
+        $warpPerInch  = $pick(['warp_per_inch', 'E1_TEXT_060'], '');
+        $weftPerInch  = $pick(['weft_per_inch', 'E1_TEXT_061'], '');
+        $trimSize     = $pick(['trim_size', 'E1_TEXT_052'], '');
+        $yarnSpecs    = $pick(['yarn_specifications', 'E1_TEXT_054'], '');
+        $washInstr    = $pick(['washing_instruction', 'care_instruction', 'MSTA_FIELD_4'], '');
+        $prodClaim    = $pick(['product_claim_type', 'CAL_CDTL_3'], '');
+        $careLabel1   = $pick(['care_label_1', 'CARE_LABEL_1'], '');
+        $fiberText    = $pick(['fiber_content_text', 'TXT_FIBER_CONTENT'], '');
+        $weight       = $pick(['weight', 'Weight', 'WeightAve', 'WAve', 'weight_ave'], '');
         $weightUom    = $pick(['weight_uom', 'WeightUOM'], $weight !== '' ? 'g/m2' : '');
-        $thickness    = $pick(['thickness', 'Thickness', 'ThicknessAve'], '');
+        $thickness    = $pick(['thickness', 'Thickness', 'ThicknessAve', 'TAve', 'thickness_ave'], '');
         $claimType    = $pick(['claim_type', 'ClaimType'], '');
 
         $cargoDateRaw = $pick(['cargo_receive_date', 'INSP_SHIP_DATE', 'DateReceived', 'CollectionDate', 'received_date'], date('d M Y'));
@@ -2340,57 +2574,96 @@ JS;
         $prevReport   = $pick(['previous_report_no', 'TRPT_PREV_NO', 'PrevReportNo'], '');
         $improvements = $pick(['improvements', 'E1_TEXT_050', 'RetestDetails'], '');
 
-        $testPackages = $pick(['test_packages', 'CAL_CDTL_5'], $tpl['test_package']);
+        $defaultPkg   = $tpl['test_package'] ?: ($isMaterial ? self::mapInterlinkTestPackage($rawMatType, $slug, $matDesc) : '');
+        $testPackages = $pick(['test_packages', 'CAL_CDTL_5'], $defaultPkg);
         $individual   = $pick(['individual_tests', 'E2_LTEXT_001'], $tpl['individual']);
+        $gbStdCode    = $pick(['gb_standard_code', 'E1_TEXT_034'], '');
+        $gbSafetyCode = $pick(['gb_safety_code', 'E1_TEXT_035'], '');
+        $otherGbHyper = $pick(['other_gb_hypercare', 'E2_LTEXT_003'], '');
+        $otherGbVoc   = $pick(['other_gb_voc', 'E2_LTEXT_004'], '');
+        $suppNotes    = $pick(['supplementary_attachment_notes', 'JOB_DUMMY_005_NOTES'], '');
         $labRefLabel  = $ref ?: (string) ($lr['lab_ref_no'] ?? '');
         $defaultRmk   = $labRefLabel !== ''
             ? ('NEXUS-L LabRefNo: ' . $labRefLabel . ' | Type: ' . $tpl['code'] . (! empty($lr['mtl_no']) ? ' | MTL: ' . $lr['mtl_no'] : ''))
             : ('Submitted via NEXUS-L InterLink Service (' . $tpl['code'] . ')');
         $remarks      = $pick(['lab_remarks', 'remarks', 'TRPT_RMK', 'Remarks'], $defaultRmk);
-        $emailRecip   = $pick(['email_recipients', 'EMAIL_ADHOC_LIST'], (string) \App\Libraries\SystemSettings::get('interlink.email_recipients', 'dtp_lab@dtshoes.com'));
+        if ($suppNotes !== '' && ! str_contains($remarks, $suppNotes)) {
+            $remarks = rtrim($remarks, " |\r\n") . ' | Attachment Note: ' . $suppNotes;
+        }
+        $accountEmail = $pick(['account_email', 'interlink_account'], (string) ($tpl['account'] ?? 'dtp_qcasst@dtshoes.com'));
+        $defaultEmail = (string) ($tpl['email'] ?? ($accountEmail === 'dtp_lab@dtshoes.com' ? 'dtp_lab@dtshoes.com' : 'dtp_qcasst@dtshoes.com'));
+        $emailRecip   = $pick(['email_recipients', 'EMAIL_ADHOC_LIST'], $defaultEmail ?: (string) \App\Libraries\SystemSettings::get('interlink.email_recipients', 'dtp_qcasst@dtshoes.com'));
+        $appAddr      = $pick(['applicant_address', 'APPT_ADDR_1'], (string) \App\Libraries\SystemSettings::get('interlink.applicant_address', 'Lot 1P7-A Subic Bay Gateway Park Phase II,, Subic Bay Freeport Zone, Philippines'));
+        $appCountry   = $pick(['applicant_country', 'APPT_ADDR_3'], (string) \App\Libraries\SystemSettings::get('interlink.factory_country', 'Philippines'));
+        $postalCode   = $pick(['postal_code', 'E1_TEXT_001'], '');
+        $appEmail     = $pick(['applicant_email', 'APPT_EMAIL'], $defaultEmail ?: (string) \App\Libraries\SystemSettings::get('interlink.applicant_email', 'dtp_qcasst@dtshoes.com'));
+        $appPhone     = $pick(['applicant_phone', 'APPT_TEL'], (string) \App\Libraries\SystemSettings::get('interlink.applicant_phone', '(047) 252-2899'));
+        $labAddr      = $pick(['lab_address', 'E1_TEXT_012'], $appAddr);
+
+        // Sourcing office code map for DETOX_SUPPLIER_COUNTRY (1=ASO, 2=Brand Direct Source, 3=ESO, 4=PSO)
+        $sourcingCode = match (strtoupper($sourcingOff)) {
+            'BRAND DIRECT SOURCE', '2' => '2',
+            'ESO', '3'                 => '3',
+            'PSO', '4'                 => '4',
+            default                    => '1',
+        };
 
         // Exact NormalFormWithHeader.aspx field code map
         $fields = [
             // Section 1: Applicant Information
             'JOB_STD_APP_DESC' => $companyName,
             'JOB_STD_APP'      => $interlinkCode,
-            'APPT_ADDR_1'      => (string) \App\Libraries\SystemSettings::get('interlink.applicant_address', 'Lot 1P7-A Subic Bay Gateway Park Phase II,, Subic Bay Freeport Zone, Philippines'),
-            'APPT_ADDR_3'      => (string) \App\Libraries\SystemSettings::get('interlink.factory_country', 'Philippines'),
-            'E1_TEXT_001'      => '',
+            'APPT_ADDR_1'      => $appAddr,
+            'APPT_ADDR_3'      => $appCountry,
+            'E1_TEXT_001'      => $postalCode,
             'APPT_CONTACT'     => $contactName,
-            'APPT_EMAIL'       => (string) \App\Libraries\SystemSettings::get('interlink.applicant_email', 'dtp_lab@dtshoes.com'),
-            'APPT_TEL'         => (string) \App\Libraries\SystemSettings::get('interlink.applicant_phone', '(047) 252-2899'),
+            'APPT_EMAIL'       => $appEmail,
+            'APPT_TEL'         => $appPhone,
             'EMAIL_ADHOC_LIST' => $emailRecip,
 
             // Section 2: Invoice Information
-            'E1_TEXT_002'      => 'Yes',
+            'E1_TEXT_002'      => $pick(['invoice_to_applicant', 'E1_TEXT_002'], 'Yes'),
+            'E1_TEXT_003'      => $pick(['invoice_company_name', 'E1_TEXT_003'], ''),
+            'E1_TEXT_004'      => $pick(['invoice_address', 'E1_TEXT_004'], ''),
+            'E1_TEXT_005'      => $pick(['invoice_country', 'E1_TEXT_005'], ''),
+            'E1_TEXT_006'      => $pick(['invoice_postal_code', 'E1_TEXT_006'], ''),
+            'E1_TEXT_007'      => $pick(['invoice_contact_person', 'E1_TEXT_007'], ''),
+            'E1_TEXT_008'      => $pick(['invoice_email', 'E1_TEXT_008'], ''),
+            'E1_TEXT_009'      => $pick(['invoice_telephone', 'E1_TEXT_009'], ''),
 
             // Section 4: Service Requested
             'CAL_CDTL_11'         => $pick(['service_test_type', 'CAL_CDTL_11'], 'In-House Lab Testing'),
             'TRPT_TESTING_STATUS' => $testStage,
             'E1_TEXT_032'         => $pick(['service_provider', 'E1_TEXT_032'], 'DATIAN SUBIC SHOES INC.'),
             'ITS_OFFICE_DISP'     => $pick(['lab_location', 'ITS_OFFICE_DISP'], 'PHILIPPINES'),
-            'TRPT_SERV_TYPE'      => '4', // Regular
-            'E1_TEXT_012'         => (string) \App\Libraries\SystemSettings::get('interlink.applicant_address', 'Lot 1P7-A Subic Bay Gateway Park Phase II,, Subic Bay Freeport Zone, Philippines'),
-            'E1_TEXT_013'         => '2', // Quotation required: No
+            'TRPT_SERV_TYPE'      => $pick(['service_required', 'TRPT_SERV_TYPE'], '4'), // 4 = Regular
+            'E1_TEXT_012'         => $labAddr,
+            'E1_TEXT_013'         => $pick(['quotation_required', 'E1_TEXT_013'], '2'), // 2 = No
             'TRPT_RETEST'         => $retestVal,
             'TRPT_PREV_NO'        => $prevReport,
             'E1_TEXT_050'         => $improvements,
-            'E1_TEXT_014'         => 'No', // Return Sample
+            'E1_TEXT_014'         => $pick(['return_sample', 'E1_TEXT_014'], 'No'),
 
             // Section 5: Product / Material Information
-            'TRPT_CLT_SUB_PRD_CAT'   => $tpl['sample_type'],
+            'TRPT_CLT_SUB_PRD_CAT'   => $pick(['sample_type', 'TRPT_CLT_SUB_PRD_CAT'], $tpl['sample_type']),
             'TRPT_PRD_CAT'           => $pick(['product_category', 'TRPT_PRD_CAT'], 'Footwear'),
             'TRPT_CDI_BRAND_NAME'    => $brandName,
-            'DETOX_SUPPLIER_COUNTRY' => '1', // ASO
+            'DETOX_SUPPLIER_COUNTRY' => $sourcingCode,
+            'E1_TEXT_023'            => $sourcingOff,
             'TRPT_COUNTRY_ORIGIN'    => $countryOrig,
+            'MSTA_FIELD_4'           => $washInstr,
+            'TXT_FIBER_CONTENT'      => $fiberText,
 
             // Section 6: Test Requirements
+            'E1_TEXT_034'  => $gbStdCode,
+            'E1_TEXT_035'  => $gbSafetyCode,
             'CAL_CDTL_5'   => $testPackages,
+            'E2_LTEXT_003' => $otherGbHyper,
+            'E2_LTEXT_004' => $otherGbVoc,
             'E2_LTEXT_001' => $individual,
             'TRPT_RMK'     => $remarks,
 
-            // Hidden companion fields required by InterLink server validation
+            // Hidden companion fields & CPSC Certificate of Compliance fields
             'TRPT_COSTCENTRE'            => (string) \App\Libraries\SystemSettings::get('interlink.cost_centre', 'VF-P0676'),
             'ITS_COMPANY'                => 'DATIAN',
             'ITS_DIVISION'               => 'VFC-TXT',
@@ -2404,28 +2677,46 @@ JS;
             'E1_TEXT_059'                => $factoryId,
             'E1_TEXT_062'                => $factoryId . '+Non-GB+INH',
             'E3_TEXT_003'                => 'No',
-            'DETOX_FACILITY_ADD_ADDRESS' => (string) \App\Libraries\SystemSettings::get('interlink.factory_address', 'Lot 1P7-A,Phase 2,Subic Bay Gateway, Park, Subic Bay Freeport Zone'),
-            'DETOX_FACILITY_CITY'        => (string) \App\Libraries\SystemSettings::get('interlink.factory_city', 'Subic Bay'),
-            'DETOX_FACILITY_PROVINCE'    => (string) \App\Libraries\SystemSettings::get('interlink.factory_state_province', '03'),
-            'DETOX_FACILITY_COUNTRY'     => (string) \App\Libraries\SystemSettings::get('interlink.factory_country', 'Philippines'),
+            'DETOX_FACILITY_ADD_ADDRESS' => $pick(['factory_address', 'DETOX_FACILITY_ADD_ADDRESS'], (string) \App\Libraries\SystemSettings::get('interlink.factory_address', 'Lot 1P7-A,Phase 2,Subic Bay Gateway, Park, Subic Bay Freeport Zone')),
+            'DETOX_FACILITY_HOUSE_NO'    => $pick(['factory_apt_suite', 'DETOX_FACILITY_HOUSE_NO'], ''),
+            'DETOX_FACILITY_CITY'        => $pick(['factory_city', 'DETOX_FACILITY_CITY'], (string) \App\Libraries\SystemSettings::get('interlink.factory_city', 'Subic Bay')),
+            'DETOX_FACILITY_PROVINCE'    => $pick(['factory_state_province', 'DETOX_FACILITY_PROVINCE'], (string) \App\Libraries\SystemSettings::get('interlink.factory_state_province', '03')),
+            'DETOX_FACILITY_ZIP_CODE'    => $pick(['factory_zip_code', 'DETOX_FACILITY_ZIP_CODE'], ''),
+            'DETOX_FACILITY_COUNTRY'     => $pick(['factory_country', 'DETOX_FACILITY_COUNTRY'], (string) \App\Libraries\SystemSettings::get('interlink.factory_country', 'Philippines')),
+            'DETOX_FACILITY_EMAIL'       => $pick(['factory_email', 'DETOX_FACILITY_EMAIL'], ''),
+            'DETOX_FACILITY_PHONE'       => $pick(['factory_phone', 'DETOX_FACILITY_PHONE'], ''),
         ];
 
         if ($isMaterial) {
-            $fields['MSTA_FIELD_6']       = $supplierName;
-            $fields['MSTA_FIELD_10']      = $supplierId;
-            $fields['TRPT_FACTORY_NAME']  = $factoryName;
-            $fields['FACTORY_ID']         = $factoryId;
-            $fields['TRPT_SEASON']        = $season;
-            $fields['CAL_CDTL_8']         = $matSubType;
-            $fields['CAL_CDTL_1']         = $endUse;
+            $fields['MSTA_FIELD_6']      = $supplierName;
+            $fields['MSTA_FIELD_10']     = $supplierId;
+            $fields['TRPT_FACTORY_NAME'] = $factoryName;
+            $fields['FACTORY_ID']        = $factoryId;
+            $fields['TRPT_SEASON']       = $season;
+            $fields['CAL_CDTL_8']        = $matSubType;
+            $fields['CAL_CDTL_1']        = $endUse;
+            $fields['CAL_UPC']           = $reqSpecNo;
+            $fields['TXT_FINISH']        = $finishing;
+            $fields['E1_TEXT_053']       = $cutWidth;
+            $fields['E1_TEXT_060']       = $warpPerInch;
+            $fields['E1_TEXT_061']       = $weftPerInch;
+            $fields['E1_TEXT_052']       = $trimSize;
+            $fields['E1_TEXT_054']       = $yarnSpecs;
+            $fields['E1_TEXT_042']       = $pick(['any_related_trf', 'E1_TEXT_042'], 'No');
+            $fields['CAL_CDTL_10']       = $pick(['related_trf_no', 'CAL_CDTL_10'], '');
         } else {
-            $fields['TRPT_SUPPLIER_NAME'] = $vendorName;
-            $fields['SUPPLIER_ID']        = $vendorId;
-            $fields['TRPT_FACTORY_NAME']  = $factoryName;
-            $fields['FACTORY_ID']         = $factoryId;
-            $fields['CAL_PO_COUNTRY']     = $exportTo;
-            $fields['TRPT_AGE_RANGE']     = $ageGroup;
-            $fields['INSP_SHIP_DATE']     = $cargoDate;
+            $fields['TRPT_SUPPLIER_NAME']        = $vendorName;
+            $fields['SUPPLIER_ID']               = $vendorId;
+            $fields['TRPT_FACTORY_NAME']         = $factoryName;
+            $fields['FACTORY_ID']                = $factoryId;
+            $fields['CAL_PO_COUNTRY']            = $exportTo;
+            $fields['TRPT_AGE_RANGE']            = $ageGroup;
+            $fields['INSP_SHIP_DATE']            = $cargoDate;
+            $fields['CAL_CDTL_3']                = $prodClaim;
+            $fields['CARE_LABEL_1']              = $careLabel1;
+            $fields['TRPT_HTS_CODE']             = $pick(['gcc_cpc_required', 'TRPT_HTS_CODE'], 'No');
+            $fields['TRPT_PRODUCT_ID']           = $pick(['product_id', 'TRPT_PRODUCT_ID'], $styleColorNo ?: $styleNo);
+            $fields['TRPT_MANUFACTURE_DATE_STR'] = $pick(['manufacture_date', 'TRPT_MANUFACTURE_DATE_STR'], '');
         }
 
         // Allow direct field-code overrides from caller
@@ -2433,6 +2724,32 @@ JS;
             if (is_string($k) && preg_match('/^[A-Z0-9_]+$/', $k) && is_scalar($v)) {
                 $fields[$k] = trim((string) $v);
             }
+        }
+
+        // Build JOB_DUMMY_006 Fiber Composition rows if supplied
+        $userFibers = is_array($p['fibers'] ?? null) ? $p['fibers'] : [];
+        $fibers = [];
+        foreach ($userFibers as $fb) {
+            if (! is_array($fb)) {
+                continue;
+            }
+            $part  = trim((string) ($fb['part'] ?? $fb['REF_FLD05'] ?? ''));
+            $fiber = trim((string) ($fb['fiber'] ?? $fb['REF_FLD07'] ?? ''));
+            $pct   = trim((string) ($fb['pct'] ?? $fb['REF_FLD15'] ?? '0.00'));
+            if ($part === '' && $fiber === '') {
+                continue;
+            }
+            $fibers[] = [
+                'part'      => $part,
+                'fiber'     => $fiber,
+                'pct'       => $pct !== '' ? $pct : '0.00',
+                'REF_FLD05' => $part,
+                'REF_FLD07' => $fiber,
+                'REF_FLD15' => $pct !== '' ? $pct : '0.00',
+            ];
+        }
+        if ($fibers && $fields['TXT_FIBER_CONTENT'] === '') {
+            $fields['TXT_FIBER_CONTENT'] = implode('; ', array_map(static fn (array $f): string => trim(($f['part'] !== '' ? $f['part'] . ': ' : '') . $f['pct'] . '% ' . $f['fiber']), $fibers));
         }
 
         // Build the JOB_DUMMY_009 rows (Style Information for a product, Material Information for a material): the rows the user typed, or ONE row
@@ -2450,7 +2767,7 @@ JS;
                 : ['style_no' => $styleNo, 'product_name' => $productName, 'style_color_no' => $styleColorNo, 'color_description' => $colorDesc, 'color_code' => $colorCode,
                     'season' => $season, 'size_category' => $sizeCat];
         }
-        foreach ($rows as &$row) {                                     // a product row also carries the InterLink column codes the page fills by
+        foreach ($rows as &$row) {                                     // a product/material row also carries the InterLink column codes the page fills by
             if (! $isMaterial) {
                 $row += ['season' => $season, 'size_category' => $sizeCat];
                 $row['REF_FLD16'] = (string) ($row['style_no'] ?? '');
@@ -2461,15 +2778,42 @@ JS;
                 $row['REF_FLD17'] = (string) ($row['season'] ?? '');
                 $row['REF_FLD21'] = strtoupper((string) ($row['size_category'] ?? ''));
                 $row['REF_FLD20'] = $genderCode;
+            } else {
+                $row['REF_FLD06'] = (string) ($row['material_code'] ?? '');
+                $row['REF_FLD07'] = (string) ($row['material_description'] ?? '');
+                $row['REF_FLD16'] = (string) ($row['material_type'] ?? '');
+                $row['REF_FLD08'] = (string) ($row['color_code'] ?? '');
+                $row['REF_FLD11'] = (string) ($row['color_description'] ?? '');
+                $row['REF_FLD12'] = (string) ($row['weight'] ?? '');
+                $row['REF_FLD13'] = (string) ($row['weight_uom'] ?? '');
+                $row['REF_FLD14'] = (string) ($row['thickness'] ?? '');
+                $row['REF_FLD15'] = (string) ($row['claim_type'] ?? '');
             }
         }
         unset($row);
 
         // pre-flight: what InterLink needs and the request does not have yet. A request with anything missing is not sent.
         $missing = [];
-        $need = ['JOB_STD_APP_DESC' => 'Company name', 'JOB_STD_APP' => 'InterLink code', 'APPT_CONTACT' => 'Contact person', 'TRPT_CDI_BRAND_NAME' => 'Brand', 'TRPT_TESTING_STATUS' => 'Test stage',
-            'TRPT_FACTORY_NAME' => 'Factory name', 'FACTORY_ID' => 'Factory ID'];
-        $need += $isMaterial ? ['MSTA_FIELD_6' => 'Supplier name', 'MSTA_FIELD_10' => 'Supplier ID'] : ['TRPT_SUPPLIER_NAME' => 'Vendor name', 'SUPPLIER_ID' => 'Vendor ID', 'INSP_SHIP_DATE' => 'Cargo receive date'];
+        $need = [
+            'JOB_STD_APP_DESC'    => 'Company name',
+            'JOB_STD_APP'         => 'InterLink code',
+            'APPT_ADDR_1'         => 'Address',
+            'APPT_ADDR_3'         => 'Country',
+            'APPT_CONTACT'        => 'Contact person',
+            'APPT_EMAIL'          => 'Email',
+            'EMAIL_ADHOC_LIST'    => 'Email notification recipients',
+            'TRPT_CDI_BRAND_NAME' => 'Brand',
+            'TRPT_TESTING_STATUS' => 'Test stage',
+            'CAL_CDTL_11'         => 'Service test type',
+            'E1_TEXT_032'         => 'Service provider',
+            'ITS_OFFICE_DISP'     => 'Lab location',
+            'E1_TEXT_012'         => 'Lab address',
+            'TRPT_FACTORY_NAME'   => 'Factory name',
+            'FACTORY_ID'          => 'Factory ID',
+        ];
+        $need += $isMaterial
+            ? ['MSTA_FIELD_6' => 'Supplier name', 'MSTA_FIELD_10' => 'Supplier ID', 'TRPT_COUNTRY_ORIGIN' => 'Country of origin']
+            : ['TRPT_SUPPLIER_NAME' => 'Vendor name', 'SUPPLIER_ID' => 'Vendor ID', 'CAL_PO_COUNTRY' => 'Product export to', 'TRPT_AGE_RANGE' => 'Age group', 'INSP_SHIP_DATE' => 'Cargo receive date', 'TRPT_COUNTRY_ORIGIN' => 'Country of origin'];
         foreach ($need as $code => $label) {
             if (trim((string) ($fields[$code] ?? '')) === '') {
                 $missing[] = $label;
@@ -2498,40 +2842,66 @@ JS;
                 'etrf_type'      => $tpl['code'],
                 'template_label' => $tpl['label'],
                 'sample_type'    => $tpl['sample_type'],
+                'account_email'  => $accountEmail,
                 'menu_targets'   => $tpl['menu_targets'],
                 'home_url'       => self::PORTAL_HOME_URL,
                 'lab_ref_no'     => $labRefLabel,
                 'application_no' => $appNo,
+                'mtl_no'         => $mtlNo,
+                'po_lot_no'      => $poLotNo,
                 'fields'         => $fields,
                 'rows'           => $rows,
+                'fibers'         => $fibers,
                 'missing'        => $missing,
                 'ready'          => $missing === [],
                 'summary'        => [
-                    'etrf_type'         => $tpl['code'],
-                    'template_label'    => $tpl['label'],
-                    'sample_type'       => $tpl['sample_type'],
-                    'company_name'      => $companyName,
-                    'vendor_name'       => $isMaterial ? $supplierName : $vendorName,
-                    'vendor_id'         => $isMaterial ? $supplierId : $vendorId,
-                    'factory_name'      => $factoryName,
-                    'factory_id'        => $factoryId,
-                    'buyer_brand'       => $brandName,
-                    'season'            => $season,
-                    'test_stage'        => $testStage,
-                    'service_test_type' => $fields['CAL_CDTL_11'],
-                    'test_packages'     => $testPackages,
-                    'individual_tests'  => $individual,
-                    'style_no'          => $styleNo,
-                    'product_name'      => $isMaterial ? $matDesc : $productName,
-                    'style_color_no'    => $styleColorNo,
-                    'material_code'     => $matCode,
-                    'material_type'     => $matType,
-                    'color_code'        => $colorCode,
-                    'color_description' => $colorDesc,
-                    'size_category'     => $sizeCat,
-                    'age_group'         => $ageGroup,
-                    'cargo_receive_date'=> $cargoDate,
-                    'remarks'           => $remarks,
+                    'etrf_type'                      => $tpl['code'],
+                    'template_label'                 => $tpl['label'],
+                    'sample_type'                    => $tpl['sample_type'],
+                    'company_name'                   => $companyName,
+                    'vendor_name'                    => $isMaterial ? $supplierName : $vendorName,
+                    'vendor_id'                      => $isMaterial ? $supplierId : $vendorId,
+                    'factory_name'                   => $factoryName,
+                    'factory_id'                     => $factoryId,
+                    'buyer_brand'                    => $brandName,
+                    'season'                         => $season,
+                    'test_stage'                     => $testStage,
+                    'service_test_type'              => $fields['CAL_CDTL_11'],
+                    'country_of_origin'              => $countryOrig,
+                    'sourcing_office'                => $sourcingOff,
+                    'material_sub_type'              => $matSubType,
+                    'end_use'                        => $endUse,
+                    'finishing'                      => $finishing,
+                    'requirement_spec_no'            => $reqSpecNo,
+                    'cuttable_width'                 => $cutWidth,
+                    'warp_per_inch'                  => $warpPerInch,
+                    'weft_per_inch'                  => $weftPerInch,
+                    'trim_size'                      => $trimSize,
+                    'yarn_specifications'            => $yarnSpecs,
+                    'washing_instruction'            => $washInstr,
+                    'product_claim_type'             => $prodClaim,
+                    'care_label_1'                   => $careLabel1,
+                    'fiber_content_text'             => $fields['TXT_FIBER_CONTENT'],
+                    'gb_standard_code'               => $gbStdCode,
+                    'gb_safety_code'                 => $gbSafetyCode,
+                    'other_gb_hypercare'             => $otherGbHyper,
+                    'other_gb_voc'                   => $otherGbVoc,
+                    'test_packages'                  => $testPackages,
+                    'individual_tests'               => $individual,
+                    'supplementary_attachment_notes' => $suppNotes,
+                    'style_no'                       => $styleNo,
+                    'product_name'                   => $isMaterial ? $matDesc : $productName,
+                    'style_color_no'                 => $styleColorNo,
+                    'mtl_no'                         => $mtlNo,
+                    'po_lot_no'                      => $poLotNo,
+                    'material_code'                  => $matCode,
+                    'material_type'                  => $matType,
+                    'color_code'                     => $colorCode,
+                    'color_description'              => $colorDesc,
+                    'size_category'                  => $sizeCat,
+                    'age_group'                      => $ageGroup,
+                    'cargo_receive_date'             => $cargoDate,
+                    'remarks'                        => $remarks,
                 ],
                 'templates'      => array_values(self::ETRF_TEMPLATES),
                 'lab'            => $lr ? [

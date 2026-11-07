@@ -4,7 +4,7 @@
   #define SourceDir "..\bin\publish"
 #endif
 #define AppName "Nexus-L InterLink Service"
-#define AppVersion "1.1.0"
+#define AppVersion "1.2.2"
 #define AppCredit "Nexus-L InterLink Sender - Credited by Systems & Process Audit"
 #define AppExe "NexusInterlinkService.exe"
 

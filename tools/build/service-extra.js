@@ -54,3 +54,113 @@ function readNotices() {
   }
   return out.slice(0, 5);
 }
+
+/** On an open eTRF form: every pick-list ("search") button with its field code, label, InterLink list id and columns. Reads only. */
+async function lovInventory() {
+  const out = [];
+  const seen = new Set();
+  for (const b of document.querySelectorAll('img[id$="_btPick"], input[id*="btnPickSingleValuePicker"]')) {
+    const oc = b.getAttribute('onclick') || '';
+    const strs = [...oc.matchAll(/'([^']*)'/g)].map((m) => m[1]);
+    const mi = strs.findIndex((s) => /^(GetRefListValByTypeLOV|GetRefListVal)/i.test(s));
+    const codeM = b.id.match(/TpEdr_(.+?)_btPick/);
+    const code = codeM ? codeM[1] : (b.id.match(/(JOB_DUMMY_\d+_[A-Z0-9_]+?)_FIBER|(JOB_DUMMY_\d+)/) || [])[0] || b.id.slice(-40);
+    let label = '';
+    for (let n = b.parentElement, i = 0; n && i < 6 && !label; n = n.parentElement, i++) {
+      const t = (n.innerText || '').split('\n').map((s) => s.trim()).filter(Boolean)[0] || '';
+      if (t && t.length < 80) label = t.replace(/^\*\s*/, '');
+    }
+    const key = b.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    // the list argument reads "<list id>|<filter column>|[<parent field>]": the list is narrowed by what the parent field holds
+    const parts = mi >= 0 ? String(strs[mi + 1] || '').split('|') : [''];
+    out.push({ id: b.id, field: code, label, list_id: parts[0] || '', filter_col: parts[1] || '', parent_field: (parts[2] || '').replace(/[\[\]]/g, ''), method: mi >= 0 ? strs[mi] : '', columns: strs[1] || '' });
+  }
+  return { state: 'ok', title: document.title, pickers: out };
+}
+
+/** Opens one pick-list popup, reads its pages from startPage on (until about budgetMs is used) and closes it without choosing anything. */
+async function lovHarvest(btnId, startPage, budgetMs) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const t0 = Date.now();
+  const btn = document.getElementById(btnId);
+  if (!btn) return { state: 'error', message: 'pick-list button not found: ' + btnId };
+  const pop = ASPxClientControl.GetControlCollection().GetByName('PH1_NormalFormSelector1_NF1_LOVRL1_ASPxLOVIFramePopup');
+  const frame = () => document.querySelector('iframe[id*="LOVRL1_ASPxLOVIFramePopup"]');
+  try { pop.Hide(); } catch (e) { /* not open */ }
+  await sleep(500);
+  btn.click();
+  let w = null;
+  for (let i = 0; i < 40; i++) {
+    await sleep(400);
+    try {
+      const fw = frame().contentWindow;
+      if (fw && fw.cgvLOVAppList && fw.document.querySelector('tr[id*="DXHeadersRow"]')) { w = fw; break; }
+    } catch (e) { /* loading */ }
+  }
+  if (!w) { try { pop.Hide(); } catch (e) { /* ignore */ } return { state: 'error', message: 'the list did not open' }; }
+  await sleep(600);
+  const g = w.cgvLOVAppList;
+  const hdrCells = [...w.document.querySelectorAll('tr[id*="DXHeadersRow"]')[0].children];
+  const cols = hdrCells.map((c, i) => ({ i, t: (c.innerText || '').replace(/\s+/g, ' ').trim() })).filter((c) => c.t && c.t !== '#');
+  const readRows = () => [...w.document.querySelectorAll('tr[id*="DXDataRow"]')].map((r) => {
+    const cells = [...r.children].map((c) => (c.innerText || '').replace(/\s+/g, ' ').trim());
+    return cols.map((c) => cells[c.i] ?? '');
+  });
+  const pc = g.pageCount || 1;
+  const empty = /No data to display/i.test(w.document.body.innerText) && !w.document.querySelector('tr[id*="DXDataRow"]');
+  const rows = [];
+  let p = Math.max(0, startPage || 0);
+  let first = true;
+  for (; p < pc; p++) {
+    if (!first && Date.now() - t0 > (budgetMs || 25000)) break;
+    if (p > 0 || (startPage || 0) > 0) {
+      const before = JSON.stringify(readRows().slice(0, 2));
+      g.GotoPage(p);
+      for (let i = 0; i < 25; i++) { await sleep(250); if (JSON.stringify(readRows().slice(0, 2)) !== before || pc === 1) break; }
+    }
+    rows.push(...readRows());
+    first = false;
+  }
+  try { pop.Hide(); } catch (e) { /* ignore */ }
+  return { state: p >= pc ? 'done' : 'partial', headers: cols.map((c) => c.t), rows, page_count: pc, next_page: p, empty };
+}
+
+/** Opens a pick-list popup, goes to page `page` and clicks the row whose first column is `text`, exactly like choosing it by hand (sets the field and the fields that depend on it). */
+async function lovPick(btnId, text, page) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const btn = document.getElementById(btnId);
+  if (!btn) return { state: 'error', message: 'pick-list button not found' };
+  const pop = ASPxClientControl.GetControlCollection().GetByName('PH1_NormalFormSelector1_NF1_LOVRL1_ASPxLOVIFramePopup');
+  try { pop.Hide(); } catch (e) { /* not open */ }
+  await sleep(400);
+  btn.click();
+  let w = null;
+  for (let i = 0; i < 40; i++) {
+    await sleep(400);
+    try { const fw = document.querySelector('iframe[id*="LOVRL1_ASPxLOVIFramePopup"]').contentWindow; if (fw.cgvLOVAppList && fw.document.querySelector('tr[id*="DXDataRow"]')) { w = fw; break; } } catch (e) { /* loading */ }
+  }
+  if (!w) return { state: 'error', message: 'the list did not open' };
+  await sleep(500);
+  const rows = () => [...w.document.querySelectorAll('tr[id*="DXDataRow"]')];
+  const firstCol = (r) => { const hdr = [...w.document.querySelectorAll('tr[id*="DXHeadersRow"]')[0].children]; const i = hdr.findIndex((c) => { const t = (c.innerText || '').trim(); return t && t !== '#'; }); return ((r.children[i] || {}).innerText || '').replace(/\s+/g, ' ').trim(); };
+  if (page > 0) {
+    const before = JSON.stringify(rows().slice(0, 2).map((r) => r.innerText));
+    w.cgvLOVAppList.GotoPage(page);
+    for (let i = 0; i < 25; i++) { await sleep(250); if (JSON.stringify(rows().slice(0, 2).map((r) => r.innerText)) !== before) break; }
+  }
+  const multi = !!w.document.getElementById('btnUpToParent');
+  if (multi) {
+    // a multi-select list keeps what was chosen before: clear that first so only this one value is set
+    const clear = [...w.document.querySelectorAll('input,div,span,a')].find((e) => e.children.length === 0 && (e.value || e.innerText || '').trim() === 'Clear Selection');
+    if (clear && w.cgvLOVAppList.GetSelectedRowCount && w.cgvLOVAppList.GetSelectedRowCount() > 0) { clear.click(); await sleep(1200); }
+  }
+  const row = rows().find((r) => firstCol(r) === text);
+  if (!row) { try { pop.Hide(); } catch (e) { /* ignore */ } return { state: 'error', message: 'row not found: ' + text }; }
+  (row.querySelector('td') || row).click();
+  await sleep(1000);
+  if (multi) { const ok = w.document.getElementById('btnUpToParent'); if (ok) ok.click(); await sleep(1500); }   // the OK button hands the choice to the form
+  else await sleep(300);
+  return { state: 'ok' };
+}

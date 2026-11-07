@@ -21,6 +21,11 @@ public sealed class InterlinkRunner : IAsyncDisposable
     private const string PortalHome = "https://interlink2.intertek.com/";
     private const string SignInAgain = "InterLink asked the service account to sign in again. On the service computer run: NexusInterlinkService --signin";
 
+    /// <summary>Account 1: VF eTRF - Material, VF eTRF - Product, VF eTRF - Product WHOLE SHOE TEST, VF eTRF - bonding</summary>
+    public const string AccountLabAsst = "dtp_qcasst@dtshoes.com";
+    /// <summary>Account 2: VF eTRF - PULLTESTTemplate</summary>
+    public const string AccountLab = "dtp_lab@dtshoes.com";
+
     private readonly IConfiguration _cfg;
     private readonly Notifier _notifier;
     private readonly ILogger<InterlinkRunner> _log;
@@ -44,7 +49,77 @@ public sealed class InterlinkRunner : IAsyncDisposable
         return d;
     }
 
-    public static string SessionFile(IConfiguration cfg) => Path.Combine(DataDir(cfg), "interlink-session.json");
+    public static string NormalizeAccount(string? raw)
+    {
+        var s = (raw ?? "").Trim().ToLowerInvariant();
+        if (s == "" || s == "default") return "";
+        if (s.Contains("labasst") || s.Contains("qcasst") || s.Contains("material") || s.Contains("whole") || s.Contains("bond") || s.Contains("e-trf-mat") || s.Contains("etrf-mat") || s.Contains("etrf-prod"))
+            return AccountLabAsst;
+        if (s == "lab" || s.StartsWith("dtp_lab@") || s.Contains("pull"))
+            return AccountLab;
+        return AccountLabAsst;
+    }
+
+    public static string ResolveAccountForJob(JobRequest req)
+    {
+        if (!string.IsNullOrWhiteSpace(req.Account))
+            return NormalizeAccount(req.Account);
+        var jobAcc = (string?)req.Job["account"] ?? (string?)req.Job["etrf"]?["account_email"];
+        if (!string.IsNullOrWhiteSpace(jobAcc))
+            return NormalizeAccount(jobAcc);
+
+        var etrfType = ((string?)req.Job["etrf"]?["etrf_type"] ?? "").ToLowerInvariant();
+        var tplLabel = ((string?)req.Job["etrf"]?["template_label"] ?? req.ReportNo ?? "").ToLowerInvariant();
+        if (etrfType.Contains("pull") || tplLabel.Contains("pull"))
+            return AccountLab;
+        if (req.Mode == "etrf" || req.Mode == "lov")
+            return AccountLabAsst;
+        return "";
+    }
+
+    public static string SessionFile(IConfiguration cfg, string? account = null)
+    {
+        var norm = NormalizeAccount(account);
+        if (norm == AccountLabAsst) return Path.Combine(DataDir(cfg), "interlink-session-labasst.json");
+        if (norm == AccountLab) return Path.Combine(DataDir(cfg), "interlink-session-lab.json");
+        return Path.Combine(DataDir(cfg), "interlink-session.json");
+    }
+
+    public static string ResolveSessionFile(IConfiguration cfg, string? account = null)
+    {
+        var specific = SessionFile(cfg, account);
+        if (File.Exists(specific)) return specific;
+        var legacy = Path.Combine(DataDir(cfg), "interlink-session.json");
+        if (File.Exists(legacy)) return legacy;
+        var altAsst = SessionFile(cfg, AccountLabAsst);
+        if (File.Exists(altAsst)) return altAsst;
+        var altLab = SessionFile(cfg, AccountLab);
+        if (File.Exists(altLab)) return altLab;
+        return specific;
+    }
+
+    public static bool IsAccountSignedIn(IConfiguration cfg, string account)
+    {
+        var norm = NormalizeAccount(account);
+        var f = SessionFile(cfg, norm);
+        if (File.Exists(f)) return true;
+
+        // Fallback if legacy interlink-session.json exists: check if it belongs to this account
+        var legacy = Path.Combine(DataDir(cfg), "interlink-session.json");
+        if (File.Exists(legacy))
+        {
+            try
+            {
+                var content = File.ReadAllText(legacy);
+                if (norm == AccountLabAsst && (content.Contains("dtp_qcasst@", StringComparison.OrdinalIgnoreCase) || content.Contains("dtp_labasst@", StringComparison.OrdinalIgnoreCase) || content.Contains("dtp_qcasst%40", StringComparison.OrdinalIgnoreCase)))
+                    return true;
+                if (norm == AccountLab && (content.Contains("dtp_lab@", StringComparison.OrdinalIgnoreCase) || content.Contains("dtp_lab%40", StringComparison.OrdinalIgnoreCase)))
+                    return true;
+            }
+            catch { }
+        }
+        return false;
+    }
 
     private async Task<IBrowser> BrowserAsync()
     {
@@ -77,11 +152,16 @@ public sealed class InterlinkRunner : IAsyncDisposable
 
     public async Task RunAsync(JobRequest req, Action<string> say, CancellationToken stop)
     {
-        var sessionFile = SessionFile(_cfg);
+        var accountEmail = ResolveAccountForJob(req);
+        var sessionFile = ResolveSessionFile(_cfg, accountEmail);
+        var targetSaveFile = SessionFile(_cfg, accountEmail);
+        var signInMsg = !string.IsNullOrEmpty(accountEmail)
+            ? $"InterLink account {accountEmail} needs to sign in. In NexusInterlinkService click 'Login: {accountEmail}'."
+            : SignInAgain;
         if (!File.Exists(sessionFile))
-            throw new SignInRequiredException("The InterLink service has no sign-in yet. On the service computer run: NexusInterlinkService --signin");
+            throw new SignInRequiredException(signInMsg);
 
-        var minutes = _cfg.GetValue("Service:JobTimeoutMinutes", 20);
+        var minutes = req.Mode == "lov" ? Math.Max(_cfg.GetValue("Service:JobTimeoutMinutes", 20), 120) : _cfg.GetValue("Service:JobTimeoutMinutes", 20);
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(stop);
         cts.CancelAfter(TimeSpan.FromMinutes(minutes));
         var ct = cts.Token;
@@ -103,16 +183,22 @@ public sealed class InterlinkRunner : IAsyncDisposable
         IPage? current = grid;                   // the page a picture is taken of when something goes wrong
         try
         {
+            if (req.Mode == "lov")
+            {
+                await RunLovAsync(grid, req, accountEmail, signInMsg, say, ct);
+                signedIn = true;
+                return;
+            }
             if (req.Mode == "etrf")
             {
-                await RunEtrfAsync(grid, req, say, dialogs, ct);
+                await RunEtrfAsync(grid, req, accountEmail, signInMsg, say, dialogs, ct);
                 signedIn = true;
                 return;
             }
 
             // 1. home, then the search grid
-            say("Opening InterLink...");
-            await ReachGridAsync(grid, say, ct);
+            say($"Opening InterLink{(accountEmail != "" ? $" ({accountEmail})" : "")}...");
+            await ReachGridAsync(grid, accountEmail, signInMsg, say, ct);
             signedIn = true;
 
             // 2. the application's row: its Add / Edit menu opens the Upload Form in a popup
@@ -215,7 +301,7 @@ public sealed class InterlinkRunner : IAsyncDisposable
             say("Checking in InterLink that the report was kept...");
             var proof = await ctx.NewPageAsync();
             current = proof;
-            await ReachGridAsync(proof, say, ct);
+            await ReachGridAsync(proof, accountEmail, signInMsg, say, ct);
             JsonElement? rowInfo = null;
             for (var attempt = 0; attempt < 3; attempt++)
             {
@@ -223,7 +309,7 @@ public sealed class InterlinkRunner : IAsyncDisposable
                 if (Str(rowInfo, "state") == "ok" && !string.IsNullOrWhiteSpace(Str(rowInfo, "reportNo"))) break;
                 await Task.Delay(3000, ct);
                 await proof.ReloadAsync(new PageReloadOptions { WaitUntil = WaitUntilState.DOMContentLoaded });
-                await ReachGridAsync(proof, say, ct);
+                await ReachGridAsync(proof, accountEmail, signInMsg, say, ct);
             }
             var seenReportNo = Str(rowInfo, "reportNo");
             if (string.IsNullOrWhiteSpace(seenReportNo))
@@ -250,20 +336,129 @@ public sealed class InterlinkRunner : IAsyncDisposable
         {
             if (signedIn)
             {
-                try { await ctx.StorageStateAsync(new BrowserContextStorageStateOptions { Path = sessionFile }); }   // keeps the session fresh for the next job
+                try { await ctx.StorageStateAsync(new BrowserContextStorageStateOptions { Path = targetSaveFile }); }   // keeps the session fresh for the next job
                 catch (Exception e) { _log.LogWarning("Could not refresh the saved session: {Msg}", e.Message); }
             }
         }
     }
 
-    /// <summary>Submits or saves a new eTRF request on InterLink 2.0 (Home.aspx -> Submit a Request -> NormalFormWithHeader.aspx).</summary>
-    private async Task RunEtrfAsync(IPage page, JobRequest req, Action<string> say, List<string> dialogs, CancellationToken ct)
+    private static async Task<bool> ClickSsoTileOrYesAsync(IPage page, string accountEmail)
+    {
+        return await page.EvaluateAsync<bool>(@"(email) => {
+            if (email) {
+                const exact = document.querySelector(`[data-test-id=""${email}"" i]`);
+                if (exact) { exact.click(); return true; }
+                const byText = [...document.querySelectorAll('#tilesHolder .tile-container, .table[role=button], [data-test-id*=""@""]')].find(el => (el.innerText || '').toLowerCase().includes(email.toLowerCase()));
+                if (byText) { byText.click(); return true; }
+            }
+            const tile = document.querySelector('#tilesHolder .tile-container [data-test-id], .table[role=button], [data-test-id*=""@""]');
+            if (tile && !email) { tile.click(); return true; }
+            const yes = document.querySelector('#idSIButton9, input[type=submit][value=""Yes""]');
+            const pass = document.querySelector('input[type=password]');
+            if (yes && (!pass || pass.offsetParent === null)) { yes.click(); return true; }
+            return false;
+        }", accountEmail);
+    }
+
+    // lists already read in this sync run (a list shared by several templates is read once), keyed "syncId|listId|parentPath"
+    private static readonly HashSet<string> LovDone = new();
+
+    private sealed class LovPicker
+    {
+        public string Id = "", Field = "", Label = "", ListId = "", ParentField = "", Columns = "";
+    }
+
+    /// <summary>
+    /// Reads every pick list ("search" button) of one eTRF template and sends it to NEXUS-L. Nothing is saved or submitted in InterLink.
+    /// A list that depends on another field (End Use on Product Category, Brand, Test Package, Test Stage ...) is read once per value of
+    /// that parent, by choosing the parent value on the form (the form is thrown away afterwards).
+    /// </summary>
+    private async Task RunLovAsync(IPage page, JobRequest req, string accountEmail, string signInMsg, Action<string> say, CancellationToken ct)
     {
         var etrf = req.Job["etrf"] as JsonObject ?? new JsonObject();
         var tplLabel = (string?)etrf["template_label"] ?? req.ReportNo;
-        var action = ((string?)etrf["action"] ?? "submit").ToLowerInvariant();
+        var url = (string?)req.Job["lov_url"] ?? "";
+        var syncId = (string?)req.Job["sync_id"] ?? req.JobUid;
+        if (url == "") throw new InvalidOperationException("The job has no lov_url.");
 
-        say($"Opening InterLink Home for eTRF ({tplLabel})...");
+        await OpenEtrfFormAsync(page, etrf, tplLabel, accountEmail, signInMsg, say, ct);
+        JsonElement? inv = null;
+        for (var i = 0; i < 20; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            inv = await EvalAsync(page, "lovInventory");
+            if (inv is { ValueKind: JsonValueKind.Object } o && o.TryGetProperty("pickers", out var pk) && pk.GetArrayLength() > 0) break;
+            await Task.Delay(1500, ct);
+        }
+        var pickers = new List<LovPicker>();
+        if (inv is { ValueKind: JsonValueKind.Object } io && io.TryGetProperty("pickers", out var arr))
+            foreach (var e in arr.EnumerateArray())
+                pickers.Add(new LovPicker { Id = Str(e, "id"), Field = Str(e, "field"), Label = Str(e, "label"), ListId = Str(e, "list_id"), ParentField = Str(e, "parent_field"), Columns = Str(e, "columns") });
+        pickers = pickers.Where(p => p.ListId != "").ToList();
+        if (pickers.Count == 0) throw new InvalidOperationException($"{tplLabel}: no pick-list buttons were found on the form.");
+        say($"{tplLabel}: {pickers.Count} pick lists found.");
+
+        // the picker that fills a given field: the field is one of its "fields to set" columns
+        LovPicker? ParentOf(LovPicker c) => c.ParentField == "" ? null : pickers.FirstOrDefault(p => p != c && (p.Field == c.ParentField || p.Columns.Split(';').Contains(c.ParentField)));
+        var children = pickers.ToLookup(p => ParentOf(p)?.Id ?? "");
+        var sent = 0;
+
+        async Task<List<List<string>>> ReadAllAsync(LovPicker p, string path)
+        {
+            var rows = new List<List<string>>();
+            var headers = new List<string>();
+            var next = 0;
+            var empty = false;
+            for (var round = 0; round < 80; round++)
+            {
+                ct.ThrowIfCancellationRequested();
+                var r = await EvalAsync(page, "lovHarvest", p.Id, next, 25000);
+                if (r == null) { await Task.Delay(1500, ct); continue; }
+                var st = Str(r, "state");
+                if (st == "error") { say($"{tplLabel} / {p.Label} {p.Field}: {Str(r, "message")}"); break; }
+                var el = r.Value;
+                headers = el.GetProperty("headers").EnumerateArray().Select(x => x.GetString() ?? "").ToList();
+                foreach (var row in el.GetProperty("rows").EnumerateArray()) rows.Add(row.EnumerateArray().Select(x => x.GetString() ?? "").ToList());
+                empty = el.TryGetProperty("empty", out var em) && em.ValueKind == JsonValueKind.True;
+                next = el.GetProperty("next_page").GetInt32();
+                if (st == "done") break;
+            }
+            var key = $"{syncId}|{p.ListId}|{path}";
+            await _notifier.PostJsonAsync(url, new { sync_id = syncId, template = tplLabel, list = new { field = p.Field, label = p.Label, list_id = p.ListId, parent_field = p.ParentField, columns = p.Columns, parent_path = path, headers, rows, empty } });
+            lock (LovDone) LovDone.Add(key);
+            sent++;
+            say($"{tplLabel}: {p.Label} {p.Field} {(path == "" ? "" : "[" + path + "] ")}= {rows.Count} value(s){(empty ? " (nothing until its parent field is set)" : "")}.");
+            return rows;
+        }
+
+        async Task WalkAsync(LovPicker p, string path)
+        {
+            var rows = await ReadAllAsync(p, path);
+            if (!children[p.Id].Any() || rows.Count == 0 || rows.Count > 60) return;      // only small lists act as a parent
+            for (var i = 0; i < rows.Count; i++)
+            {
+                var text = rows[i][0];
+                var pick = await EvalAsync(page, "lovPick", p.Id, text, i / 10);
+                if (Str(pick, "state") != "ok") { say($"{tplLabel}: could not choose \"{text}\" in {p.Label}: {Str(pick, "message")}"); continue; }
+                foreach (var c in children[p.Id])
+                    await WalkAsync(c, (path == "" ? "" : path + ";") + p.Field + "=" + text);
+            }
+        }
+
+        foreach (var root in children[""])
+        {
+            ct.ThrowIfCancellationRequested();
+            bool done; lock (LovDone) done = LovDone.Contains($"{syncId}|{root.ListId}|");
+            if (done && !children[root.Id].Any()) { await _notifier.PostJsonAsync(url, new { sync_id = syncId, template = tplLabel, alias = new { field = root.Field, label = root.Label, list_id = root.ListId, parent_field = root.ParentField, columns = root.Columns } }); continue; }
+            await WalkAsync(root, "");
+        }
+        say($"{tplLabel}: pick lists read ({sent} sent to NEXUS-L). Nothing was saved in InterLink.");
+    }
+
+    /// <summary>Home.aspx -> Submit a Request -> the exact eTRF template (never another form); returns when the form page is up.</summary>
+    private async Task OpenEtrfFormAsync(IPage page, JsonObject etrf, string tplLabel, string accountEmail, string signInMsg, Action<string> say, CancellationToken ct)
+    {
+        say($"Opening InterLink Home for eTRF ({tplLabel}) using {(accountEmail != "" ? accountEmail : "service account")}...");
         await page.GotoAsync("https://interlink2.intertek.com/InterLink2/aspx/DlkPage/Portal2/Home.aspx",
             new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 60000 });
 
@@ -273,26 +468,35 @@ public sealed class InterlinkRunner : IAsyncDisposable
             ct.ThrowIfCancellationRequested();
             try
             {
-                var clicked = await page.EvaluateAsync<bool>(@"() => {
-                    const tile = document.querySelector('#tilesHolder .tile-container [data-test-id], .table[role=button], [data-test-id*=""@""]');
-                    if (tile) { tile.click(); return true; }
-                    const yes = document.querySelector('#idSIButton9, input[type=submit][value=""Yes""]');
-                    const pass = document.querySelector('input[type=password]');
-                    if (yes && (!pass || pass.offsetParent === null)) { yes.click(); return true; }
-                    return false;
-                }");
-                if (clicked) await Task.Delay(2500, ct);
+                if (await ClickSsoTileOrYesAsync(page, accountEmail))
+                    await Task.Delay(2500, ct);
             }
             catch { /* navigating */ }
             await Task.Delay(1000, ct);
         }
-        if (OnSignIn(page.Url)) throw new SignInRequiredException(SignInAgain);
+        if (OnSignIn(page.Url)) throw new SignInRequiredException(signInMsg);
+
+        // Which InterLink user is this session? The form must be sent by the account it is meant for (Material / Product / bonding /
+        // WHOLE SHOE = dtp_qcasst, "Danica Agbuya"; PULLTEST = dtp_lab). A wrong or stale session would otherwise send it as someone else.
+        var who = "";
+        try
+        {
+            who = (await page.EvaluateAsync<string>(@"() => { const e = [...document.querySelectorAll('[class*=""user"" i],[id*=""user"" i]')].map(x => (x.innerText || '').trim()).filter(t => t && !/log ?out|sign ?out/i.test(t) && t.length < 60); return e[0] || ''; }")) ?? "";
+        }
+        catch { /* the page is still changing: the check below just has no name to look at */ }
+        if (who != "") say($"InterLink says this session is: {who}.");
+        var wantAsst = accountEmail == AccountLabAsst;
+        var isDanica = who.Contains("Danica Agbuya", StringComparison.OrdinalIgnoreCase);
+        if (who != "" && wantAsst && !isDanica)
+            throw new InvalidOperationException($"{tplLabel} must be sent with {AccountLabAsst}, but the saved InterLink session belongs to \"{who}\". In NexusInterlinkService click 'Login: {AccountLabAsst}'.");
+        if (who != "" && accountEmail == AccountLab && !who.Contains("Faye Ann Elaysa", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"{tplLabel} must be sent with {AccountLab} (Faye Ann Elaysa), but the saved InterLink session belongs to \"{who}\". In NexusInterlinkService click 'Login: {AccountLab}'.");
 
         var navCount = 0;
         page.FrameNavigated += (_, f) => { if (f == page.MainFrame) Interlocked.Increment(ref navCount); };
 
         // 1. Open the requested eTRF form from Home.aspx
-        say($"Selecting {tplLabel} under Submit a Request...");
+        say($"Selecting {tplLabel} under Submit a Request ({accountEmail})...");
         var navBefore = navCount;
         JsonElement? openRes = null;
         for (var attempt = 0; attempt < 10; attempt++)
@@ -300,7 +504,7 @@ public sealed class InterlinkRunner : IAsyncDisposable
             ct.ThrowIfCancellationRequested();
             openRes = await EvalAsync(page, "openEtrfFromHome", etrf);
             var st = Str(openRes, "state");
-            if (st == "signin") throw new SignInRequiredException(SignInAgain);
+            if (st == "signin") throw new SignInRequiredException(signInMsg);
             if (st == "error") throw new InvalidOperationException(Str(openRes, "message"));
             if (st == "on-form" || st == "navigating") break;
             await Task.Delay(1000, ct);
@@ -309,6 +513,21 @@ public sealed class InterlinkRunner : IAsyncDisposable
         {
             await SettleAsync(page, () => navCount, navBefore, 25000, ct);
         }
+    }
+
+    /// <summary>Submits or saves a new eTRF request on InterLink 2.0 (Home.aspx -> Submit a Request -> NormalFormWithHeader.aspx).</summary>
+    private async Task RunEtrfAsync(IPage page, JobRequest req, string accountEmail, string signInMsg, Action<string> say, List<string> dialogs, CancellationToken ct)
+    {
+        var etrf = req.Job["etrf"] as JsonObject ?? new JsonObject();
+        var tplLabel = (string?)etrf["template_label"] ?? req.ReportNo;
+        var action = ((string?)etrf["action"] ?? "submit").ToLowerInvariant();
+
+        await OpenEtrfFormAsync(page, etrf, tplLabel, accountEmail, signInMsg, say, ct);
+
+        // page changes from here on (Save / Submit steps)
+        var navCount = 0;
+        page.FrameNavigated += (_, f) => { if (f == page.MainFrame) Interlocked.Increment(ref navCount); };
+        var navBefore = navCount;
 
         // Wait until PH1_NormalFormSelector1_NF1_EGVNF is ready
         say($"Filling {tplLabel} eTRF form...");
@@ -318,7 +537,7 @@ public sealed class InterlinkRunner : IAsyncDisposable
             ct.ThrowIfCancellationRequested();
             fillRes = await EvalAsync(page, "fillNormalFormEtrf", etrf);
             var st = Str(fillRes, "state");
-            if (st == "signin") throw new SignInRequiredException(SignInAgain);
+            if (st == "signin") throw new SignInRequiredException(signInMsg);
             if (st == "filled") break;
             if (st == "error" && attempt >= 4) throw new InvalidOperationException(Str(fillRes, "message"));
             await Task.Delay(1500, ct);
@@ -329,21 +548,102 @@ public sealed class InterlinkRunner : IAsyncDisposable
         // 2. Press Print & Submit (or Save)
         var commitLabel = action == "save" ? "Save" : "Print & Submit";
         say($"Pressing {commitLabel} on {tplLabel}...");
+        dialogs.Clear();
         navBefore = navCount;
         var commitRes = await EvalAsync(page, "pressNormalFormCommit", action);
         if (Str(commitRes, "state") == "error") throw new InvalidOperationException(Str(commitRes, "message"));
-        await SettleAsync(page, () => navCount, navBefore, 15000, ct);
+        await SettleAsync(page, () => navCount, navBefore, 12000, ct);
+
+        var dlgErr = dialogs.FirstOrDefault(d => Regex.IsMatch(d, @"is missing|is required|invalid|cannot\s+be\s+blank", RegexOptions.IgnoreCase));
+        if (!string.IsNullOrWhiteSpace(dlgErr))
+            throw new InvalidOperationException($"InterLink rejected the eTRF: {dlgErr.Replace("\r", " ").Replace("\n", " ").Trim()}");
+
+        var genAppNo = "";
+        var reachedThankYou = false;
+
+        // 3. For Print & Submit, advance through the confirmation checkbox + "Next" view until reaching "THANK YOU! For your online job submission"
+        if (action != "save")
+        {
+            for (var step = 0; step < 18; step++)
+            {
+                ct.ThrowIfCancellationRequested();
+                navBefore = navCount;
+                var adv = await EvalAsync(page, "advanceNormalFormSubmitStep");
+                var advState = Str(adv, "state");
+
+                if (advState == "error")
+                    throw new InvalidOperationException($"InterLink rejected the eTRF: {Str(adv, "message")}");
+
+                var stepApp = Str(adv, "appNo");
+                if (!string.IsNullOrWhiteSpace(stepApp))
+                    genAppNo = stepApp;
+
+                if (advState == "thank-you")
+                {
+                    reachedThankYou = true;
+                    say($"Reached InterLink THANK YOU! submission screen — Application No: {genAppNo}");
+                    await ShotAsync(page, req, "etrf-thank-you");
+                    break;
+                }
+
+                if (advState == "advanced")
+                {
+                    var clickedBtn = Str(adv, "clicked");
+                    say($"Checked confirmation checkbox & clicked '{clickedBtn}' on InterLink...");
+                    await SettleAsync(page, () => navCount, navBefore, 15000, ct);
+                    continue;
+                }
+
+                await Task.Delay(1200, ct);
+                if (!string.IsNullOrWhiteSpace(genAppNo) && step >= 4)
+                    break;
+            }
+        }
 
         await ShotAsync(page, req, "etrf-after-submit");
+        dlgErr = dialogs.FirstOrDefault(d => Regex.IsMatch(d, @"is missing|is required|invalid|cannot\s+be\s+blank", RegexOptions.IgnoreCase));
+        if (!string.IsNullOrWhiteSpace(dlgErr))
+            throw new InvalidOperationException($"InterLink rejected the eTRF: {dlgErr.Replace("\r", " ").Replace("\n", " ").Trim()}");
+
         var check = await EvalAsync(page, "checkNormalFormSubmitted");
         if (check is { ValueKind: JsonValueKind.Object } c && c.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.False)
             throw new InvalidOperationException($"InterLink rejected the eTRF: {Str(check, "message")}");
 
-        var genAppNo = Str(check, "appNo");
+        if (string.IsNullOrWhiteSpace(genAppNo))
+            genAppNo = Str(check, "appNo");
+        if (string.IsNullOrWhiteSpace(genAppNo))
+        {
+            foreach (var d in dialogs)
+            {
+                var dm = Regex.Match(d, @"\b(A\d{8,12})\b");
+                if (dm.Success) { genAppNo = dm.Groups[1].Value; break; }
+            }
+        }
+        if (string.IsNullOrWhiteSpace(genAppNo))
+        {
+            try
+            {
+                say("Reading generated Application No. from InterLink grid...");
+                await ReachGridAsync(page, accountEmail, signInMsg, say, ct);
+                genAppNo = await page.EvaluateAsync<string>(@"() => {
+                    const tr = document.querySelector('tr[id*=""EGV_DXDataRow0""], tr.dxgvDataRow');
+                    if (!tr) return '';
+                    const m = (tr.innerText || '').match(/\b(A\d{8,12})\b/);
+                    return m ? m[1] : '';
+                }") ?? "";
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning("Could not read top Application No. from search grid: {Msg}", ex.Message);
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(genAppNo))
         {
             req.ApplicationNo = genAppNo;
-            say($"eTRF ({tplLabel}) submitted to InterLink — Application No: {genAppNo}.");
+            say(reachedThankYou
+                ? $"THANK YOU! For your online job submission — Application No: {genAppNo} ({tplLabel})"
+                : $"eTRF ({tplLabel}) {(action == "save" ? "saved as draft" : "submitted")} in InterLink — Application No: {genAppNo}.");
         }
         else
         {
@@ -352,7 +652,7 @@ public sealed class InterlinkRunner : IAsyncDisposable
     }
 
     /// <summary>InterLink's home page, then its search grid (through the portal's own link)</summary>
-    private async Task ReachGridAsync(IPage page, Action<string> say, CancellationToken ct)
+    private async Task ReachGridAsync(IPage page, string accountEmail, string signInMsg, Action<string> say, CancellationToken ct)
     {
         say("Opening InterLink...");
         await page.GotoAsync(PortalHome, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 60000 });
@@ -366,19 +666,15 @@ public sealed class InterlinkRunner : IAsyncDisposable
                 {
                     try
                     {
-                        var clicked = await page.EvaluateAsync<bool>(@"() => {
-                            const tile = document.querySelector('#tilesHolder .tile-container [data-test-id], .table[role=button], [data-test-id*=""@""]');
-                            if (tile) { tile.click(); return true; }
-                            const yes = document.querySelector('#idSIButton9, input[type=submit][value=""Yes""]');
-                            const pass = document.querySelector('input[type=password]');
-                            if (yes && (!pass || pass.offsetParent === null)) { yes.click(); return true; }
-                            return false;
-                        }");
-                        if (clicked) { await Task.Delay(2500, ct); continue; }
+                        if (await ClickSsoTileOrYesAsync(page, accountEmail))
+                        {
+                            await Task.Delay(2500, ct);
+                            continue;
+                        }
                     }
                     catch { /* navigating */ }
                 }
-                throw new SignInRequiredException(SignInAgain);
+                throw new SignInRequiredException(signInMsg);
             }
             var probe = await EvalAsync(page, "gridProbe");
             if (probe is { ValueKind: JsonValueKind.Object } p)

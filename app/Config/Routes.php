@@ -28,6 +28,7 @@ $routes->group('', ['filter' => 'guest'], static function (RouteCollection $rout
 // ---------------------------------------------------------------------
 $routes->post('interlink/service/callback', 'InterlinkServiceController::callback');
 $routes->get('interlink/service/verify', 'InterlinkServiceController::verify');
+$routes->post('interlink/service/lov', 'InterlinkLovController::receive');
 
 // ---------------------------------------------------------------------
 // Authenticated routes - nothing below is reachable without logging in
@@ -87,9 +88,17 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
 $routes->post('interlink/etrf-check', 'InterlinkController::etrfCheck');
 $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('interlink/etrf-history', 'InterlinkController::etrfHistory');
+    $routes->get('interlink/dsr-search', 'InterlinkController::dsrSearch');
+    $routes->post('interlink/lov-sync', 'InterlinkLovController::sync');
+    $routes->get('interlink/lov', 'InterlinkLovController::values');
+    $routes->get('interlink/lov-status', 'InterlinkLovController::status');
+    $routes->get('interlink/order-summary', 'InterlinkController::orderSummary');
+    $routes->get('interlink/dsr-file', 'InterlinkController::dsrFile');
+    $routes->post('interlink/dsr-sync', 'InterlinkController::dsrSync');
     $routes->post('interlink/center/etrf', 'InterlinkController::centerEtrf');
     $routes->post('interlink/service/etrf', 'InterlinkServiceController::submitEtrf');
     $routes->get('interlink/service/status', 'InterlinkServiceController::status');
+    $routes->post('interlink/service/signin', 'InterlinkServiceController::signin');
     $routes->post('interlink/service/submit', 'InterlinkServiceController::submit');
     $routes->get('interlink/service/feed', 'InterlinkServiceController::feed');
 

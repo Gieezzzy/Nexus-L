@@ -111,6 +111,25 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
         }
         $labCode = $segment === 'labdocs' ? rawurldecode((string) service('uri')->getSegment(2)) : '';
         ?>
+        <?php
+        $regTag = static function (array $r): string {
+            $code = (string) ($r['code'] ?? '');
+            if (preg_match('/Lab-(\d{2,3})(?:-([A-Za-z]))?/i', $code, $m)) {
+                return $m[1] . (isset($m[2]) ? strtoupper($m[2]) : '');
+            }
+            $label = trim((string) ($r['menu_label'] ?? $code));
+            $words = preg_split('/[^A-Za-z0-9]+/', $label, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            if (count($words) === 1) {
+                return strtoupper(substr($words[0], 0, 3));
+            }
+            $t = '';
+            foreach (array_slice($words, 0, 3) as $w) {
+                $t .= strtoupper($w[0]);
+            }
+
+            return $t;
+        };
+        ?>
         <?php foreach ($labGroups as $lgKey => $lg): if (! $lg['regs']) { continue; }
             $lgHere = $segment === 'labdocs' && ($labCode === '' ? $lgKey === 'lab' : in_array($labCode, array_column($lg['regs'], 'code'), true)); ?>
         <details class="side-group" data-grp="<?= esc($lgKey, 'attr') ?>"<?= $lgHere ? ' open data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
@@ -119,9 +138,10 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
                 <svg class="side-group-c" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:14px;height:14px;transition:transform .15s ease-out" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
             </summary>
             <?php foreach ($lg['regs'] as $lr): ?>
-            <a href="<?= site_url('labdocs/' . rawurlencode($lr['code'])) ?>" class="nav-link <?= ($segment === 'labdocs' && ($labCode === $lr['code'] || ($labCode === '' && $lgKey === 'lab' && $lr === $lg['regs'][0]))) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
+            <a href="<?= site_url('labdocs/' . rawurlencode($lr['code'])) ?>" title="<?= esc($lr['menu_label'] ?: $lr['code'], 'attr') ?>" class="nav-link <?= ($segment === 'labdocs' && ($labCode === $lr['code'] || ($labCode === '' && $lgKey === 'lab' && $lr === $lg['regs'][0]))) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
                 <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5zM14 3v5h5M9 13h6M9 17h6M9 9h2"/></svg>
                 <?= esc($lr['menu_label'] ?: $lr['code']) ?>
+                <span class="nav-num"><?= esc($regTag($lr)) ?></span>
             </a>
             <?php endforeach ?>
         </details>
@@ -180,5 +200,18 @@ document.querySelectorAll('.nav-group').forEach(function (g) {
   };
   try { var saved = localStorage.getItem(key); if (saved !== null && btn.dataset.current !== '1') set(saved === '1'); } catch (e) {}
   btn.addEventListener('click', function () { set(box.hidden); });
+  // collapsed sidebar: the sub-menu is a flyout next to the icon
+  var root = document.documentElement, t;
+  var show = function () {
+    if (!root.classList.contains('side-collapsed')) return;
+    clearTimeout(t);
+    document.querySelectorAll('.nav-group.fly').forEach(function (o) { if (o !== g) o.classList.remove('fly'); });
+    g.classList.add('fly');
+    var r = btn.getBoundingClientRect(), h = box.offsetHeight || 80;
+    box.style.top = Math.max(8, Math.min(r.top, window.innerHeight - h - 8)) + 'px';
+  };
+  var hide = function () { t = setTimeout(function () { g.classList.remove('fly'); }, 160); };
+  g.addEventListener('mouseenter', show); g.addEventListener('mouseleave', hide);
+  g.addEventListener('focusin', show); g.addEventListener('focusout', hide);
 });
 </script>

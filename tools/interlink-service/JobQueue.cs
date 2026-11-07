@@ -214,9 +214,11 @@ public sealed class JobQueue : BackgroundService
                 await _runner.RunAsync(job, msg =>
                 {
                     st.Message = msg;
+                    st.ApplicationNo = job.ApplicationNo;
                     Note(job, msg);
                     _log.LogInformation("[{Job}] {App} ({User}): {Msg}", job.JobUid.Length > 8 ? job.JobUid[..8] : job.JobUid, job.ApplicationNo, job.UserName, msg);
                 }, stop);
+                st.ApplicationNo = job.ApplicationNo;
                 st.State = "done";
             }
             catch (OperationCanceledException) when (stop.IsCancellationRequested)

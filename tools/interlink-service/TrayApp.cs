@@ -12,13 +12,25 @@ public sealed class TrayContext : ApplicationContext
     private LogForm? _logForm;
     private ActivityForm? _activityForm;
     private ToolStripMenuItem? _activityItem;
+    private readonly EventWaitHandle _showEvent;
+    private readonly SynchronizationContext _uiCtx;
 
     public TrayContext(string[] args)
     {
         _args = args;
+        _uiCtx = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
+        SynchronizationContext.SetSynchronizationContext(_uiCtx);
+
+        _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, "NexusInterlinkService.ShowSettings");
+        ThreadPool.RegisterWaitForSingleObject(_showEvent, (_, _) =>
+        {
+            _uiCtx.Post(_ => ShowSettings(), null);
+        }, null, -1, false);
+
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Settings...", null, (_, _) => ShowSettings());
-        menu.Items.Add("Sign in to InterLink...", null, (_, _) => SignInToInterlink());
+        menu.Items.Add("Settings & InterLink Login...", null, (_, _) => ShowSettings());
+        menu.Items.Add($"Login: {InterlinkRunner.AccountLabAsst} (Material / Product / Whole Shoe / Bonding)...", null, (_, _) => SignInToInterlink(InterlinkRunner.AccountLabAsst));
+        menu.Items.Add($"Login: {InterlinkRunner.AccountLab} (PULLTESTTemplate)...", null, (_, _) => SignInToInterlink(InterlinkRunner.AccountLab));
         _activityItem = new ToolStripMenuItem("Show what it is doing", null, (_, _) => ToggleActivity());
         menu.Items.Add(_activityItem);
         menu.Items.Add("Log...", null, (_, _) => ShowLog());
@@ -35,7 +47,8 @@ public sealed class TrayContext : ApplicationContext
             s.ApiKey = AppSettings.NewKey();    // a fresh key; the Settings window shows it so it can be copied into NEXUS-L
             s.Save();
         }
-        _ = StartAsync(firstRun);
+        var openNow = firstRun || args.Any(a => string.Equals(a, "--open", StringComparison.OrdinalIgnoreCase) || string.Equals(a, "--settings", StringComparison.OrdinalIgnoreCase));
+        _ = StartAsync(openNow);
     }
 
     private async Task StartAsync(bool openSettings)
@@ -49,14 +62,25 @@ public sealed class TrayContext : ApplicationContext
 
     private void ShowSettings()
     {
-        if (_form is { IsDisposed: false }) { _form.Activate(); return; }
+        if (_form is { IsDisposed: false })
+        {
+            if (_form.WindowState == FormWindowState.Minimized) _form.WindowState = FormWindowState.Normal;
+            _form.Show();
+            _form.BringToFront();
+            _form.Activate();
+            return;
+        }
         _form = new SettingsForm(_host, async () => { await StartAsync(false); return _host.Running; }, SignInToInterlink, ShowLog, ToggleActivity);
         _form.Show();
+        _form.BringToFront();
+        _form.Activate();
     }
 
-    private static void SignInToInterlink()
+    public static void SignInToInterlink(string account)
     {
-        try { Process.Start(new ProcessStartInfo(Environment.ProcessPath!, "--signin") { UseShellExecute = true }); }
+        var norm = InterlinkRunner.NormalizeAccount(account);
+        if (string.IsNullOrEmpty(norm)) norm = InterlinkRunner.AccountLabAsst;
+        try { Process.Start(new ProcessStartInfo(Environment.ProcessPath!, $"--signin {norm}") { UseShellExecute = true }); }
         catch (Exception e) { MessageBox.Show("Could not start the sign-in: " + e.Message, "NEXUS-L InterLink service"); }
     }
 
@@ -65,7 +89,7 @@ public sealed class TrayContext : ApplicationContext
     {
         if (_activityForm == null || _activityForm.IsDisposed)
         {
-            _activityForm = new ActivityForm(_host);
+            _activityForm = new ActivityForm(_host, SignInToInterlink, ShowSettings);
             _activityForm.VisibleChanged += (_, _) => { if (_activityItem != null) _activityItem.Text = _activityForm.Visible ? "Hide what it is doing" : "Show what it is doing"; };
         }
         if (_activityForm.Visible) _activityForm.Hide();
