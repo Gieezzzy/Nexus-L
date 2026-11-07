@@ -100,9 +100,16 @@ public sealed class InterlinkRunner : IAsyncDisposable
         };
         var grid = await ctx.NewPageAsync();
         var signedIn = false;
-        IPage? current = null;                   // the page a picture is taken of when something goes wrong
+        IPage? current = grid;                   // the page a picture is taken of when something goes wrong
         try
         {
+            if (req.Mode == "etrf")
+            {
+                await RunEtrfAsync(grid, req, say, dialogs, ct);
+                signedIn = true;
+                return;
+            }
+
             // 1. home, then the search grid
             say("Opening InterLink...");
             await ReachGridAsync(grid, say, ct);
@@ -249,6 +256,101 @@ public sealed class InterlinkRunner : IAsyncDisposable
         }
     }
 
+    /// <summary>Submits or saves a new eTRF request on InterLink 2.0 (Home.aspx -> Submit a Request -> NormalFormWithHeader.aspx).</summary>
+    private async Task RunEtrfAsync(IPage page, JobRequest req, Action<string> say, List<string> dialogs, CancellationToken ct)
+    {
+        var etrf = req.Job["etrf"] as JsonObject ?? new JsonObject();
+        var tplLabel = (string?)etrf["template_label"] ?? req.ReportNo;
+        var action = ((string?)etrf["action"] ?? "submit").ToLowerInvariant();
+
+        say($"Opening InterLink Home for eTRF ({tplLabel})...");
+        await page.GotoAsync("https://interlink2.intertek.com/InterLink2/aspx/DlkPage/Portal2/Home.aspx",
+            new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 60000 });
+
+        // Handle Microsoft SSO tile or "Stay signed in?" if presented
+        for (var sso = 0; sso < 16 && OnSignIn(page.Url); sso++)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var clicked = await page.EvaluateAsync<bool>(@"() => {
+                    const tile = document.querySelector('#tilesHolder .tile-container [data-test-id], .table[role=button], [data-test-id*=""@""]');
+                    if (tile) { tile.click(); return true; }
+                    const yes = document.querySelector('#idSIButton9, input[type=submit][value=""Yes""]');
+                    const pass = document.querySelector('input[type=password]');
+                    if (yes && (!pass || pass.offsetParent === null)) { yes.click(); return true; }
+                    return false;
+                }");
+                if (clicked) await Task.Delay(2500, ct);
+            }
+            catch { /* navigating */ }
+            await Task.Delay(1000, ct);
+        }
+        if (OnSignIn(page.Url)) throw new SignInRequiredException(SignInAgain);
+
+        var navCount = 0;
+        page.FrameNavigated += (_, f) => { if (f == page.MainFrame) Interlocked.Increment(ref navCount); };
+
+        // 1. Open the requested eTRF form from Home.aspx
+        say($"Selecting {tplLabel} under Submit a Request...");
+        var navBefore = navCount;
+        JsonElement? openRes = null;
+        for (var attempt = 0; attempt < 10; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+            openRes = await EvalAsync(page, "openEtrfFromHome", etrf);
+            var st = Str(openRes, "state");
+            if (st == "signin") throw new SignInRequiredException(SignInAgain);
+            if (st == "error") throw new InvalidOperationException(Str(openRes, "message"));
+            if (st == "on-form" || st == "navigating") break;
+            await Task.Delay(1000, ct);
+        }
+        if (Str(openRes, "state") == "navigating")
+        {
+            await SettleAsync(page, () => navCount, navBefore, 25000, ct);
+        }
+
+        // Wait until PH1_NormalFormSelector1_NF1_EGVNF is ready
+        say($"Filling {tplLabel} eTRF form...");
+        JsonElement? fillRes = null;
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+            fillRes = await EvalAsync(page, "fillNormalFormEtrf", etrf);
+            var st = Str(fillRes, "state");
+            if (st == "signin") throw new SignInRequiredException(SignInAgain);
+            if (st == "filled") break;
+            if (st == "error" && attempt >= 4) throw new InvalidOperationException(Str(fillRes, "message"));
+            await Task.Delay(1500, ct);
+        }
+        if (Str(fillRes, "state") != "filled")
+            throw new InvalidOperationException(Str(fillRes, "message") is { Length: > 0 } m ? m : "InterLink did not open the eTRF form in time.");
+
+        // 2. Press Print & Submit (or Save)
+        var commitLabel = action == "save" ? "Save" : "Print & Submit";
+        say($"Pressing {commitLabel} on {tplLabel}...");
+        navBefore = navCount;
+        var commitRes = await EvalAsync(page, "pressNormalFormCommit", action);
+        if (Str(commitRes, "state") == "error") throw new InvalidOperationException(Str(commitRes, "message"));
+        await SettleAsync(page, () => navCount, navBefore, 15000, ct);
+
+        await ShotAsync(page, req, "etrf-after-submit");
+        var check = await EvalAsync(page, "checkNormalFormSubmitted");
+        if (check is { ValueKind: JsonValueKind.Object } c && c.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.False)
+            throw new InvalidOperationException($"InterLink rejected the eTRF: {Str(check, "message")}");
+
+        var genAppNo = Str(check, "appNo");
+        if (!string.IsNullOrWhiteSpace(genAppNo))
+        {
+            req.ApplicationNo = genAppNo;
+            say($"eTRF ({tplLabel}) submitted to InterLink — Application No: {genAppNo}.");
+        }
+        else
+        {
+            say($"eTRF ({tplLabel}) {commitLabel} completed in InterLink.");
+        }
+    }
+
     /// <summary>InterLink's home page, then its search grid (through the portal's own link)</summary>
     private async Task ReachGridAsync(IPage page, Action<string> say, CancellationToken ct)
     {
@@ -258,7 +360,26 @@ public sealed class InterlinkRunner : IAsyncDisposable
         for (var i = 0; i < 120; i++)
         {
             ct.ThrowIfCancellationRequested();
-            if (OnSignIn(page.Url)) throw new SignInRequiredException(SignInAgain);
+            if (OnSignIn(page.Url))
+            {
+                if (i < 24)
+                {
+                    try
+                    {
+                        var clicked = await page.EvaluateAsync<bool>(@"() => {
+                            const tile = document.querySelector('#tilesHolder .tile-container [data-test-id], .table[role=button], [data-test-id*=""@""]');
+                            if (tile) { tile.click(); return true; }
+                            const yes = document.querySelector('#idSIButton9, input[type=submit][value=""Yes""]');
+                            const pass = document.querySelector('input[type=password]');
+                            if (yes && (!pass || pass.offsetParent === null)) { yes.click(); return true; }
+                            return false;
+                        }");
+                        if (clicked) { await Task.Delay(2500, ct); continue; }
+                    }
+                    catch { /* navigating */ }
+                }
+                throw new SignInRequiredException(SignInAgain);
+            }
             var probe = await EvalAsync(page, "gridProbe");
             if (probe is { ValueKind: JsonValueKind.Object } p)
             {

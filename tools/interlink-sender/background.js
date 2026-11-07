@@ -55,8 +55,9 @@ async function approvalProblem(job, nexusTab) {
 
 chrome.runtime.onMessage.addListener((m, sender) => {
   if (m.type === 'send' && sender.tab) {
-    const gate = { nexusTab: sender.tab.id, application_no: m.job && m.job.application_no };
-    approvalProblem(m.job || {}, sender.tab.id).then(async (problem) => {
+    const isEtrf = !!(m.job && (m.job.mode === 'etrf' || m.job.etrf));
+    const gate = { nexusTab: sender.tab.id, application_no: (m.job && (m.job.application_no || (m.job.etrf && m.job.etrf.etrf_type))) || 'eTRF' };
+    (isEtrf ? Promise.resolve('') : approvalProblem(m.job || {}, sender.tab.id)).then(async (problem) => {
       if (problem) { status(gate, false, true, `${gate.application_no || 'The report'} was NOT sent: ${problem}`); return; }
       // Firefox runs an extension on a site only after the user allows it (about:addons -> the add-on -> Permissions); without that the
       // InterLink tab would open and nothing would ever happen in it, so say so before opening anything
@@ -65,9 +66,9 @@ chrome.runtime.onMessage.addListener((m, sender) => {
         if (!allowed) { status(gate, false, true, `${gate.application_no || 'The report'} was NOT sent: this extension is not allowed to run on interlink2.intertek.com. In Firefox open about:addons, click the NEXUS-L InterLink Sender, choose Permissions and switch on access to interlink2.intertek.com, then try again.`); return; }
       } catch (e) { /* browsers without this check: carry on */ }
       chrome.tabs.create({ url: PORTAL_HOME, active: true }, (t) => {
-        const job = Object.assign({}, m.job, { nexusTab: sender.tab.id, tabId: t.id, step: 'search', loads: 0 });
+        const job = Object.assign({}, m.job, { nexusTab: sender.tab.id, tabId: t.id, step: isEtrf ? 'etrf-open' : 'search', loads: 0 });
         setJob(job);
-        status(job, true, false, `InterLink is opening - searching for ${job.application_no}…`);
+        status(job, true, false, isEtrf ? `InterLink is opening - selecting ${(job.etrf && job.etrf.template_label) || 'eTRF template'}…` : `InterLink is opening - searching for ${job.application_no}…`);
         // if the new tab never reports in (sign-in page, blocked site) the user is told instead of waiting for nothing
         const watch = (ms, text) => setTimeout(async () => {
           try {
@@ -275,6 +276,35 @@ async function stepOnce(tabId) {
   // say which InterLink page the sender is on (Home -> search grid -> Upload Form), so a stall shows exactly where it stopped
   try { const tb = await chrome.tabs.get(tabId); status(job, true, false, `Step ${job.loads} (${job.step}): InterLink page ${String(new URL(tb.url).pathname).split('/').pop() || '/'}`); } catch (e) { /* tab info not available */ }
   try {
+    if (job.step === 'etrf-open') {
+      const r = await inPage(tabId, openEtrfFromHome, [job.etrf || {}]);
+      if (!r) return;
+      if (r.state === 'signin') { status(job, false, false, 'Sign in to InterLink in the opened tab; eTRF submission continues by itself afterwards.'); job.loads -= 1; await setJob(job); return; }
+      if (r.state === 'error') { status(job, false, true, `eTRF: ${r.message}`); endJob(job); return; }
+      if (r.state === 'on-form') { job.step = 'etrf-fill'; await setJob(job); }
+      else { job.step = 'etrf-fill'; await setJob(job); status(job, true, false, `Opening ${r.matched || (job.etrf && job.etrf.template_label) || 'eTRF form'}…`); return; }
+    }
+    if (job.step === 'etrf-fill') {
+      const r = await inPage(tabId, fillNormalFormEtrf, [job.etrf || {}]);
+      if (!r) { status(job, true, false, `Step ${job.loads}: waiting for the eTRF form to finish loading…`); return; }
+      if (r.state === 'signin') { status(job, false, false, 'Sign in to InterLink in the opened tab; eTRF submission continues by itself afterwards.'); job.loads -= 1; await setJob(job); return; }
+      if (r.state === 'error') { status(job, false, true, `eTRF: ${r.message}`); endJob(job); return; }
+      const act = ((job.etrf && job.etrf.action) || 'submit') === 'save' ? 'Save' : 'Print & Submit';
+      status(job, true, false, `eTRF: filled ${r.filled} field(s) and ${r.rowsFilled || 0} row(s). Pressing ${act}…`);
+      job.step = 'etrf-submitting';
+      await setJob(job);
+      const s = await inPage(tabId, pressNormalFormCommit, [(job.etrf && job.etrf.action) || 'submit']);
+      if (s && s.state === 'error') { status(job, false, true, `eTRF: ${s.message}`); endJob(job); return; }
+      status(job, true, false, `${(s && s.button) || act} pressed. Waiting for InterLink to confirm…`);
+      return;
+    }
+    if (job.step === 'etrf-submitting') {
+      const r = await inPage(tabId, checkNormalFormSubmitted, []);
+      if (r && r.ok) status(job, true, true, `eTRF (${(job.etrf && job.etrf.template_label) || 'Request'}) submitted to InterLink${r.appNo ? ' — Application No: ' + r.appNo : ''}.`);
+      else status(job, false, true, `InterLink did not accept the eTRF: ${(r && r.message) || 'please check the InterLink tab.'}`);
+      endJob(job);
+      return;
+    }
     if (job.step === 'search') {
       const r = await inPage(tabId, searchAndOpenUpload, [job.application_no, job.mode]);
       if (!r) return;
@@ -847,4 +877,251 @@ function checkSubmitted() {
   // so its disappearance can't be used as a success marker). Absence of a validation error is treated as success;
   // the NEXUS-L side asks the user to confirm the Job Status afterward rather than claiming certainty here.
   return { ok: true };
+}
+
+
+/** On the InterLink Portal Home page (Home.aspx): finds the requested eTRF template link inside "Submit a Request" or
+ *  "My Favourites (Requests)" (with automatic fallback across user-saved templates and base VF eTRF forms) and navigates to it. */
+async function openEtrfFromHome(etrf) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  if (/login|signin|sign-in/i.test(location.pathname)) return { state: 'signin' };
+  if (/NormalFormWithHeader\.aspx|NormalForm\.aspx/i.test(location.pathname)) return { state: 'on-form', matched: document.title || 'NormalFormWithHeader' };
+  for (let i = 0; i < 20 && !document.querySelectorAll('a').length; i++) await sleep(250);
+  await sleep(300);
+
+  const norm = (s) => String(s || '').toLowerCase().replace(/[\s\-_()]+/g, ' ').trim();
+  const links = [...document.querySelectorAll('a')].map((a) => {
+    const text = (a.textContent || '').replace(/\s+/g, ' ').trim();
+    const href = a.getAttribute('href') || '';
+    const m = href.match(/window\.location\.href\s*=\s*'([^']+)'/i);
+    const url = m ? m[1] : (/NormalForm/i.test(href) ? href : '');
+    return { a, text, normText: norm(text), url };
+  }).filter((x) => x.url && /NormalForm/i.test(x.url) && !/Edit eForm/i.test(x.text));
+
+  if (!links.length) {
+    if (!/\/Portal2\/Home\.aspx/i.test(location.pathname)) {
+      location.href = '/InterLink2/aspx/DlkPage/Portal2/Home.aspx';
+      return { state: 'navigating', matched: 'Home.aspx' };
+    }
+    return { state: 'error', message: 'No eTRF request links were found under Submit a Request on InterLink Home.' };
+  }
+
+  const targets = Array.isArray(etrf && etrf.menu_targets) && etrf.menu_targets.length
+    ? etrf.menu_targets
+    : [(etrf && etrf.template_label) || 'VF eTRF - PULLTESTTemplate', 'VF eTRF - Product', 'VF eTRF - Material'];
+
+  // exactly the menu entry that was asked for: never another form (a "Product" request must not silently become a "WHOLE SHOE" one)
+  let chosen = null;
+  for (const t of targets) {
+    const nt = norm(t);
+    chosen = links.find((l) => l.normText === nt);
+    if (chosen) break;
+  }
+  if (!chosen) {
+    return { state: 'error', message: `The form "${targets[0]}" was not found under Submit a Request on InterLink Home. The entries found: ${links.map((l) => l.text).filter(Boolean).slice(0, 14).join(' | ') || 'none'}.` };
+  }
+  location.href = chosen.url;
+  return { state: 'navigating', matched: chosen.text, url: chosen.url };
+}
+
+/** Fills all sections and the Style/Material table (JOB_DUMMY_009) on InterLink's NormalFormWithHeader.aspx eTRF page. */
+async function fillNormalFormEtrf(etrf) {
+  try {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    if (/login|signin|sign-in/i.test(location.pathname)) return { state: 'signin' };
+    for (let i = 0; i < 30 && (!window.ASPxClientControl || !document.getElementById('PH1_NormalFormSelector1_NF1_EGVNF')); i++) {
+      await sleep(300);
+    }
+    await sleep(600);
+    const grid = document.getElementById('PH1_NormalFormSelector1_NF1_EGVNF');
+    if (!grid) return { state: 'error', message: 'The eTRF form (PH1_NormalFormSelector1_NF1_EGVNF) was not found on this InterLink page.' };
+
+    const setNative = (el, val) => {
+      if (!el) return false;
+      const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : (el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype);
+      const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+      if (desc && desc.set) desc.set.call(el, String(val)); else el.value = String(val);
+      ['input', 'change', 'blur'].forEach((ev) => el.dispatchEvent(new Event(ev, { bubbles: true })));
+      return true;
+    };
+
+    const setField = (code, rawVal) => {
+      const val = String(rawVal == null ? '' : rawVal);
+      let ok = false;
+
+      // 1. Direct <select> elements (e.g. TRPT_SERV_TYPE, E1_TEXT_013, DETOX_SUPPLIER_COUNTRY)
+      const sel = document.querySelector(`select[id*="_TpEdr_${code}_"], select[name*="$TpEdr_${code}$"]`);
+      if (sel) {
+        const opt = [...sel.options].find((o) => o.value === val || o.text.trim().toLowerCase() === val.toLowerCase());
+        if (opt) { setNative(sel, opt.value); ok = true; }
+      }
+
+      // 2. DevExpress ASPxClientControl instances (both global client name and EGVNFTP + code)
+      const ctrlNames = [`ctl00$PH1$NormalFormSelector1$NF1$EGVNFTP${code}`, code];
+      for (const cn of ctrlNames) {
+        const c = window[cn];
+        if (c && typeof c.SetValue === 'function') {
+          try {
+            c.SetValue(val);
+            if (typeof c.SetText === 'function' && !/RadioButtonList/i.test((c.constructor && c.constructor.name) || '')) {
+              try { c.SetText(val); } catch (e) {}
+            }
+            ok = true;
+          } catch (e) {}
+        }
+      }
+
+      // 3. Direct DOM inputs / textareas for this field code
+      const inputs = [...document.querySelectorAll(
+        `input[id*="_TpEdr_${code}_"][type="text"], textarea[id*="_TpEdr_${code}_"], input[name*="$TpEdr_${code}$"][type="text"], textarea[name*="$TpEdr_${code}$"]`
+      )];
+      for (const inp of inputs) {
+        if (/rblGeneric.*_RB\d+_I$/i.test(inp.id)) continue; // skip individual radio indicator boxes
+        setNative(inp, val);
+        ok = true;
+      }
+
+      // 4. Hidden / companion DXEditor controls whose client instance is window[code]
+      const wCtrl = window[code];
+      if (wCtrl && wCtrl.name) {
+        const domEl = document.getElementById(wCtrl.name + '_I') || document.getElementById(wCtrl.name);
+        if (domEl && domEl.tagName === 'INPUT') { setNative(domEl, val); ok = true; }
+      }
+
+      return ok;
+    };
+
+    const fields = (etrf && etrf.fields) || {};
+    let filled = 0;
+    for (const [code, val] of Object.entries(fields)) {
+      if (val === '' || val == null) continue;
+      if (setField(code, val)) filled++;
+    }
+
+    // 5. The JOB_DUMMY_009 table (Style Information on a product / Material Information on a material): one table row for EVERY row of the request
+    const rows = Array.isArray(etrf && etrf.rows) ? etrf.rows : [];
+    let rowsFilled = 0;
+    const tableSel = 'table[id*="JOB_DUMMY_009"][id*="tblTableInput"]';
+    const dataRows = () => { const t = document.querySelector(tableSel); return t ? [...t.querySelectorAll('tr')].slice(1).filter((tr) => tr.querySelectorAll('input,textarea,select').length > 0) : []; };
+    const addRow = async () => {
+      const before = dataRows().length;
+      const cbp = window.cbpTableInput_JOB_DUMMY_009;
+      const addBtn = document.querySelector('[id*="JOB_DUMMY_009"][id*="btAddAutoId"]');
+      if (cbp && typeof cbp.PerformCallback === 'function') {
+        try { cbp.PerformCallback('AddAutoId'); } catch (e) { if (addBtn) addBtn.click(); }
+      } else if (addBtn) {
+        addBtn.click();
+      }
+      for (let w = 0; w < 25 && dataRows().length <= before; w++) await sleep(400);
+      await sleep(300);
+      return dataRows().length > before;
+    };
+    if (rows.length > 0) {
+      while (dataRows().length < rows.length) {
+        if (!(await addRow())) break;
+      }
+      const tbl = document.querySelector(tableSel);
+      if (tbl) {
+        const headers = [...tbl.querySelectorAll('tr:first-child td, tr:first-child th')].map((h) => (h.textContent || '').replace(/\*/g, '').replace(/\s+/g, ' ').trim().toLowerCase());
+        const HEAD = { 'style no.': ['style_no', 'REF_FLD16'], 'style no': ['style_no', 'REF_FLD16'], 'product name': ['product_name', 'REF_FLD23'], 'style color no.': ['style_color_no', 'REF_FLD19'],
+          'style color no': ['style_color_no', 'REF_FLD19'], 'color description': ['color_description', 'REF_FLD24'], 'color code': ['color_code', 'REF_FLD18'], 'season': ['season', 'REF_FLD17'],
+          'size category': ['size_category', 'REF_FLD21'], 'material code': ['material_code'], 'material description': ['material_description'], 'material type': ['material_type'],
+          'weight': ['weight'], 'weight uom': ['weight_uom'], 'thickness': ['thickness'], 'claim type': ['claim_type'] };
+        const trs = dataRows();
+        rows.forEach((r, i) => {
+          const tr = trs[i];
+          if (!tr || !r) return;
+          for (const [k, v] of Object.entries(r)) {                  // by InterLink column code first
+            if (!/^REF_FLD\d+$/i.test(k) || v == null || v === '') continue;
+            const inp = tr.querySelector(`input[id*="${k}_"], input[name*="${k}_"], textarea[id*="${k}_"], select[id*="${k}_"]`);
+            if (inp) setNative(inp, v);
+          }
+          [...tr.children].forEach((td, idx) => {                    // then by the column heading
+            const keys = HEAD[headers[idx] || ''];
+            if (!keys) return;
+            const inp = td.querySelector('input[type="text"]:not([readonly]), textarea:not([readonly]), select, input[type="text"]');
+            const v = inp ? keys.map((k) => r[k]).find((x) => x != null && x !== '') : null;
+            if (inp && v != null && v !== '') setNative(inp, v);
+          });
+          rowsFilled++;
+        });
+      }
+    }
+
+    // 6. Read the form back. InterLink's own validation marks every required box that is still empty; for a real submit that stops the job
+    //    BEFORE anything is pressed, and the reason names the boxes. (A draft may be incomplete in InterLink, so a draft is not stopped by it.)
+    const notSet = [];
+    for (const [code, v] of Object.entries(fields)) {
+      if (v === '' || v == null) continue;
+      if (!document.querySelector(`[id*="_TpEdr_${code}_"],[name*="$TpEdr_${code}$"]`) && !window[code] && !window[`ctl00$PH1$NormalFormSelector1$NF1$EGVNFTP${code}`]) notSet.push(code);
+    }
+    const invalid = [];
+    try {
+      if (window.ASPxClientEdit && typeof ASPxClientEdit.ValidateGroup === 'function') ASPxClientEdit.ValidateGroup(null);
+      if (window.ASPxClientControl && ASPxClientControl.GetControlCollection) {
+        ASPxClientControl.GetControlCollection().ForEachControl((c) => {
+          try {
+            if (typeof c.GetIsValid === 'function' && c.GetIsValid() === false) {
+              const el = c.GetMainElement ? c.GetMainElement() : null;
+              const cell = el && el.closest ? el.closest('tr,td') : null;
+              const cap = ((cell && cell.textContent) || '').replace(/\s+/g, ' ').replace(/\*/g, '').trim().slice(0, 50);
+              const nm = String(c.name || '').replace(/^.*(TpEdr_|EGVNFTP)/, '');
+              invalid.push(cap || nm || 'a required box');
+            }
+          } catch (e) { /* not an editor */ }
+        });
+      }
+    } catch (e) { /* the page has no validation API: the server pre-flight already checked the data */ }
+    if (String((etrf && etrf.action) || 'save').toLowerCase() === 'submit' && invalid.length) {
+      return { state: 'error', message: `InterLink says these required boxes are empty or invalid, so nothing was submitted: ${[...new Set(invalid)].slice(0, 12).join('; ')}.` };
+    }
+
+    return { state: 'filled', filled, rowsFilled, notSet, invalid: [...new Set(invalid)] };
+  } catch (e) {
+    return { state: 'error', message: 'Error filling eTRF form: ' + (e && e.message) };
+  }
+}
+
+/** Clicks "Print & Submit" (ASPxButton_1) or "Save" (ASPxButton_2) on NormalFormWithHeader.aspx and confirms any dialog. */
+async function pressNormalFormCommit(action) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const visible = (el) => !!el && el.offsetParent !== null && el.getBoundingClientRect().width > 0;
+  const wantSave = String(action || '').toLowerCase() === 'save';
+  const btnId = wantSave
+    ? 'PH1_NormalFormSelector1_NF1_ButtonBar1_ASPxButton_2'
+    : 'PH1_NormalFormSelector1_NF1_ButtonBar1_ASPxButton_1';
+  const aspxBtn = wantSave ? window.BBAR_ASPxButton_2 : window.BBAR_ASPxButton_1;
+  const domBtn = document.getElementById(btnId)
+    || [...document.querySelectorAll('input[type=submit],input[type=button]')].find((b) => visible(b) && (wantSave ? /^save$/i.test((b.value || '').trim()) : /print\s*&\s*submit|^submit$/i.test((b.value || '').trim())));
+
+  if (!domBtn && !aspxBtn) {
+    return { state: 'error', message: 'Neither Print & Submit nor Save button was found on the eTRF form.' };
+  }
+  const label = (domBtn && domBtn.value) || (wantSave ? 'Save' : 'Print & Submit');
+  if (domBtn) domBtn.click();
+  else if (aspxBtn && typeof aspxBtn.DoClick === 'function') aspxBtn.DoClick();
+
+  for (let i = 0; i < 12; i++) {
+    await sleep(500);
+    const byId = [
+      'PH1_NormalFormSelector1_NF1_ButtonBar1_pcConfirmOkCancel_ASPxConfirmOk',
+      'PH1_NormalFormSelector1_NF1_PopupYesNoCancel1_pcYesNoCancel_btnPopupYNCYes',
+    ].map((id) => document.getElementById(id)).find(visible);
+    const byText = [...document.querySelectorAll('input[type=submit],input[type=button],a')].find((b) => visible(b) && /^(ok|yes)$/i.test((b.value || b.textContent || '').trim()));
+    const ok = byId || byText;
+    if (ok) { ok.click(); break; }
+  }
+  return { state: 'posting', button: label };
+}
+
+/** Verifies whether NormalFormWithHeader.aspx accepted the eTRF and extracts the generated Application No. (A00...) if present. */
+function checkNormalFormSubmitted() {
+  const errs = [...document.querySelectorAll('.dxeErrorCell,.dxeErrorFrame td,[id*="ErrorMessage" i],.validation-summary-errors')]
+    .filter((e) => e.offsetParent !== null && e.textContent.trim() && e.textContent.trim() !== '*');
+  if (errs.length) {
+    return { ok: false, message: errs.map((e) => e.textContent.trim()).slice(0, 4).join('; ') };
+  }
+  const bodyText = (document.body && document.body.innerText) || '';
+  const m = bodyText.match(/\b(A\d{8,12})\b/);
+  return { ok: true, appNo: m ? m[1] : '' };
 }

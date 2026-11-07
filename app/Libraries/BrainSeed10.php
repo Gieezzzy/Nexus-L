@@ -1,0 +1,35 @@
+<?php
+
+namespace App\Libraries;
+
+/**
+ * Tenth batch: the InterLink menu (VF eTRF and Report Submission) and how to create a request or a test in InterLink from the five VF templates.
+ * Describes behaviour only; no secret and no threshold. Loaded by `php spark brain:seed`.
+ */
+class BrainSeed10
+{
+    /** @return list<array<string,mixed>> */
+    public static function all(): array
+    {
+        $o  = static fn (string $label, string $url): array => ['type' => 'open', 'label' => $label, 'url' => $url];
+        $k  = static fn (string $title, string $keywords, string $body, array $steps = [], array $extra = []): array => array_merge(['title' => $title, 'keywords' => $keywords, 'body' => $body, 'steps' => $steps], $extra);
+        $go = ['actions' => [$o('Open VF eTRF', 'interlink/etrf')]];
+        $il = ['page_match' => 'interlink'];
+
+        return [
+            $k('Where is the InterLink menu now?', 'interlink menu, interlink sidebar, where is interlink sync, interlink dropdown, report submission menu, vf etrf menu, interlink sync renamed, interlink tab', 'The sidebar item is now called InterLink. Click it and a dropdown opens with two pages: VF eTRF (create a request or a test in InterLink) and Report Submission (send a finished, signed report to InterLink, the page that used to be called InterLink Sync).', [], $il + $go),
+            $k('What is VF eTRF?', 'what is etrf, vf etrf, etrf request, electronic test request form, submit a request interlink, new test request interlink, create test in interlink, request form interlink', 'An eTRF is a test request form in InterLink: it creates a new request (and its Application No.) for a material, a product, a pull test, a bonding test or a whole-shoe test. In NEXUS-L, InterLink > VF eTRF fills it for you through the InterLink background service, from a Lab Reference or from what you type.', [], $go),
+            $k('Which eTRF forms can I create?', 'etrf templates, etrf forms, vf etrf material, vf etrf product, pulltesttemplate, vf etrf bonding, whole shoe test, which etrf, list of etrf', 'Five forms: VF eTRF - Material, VF eTRF - Product, VF eTRF - PULLTESTTemplate, VF eTRF - bonding and VF eTRF - Product WHOLE SHOE TEST. Each one opens its own entry under Submit a Request in InterLink, never another form.', [], $go),
+            $k('How do I create an eTRF request?', 'create etrf, new etrf request, submit etrf, make etrf, etrf steps, how to add etrf, add a test request, create request interlink', 'Open InterLink > VF eTRF.', ['Pick one of the five templates.', 'Optionally pick a Lab Reference: it fills the form from the saved report.', 'Fill what is listed as missing (style, color, test package ...).', 'Press "Save as draft in InterLink" (or Submit when you are sure).', 'Watch the result in the table at the bottom and in the toast / Synology message.'], $go),
+            $k('What is the difference between Save as draft and Submit?', 'etrf draft, save draft interlink, submit etrf, print and submit, draft or submit, etrf save, draft request', 'Save as draft puts the filled form in your InterLink account without sending it, so you can open it in InterLink and check it. Submit presses Print & Submit and sends the request to Intertek for real. Draft is the safe default; Submit asks you to confirm.', [], $il),
+            $k('The eTRF page says Not ready', 'etrf not ready, etrf missing fields, etrf cannot send, save button disabled etrf, required fields etrf, etrf missing style, missing color code, etrf blocked', 'The page lists what InterLink needs and the request does not have yet (for example Style color No. or Color code). NEXUS-L never guesses these. Fill them in the form (or pick a Lab Reference that has them): when the list is empty it says Ready and the buttons turn on.', [], $il + $go),
+            $k('Can I put several styles or materials in one eTRF?', 'etrf several styles, multiple rows etrf, add row etrf, many styles one request, multiple materials request, more than one style', 'Yes. Press "+ Add a row" in the Style information (or Material information) table: every row is typed into InterLink. A new row starts with the same season and size group as the row above.', [], $il),
+            $k('Does the eTRF page need the Lab Reference?', 'etrf without lab ref, etrf lab reference optional, new test no lab ref, manual etrf, type etrf details, no lab ref number', 'No. A Lab Reference only fills the form for you (brand, supplier, style or material, dates). You can press "No Lab Reference" and type everything yourself.', [], $il),
+            $k('The eTRF failed in InterLink', 'etrf failed, etrf error, etrf rejected, etrf not submitted, etrf status failed, interlink rejected etrf, etrf required boxes', 'The table at the bottom of the page shows the reason under the failed row, for example the required boxes InterLink says are empty, or that the form was not found under Submit a Request. Fix it in the form and send again. For a submit, the service stops before pressing anything when InterLink reports empty required boxes.', [], $il + $go),
+            $k('eTRF form not found under Submit a Request', 'etrf form not found, template not found interlink, submit a request missing, no etrf links, etrf menu entry not found', 'The service opens exactly the entry you chose under Submit a Request. If InterLink does not show that entry for the signed-in account, the job stops and lists the entries it found, instead of opening a different form. Ask an InterLink administrator for access to the form, or check the account the service uses.', [], $il),
+            $k('Why does the eTRF page say the service is offline?', 'etrf service offline, background service not answering etrf, etrf cannot send service, service not signed in, service address wrong etrf', 'The eTRF is sent by the InterLink background service. The banner at the top tells which case it is: not set up (an administrator enables it in Settings), not answering (start NexusInterlinkService on the service computer, or correct its address in Settings), or running but not signed in (tray icon > Sign in to InterLink).', [], $il + ['actions' => [$o('Open Settings', 'settings')], 'role_min' => 'user']),
+            $k('Where do the fixed eTRF values come from?', 'etrf fixed values, etrf address phone, cost centre etrf, etrf defaults settings, applicant address etrf, change etrf contact', 'The applicant address, e-mail, phone, cost centre and the factory address details come from Settings > InterLink report defaults (administrators change them there). The contact person is the user who sends the request.', [], ['role_min' => 'admin', 'actions' => [$o('Open Settings', 'settings')]]),
+            $k('Where is the old eTRF box of the Report Submission page?', 'etrf moved, old etrf box, etrf on report page, where did etrf go, etrf section removed', 'It moved to its own page: InterLink > VF eTRF. The Report Submission page now only sends finished, signed reports.', [], $go),
+        ];
+    }
+}

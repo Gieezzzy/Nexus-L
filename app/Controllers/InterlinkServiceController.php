@@ -68,6 +68,10 @@ class InterlinkServiceController extends BaseController
         if (! $this->db()->fieldExists('started_at', 'tbl_interlink_service_jobs')) {
             $this->db()->query('ALTER TABLE tbl_interlink_service_jobs ADD COLUMN started_at DATETIME NULL AFTER created_at');
         }
+        if (! $this->db()->fieldExists('etrf_request_id', 'tbl_interlink_service_jobs')) {
+            $this->db()->query('ALTER TABLE tbl_interlink_service_jobs MODIFY application_no VARCHAR(60) NOT NULL, MODIFY mode VARCHAR(20) NOT NULL DEFAULT "edit", ADD COLUMN etrf_request_id INT UNSIGNED NULL AFTER mode, ADD COLUMN etrf_type VARCHAR(50) NOT NULL DEFAULT "" AFTER etrf_request_id');
+        }
+        (new InterlinkController())->ensureEtrfTables();
     }
 
     /** the Synology Chat message goes to one person at a time (Synology rejects a list of several recipients) */
@@ -102,15 +106,19 @@ class InterlinkServiceController extends BaseController
     }
 
     /**
-     * POST interlink/service/submit {application_no, lab_ref_no, fields?, mode: add|edit, pdf_name?}
+     * POST interlink/service/submit {application_no, lab_ref_no, fields?, mode: add|edit|etrf, etrf_type?, pdf_name?}
      * Only a report that a Manager / Supervisor approved and signed goes out; the service asks NEXUS-L again right before it presses Save.
+     * When mode === 'etrf' or etrf_type is present, routes to submitEtrf() to submit a new eTRF request on Home.aspx -> Submit a Request.
      */
     public function submit()
     {
+        $p = $this->request->getJSON(true) ?? $this->request->getPost() ?? [];
+        if (($p['mode'] ?? '') === 'etrf' || ! empty($p['etrf_type'])) {
+            return $this->submitEtrf();
+        }
         if (! $this->enabled()) {
             return $this->json(['ok' => false, 'code' => 'not_configured', 'error' => 'The InterLink background service is not set up on this server.'], 503);
         }
-        $p      = $this->request->getJSON(true) ?? [];
         $appNo  = trim((string) ($p['application_no'] ?? ''));
         $ref    = trim((string) ($p['lab_ref_no'] ?? ''));
         $fields = is_array($p['fields'] ?? null) ? $p['fields'] : [];
@@ -191,6 +199,131 @@ class InterlinkServiceController extends BaseController
         return $this->json(['ok' => true, 'job_uid' => $uid, 'ahead' => (int) ($body['ahead'] ?? 0), 'waiting' => (int) ($body['waiting'] ?? 0), 'lab_ref_no' => $labRef, 'report_no' => $reportNo]);
     }
 
+    /**
+     * POST interlink/service/etrf
+     * Submits a new eTRF request on InterLink 2.0 (Home.aspx -> Submit a Request -> VF eTRF - Material / Product / PULLTESTTemplate / bonding / Whole Shoe).
+     */
+    public function submitEtrf()
+    {
+        if (! $this->enabled()) {
+            return $this->json(['ok' => false, 'code' => 'not_configured', 'error' => 'The InterLink background service is not set up on this server.'], 503);
+        }
+        $p = $this->request->getJSON(true) ?? $this->request->getPost() ?? [];
+        $r = (new InterlinkController())->etrfData($p);
+        if ($r['code'] !== 200) {
+            return $this->json($r['body'], $r['code']);
+        }
+        $data      = $r['body'];
+        if (! empty($data['missing'])) {                       // pre-flight: nothing incomplete is queued, and nothing is filled with a made-up value
+            return $this->json(['ok' => false, 'code' => 'etrf_incomplete', 'missing' => $data['missing'],
+                'error' => 'The eTRF (' . ($data['template_label'] ?? 'request') . ') is missing: ' . implode(', ', $data['missing']) . '. Fill these in and send again.'], 422);
+        }
+        $etrfType  = (string) ($data['etrf_type'] ?? 'eTRF-PULL');
+        $labRef    = (string) ($data['lab_ref_no'] ?? '');
+        $action    = (string) ($data['action'] ?? 'submit');
+        $jobTag    = $labRef !== '' ? ('ETRF:' . $labRef) : ('ETRF:' . $etrfType . ':' . substr(bin2hex(random_bytes(3)), 0, 6));
+
+        $me  = (array) service('auth')->user();
+        $uid = bin2hex(random_bytes(12));
+        $this->table();
+
+        if ($labRef !== '') {
+            $busy = $this->db()->table('tbl_interlink_service_jobs')
+                ->where('lab_ref_no', $labRef)
+                ->where('mode', 'etrf')
+                ->whereIn('status', ['queued', 'running'])
+                ->where('created_at >', date('Y-m-d H:i:s', time() - 900))
+                ->orderBy('id')
+                ->get()
+                ->getRowArray();
+            if ($busy) {
+                return $this->json(['ok' => false, 'code' => 'already_queued', 'error' => "eTRF for {$labRef} is already " . ($busy['status'] === 'running' ? 'being submitted' : 'waiting in the queue') . '.'], 409);
+            }
+        }
+
+        $etrfReqId = (new InterlinkController())->saveEtrfRequestRecord($data, 'service', 'queued', $uid);
+        $this->db()->table('tbl_interlink_service_jobs')->insert([
+            'job_uid'         => $uid,
+            'application_no'  => mb_substr($jobTag, 0, 60),
+            'lab_ref_no'      => $labRef,
+            'report_no'       => $etrfType,
+            'mode'            => 'etrf',
+            'etrf_request_id' => $etrfReqId,
+            'etrf_type'       => $etrfType,
+            'user_id'         => (int) ($me['id'] ?? 0),
+            'user_name'       => (string) ($me['name'] ?? $me['username'] ?? ''),
+            'status'          => 'queued',
+            'created_at'      => date('Y-m-d H:i:s'),
+        ]);
+
+        try {
+            $res = service('curlrequest')->post($this->baseUrl() . '/jobs', [
+                'headers'     => ['X-Service-Key' => $this->key()],
+                'json'        => [
+                    'job_uid'        => $uid,
+                    'application_no' => mb_substr($jobTag, 0, 30),
+                    'lab_ref_no'     => $labRef,
+                    'report_no'      => $etrfType,
+                    'mode'           => 'etrf',
+                    'user_name'      => (string) ($me['name'] ?? ''),
+                    'verify_url'     => '',
+                    'callback_url'   => site_url('interlink/service/callback'),
+                    'job'            => [
+                        'application_no' => mb_substr($jobTag, 0, 30),
+                        'target_url'     => $data['home_url'],
+                        'controls'       => $data['fields'],
+                        'tables'         => ['samples' => [], 'items' => [], 'readings' => []],
+                        'etrf'           => [
+                            'etrf_type'      => $data['etrf_type'],
+                            'template_label' => $data['template_label'],
+                            'sample_type'    => $data['sample_type'],
+                            'menu_targets'   => $data['menu_targets'],
+                            'action'         => $action,
+                            'fields'         => $data['fields'],
+                            'rows'           => $data['rows'],
+                            'summary'        => $data['summary'],
+                        ],
+                    ],
+                ],
+                'timeout'     => 60,
+                'http_errors' => false,
+            ]);
+            $body = json_decode((string) $res->getBody(), true) ?: [];
+            if ($res->getStatusCode() === 409 && ($body['code'] ?? '') === 'already_queued') {
+                $this->db()->table('tbl_interlink_service_jobs')->where('job_uid', $uid)->delete();
+
+                return $this->json(['ok' => false, 'code' => 'already_queued', 'error' => (string) ($body['error'] ?? "eTRF {$jobTag} is already in the queue.")], 409);
+            }
+            if ($res->getStatusCode() !== 200 || empty($body['ok'])) {
+                throw new \RuntimeException((string) ($body['error'] ?? 'the service answered ' . $res->getStatusCode()));
+            }
+        } catch (\Throwable $e) {
+            $this->db()->table('tbl_interlink_service_jobs')->where('job_uid', $uid)->update([
+                'status'      => 'failed',
+                'message'     => mb_substr($e->getMessage(), 0, 480),
+                'finished_at' => date('Y-m-d H:i:s'),
+            ]);
+            $this->db()->table('tbl_interlink_etrf_requests')->where('job_uid', $uid)->update([
+                'status'         => 'failed',
+                'status_message' => mb_substr($e->getMessage(), 0, 480),
+                'updated_at'     => date('Y-m-d H:i:s'),
+            ]);
+
+            return $this->json(['ok' => false, 'code' => 'service_unreachable', 'error' => 'The InterLink background service could not take the eTRF request: ' . $e->getMessage()], 502);
+        }
+
+        return $this->json([
+            'ok'             => true,
+            'job_uid'        => $uid,
+            'mode'           => 'etrf',
+            'etrf_type'      => $etrfType,
+            'template_label' => $data['template_label'],
+            'lab_ref_no'     => $labRef,
+            'ahead'          => (int) ($body['ahead'] ?? 0),
+            'waiting'        => (int) ($body['waiting'] ?? 0),
+        ]);
+    }
+
     /** POST interlink/service/callback (service key): the result of a job. The user gets a Synology message; the web feed shows the toast. */
     public function callback()
     {
@@ -204,22 +337,54 @@ class InterlinkServiceController extends BaseController
         if (! $job) {
             return $this->json(['ok' => false, 'error' => 'Unknown job.'], 404);
         }
-        $state = in_array($p['state'] ?? '', ['running', 'done', 'failed', 'signin-required'], true) ? $p['state'] : 'failed';
-        $msg   = mb_substr((string) ($p['message'] ?? ''), 0, 480);
+        $state  = in_array($p['state'] ?? '', ['running', 'done', 'failed', 'signin-required'], true) ? $p['state'] : 'failed';
+        $msg    = mb_substr((string) ($p['message'] ?? ''), 0, 480);
+        $newApp = trim((string) ($p['application_no'] ?? ''));
         if ($state === 'running') {
             // the service took this report up: the user is told it has started (no Synology message for that)
             $this->db()->table('tbl_interlink_service_jobs')->where('id', $job['id'])->where('finished_at IS NULL')->update(['status' => 'running', 'started_at' => date('Y-m-d H:i:s')]);
+            $this->db()->table('tbl_interlink_etrf_requests')->where('job_uid', $uid)->update(['status' => 'running', 'status_message' => $msg ?: 'Submitting eTRF in InterLink...', 'updated_at' => date('Y-m-d H:i:s')]);
 
             return $this->json(['ok' => true]);
         }
-        $this->db()->table('tbl_interlink_service_jobs')->where('id', $job['id'])->update(['status' => $state, 'message' => $msg, 'finished_at' => date('Y-m-d H:i:s')]);
+        $upd = ['status' => $state, 'message' => $msg, 'finished_at' => date('Y-m-d H:i:s')];
+        if ($newApp !== '' && preg_match('/^A\d{6,}$/i', $newApp)) {
+            $upd['application_no'] = strtoupper($newApp);
+        }
+        $this->db()->table('tbl_interlink_service_jobs')->where('id', $job['id'])->update($upd);
+
+        $etrfRow = $this->db()->table('tbl_interlink_etrf_requests')->where('job_uid', $uid)->get()->getRowArray();
+        if ($etrfRow) {
+            $etrfUpd = [
+                'status'         => $state === 'done' ? (($etrfRow['action_mode'] ?? 'submit') === 'save' ? 'saved_draft' : 'submitted') : 'failed',
+                'status_message' => $msg ?: ($state === 'done' ? 'Submitted to InterLink' : 'Failed'),
+                'updated_at'     => date('Y-m-d H:i:s'),
+            ];
+            if ($state === 'done') {
+                $etrfUpd['submitted_at'] = date('Y-m-d H:i:s');
+            }
+            if (! empty($upd['application_no'])) {
+                $etrfUpd['application_no'] = $upd['application_no'];
+            }
+            $this->db()->table('tbl_interlink_etrf_requests')->where('id', $etrfRow['id'])->update($etrfUpd);
+        }
 
         $lab = $job['lab_ref_no'];
         $rep = $job['report_no'];
+        $isEtrf = ($job['mode'] ?? '') === 'etrf';
         if ($state === 'done') {
-            $this->synology((int) $job['user_id'], "Labreference: {$lab}\nReportNO: {$rep}\nsubmitted to InterLink");
+            $appLabel = ($upd['application_no'] ?? $job['application_no']);
+            if ($isEtrf) {
+                $this->synology((int) $job['user_id'], "eTRF Submitted to InterLink\nTemplate: {$rep}" . ($lab !== '' ? "\nLabRef: {$lab}" : '') . ($appLabel !== '' ? "\nApplication No: {$appLabel}" : '') . ($msg !== '' ? "\n{$msg}" : ''));
+            } else {
+                $this->synology((int) $job['user_id'], "Labreference: {$lab}\nReportNO: {$rep}\nsubmitted to InterLink");
+            }
         } else {
-            $this->synology((int) $job['user_id'], "Labreference: {$lab}\nReportNO: {$rep}\nwas NOT submitted to InterLink: {$msg}");
+            if ($isEtrf) {
+                $this->synology((int) $job['user_id'], "eTRF ({$rep}" . ($lab !== '' ? " / {$lab}" : '') . ") was NOT submitted to InterLink: {$msg}");
+            } else {
+                $this->synology((int) $job['user_id'], "Labreference: {$lab}\nReportNO: {$rep}\nwas NOT submitted to InterLink: {$msg}");
+            }
         }
 
         return $this->json(['ok' => true]);

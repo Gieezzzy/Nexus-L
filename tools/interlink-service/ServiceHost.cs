@@ -95,7 +95,7 @@ public sealed class ServiceHost
                 ApplicationNo = (string?)o["application_no"] ?? "",
                 LabRefNo = (string?)o["lab_ref_no"] ?? "",
                 ReportNo = (string?)o["report_no"] ?? "",
-                Mode = (string?)o["mode"] == "add" ? "add" : "edit",
+                Mode = (string?)o["mode"] == "etrf" ? "etrf" : ((string?)o["mode"] == "add" ? "add" : "edit"),
                 UserName = (string?)o["user_name"] ?? "",
                 VerifyUrl = (string?)o["verify_url"] ?? "",
                 CallbackUrl = (string?)o["callback_url"] ?? "",

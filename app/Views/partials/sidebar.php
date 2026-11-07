@@ -6,7 +6,10 @@ $user = service('auth')->user();
 $menu = [
     ['label' => 'Dashboard', 'url' => url_to('dashboard'), 'match' => ['', 'dashboard'], 'icon' => 'M3 12l9-9 9 9M5 10v10h5v-6h4v6h5V10'],
     ['label' => 'Inbox', 'url' => url_to('inbox'), 'match' => ['inbox'], 'icon' => 'M21 12a8 8 0 01-11.6 7.1L3 21l1.9-5.4A8 8 0 1121 12z', 'badge' => true],
-    ['label' => 'InterLink Sync', 'url' => url_to('interlink'), 'match' => ['interlink'], 'icon' => 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15'],
+    ['label' => 'InterLink', 'url' => url_to('interlink'), 'match' => ['interlink'], 'icon' => 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15', 'children' => [
+        ['label' => 'VF eTRF', 'url' => site_url('interlink/etrf'), 'etrf' => true],
+        ['label' => 'Report Submission', 'url' => url_to('interlink'), 'etrf' => false],
+    ]],
     ['label' => 'QC Lab Reports (DTR)', 'url' => url_to('dtr'), 'match' => ['dtr'], 'icon' => 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4'],
     ['label' => 'Analytics', 'url' => url_to('analytics'), 'match' => ['analytics'], 'icon' => 'M3 3v18h18M7 15l4-4 3 3 5-6', 'children' => [
         'bonding'   => 'Shoe Bonding',
@@ -31,7 +34,7 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
         <?php foreach ($menu as $item): ?>
             <?php if (isset($item['roles']) && ! in_array(strtolower((string) ($user['role'] ?? '')), array_map('strtolower', $item['roles']), true)) continue; ?>
             <?php if (! empty($item['children'])): ?>
-                <?php $grpOpen = in_array((string) $segment, $item['match'], true); $grpTab = (string) (service('request')->getGet('tab') ?? 'bonding'); ?>
+                <?php $grpOpen = in_array((string) $segment, $item['match'], true); $grpTab = (string) (service('request')->getGet('tab') ?? 'bonding'); $seg2 = (string) (service('uri')->getSegments()[1] ?? ''); ?>
                 <div class="nav-group" data-nav-group="<?= esc(strtolower($item['label']), 'attr') ?>">
                     <button type="button" class="nav-link nav-group-toggle" data-current="<?= $grpOpen ? '1' : '0' ?>" aria-expanded="<?= $grpOpen ? 'true' : 'false' ?>" style="width:100%;background:none;border:0;text-align:left;font:inherit;cursor:pointer">
                         <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="<?= esc($item['icon'], 'attr') ?>"/></svg>
@@ -40,7 +43,11 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
                     </button>
                     <div class="nav-group-items" <?= $grpOpen ? '' : 'hidden' ?> style="margin:2px 0 4px 18px;padding-left:8px;border-left:1px solid rgba(148,163,184,0.25)">
                         <?php foreach ($item['children'] as $ck => $cl): ?>
+                            <?php if (is_array($cl)): // a child with its own page ?>
+                                <a href="<?= esc($cl['url'], 'attr') ?>" class="nav-link <?= ($grpOpen && (($seg2 === 'etrf') === (bool) $cl['etrf'])) ? 'active' : '' ?>" style="padding:6px 12px;font-size:12.5px"><?= esc($cl['label']) ?></a>
+                            <?php else: ?>
                             <a href="<?= esc($item['url'] . '?tab=' . $ck, 'attr') ?>" class="nav-link <?= ($grpOpen && $grpTab === $ck) ? 'active' : '' ?>" style="padding:6px 12px;font-size:12.5px"><?= esc($cl) ?></a>
+                            <?php endif ?>
                         <?php endforeach ?>
                     </div>
                 </div>

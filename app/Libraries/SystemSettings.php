@@ -53,6 +53,10 @@ class SystemSettings
             'interlink.factory_country'  => $d('defaults', 'Factory Country', 'text', 'Philippines'),
             'interlink.factory_city'     => $d('defaults', 'Factory City', 'text', 'Subic Bay'),
             'interlink.factory_state_province' => $d('defaults', 'Factory State / Province', 'text', '03'),
+            'interlink.applicant_address' => $d('defaults', 'eTRF applicant address', 'text', 'Lot 1P7-A Subic Bay Gateway Park Phase II,, Subic Bay Freeport Zone, Philippines', 'Used by the VF eTRF forms (Applicant and Service Requested sections).'),
+            'interlink.applicant_email'   => $d('defaults', 'eTRF applicant e-mail', 'text', 'dtp_lab@dtshoes.com'),
+            'interlink.applicant_phone'   => $d('defaults', 'eTRF applicant phone', 'text', '(047) 252-2899'),
+            'interlink.cost_centre'       => $d('defaults', 'eTRF cost centre', 'text', 'VF-P0676'),
 
             // --- report approval ---------------------------------------------------------------------------------------------------
             'approval.link_minutes'      => $d('approval', 'Approval link works for (minutes)', 'number', '60', 'The QR / link sent to the Manager / Supervisor expires after this time.'),

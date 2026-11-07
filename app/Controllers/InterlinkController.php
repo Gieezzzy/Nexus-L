@@ -1908,6 +1908,642 @@ JS;
             'lab' => $lr ? ['slug' => (string) $lr['form_slug'], 'id' => (int) ($lr['source_id'] ?: $lr['id']), 'lab_ref_no' => (string) $lr['lab_ref_no']] : null]];
     }
 
+    /**
+     * Normalized eTRF template catalog supporting all VF InterLink 2.0 Submit a Request / Favourites templates:
+     * - VF eTRF - Material (eTRF-Mat)
+     * - VF eTRF - Product (eTRF-Prod)
+     * - VF eTRF - PULLTESTTemplate (eTRF-PULL)
+     * - VF eTRF - bonding (VF eTRF-bonding)
+     * - VF eTRF - Product WHOLE SHOE TEST (VF eTRF-Whole Shoe)
+     * - VF eTRF - Product (Adult)
+     */
+    public const ETRF_TEMPLATES = [
+        'eTRF-Mat' => [
+            'code'         => 'eTRF-Mat',
+            'label'        => 'VF eTRF - Material',
+            'sample_type'  => 'Material',
+            'menu_targets' => ['VF eTRF - Material'],
+            'test_package' => '',
+            'individual'   => '',
+            'age_group'    => 'Adult',
+        ],
+        'eTRF-Prod' => [
+            'code'         => 'eTRF-Prod',
+            'label'        => 'VF eTRF - Product',
+            'sample_type'  => 'Finished Product',
+            'menu_targets' => ['VF eTRF - Product'],
+            'test_package' => 'VANS Pull Strength',
+            'individual'   => '',
+            'age_group'    => 'Adult',
+        ],
+        'eTRF-PULL' => [
+            'code'         => 'eTRF-PULL',
+            'label'        => 'VF eTRF - PULLTESTTemplate',
+            'sample_type'  => 'Finished Product',
+            'menu_targets' => ['VF eTRF - PULLTESTTemplate'],
+            'test_package' => 'VANS Pull Strength',
+            'individual'   => '',
+            'age_group'    => 'Adult',
+        ],
+        'VF eTRF-bonding' => [
+            'code'         => 'VF eTRF-bonding',
+            'label'        => 'VF eTRF - bonding',
+            'sample_type'  => 'Finished Product',
+            'menu_targets' => ['VF eTRF - bonding'],
+            'test_package' => 'VANS Pull Strength',
+            'individual'   => 'VF-F01 Whole Shoe Sole Bonding (UTF / FTO / FiTO)',
+            'age_group'    => 'Adult',
+        ],
+        'VF eTRF-Whole Shoe' => [
+            'code'         => 'VF eTRF-Whole Shoe',
+            'label'        => 'VF eTRF - Product WHOLE SHOE TEST',
+            'sample_type'  => 'Finished Product',
+            'menu_targets' => ['VF eTRF - Product WHOLE SHOE TEST'],
+            'test_package' => 'VANS Pull Strength',
+            'individual'   => 'Whole Shoe Test (Heat Aging / Hydrolysis / Flexing / Bonding)',
+            'age_group'    => 'Adult',
+        ],
+        'VF eTRF - Product (Adult)' => [
+            'code'         => 'VF eTRF - Product (Adult)',
+            'label'        => 'VF eTRF - Product (Adult)',
+            'sample_type'  => 'Finished Product',
+            'menu_targets' => ['VF eTRF - Product (Adult)', 'VF eTRF - PULLTESTTemplate', 'VF eTRF - Product'],
+            'test_package' => 'VANS Pull Strength',
+            'individual'   => '',
+            'age_group'    => 'Adult',
+        ],
+    ];
+
+    /** Resolves any alias (e.g. eTRF-Mat, VF eTRF - Material, bonding, pull, whole shoe) or DTR form_slug to a canonical ETRF_TEMPLATES entry. */
+    public static function resolveEtrfTemplate(?string $rawType, ?string $formSlug = null, ?string $formCategory = null): array
+    {
+        $norm = strtolower(trim((string) $rawType));
+        $slug = strtolower(trim((string) $formSlug));
+        $cat  = strtolower(trim((string) $formCategory));
+
+        if ($norm !== '') {
+            if (str_contains($norm, 'mat')) {
+                return self::ETRF_TEMPLATES['eTRF-Mat'];
+            }
+            if (str_contains($norm, 'pull')) {
+                return self::ETRF_TEMPLATES['eTRF-PULL'];
+            }
+            if (str_contains($norm, 'bond')) {
+                return self::ETRF_TEMPLATES['VF eTRF-bonding'];
+            }
+            if (str_contains($norm, 'whole') || str_contains($norm, 'shoe')) {
+                return self::ETRF_TEMPLATES['VF eTRF-Whole Shoe'];
+            }
+            if (str_contains($norm, 'adult')) {
+                return self::ETRF_TEMPLATES['VF eTRF - Product (Adult)'];
+            }
+            if (str_contains($norm, 'prod')) {
+                return self::ETRF_TEMPLATES['eTRF-Prod'];
+            }
+        }
+
+        if ($slug === 'pull' || str_contains($cat, 'pull')) {
+            return self::ETRF_TEMPLATES['eTRF-PULL'];
+        }
+        if ($slug === 'bonding' || str_contains($cat, 'bond')) {
+            return self::ETRF_TEMPLATES['VF eTRF-bonding'];
+        }
+        if (str_contains($slug, 'whole') || str_contains($cat, 'whole')) {
+            return self::ETRF_TEMPLATES['VF eTRF-Whole Shoe'];
+        }
+        $cfg = \App\Controllers\DtrController::FORM_CONFIG[$slug] ?? null;
+        if ($cfg && ($cfg['sample_type'] ?? '') === 'Material') {
+            return self::ETRF_TEMPLATES['eTRF-Mat'];
+        }
+        if ($slug !== '' && in_array($slug, ['fabric', 'leather', 'wst', 'fthl', 'hardware', 'label', 'sklfm', 'rubber', 'box', 'insole'], true)) {
+            return self::ETRF_TEMPLATES['eTRF-Mat'];
+        }
+
+        return self::ETRF_TEMPLATES['eTRF-PULL'];
+    }
+
+    /**
+     * Ensures the dedicated eTRF database tables (tbl_interlink_etrf_templates & tbl_interlink_etrf_requests) exist in dbnexus
+     * and seeds the 6 canonical VF InterLink 2.0 eTRF templates.
+     */
+    public function ensureEtrfTables(): void
+    {
+        $db = $this->il();
+        $db->query('CREATE TABLE IF NOT EXISTS tbl_interlink_etrf_templates (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            template_code VARCHAR(50) NOT NULL,
+            template_label VARCHAR(120) NOT NULL,
+            sample_type VARCHAR(40) NOT NULL DEFAULT "Finished Product",
+            menu_targets_json TEXT NOT NULL,
+            default_test_package VARCHAR(255) NOT NULL DEFAULT "",
+            default_individual_tests VARCHAR(500) NOT NULL DEFAULT "",
+            default_age_group VARCHAR(40) NOT NULL DEFAULT "Adult",
+            is_active TINYINT(1) NOT NULL DEFAULT 1,
+            updated_at DATETIME NOT NULL,
+            UNIQUE KEY uq_tpl_code (template_code)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+
+        foreach (self::ETRF_TEMPLATES as $tpl) {
+            $db->query(
+                'INSERT INTO tbl_interlink_etrf_templates
+                (template_code, template_label, sample_type, menu_targets_json, default_test_package, default_individual_tests, default_age_group, is_active, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW())
+                ON DUPLICATE KEY UPDATE
+                    template_label = VALUES(template_label),
+                    sample_type = VALUES(sample_type),
+                    menu_targets_json = VALUES(menu_targets_json),
+                    default_test_package = VALUES(default_test_package),
+                    default_individual_tests = VALUES(default_individual_tests),
+                    default_age_group = VALUES(default_age_group),
+                    updated_at = NOW()',
+                [
+                    $tpl['code'],
+                    $tpl['label'],
+                    $tpl['sample_type'],
+                    json_encode($tpl['menu_targets'], JSON_UNESCAPED_UNICODE),
+                    $tpl['test_package'],
+                    $tpl['individual'],
+                    $tpl['age_group'],
+                ]
+            );
+        }
+
+        $db->query('CREATE TABLE IF NOT EXISTS tbl_interlink_etrf_requests (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            job_uid VARCHAR(40) NULL,
+            lab_ref_no VARCHAR(80) NOT NULL DEFAULT "",
+            application_no VARCHAR(60) NOT NULL DEFAULT "",
+            etrf_type VARCHAR(50) NOT NULL,
+            template_label VARCHAR(120) NOT NULL,
+            sample_type VARCHAR(40) NOT NULL DEFAULT "Finished Product",
+            action_mode VARCHAR(20) NOT NULL DEFAULT "submit",
+            company_name VARCHAR(120) NOT NULL DEFAULT "",
+            interlink_code VARCHAR(40) NOT NULL DEFAULT "",
+            vendor_name VARCHAR(120) NOT NULL DEFAULT "",
+            vendor_id VARCHAR(40) NOT NULL DEFAULT "",
+            factory_name VARCHAR(120) NOT NULL DEFAULT "",
+            factory_id VARCHAR(40) NOT NULL DEFAULT "",
+            buyer_brand VARCHAR(60) NOT NULL DEFAULT "Vans",
+            season VARCHAR(30) NOT NULL DEFAULT "",
+            test_stage VARCHAR(50) NOT NULL DEFAULT "Production",
+            service_test_type VARCHAR(80) NOT NULL DEFAULT "In-House Lab Testing",
+            test_packages VARCHAR(255) NOT NULL DEFAULT "",
+            individual_tests VARCHAR(500) NOT NULL DEFAULT "",
+            style_no VARCHAR(100) NOT NULL DEFAULT "",
+            product_name VARCHAR(255) NOT NULL DEFAULT "",
+            style_color_no VARCHAR(120) NOT NULL DEFAULT "",
+            material_code VARCHAR(100) NOT NULL DEFAULT "",
+            material_type VARCHAR(120) NOT NULL DEFAULT "",
+            color_code VARCHAR(60) NOT NULL DEFAULT "",
+            color_description VARCHAR(160) NOT NULL DEFAULT "",
+            size_category VARCHAR(40) NOT NULL DEFAULT "UNISEX",
+            age_group VARCHAR(40) NOT NULL DEFAULT "Adult",
+            cargo_receive_date VARCHAR(40) NOT NULL DEFAULT "",
+            remarks TEXT NULL,
+            fields_json LONGTEXT NULL,
+            rows_json LONGTEXT NULL,
+            submission_channel VARCHAR(30) NOT NULL DEFAULT "service",
+            status VARCHAR(30) NOT NULL DEFAULT "prepared",
+            status_message VARCHAR(500) NOT NULL DEFAULT "",
+            requested_by_id INT UNSIGNED NOT NULL DEFAULT 0,
+            requested_by_name VARCHAR(100) NOT NULL DEFAULT "",
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            submitted_at DATETIME NULL,
+            KEY ix_job_uid (job_uid),
+            KEY ix_lab_ref (lab_ref_no),
+            KEY ix_app_no (application_no),
+            KEY ix_etrf_type (etrf_type, status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+    }
+
+    /** Persists an eTRF request row in tbl_interlink_etrf_requests and returns its auto-increment ID. */
+    public function saveEtrfRequestRecord(array $body, string $channel = 'service', string $status = 'queued', ?string $jobUid = null): int
+    {
+        $this->ensureEtrfTables();
+        $s    = (array) ($body['summary'] ?? []);
+        $f    = (array) ($body['fields'] ?? []);
+        $user = (array) ($this->auth ? $this->auth->user() : []);
+        $now  = date('Y-m-d H:i:s');
+
+        $this->il()->table('tbl_interlink_etrf_requests')->insert([
+            'job_uid'            => $jobUid,
+            'lab_ref_no'         => (string) ($body['lab_ref_no'] ?? ''),
+            'application_no'     => (string) ($body['application_no'] ?? ''),
+            'etrf_type'          => (string) ($body['etrf_type'] ?? 'eTRF-PULL'),
+            'template_label'     => (string) ($body['template_label'] ?? 'VF eTRF - PULLTESTTemplate'),
+            'sample_type'        => (string) ($body['sample_type'] ?? 'Finished Product'),
+            'action_mode'        => (string) ($body['action'] ?? 'submit'),
+            'company_name'       => (string) ($s['company_name'] ?? $f['JOB_STD_APP_DESC'] ?? 'KEY TRADE CO., LTD'),
+            'interlink_code'     => (string) ($f['JOB_STD_APP'] ?? 'E126863'),
+            'vendor_name'        => (string) ($s['vendor_name'] ?? 'KEY TRADE CO., LTD'),
+            'vendor_id'          => (string) ($s['vendor_id'] ?? '0000507450'),
+            'factory_name'       => (string) ($s['factory_name'] ?? 'DATIAN SUBIC SHOES INC.'),
+            'factory_id'         => (string) ($s['factory_id'] ?? '0000507452'),
+            'buyer_brand'        => (string) ($s['buyer_brand'] ?? 'Vans'),
+            'season'             => (string) ($s['season'] ?? 'S27'),
+            'test_stage'         => (string) ($s['test_stage'] ?? 'Production'),
+            'service_test_type'  => (string) ($s['service_test_type'] ?? 'In-House Lab Testing'),
+            'test_packages'      => (string) ($s['test_packages'] ?? ''),
+            'individual_tests'   => (string) ($s['individual_tests'] ?? ''),
+            'style_no'           => (string) ($s['style_no'] ?? ''),
+            'product_name'       => (string) ($s['product_name'] ?? ''),
+            'style_color_no'     => (string) ($s['style_color_no'] ?? ''),
+            'material_code'      => (string) ($s['material_code'] ?? ''),
+            'material_type'      => (string) ($s['material_type'] ?? ''),
+            'color_code'         => (string) ($s['color_code'] ?? ''),
+            'color_description'  => (string) ($s['color_description'] ?? ''),
+            'size_category'      => (string) ($s['size_category'] ?? 'UNISEX'),
+            'age_group'          => (string) ($s['age_group'] ?? 'Adult'),
+            'cargo_receive_date' => (string) ($s['cargo_receive_date'] ?? ''),
+            'remarks'            => (string) ($s['remarks'] ?? ''),
+            'fields_json'        => json_encode($body['fields'] ?? [], JSON_UNESCAPED_UNICODE),
+            'rows_json'          => json_encode($body['rows'] ?? [], JSON_UNESCAPED_UNICODE),
+            'submission_channel' => $channel,
+            'status'             => $status,
+            'status_message'     => $status === 'prepared' ? 'Prepared for browser extension submission' : 'Queued for background service submission',
+            'requested_by_id'    => (int) ($user['id'] ?? 0),
+            'requested_by_name'  => (string) ($user['name'] ?? $user['username'] ?? ''),
+            'created_at'         => $now,
+            'updated_at'         => $now,
+        ]);
+
+        return (int) $this->il()->insertID();
+    }
+
+    /** GET interlink/etrf-history : returns recent eTRF submissions from tbl_interlink_etrf_requests */
+    public function etrfHistory()
+    {
+        $this->ensureEtrfTables();
+        $rows = $this->il()->table('tbl_interlink_etrf_requests')
+            ->select('id, job_uid, lab_ref_no, application_no, etrf_type, template_label, sample_type, action_mode, style_no, material_code, product_name, color_code, color_description, season, test_packages, submission_channel, status, status_message, requested_by_name, created_at, submitted_at')
+            ->orderBy('id', 'DESC')
+            ->limit(25)
+            ->get()
+            ->getResultArray();
+
+        return $this->response->setJSON(['ok' => true, 'rows' => $rows, 'csrf' => csrf_hash()]);
+    }
+
+    /** GET interlink/etrf-preview?lab_ref_no=...&etrf_type=... */
+    public function etrfPreview()
+    {
+        $this->ensureEtrfTables();
+        $r = $this->etrfData([
+            'lab_ref_no'     => (string) $this->request->getGet('lab_ref_no'),
+            'application_no' => (string) $this->request->getGet('application_no'),
+            'etrf_type'      => (string) $this->request->getGet('etrf_type'),
+            'action'         => (string) ($this->request->getGet('action') ?: 'save'),
+        ]);
+
+        return $this->response->setStatusCode($r['code'])->setJSON($r['body'] + ['csrf' => csrf_hash()]);
+    }
+
+    /** GET interlink/etrf : the VF eTRF page (create a request or a test in InterLink from the five VF templates) */
+    public function etrf(): string
+    {
+        $this->ensureEtrfTables();
+        $tpl = [];
+        foreach (['eTRF-Mat', 'eTRF-Prod', 'eTRF-PULL', 'VF eTRF-bonding', 'VF eTRF-Whole Shoe'] as $k) {
+            $t = self::ETRF_TEMPLATES[$k];
+            $tpl[] = ['code' => $t['code'], 'label' => $t['label'], 'sample_type' => $t['sample_type'], 'package' => $t['test_package'], 'individual' => $t['individual']];
+        }
+
+        return $this->render('interlink/etrf', ['title' => 'InterLink - VF eTRF', 'withCss' => 'interlink.css', 'withJs' => ['interlink_etrf.js'], 'templates' => $tpl]);
+    }
+
+    /** POST interlink/etrf-check {etrf_type, lab_ref_no?, fields?, rows?, ...flat values} : what would be sent and what is still missing (sends nothing) */
+    public function etrfCheck()
+    {
+        $this->ensureEtrfTables();
+        $r = $this->etrfData($this->request->getJSON(true) ?? $this->request->getPost());
+
+        return $this->response->setStatusCode($r['code'])->setJSON($r['body'] + ['csrf' => csrf_hash()]);
+    }
+
+    /** POST interlink/center/etrf {lab_ref_no?, etrf_type?, action?: submit|save, fields?: {...}, rows?: [...]} */
+    public function centerEtrf()
+    {
+        $r = $this->etrfData($this->request->getJSON(true) ?? $this->request->getPost());
+        if ($r['code'] === 200 && ! empty($r['body']['missing'])) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'code' => 'etrf_incomplete', 'missing' => $r['body']['missing'],
+                'error' => 'The eTRF (' . ($r['body']['template_label'] ?? 'request') . ') is missing: ' . implode(', ', $r['body']['missing']) . '. Fill these in and send again.', 'csrf' => csrf_hash()]);
+        }
+        if ($r['code'] === 200) {
+            $r['body']['etrf_request_id'] = $this->saveEtrfRequestRecord($r['body'], 'extension', 'prepared', null);
+        }
+
+        return $this->response->setStatusCode($r['code'])->setJSON($r['body'] + ['csrf' => csrf_hash()]);
+    }
+
+    /**
+     * Builds the complete eTRF submission payload for InterLink 2.0 NormalFormWithHeader.aspx.
+     * Used by both the Browser Extension (centerEtrf) and the Network Background Service (InterlinkServiceController::submitEtrf).
+     *
+     * @return array{code:int, body:array}
+     */
+    public function etrfData(array $p): array
+    {
+        $ref      = trim((string) ($p['lab_ref_no'] ?? ''));
+        $appNo    = trim((string) ($p['application_no'] ?? ''));
+        $rawType  = trim((string) ($p['etrf_type'] ?? $p['template'] ?? ''));
+        $action   = strtolower(trim((string) ($p['action'] ?? 'save'))) === 'submit' ? 'submit' : 'save';      // a draft unless a submit is asked for
+        $override = is_array($p['fields'] ?? null) ? $p['fields'] : [];
+        $userRows = is_array($p['rows'] ?? null) ? $p['rows'] : [];
+
+        $lr = null;
+        if ($ref !== '') {
+            $lr = $this->il()->table('tbl_dtr_unified_labrefs')->where('lab_ref_no', $ref)->orderBy('id', 'DESC')->get()->getRowArray();
+        } elseif ($appNo !== '') {
+            $lr = $this->il()->table('tbl_dtr_unified_labrefs')->where('tr_no', $appNo)->orderBy('id', 'DESC')->get()->getRowArray();
+        }
+
+        // Load full underlying DTR table record if available
+        $rec = [];
+        $slug = (string) ($lr['form_slug'] ?? '');
+        $cfgT = $slug !== '' ? (\App\Controllers\DtrController::FORM_CONFIG[$slug] ?? null) : null;
+        if ($cfgT && (int) ($lr['source_id'] ?? 0) > 0) {
+            $rec = $this->il()->table($cfgT['table'])->where($cfgT['pk'], (int) $lr['source_id'])->get()->getRowArray() ?: [];
+        }
+
+        $tpl = self::resolveEtrfTemplate($rawType, $slug, (string) ($lr['form_category'] ?? ''));
+        $isMaterial = ($tpl['sample_type'] === 'Material');
+
+        $pick = static function (array $keys, string $default = '') use ($override, $rec, $lr, $p): string {
+            foreach ($keys as $k) {
+                if (isset($override[$k]) && trim((string) $override[$k]) !== '') {
+                    return trim((string) $override[$k]);
+                }
+                if (isset($p[$k]) && is_scalar($p[$k]) && trim((string) $p[$k]) !== '') {
+                    return trim((string) $p[$k]);
+                }
+                if (isset($rec[$k]) && trim((string) $rec[$k]) !== '') {
+                    return trim((string) $rec[$k]);
+                }
+                if (is_array($lr) && isset($lr[$k]) && trim((string) $lr[$k]) !== '') {
+                    return trim((string) $lr[$k]);
+                }
+            }
+
+            return $default;
+        };
+
+        $user = (array) ($this->auth ? $this->auth->user() : []);
+        $contactName = $pick(['contact_person', 'APPT_CONTACT'], (string) ($user['name'] ?? ''));
+        $companyName = $pick(['company_name', 'JOB_STD_APP_DESC'], (string) \App\Libraries\SystemSettings::get('interlink.company_name', 'KEY TRADE CO., LTD'));
+        $interlinkCode = $pick(['interlink_code', 'JOB_STD_APP'], (string) \App\Libraries\SystemSettings::get('interlink.interlink_code', 'E126863'));
+        $vendorName  = $pick(['vendor_name', 'TRPT_SUPPLIER_NAME'], (string) \App\Libraries\SystemSettings::get('interlink.vendor_name', 'KEY TRADE CO., LTD'));
+        $vendorId    = $pick(['vendor_id', 'SUPPLIER_ID'], (string) \App\Libraries\SystemSettings::get('interlink.vendor_id', '0000507450'));
+        $factoryName = $pick(['factory_name', 'TRPT_FACTORY_NAME'], (string) \App\Libraries\SystemSettings::get('interlink.factory_name', 'DATIAN SUBIC SHOES INC.'));
+        $factoryId   = $pick(['factory_id', 'FACTORY_ID'], (string) \App\Libraries\SystemSettings::get('interlink.factory_id', '0000507452'));
+        $supplierName = $pick(['supplier_name', 'MSTA_FIELD_6', 'Supplier', 'supplier'], $vendorName);
+        $supplierId   = $pick(['supplier_id', 'MSTA_FIELD_10', 'SupplierCode', 'SupplierID'], $vendorId);
+        $brandName   = $pick(['buyer_brand', 'TRPT_CDI_BRAND_NAME', 'Brand', 'Customer'], (string) \App\Libraries\SystemSettings::get('interlink.buyer_brand', 'Vans'));
+        $season      = $pick(['season', 'TRPT_SEASON', 'REF_FLD17', 'Season'], (string) \App\Libraries\SystemSettings::get('interlink.season', 'S27'));
+        $testStage   = $pick(['test_stage', 'TRPT_TESTING_STATUS', 'TestStage', 'Stage'], (string) \App\Libraries\SystemSettings::get('interlink.test_stage', 'Production'));
+        $exportTo    = $pick(['product_export_to', 'CAL_PO_COUNTRY'], (string) \App\Libraries\SystemSettings::get('interlink.product_export_to', 'APAC - Non China'));
+        $countryOrig = $pick(['country_of_origin', 'TRPT_COUNTRY_ORIGIN'], (string) \App\Libraries\SystemSettings::get('interlink.country_of_origin', 'Philippines'));
+        $ageGroup    = $pick(['age_group', 'TRPT_AGE_RANGE', 'AgeGroup'], $tpl['age_group'] ?: 'Adult');
+        $sizeCat     = strtoupper($pick(['size_category', 'REF_FLD21', 'Gender', 'Category'], 'UNISEX'));
+        if (! in_array($sizeCat, ['UNISEX', 'MALE', 'FEMALE', 'MENS', 'WOMENS', 'KIDS', 'TODDLER', 'CHILDREN', 'ADULT'], true)) {
+            $sizeCat = 'UNISEX';
+        }
+        $genderCode  = match ($sizeCat) {
+            'FEMALE', 'WOMENS' => 'WOMENS',
+            'MALE', 'MENS'     => 'MENS',
+            default            => 'UNISEX',
+        };
+
+        $styleNo     = $pick(['style_no', 'REF_FLD16', 'ModelStyle', 'Model No/Style', 'Style', 'model_style'], '');
+        $productName = $pick(['product_name', 'style_name', 'REF_FLD23', 'Material Description', 'MaterialDescription', 'ModelName', 'material_description'], $styleNo);
+        $colorDesc   = $pick(['colorway_name', 'color_description', 'REF_FLD24', 'Color', 'Colorway', 'color'], '');
+        $colorCode   = $pick(['color_code', 'REF_FLD18', 'ColorCode'], '');
+        // a style color number is the style plus its color code, only when BOTH are known; nothing is guessed from the color name
+        $styleColorNo = $pick(['style_color_no', 'REF_FLD19', 'StyleColorNo', 'ProductionCode', 'MTL', 'mtl_no'], ($styleNo !== '' && $colorCode !== '') ? $styleNo . $colorCode : '');
+
+        $matCode      = $pick(['material_code', 'MaterialCode', 'Material Code', 'MTL', 'mtl_no'], '');
+        $matDesc      = $pick(['material_name', 'material_description', 'Material Description', 'MaterialDescription'], $productName);
+        $matType      = $pick(['material_type', 'MaterialType', 'Material Type', 'form_category'], (string) ($cfgT['label'] ?? ''));
+        $matSubType   = $pick(['material_sub_type', 'CAL_CDTL_8'], '');
+        $endUse       = $pick(['end_use', 'CAL_CDTL_1', 'Application', 'Component'], '');
+        $weight       = $pick(['weight', 'Weight', 'WeightAve'], '');
+        $weightUom    = $pick(['weight_uom', 'WeightUOM'], $weight !== '' ? 'g/m2' : '');
+        $thickness    = $pick(['thickness', 'Thickness', 'ThicknessAve'], '');
+        $claimType    = $pick(['claim_type', 'ClaimType'], '');
+
+        $cargoDateRaw = $pick(['cargo_receive_date', 'INSP_SHIP_DATE', 'DateReceived', 'CollectionDate', 'received_date'], date('d M Y'));
+        $tsCargo      = strtotime($cargoDateRaw);
+        $cargoDate    = $tsCargo ? date('d M Y', $tsCargo) : date('d M Y');
+
+        $isRetest     = strtolower($pick(['is_retest', 'TRPT_RETEST', 'Retest'], 'No'));
+        $retestVal    = in_array($isRetest, ['1', 'yes', 'true', 'y'], true) ? '1' : '0';
+        $prevReport   = $pick(['previous_report_no', 'TRPT_PREV_NO', 'PrevReportNo'], '');
+        $improvements = $pick(['improvements', 'E1_TEXT_050', 'RetestDetails'], '');
+
+        $testPackages = $pick(['test_packages', 'CAL_CDTL_5'], $tpl['test_package']);
+        $individual   = $pick(['individual_tests', 'E2_LTEXT_001'], $tpl['individual']);
+        $labRefLabel  = $ref ?: (string) ($lr['lab_ref_no'] ?? '');
+        $defaultRmk   = $labRefLabel !== ''
+            ? ('NEXUS-L LabRefNo: ' . $labRefLabel . ' | Type: ' . $tpl['code'] . (! empty($lr['mtl_no']) ? ' | MTL: ' . $lr['mtl_no'] : ''))
+            : ('Submitted via NEXUS-L InterLink Service (' . $tpl['code'] . ')');
+        $remarks      = $pick(['lab_remarks', 'remarks', 'TRPT_RMK', 'Remarks'], $defaultRmk);
+        $emailRecip   = $pick(['email_recipients', 'EMAIL_ADHOC_LIST'], (string) \App\Libraries\SystemSettings::get('interlink.email_recipients', 'dtp_lab@dtshoes.com'));
+
+        // Exact NormalFormWithHeader.aspx field code map
+        $fields = [
+            // Section 1: Applicant Information
+            'JOB_STD_APP_DESC' => $companyName,
+            'JOB_STD_APP'      => $interlinkCode,
+            'APPT_ADDR_1'      => (string) \App\Libraries\SystemSettings::get('interlink.applicant_address', 'Lot 1P7-A Subic Bay Gateway Park Phase II,, Subic Bay Freeport Zone, Philippines'),
+            'APPT_ADDR_3'      => (string) \App\Libraries\SystemSettings::get('interlink.factory_country', 'Philippines'),
+            'E1_TEXT_001'      => '',
+            'APPT_CONTACT'     => $contactName,
+            'APPT_EMAIL'       => (string) \App\Libraries\SystemSettings::get('interlink.applicant_email', 'dtp_lab@dtshoes.com'),
+            'APPT_TEL'         => (string) \App\Libraries\SystemSettings::get('interlink.applicant_phone', '(047) 252-2899'),
+            'EMAIL_ADHOC_LIST' => $emailRecip,
+
+            // Section 2: Invoice Information
+            'E1_TEXT_002'      => 'Yes',
+
+            // Section 4: Service Requested
+            'CAL_CDTL_11'         => $pick(['service_test_type', 'CAL_CDTL_11'], 'In-House Lab Testing'),
+            'TRPT_TESTING_STATUS' => $testStage,
+            'E1_TEXT_032'         => $pick(['service_provider', 'E1_TEXT_032'], 'DATIAN SUBIC SHOES INC.'),
+            'ITS_OFFICE_DISP'     => $pick(['lab_location', 'ITS_OFFICE_DISP'], 'PHILIPPINES'),
+            'TRPT_SERV_TYPE'      => '4', // Regular
+            'E1_TEXT_012'         => (string) \App\Libraries\SystemSettings::get('interlink.applicant_address', 'Lot 1P7-A Subic Bay Gateway Park Phase II,, Subic Bay Freeport Zone, Philippines'),
+            'E1_TEXT_013'         => '2', // Quotation required: No
+            'TRPT_RETEST'         => $retestVal,
+            'TRPT_PREV_NO'        => $prevReport,
+            'E1_TEXT_050'         => $improvements,
+            'E1_TEXT_014'         => 'No', // Return Sample
+
+            // Section 5: Product / Material Information
+            'TRPT_CLT_SUB_PRD_CAT'   => $tpl['sample_type'],
+            'TRPT_PRD_CAT'           => $pick(['product_category', 'TRPT_PRD_CAT'], 'Footwear'),
+            'TRPT_CDI_BRAND_NAME'    => $brandName,
+            'DETOX_SUPPLIER_COUNTRY' => '1', // ASO
+            'TRPT_COUNTRY_ORIGIN'    => $countryOrig,
+
+            // Section 6: Test Requirements
+            'CAL_CDTL_5'   => $testPackages,
+            'E2_LTEXT_001' => $individual,
+            'TRPT_RMK'     => $remarks,
+
+            // Hidden companion fields required by InterLink server validation
+            'TRPT_COSTCENTRE'            => (string) \App\Libraries\SystemSettings::get('interlink.cost_centre', 'VF-P0676'),
+            'ITS_COMPANY'                => 'DATIAN',
+            'ITS_DIVISION'               => 'VFC-TXT',
+            'ITS_OFFICE'                 => 'PHL',
+            'E1_TEXT_033'                => 'Non-GB',
+            'E1_TEXT_047'                => 'Footwear+Non-GB',
+            'E1_TEXT_048'                => $brandName . '+Footwear+Non-GB;General+Footwear+Non-GB',
+            'E1_TEXT_056'                => $isMaterial ? $supplierId : $vendorId,
+            'E1_TEXT_057'                => $factoryId . '+INH+PRO',
+            'E1_TEXT_058'                => $factoryId . '+Non-GB; ALL+Non-GB',
+            'E1_TEXT_059'                => $factoryId,
+            'E1_TEXT_062'                => $factoryId . '+Non-GB+INH',
+            'E3_TEXT_003'                => 'No',
+            'DETOX_FACILITY_ADD_ADDRESS' => (string) \App\Libraries\SystemSettings::get('interlink.factory_address', 'Lot 1P7-A,Phase 2,Subic Bay Gateway, Park, Subic Bay Freeport Zone'),
+            'DETOX_FACILITY_CITY'        => (string) \App\Libraries\SystemSettings::get('interlink.factory_city', 'Subic Bay'),
+            'DETOX_FACILITY_PROVINCE'    => (string) \App\Libraries\SystemSettings::get('interlink.factory_state_province', '03'),
+            'DETOX_FACILITY_COUNTRY'     => (string) \App\Libraries\SystemSettings::get('interlink.factory_country', 'Philippines'),
+        ];
+
+        if ($isMaterial) {
+            $fields['MSTA_FIELD_6']       = $supplierName;
+            $fields['MSTA_FIELD_10']      = $supplierId;
+            $fields['TRPT_FACTORY_NAME']  = $factoryName;
+            $fields['FACTORY_ID']         = $factoryId;
+            $fields['TRPT_SEASON']        = $season;
+            $fields['CAL_CDTL_8']         = $matSubType;
+            $fields['CAL_CDTL_1']         = $endUse;
+        } else {
+            $fields['TRPT_SUPPLIER_NAME'] = $vendorName;
+            $fields['SUPPLIER_ID']        = $vendorId;
+            $fields['TRPT_FACTORY_NAME']  = $factoryName;
+            $fields['FACTORY_ID']         = $factoryId;
+            $fields['CAL_PO_COUNTRY']     = $exportTo;
+            $fields['TRPT_AGE_RANGE']     = $ageGroup;
+            $fields['INSP_SHIP_DATE']     = $cargoDate;
+        }
+
+        // Allow direct field-code overrides from caller
+        foreach ($override as $k => $v) {
+            if (is_string($k) && preg_match('/^[A-Z0-9_]+$/', $k) && is_scalar($v)) {
+                $fields[$k] = trim((string) $v);
+            }
+        }
+
+        // Build the JOB_DUMMY_009 rows (Style Information for a product, Material Information for a material): the rows the user typed, or ONE row
+        // made only from what the Lab Reference really holds. Empty stays empty: it is reported as missing, never filled with a made-up value.
+        $rows = [];
+        foreach ($userRows as $r) {
+            if (is_array($r)) {
+                $rows[] = $r;
+            }
+        }
+        if (! $rows) {
+            $rows[] = $isMaterial
+                ? ['material_code' => $matCode, 'material_description' => $matDesc, 'material_type' => $matType, 'color_code' => $colorCode, 'color_description' => $colorDesc,
+                    'weight' => $weight, 'weight_uom' => $weightUom, 'thickness' => $thickness, 'claim_type' => $claimType]
+                : ['style_no' => $styleNo, 'product_name' => $productName, 'style_color_no' => $styleColorNo, 'color_description' => $colorDesc, 'color_code' => $colorCode,
+                    'season' => $season, 'size_category' => $sizeCat];
+        }
+        foreach ($rows as &$row) {                                     // a product row also carries the InterLink column codes the page fills by
+            if (! $isMaterial) {
+                $row += ['season' => $season, 'size_category' => $sizeCat];
+                $row['REF_FLD16'] = (string) ($row['style_no'] ?? '');
+                $row['REF_FLD23'] = (string) ($row['product_name'] ?? '');
+                $row['REF_FLD19'] = (string) ($row['style_color_no'] ?? '');
+                $row['REF_FLD24'] = (string) ($row['color_description'] ?? '');
+                $row['REF_FLD18'] = (string) ($row['color_code'] ?? '');
+                $row['REF_FLD17'] = (string) ($row['season'] ?? '');
+                $row['REF_FLD21'] = strtoupper((string) ($row['size_category'] ?? ''));
+                $row['REF_FLD20'] = $genderCode;
+            }
+        }
+        unset($row);
+
+        // pre-flight: what InterLink needs and the request does not have yet. A request with anything missing is not sent.
+        $missing = [];
+        $need = ['JOB_STD_APP_DESC' => 'Company name', 'JOB_STD_APP' => 'InterLink code', 'APPT_CONTACT' => 'Contact person', 'TRPT_CDI_BRAND_NAME' => 'Brand', 'TRPT_TESTING_STATUS' => 'Test stage',
+            'TRPT_FACTORY_NAME' => 'Factory name', 'FACTORY_ID' => 'Factory ID'];
+        $need += $isMaterial ? ['MSTA_FIELD_6' => 'Supplier name', 'MSTA_FIELD_10' => 'Supplier ID'] : ['TRPT_SUPPLIER_NAME' => 'Vendor name', 'SUPPLIER_ID' => 'Vendor ID', 'INSP_SHIP_DATE' => 'Cargo receive date'];
+        foreach ($need as $code => $label) {
+            if (trim((string) ($fields[$code] ?? '')) === '') {
+                $missing[] = $label;
+            }
+        }
+        if (trim((string) ($fields['CAL_CDTL_5'] ?? '')) === '' && trim((string) ($fields['E2_LTEXT_001'] ?? '')) === '') {
+            $missing[] = 'Test package or individual tests';
+        }
+        $rowNeed = $isMaterial
+            ? ['material_code' => 'Material code', 'material_description' => 'Material description', 'material_type' => 'Material type']
+            : ['style_no' => 'Style No.', 'product_name' => 'Product name', 'style_color_no' => 'Style color No.', 'color_code' => 'Color code', 'color_description' => 'Color description', 'season' => 'Season', 'size_category' => 'Size category'];
+        foreach ($rows as $i => $row) {
+            foreach ($rowNeed as $k => $label) {
+                if (trim((string) ($row[$k] ?? '')) === '') {
+                    $missing[] = $label . (count($rows) > 1 ? ' (row ' . ($i + 1) . ')' : '');
+                }
+            }
+        }
+
+        return [
+            'code' => 200,
+            'body' => [
+                'ok'             => true,
+                'mode'           => 'etrf',
+                'action'         => $action,
+                'etrf_type'      => $tpl['code'],
+                'template_label' => $tpl['label'],
+                'sample_type'    => $tpl['sample_type'],
+                'menu_targets'   => $tpl['menu_targets'],
+                'home_url'       => self::PORTAL_HOME_URL,
+                'lab_ref_no'     => $labRefLabel,
+                'application_no' => $appNo,
+                'fields'         => $fields,
+                'rows'           => $rows,
+                'missing'        => $missing,
+                'ready'          => $missing === [],
+                'summary'        => [
+                    'etrf_type'         => $tpl['code'],
+                    'template_label'    => $tpl['label'],
+                    'sample_type'       => $tpl['sample_type'],
+                    'company_name'      => $companyName,
+                    'vendor_name'       => $isMaterial ? $supplierName : $vendorName,
+                    'vendor_id'         => $isMaterial ? $supplierId : $vendorId,
+                    'factory_name'      => $factoryName,
+                    'factory_id'        => $factoryId,
+                    'buyer_brand'       => $brandName,
+                    'season'            => $season,
+                    'test_stage'        => $testStage,
+                    'service_test_type' => $fields['CAL_CDTL_11'],
+                    'test_packages'     => $testPackages,
+                    'individual_tests'  => $individual,
+                    'style_no'          => $styleNo,
+                    'product_name'      => $isMaterial ? $matDesc : $productName,
+                    'style_color_no'    => $styleColorNo,
+                    'material_code'     => $matCode,
+                    'material_type'     => $matType,
+                    'color_code'        => $colorCode,
+                    'color_description' => $colorDesc,
+                    'size_category'     => $sizeCat,
+                    'age_group'         => $ageGroup,
+                    'cargo_receive_date'=> $cargoDate,
+                    'remarks'           => $remarks,
+                ],
+                'templates'      => array_values(self::ETRF_TEMPLATES),
+                'lab'            => $lr ? [
+                    'slug'       => (string) $lr['form_slug'],
+                    'id'         => (int) ($lr['source_id'] ?: $lr['id']),
+                    'lab_ref_no' => (string) $lr['lab_ref_no'],
+                    'tr_no'      => (string) ($lr['tr_no'] ?? ''),
+                ] : null,
+            ],
+        ];
+    }
+
     /** Pulls the next InterLink pages (100 rows each) into tbl_interlink_reports; loops forever so the copy stays complete. */
     private function backfillStep(int $pagesPerCycle = 12): array
     {

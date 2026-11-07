@@ -41,7 +41,7 @@
   };
   $('#sc-q').addEventListener('input', () => { clearTimeout(t); t = setTimeout(loadLabrefs, 350); });
   $('#sc-cat').addEventListener('change', loadLabrefs);
-  $('#sc-labrefs').addEventListener('change', (e) => { if (e.target.dataset.ref) { picked = e.target.dataset.ref; $('#sc-fill').disabled = false; } });
+  $('#sc-labrefs').addEventListener('change', (e) => { if (e.target.dataset.ref) { picked = e.target.dataset.ref; $('#sc-fill').disabled = false; if (typeof loadEtrfPreview === 'function') loadEtrfPreview(picked, ''); } });
   $('#sc-fill').addEventListener('click', () => {
     const app = $('#sc-app').value.trim();
     if (!app || !picked) { $('#sc-msg').textContent = 'Type the Application No. and pick a Lab Reference.'; return; }
@@ -202,6 +202,136 @@
     } }, location.origin);
     nxToast(`Sending ${appNo}: InterLink opens in a new tab and is filled, attached and saved for you.`, 'info', 7000);
   };
+
+  // ---- eTRF Request Submission (VF eTRF - Material, Product, PULLTESTTemplate, bonding, Whole Shoe) -------------------
+  const loadEtrfPreview = async (refNo, explicitType) => {
+    try {
+      const q = new URLSearchParams();
+      if (refNo) q.set('lab_ref_no', refNo);
+      if (explicitType) q.set('etrf_type', explicitType);
+      const j = await api(`interlink/etrf-preview?${q.toString()}`);
+      const s = j.summary || {};
+      if ($('#sc-etrf-type') && j.etrf_type) $('#sc-etrf-type').value = j.etrf_type;
+      if ($('#sc-etrf-badge')) $('#sc-etrf-badge').textContent = `Sample Type: ${j.sample_type || 'Finished Product'} (${j.template_label || j.etrf_type})`;
+      const isMat = (j.sample_type === 'Material');
+      if ($('#sc-etrf-style')) $('#sc-etrf-style').value = (isMat ? s.material_code : s.style_no) || '';
+      if ($('#sc-etrf-desc')) $('#sc-etrf-desc').value = s.product_name || '';
+      if ($('#sc-etrf-stylecolor')) $('#sc-etrf-stylecolor').value = (isMat ? s.material_type : s.style_color_no) || '';
+      if ($('#sc-etrf-colorcode')) $('#sc-etrf-colorcode').value = s.color_code || '';
+      if ($('#sc-etrf-colordesc')) $('#sc-etrf-colordesc').value = s.color_description || '';
+      if ($('#sc-etrf-season')) $('#sc-etrf-season').value = s.season || 'S27';
+      if ($('#sc-etrf-sizecat') && s.size_category) $('#sc-etrf-sizecat').value = s.size_category;
+      if ($('#sc-etrf-age')) $('#sc-etrf-age').value = s.age_group || 'Adult';
+      if ($('#sc-etrf-stage')) $('#sc-etrf-stage').value = s.test_stage || 'Production';
+      if ($('#sc-etrf-pkg')) $('#sc-etrf-pkg').value = s.test_packages ?? '';
+      if ($('#sc-etrf-ind')) $('#sc-etrf-ind').value = s.individual_tests ?? '';
+      if ($('#sc-etrf-cargo') && s.cargo_receive_date) $('#sc-etrf-cargo').value = s.cargo_receive_date;
+      if ($('#sc-etrf-vendor') && s.vendor_name) $('#sc-etrf-vendor').value = s.vendor_name;
+      if ($('#sc-etrf-factory') && s.factory_name) $('#sc-etrf-factory').value = s.factory_name;
+      if ($('#sc-etrf-rmk')) $('#sc-etrf-rmk').value = s.remarks || '';
+    } catch (e) {
+      if ($('#sc-etrf-msg')) $('#sc-etrf-msg').textContent = e.message;
+    }
+  };
+
+  $('#sc-etrf-type')?.addEventListener('change', (e) => loadEtrfPreview(picked, e.target.value));
+  $('#sc-etrf-load-ref')?.addEventListener('click', () => {
+    if (!picked) { nxToast('Pick a Lab Reference in the table above first, or fill the eTRF fields directly.', 'info', 4000); return; }
+    loadEtrfPreview(picked, '');
+  });
+
+  const collectEtrfForm = (action = 'submit') => {
+    const etrfType = $('#sc-etrf-type')?.value || 'eTRF-PULL';
+    const isMat = /mat/i.test(etrfType);
+    const styleOrMat = $('#sc-etrf-style')?.value.trim() || '';
+    const desc = $('#sc-etrf-desc')?.value.trim() || '';
+    const styleColorOrType = $('#sc-etrf-stylecolor')?.value.trim() || '';
+    return {
+      lab_ref_no: picked || '',
+      etrf_type: etrfType,
+      action,
+      style_no: isMat ? '' : styleOrMat,
+      material_code: isMat ? styleOrMat : '',
+      product_name: desc,
+      material_name: isMat ? desc : '',
+      style_color_no: isMat ? '' : styleColorOrType,
+      material_type: isMat ? styleColorOrType : '',
+      color_code: $('#sc-etrf-colorcode')?.value.trim() || '',
+      color_description: $('#sc-etrf-colordesc')?.value.trim() || '',
+      season: $('#sc-etrf-season')?.value.trim() || 'S27',
+      size_category: $('#sc-etrf-sizecat')?.value || 'UNISEX',
+      age_group: $('#sc-etrf-age')?.value.trim() || 'Adult',
+      test_stage: $('#sc-etrf-stage')?.value.trim() || 'Production',
+      test_packages: $('#sc-etrf-pkg')?.value.trim() || '',
+      individual_tests: $('#sc-etrf-ind')?.value.trim() || '',
+      cargo_receive_date: $('#sc-etrf-cargo')?.value.trim() || '',
+      vendor_name: $('#sc-etrf-vendor')?.value.trim() || '',
+      supplier_name: $('#sc-etrf-vendor')?.value.trim() || '',
+      factory_name: $('#sc-etrf-factory')?.value.trim() || '',
+      remarks: $('#sc-etrf-rmk')?.value.trim() || '',
+    };
+  };
+
+  window.nxSendEtrf = async (payload) => {
+    const req = payload || collectEtrfForm('submit');
+    const label = req.etrf_type || 'eTRF';
+    if (await useService()) {
+      try {
+        nxToast(`Submitting ${label} to InterLink in the background...`, 'info', 5000);
+        const j = await post('interlink/service/etrf', req);
+        if (window.nxSvcWatch) window.nxSvcWatch();
+        nxToast(`eTRF (${j.template_label || label}) is queued${j.ahead ? `: ${j.ahead} ahead` : ' and is next'}. You will be notified here and on Synology once submitted.`, 'success', 8000);
+        return j;
+      } catch (e) {
+        if (!(e.code === 'service_unreachable' && hasSender())) { nxToast(e.message, 'error', 10000); return null; }
+        nxToast('The background service did not answer: using the browser extension instead.', 'info', 7000);
+      }
+    }
+    if (!hasSender()) { installHelp(); return null; }
+    let data;
+    try {
+      nxToast(`Preparing ${label} for InterLink…`, 'info', 4000);
+      data = await post('interlink/center/etrf', req);
+    } catch (e) {
+      nxToast('Could not prepare eTRF: ' + e.message, 'error', 7000);
+      return null;
+    }
+    window.postMessage({
+      type: 'NXL_SEND',
+      job: {
+        mode: 'etrf',
+        application_no: data.etrf_type || 'eTRF',
+        target_url: data.home_url,
+        controls: data.fields,
+        etrf: data,
+      },
+    }, location.origin);
+    nxToast(`Opening InterLink Home → Submit a Request → ${data.template_label}…`, 'info', 7000);
+    return data;
+  };
+
+  const loadEtrfHistory = async () => {
+    const tb = $('#sc-etrf-history');
+    if (!tb) return;
+    try {
+      const j = await api('interlink/etrf-history');
+      const rows = j.rows || [];
+      tb.innerHTML = rows.map((r) => `<tr>
+        <td>#${esc(r.id)}</td>
+        <td><b>${esc(r.etrf_type)}</b><br><span class="muted sm">${esc(r.template_label)}</span></td>
+        <td>${esc(r.lab_ref_no || '—')}</td>
+        <td>${esc(r.style_no || r.material_code || '—')} · ${esc(r.product_name || '')}</td>
+        <td>${esc(r.color_code)} ${esc(r.color_description)}</td>
+        <td>${esc(r.season)}</td>
+        <td><b>${esc(r.application_no || 'Pending')}</b></td>
+        <td><span class="muted sm">${esc(r.status)}</span></td>
+        <td>${esc(r.submitted_at || r.created_at || '')}</td>
+      </tr>`).join('') || '<tr><td colspan="9" class="muted">No eTRF requests yet.</td></tr>';
+    } catch (e) { /* ignore */ }
+  };
+
+  $('#sc-etrf-submit')?.addEventListener('click', async () => { await window.nxSendEtrf(collectEtrfForm('submit')); loadEtrfHistory(); });
+  $('#sc-etrf-save')?.addEventListener('click', async () => { await window.nxSendEtrf(collectEtrfForm('save')); loadEtrfHistory(); });
 
   loadLabrefs();
 })();

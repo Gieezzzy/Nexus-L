@@ -512,6 +512,243 @@ function checkSubmitted() {
   // the NEXUS-L side asks the user to confirm the Job Status afterward rather than claiming certainty here.
   return { ok: true };
 }
+async function openEtrfFromHome(etrf) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  if (/login|signin|sign-in/i.test(location.pathname)) return { state: 'signin' };
+  if (/NormalFormWithHeader\.aspx|NormalForm\.aspx/i.test(location.pathname)) return { state: 'on-form', matched: document.title || 'NormalFormWithHeader' };
+  for (let i = 0; i < 20 && !document.querySelectorAll('a').length; i++) await sleep(250);
+  await sleep(300);
+
+  const norm = (s) => String(s || '').toLowerCase().replace(/[\s\-_()]+/g, ' ').trim();
+  const links = [...document.querySelectorAll('a')].map((a) => {
+    const text = (a.textContent || '').replace(/\s+/g, ' ').trim();
+    const href = a.getAttribute('href') || '';
+    const m = href.match(/window\.location\.href\s*=\s*'([^']+)'/i);
+    const url = m ? m[1] : (/NormalForm/i.test(href) ? href : '');
+    return { a, text, normText: norm(text), url };
+  }).filter((x) => x.url && /NormalForm/i.test(x.url) && !/Edit eForm/i.test(x.text));
+
+  if (!links.length) {
+    if (!/\/Portal2\/Home\.aspx/i.test(location.pathname)) {
+      location.href = '/InterLink2/aspx/DlkPage/Portal2/Home.aspx';
+      return { state: 'navigating', matched: 'Home.aspx' };
+    }
+    return { state: 'error', message: 'No eTRF request links were found under Submit a Request on InterLink Home.' };
+  }
+
+  const targets = Array.isArray(etrf && etrf.menu_targets) && etrf.menu_targets.length
+    ? etrf.menu_targets
+    : [(etrf && etrf.template_label) || 'VF eTRF - PULLTESTTemplate', 'VF eTRF - Product', 'VF eTRF - Material'];
+
+  // exactly the menu entry that was asked for: never another form (a "Product" request must not silently become a "WHOLE SHOE" one)
+  let chosen = null;
+  for (const t of targets) {
+    const nt = norm(t);
+    chosen = links.find((l) => l.normText === nt);
+    if (chosen) break;
+  }
+  if (!chosen) {
+    return { state: 'error', message: `The form "${targets[0]}" was not found under Submit a Request on InterLink Home. The entries found: ${links.map((l) => l.text).filter(Boolean).slice(0, 14).join(' | ') || 'none'}.` };
+  }
+  location.href = chosen.url;
+  return { state: 'navigating', matched: chosen.text, url: chosen.url };
+}
+async function fillNormalFormEtrf(etrf) {
+  try {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    if (/login|signin|sign-in/i.test(location.pathname)) return { state: 'signin' };
+    for (let i = 0; i < 30 && (!window.ASPxClientControl || !document.getElementById('PH1_NormalFormSelector1_NF1_EGVNF')); i++) {
+      await sleep(300);
+    }
+    await sleep(600);
+    const grid = document.getElementById('PH1_NormalFormSelector1_NF1_EGVNF');
+    if (!grid) return { state: 'error', message: 'The eTRF form (PH1_NormalFormSelector1_NF1_EGVNF) was not found on this InterLink page.' };
+
+    const setNative = (el, val) => {
+      if (!el) return false;
+      const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : (el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype);
+      const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+      if (desc && desc.set) desc.set.call(el, String(val)); else el.value = String(val);
+      ['input', 'change', 'blur'].forEach((ev) => el.dispatchEvent(new Event(ev, { bubbles: true })));
+      return true;
+    };
+
+    const setField = (code, rawVal) => {
+      const val = String(rawVal == null ? '' : rawVal);
+      let ok = false;
+
+      // 1. Direct <select> elements (e.g. TRPT_SERV_TYPE, E1_TEXT_013, DETOX_SUPPLIER_COUNTRY)
+      const sel = document.querySelector(`select[id*="_TpEdr_${code}_"], select[name*="$TpEdr_${code}$"]`);
+      if (sel) {
+        const opt = [...sel.options].find((o) => o.value === val || o.text.trim().toLowerCase() === val.toLowerCase());
+        if (opt) { setNative(sel, opt.value); ok = true; }
+      }
+
+      // 2. DevExpress ASPxClientControl instances (both global client name and EGVNFTP + code)
+      const ctrlNames = [`ctl00$PH1$NormalFormSelector1$NF1$EGVNFTP${code}`, code];
+      for (const cn of ctrlNames) {
+        const c = window[cn];
+        if (c && typeof c.SetValue === 'function') {
+          try {
+            c.SetValue(val);
+            if (typeof c.SetText === 'function' && !/RadioButtonList/i.test((c.constructor && c.constructor.name) || '')) {
+              try { c.SetText(val); } catch (e) {}
+            }
+            ok = true;
+          } catch (e) {}
+        }
+      }
+
+      // 3. Direct DOM inputs / textareas for this field code
+      const inputs = [...document.querySelectorAll(
+        `input[id*="_TpEdr_${code}_"][type="text"], textarea[id*="_TpEdr_${code}_"], input[name*="$TpEdr_${code}$"][type="text"], textarea[name*="$TpEdr_${code}$"]`
+      )];
+      for (const inp of inputs) {
+        if (/rblGeneric.*_RB\d+_I$/i.test(inp.id)) continue; // skip individual radio indicator boxes
+        setNative(inp, val);
+        ok = true;
+      }
+
+      // 4. Hidden / companion DXEditor controls whose client instance is window[code]
+      const wCtrl = window[code];
+      if (wCtrl && wCtrl.name) {
+        const domEl = document.getElementById(wCtrl.name + '_I') || document.getElementById(wCtrl.name);
+        if (domEl && domEl.tagName === 'INPUT') { setNative(domEl, val); ok = true; }
+      }
+
+      return ok;
+    };
+
+    const fields = (etrf && etrf.fields) || {};
+    let filled = 0;
+    for (const [code, val] of Object.entries(fields)) {
+      if (val === '' || val == null) continue;
+      if (setField(code, val)) filled++;
+    }
+
+    // 5. The JOB_DUMMY_009 table (Style Information on a product / Material Information on a material): one table row for EVERY row of the request
+    const rows = Array.isArray(etrf && etrf.rows) ? etrf.rows : [];
+    let rowsFilled = 0;
+    const tableSel = 'table[id*="JOB_DUMMY_009"][id*="tblTableInput"]';
+    const dataRows = () => { const t = document.querySelector(tableSel); return t ? [...t.querySelectorAll('tr')].slice(1).filter((tr) => tr.querySelectorAll('input,textarea,select').length > 0) : []; };
+    const addRow = async () => {
+      const before = dataRows().length;
+      const cbp = window.cbpTableInput_JOB_DUMMY_009;
+      const addBtn = document.querySelector('[id*="JOB_DUMMY_009"][id*="btAddAutoId"]');
+      if (cbp && typeof cbp.PerformCallback === 'function') {
+        try { cbp.PerformCallback('AddAutoId'); } catch (e) { if (addBtn) addBtn.click(); }
+      } else if (addBtn) {
+        addBtn.click();
+      }
+      for (let w = 0; w < 25 && dataRows().length <= before; w++) await sleep(400);
+      await sleep(300);
+      return dataRows().length > before;
+    };
+    if (rows.length > 0) {
+      while (dataRows().length < rows.length) {
+        if (!(await addRow())) break;
+      }
+      const tbl = document.querySelector(tableSel);
+      if (tbl) {
+        const headers = [...tbl.querySelectorAll('tr:first-child td, tr:first-child th')].map((h) => (h.textContent || '').replace(/\*/g, '').replace(/\s+/g, ' ').trim().toLowerCase());
+        const HEAD = { 'style no.': ['style_no', 'REF_FLD16'], 'style no': ['style_no', 'REF_FLD16'], 'product name': ['product_name', 'REF_FLD23'], 'style color no.': ['style_color_no', 'REF_FLD19'],
+          'style color no': ['style_color_no', 'REF_FLD19'], 'color description': ['color_description', 'REF_FLD24'], 'color code': ['color_code', 'REF_FLD18'], 'season': ['season', 'REF_FLD17'],
+          'size category': ['size_category', 'REF_FLD21'], 'material code': ['material_code'], 'material description': ['material_description'], 'material type': ['material_type'],
+          'weight': ['weight'], 'weight uom': ['weight_uom'], 'thickness': ['thickness'], 'claim type': ['claim_type'] };
+        const trs = dataRows();
+        rows.forEach((r, i) => {
+          const tr = trs[i];
+          if (!tr || !r) return;
+          for (const [k, v] of Object.entries(r)) {                  // by InterLink column code first
+            if (!/^REF_FLD\d+$/i.test(k) || v == null || v === '') continue;
+            const inp = tr.querySelector(`input[id*="${k}_"], input[name*="${k}_"], textarea[id*="${k}_"], select[id*="${k}_"]`);
+            if (inp) setNative(inp, v);
+          }
+          [...tr.children].forEach((td, idx) => {                    // then by the column heading
+            const keys = HEAD[headers[idx] || ''];
+            if (!keys) return;
+            const inp = td.querySelector('input[type="text"]:not([readonly]), textarea:not([readonly]), select, input[type="text"]');
+            const v = inp ? keys.map((k) => r[k]).find((x) => x != null && x !== '') : null;
+            if (inp && v != null && v !== '') setNative(inp, v);
+          });
+          rowsFilled++;
+        });
+      }
+    }
+
+    // 6. Read the form back. InterLink's own validation marks every required box that is still empty; for a real submit that stops the job
+    //    BEFORE anything is pressed, and the reason names the boxes. (A draft may be incomplete in InterLink, so a draft is not stopped by it.)
+    const notSet = [];
+    for (const [code, v] of Object.entries(fields)) {
+      if (v === '' || v == null) continue;
+      if (!document.querySelector(`[id*="_TpEdr_${code}_"],[name*="$TpEdr_${code}$"]`) && !window[code] && !window[`ctl00$PH1$NormalFormSelector1$NF1$EGVNFTP${code}`]) notSet.push(code);
+    }
+    const invalid = [];
+    try {
+      if (window.ASPxClientEdit && typeof ASPxClientEdit.ValidateGroup === 'function') ASPxClientEdit.ValidateGroup(null);
+      if (window.ASPxClientControl && ASPxClientControl.GetControlCollection) {
+        ASPxClientControl.GetControlCollection().ForEachControl((c) => {
+          try {
+            if (typeof c.GetIsValid === 'function' && c.GetIsValid() === false) {
+              const el = c.GetMainElement ? c.GetMainElement() : null;
+              const cell = el && el.closest ? el.closest('tr,td') : null;
+              const cap = ((cell && cell.textContent) || '').replace(/\s+/g, ' ').replace(/\*/g, '').trim().slice(0, 50);
+              const nm = String(c.name || '').replace(/^.*(TpEdr_|EGVNFTP)/, '');
+              invalid.push(cap || nm || 'a required box');
+            }
+          } catch (e) { /* not an editor */ }
+        });
+      }
+    } catch (e) { /* the page has no validation API: the server pre-flight already checked the data */ }
+    if (String((etrf && etrf.action) || 'save').toLowerCase() === 'submit' && invalid.length) {
+      return { state: 'error', message: `InterLink says these required boxes are empty or invalid, so nothing was submitted: ${[...new Set(invalid)].slice(0, 12).join('; ')}.` };
+    }
+
+    return { state: 'filled', filled, rowsFilled, notSet, invalid: [...new Set(invalid)] };
+  } catch (e) {
+    return { state: 'error', message: 'Error filling eTRF form: ' + (e && e.message) };
+  }
+}
+async function pressNormalFormCommit(action) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const visible = (el) => !!el && el.offsetParent !== null && el.getBoundingClientRect().width > 0;
+  const wantSave = String(action || '').toLowerCase() === 'save';
+  const btnId = wantSave
+    ? 'PH1_NormalFormSelector1_NF1_ButtonBar1_ASPxButton_2'
+    : 'PH1_NormalFormSelector1_NF1_ButtonBar1_ASPxButton_1';
+  const aspxBtn = wantSave ? window.BBAR_ASPxButton_2 : window.BBAR_ASPxButton_1;
+  const domBtn = document.getElementById(btnId)
+    || [...document.querySelectorAll('input[type=submit],input[type=button]')].find((b) => visible(b) && (wantSave ? /^save$/i.test((b.value || '').trim()) : /print\s*&\s*submit|^submit$/i.test((b.value || '').trim())));
+
+  if (!domBtn && !aspxBtn) {
+    return { state: 'error', message: 'Neither Print & Submit nor Save button was found on the eTRF form.' };
+  }
+  const label = (domBtn && domBtn.value) || (wantSave ? 'Save' : 'Print & Submit');
+  if (domBtn) domBtn.click();
+  else if (aspxBtn && typeof aspxBtn.DoClick === 'function') aspxBtn.DoClick();
+
+  for (let i = 0; i < 12; i++) {
+    await sleep(500);
+    const byId = [
+      'PH1_NormalFormSelector1_NF1_ButtonBar1_pcConfirmOkCancel_ASPxConfirmOk',
+      'PH1_NormalFormSelector1_NF1_PopupYesNoCancel1_pcYesNoCancel_btnPopupYNCYes',
+    ].map((id) => document.getElementById(id)).find(visible);
+    const byText = [...document.querySelectorAll('input[type=submit],input[type=button],a')].find((b) => visible(b) && /^(ok|yes)$/i.test((b.value || b.textContent || '').trim()));
+    const ok = byId || byText;
+    if (ok) { ok.click(); break; }
+  }
+  return { state: 'posting', button: label };
+}
+function checkNormalFormSubmitted() {
+  const errs = [...document.querySelectorAll('.dxeErrorCell,.dxeErrorFrame td,[id*="ErrorMessage" i],.validation-summary-errors')]
+    .filter((e) => e.offsetParent !== null && e.textContent.trim() && e.textContent.trim() !== '*');
+  if (errs.length) {
+    return { ok: false, message: errs.map((e) => e.textContent.trim()).slice(0, 4).join('; ') };
+  }
+  const bodyText = (document.body && document.body.innerText) || '';
+  const m = bodyText.match(/\b(A\d{8,12})\b/);
+  return { ok: true, appNo: m ? m[1] : '' };
+}
 
 /** On InterLink's search grid: finds the application's row and reads its Report No., Report Issue Date and Job Status. */
 async function readGridRow(appNo) {
@@ -568,5 +805,5 @@ function readNotices() {
   return out.slice(0, 5);
 }
 
-  return { gridProbe, goToGridFromHome, searchAndOpenUpload, fillAndAttach, pressCommit, forceSave, checkSubmitted, readGridRow, readNotices };
+  return { gridProbe, goToGridFromHome, searchAndOpenUpload, fillAndAttach, pressCommit, forceSave, checkSubmitted, openEtrfFromHome, fillNormalFormEtrf, pressNormalFormCommit, checkNormalFormSubmitted, readGridRow, readNotices };
 })();

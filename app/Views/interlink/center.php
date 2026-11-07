@@ -51,4 +51,13 @@
         <div class="sc-list"><table><thead><tr><th></th><th>Lab Ref</th><th>Type</th><th>Material / style</th><th>Result</th></tr></thead><tbody id="sc-labrefs" data-nx-load><tr><td colspan="5" class="muted">Loading…</td></tr></tbody></table></div>
         <div class="sc-row" style="margin-top:8px"><button type="button" class="sc-btn primary" id="sc-fill" disabled>2. Send to InterLink (1 click)</button><span id="sc-msg" class="muted sm"></span></div>
     </div>
+
+    <div class="sc-box" id="sc-etrf-box">
+        <h5 style="margin:0 0 4px">eTRF requests moved</h5>
+        <p class="muted sm" style="margin:0">Creating a new request or test in InterLink (VF eTRF - Material, Product, PULLTESTTemplate, bonding, Product WHOLE SHOE TEST) is now in the sidebar: <a href="<?= site_url('interlink/etrf') ?>"><b>InterLink &rarr; VF eTRF</b></a>.</p>
+    </div>
+        </div>
+    </div>
+    <div>
+    </div>
 </div>

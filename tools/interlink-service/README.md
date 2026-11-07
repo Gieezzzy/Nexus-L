@@ -19,7 +19,7 @@ browser (NEXUS-L)  ->  NEXUS-L (PHP)  ->  this program (invisible browser)  ->  
   page functions, then rebuild).
 * The browser extension keeps working as a fallback when this program is not set up (or does not answer).
 
-## The program: `D:\desktop\MaterialTest\NexusInterlinkService`
+## The program (installed by `NexusInterlinkService-Setup-<version>.exe`, e.g. `E:\desktop\MaterialTest\NexusInterlinkService`)
 
 `NexusInterlinkService.exe` is a small tray program: an icon next to the clock, the service running behind it.
 Double-click the icon (or right-click > **Settings...**) to open the properties:
@@ -79,3 +79,18 @@ Everything submitted goes into InterLink under the one shared account.
 
 NEXUS-L side: `InterlinkServiceController` (`interlink/service/status|submit|feed`, and the key-protected `callback` and `verify`),
 table `tbl_interlink_service_jobs` (created on first use).
+
+## Two kinds of job
+
+| Job (`mode`) | What the service does in InterLink |
+|---|---|
+| `add` / `edit` | the **Report Submission** job above: the Upload Form of an existing application, the signed PDF, Save |
+| `etrf` | **InterLink > VF eTRF** in NEXUS-L: Home -> *Submit a Request* -> the chosen form (VF eTRF - Material, Product, PULLTESTTemplate, bonding, Product WHOLE SHOE TEST), fills it, then **Save (draft)** or **Print & Submit**, and reads back the generated Application No. |
+
+eTRF rules (so nothing wrong or invented reaches InterLink):
+* NEXUS-L checks before it queues: anything InterLink needs that is still empty (style, color code, material code, test package ...) is listed and the request is **not** sent. Nothing is filled with a made-up value.
+* A request is a **draft** unless a submit is asked for.
+* Each form opens **only its own** entry under *Submit a Request*; if it is not there the job stops and lists the entries it found (it never opens another form).
+* Every row of the request is typed (the table grows as needed).
+* After filling, the page is read back; for a real **submit**, InterLink's own validation of the required boxes stops the job before anything is pressed, and the reason names the boxes.
+* The fixed values (applicant address / e-mail / phone, cost centre, factory address) come from NEXUS-L Settings > InterLink report defaults.

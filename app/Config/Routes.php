@@ -83,7 +83,9 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->post('interlink/proxy', 'InterlinkController::proxy');
     $routes->get('interlink/center/status', 'InterlinkController::centerStatus');
     $routes->post('interlink/center/fill', 'InterlinkController::centerFill');
-    $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
+    $routes->get('interlink/etrf', 'InterlinkController::etrf', ['as' => 'interlink_etrf']);
+$routes->post('interlink/etrf-check', 'InterlinkController::etrfCheck');
+$routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('interlink/etrf-history', 'InterlinkController::etrfHistory');
     $routes->post('interlink/center/etrf', 'InterlinkController::centerEtrf');
     $routes->post('interlink/service/etrf', 'InterlinkServiceController::submitEtrf');
