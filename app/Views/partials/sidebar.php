@@ -65,8 +65,14 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
         <?php endforeach ?>
 
         <!-- Section for Monitoring & Physical Tests -->
-        <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
-            <div style="padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Tests</div>
+        <?php
+        $testsOpen = in_array((string) $segment, ['materials', 'material-testing', 'wholeshoe', 'whole-shoe-test', 'test-summary', 'tests-summary', 'test-results'], true);
+        ?>
+        <details class="side-group side-group-collapsible" data-grp="tests"<?= $testsOpen ? ' open data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
+            <summary class="side-group-h" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer;list-style:none">
+                <span>Tests</span>
+                <svg class="side-group-c" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:14px;height:14px;transition:transform .15s ease-out" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+            </summary>
             <?php if ($can('materials')): ?><a href="<?= site_url('materials') ?>" class="nav-link <?= in_array((string) $segment, ['materials', 'material-testing'], true) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
                 <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M12 2l10 5-10 5L2 7l10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
                 Material Testing
@@ -79,29 +85,35 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
                 <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                 Test Results Summary
             </a><?php endif ?>
-        </div>
+        </details>
 
         <!-- Sub-navigation for QC Lab Digital Test Reports (#Digital Test Report) -->
-        <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
-            <div style="padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Lab Reports</div>
-            <?php
-            $labLinks = [
-                ['tab' => 'labtracker',  'label' => 'Lab Tracker',            'icon' => 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 12h6M9 16h6'],
-                ['tab' => 'bonding',     'label' => 'Shoe Bonding (U60)',     'icon' => 'M13 10V3L4 14h7v7l9-11h-7z'],
-                ['tab' => 'wholeshoe',   'label' => 'Whole Shoe',             'icon' => 'M3 18h18v-2H3v2zm19-4c0-1.1-.9-2-2-2h-2.5l-3-4.5c-.4-.6-1-1-1.7-1H8c-.8 0-1.5.5-1.8 1.2L4 12H3c-1.1 0-2 .9-2 2v2h21v-2z'],
-                ['tab' => 'material',    'label' => 'Material Tests',         'icon' => 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10'],
-                ['tab' => 'tracker',     'label' => 'Digital Test Report',    'icon' => 'M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z'],
-                ['tab' => 'calculators', 'label' => 'Calculators & Standards', 'icon' => 'M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z'],
-            ];
-                        $labMod = ['bonding' => 'bonding', 'wholeshoe' => 'wholeshoe', 'material' => 'materials', 'thirdparty' => 'thirdparty'];
-            $labLinks = array_values(array_filter($labLinks, static fn ($l) => \App\Libraries\Roles::can($myRole, $labMod[$l['tab']] ?? 'dtr')));
-foreach ($labLinks as $ll): ?>
-            <a href="<?= site_url('dtr?tab=' . $ll['tab']) ?>" class="nav-link <?= ($segment === 'dtr' && $activeTabParam === $ll['tab']) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
+        <?php
+        $labLinks = [
+            ['tab' => 'labtracker',  'label' => 'Lab Tracker',            'icon' => 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 12h6M9 16h6'],
+            ['tab' => 'bonding',     'label' => 'Shoe Bonding (U60)',     'icon' => 'M13 10V3L4 14h7v7l9-11h-7z'],
+            ['tab' => 'wholeshoe',   'label' => 'Whole Shoe',             'icon' => 'M3 18h18v-2H3v2zm19-4c0-1.1-.9-2-2-2h-2.5l-3-4.5c-.4-.6-1-1-1.7-1H8c-.8 0-1.5.5-1.8 1.2L4 12H3c-1.1 0-2 .9-2 2v2h21v-2z'],
+            ['tab' => 'material',    'label' => 'Material Tests',         'icon' => 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10'],
+            ['tab' => 'thirdparty',  'label' => 'Third Party Test',       'url' => site_url('thirdparty'), 'icon' => 'M9 12l2 2 4-4M12 3l8 3v6c0 4.5-3.2 8.2-8 9-4.8-.8-8-4.5-8-9V6l8-3z'],
+            ['tab' => 'tracker',     'label' => 'Digital Test Report',   'icon' => 'M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z'],
+            ['tab' => 'calculators', 'label' => 'Calculators & Standards', 'icon' => 'M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z'],
+        ];
+        $labMod = ['bonding' => 'bonding', 'wholeshoe' => 'wholeshoe', 'material' => 'materials', 'thirdparty' => 'thirdparty'];
+        $labLinks = array_values(array_filter($labLinks, static fn ($l) => \App\Libraries\Roles::can($myRole, $labMod[$l['tab']] ?? 'dtr')));
+        $labReportsOpen = in_array((string) $segment, ['dtr', 'thirdparty'], true);
+        ?>
+        <details class="side-group side-group-collapsible" data-grp="labreports"<?= $labReportsOpen ? ' open data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
+            <summary class="side-group-h" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer;list-style:none">
+                <span>Lab Reports</span>
+                <svg class="side-group-c" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:14px;height:14px;transition:transform .15s ease-out" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+            </summary>
+            <?php foreach ($labLinks as $ll): ?>
+            <a href="<?= $ll['url'] ?? site_url('dtr?tab=' . $ll['tab']) ?>" class="nav-link <?= (isset($ll['url']) ? $segment === $ll['tab'] : ($segment === 'dtr' && $activeTabParam === $ll['tab'])) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
                 <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="<?= esc($ll['icon'], 'attr') ?>"/></svg>
                 <?= esc($ll['label']) ?>
             </a>
             <?php endforeach ?>
-        </div>
+        </details>
         <!-- Laboratory Documents (the numbered "#" folders) and Other Documents (every other folder of the share): one link per register in dbnexus, each group collapsible -->
         <?php
         $labGroups = ['lab' => ['title' => 'Laboratory Documents', 'regs' => []], 'other' => ['title' => 'Other Documents', 'regs' => []]];
@@ -115,7 +127,11 @@ foreach ($labLinks as $ll): ?>
             }
         } catch (\Throwable $e) {
         }
-        $labCode = $segment === 'labdocs' ? rawurldecode((string) service('uri')->getSegment(2)) : '';
+        $labCode    = $segment === 'labdocs' ? rawurldecode((string) service('uri')->getSegment(2)) : '';
+        $labLimit   = (int) ($_COOKIE['nx_side_limit_lab'] ?? 5);
+        if ($labLimit < 5) { $labLimit = 5; }
+        $otherLimit = (int) ($_COOKIE['nx_side_limit_other'] ?? 5);
+        if ($otherLimit < 5) { $otherLimit = 5; }
         ?>
         <?php
         $regTag = static function (array $r): string {
@@ -136,27 +152,63 @@ foreach ($labLinks as $ll): ?>
             return $t;
         };
         ?>
+        <?php if (! empty($labGroups['lab']['regs']) || ! empty($labGroups['other']['regs'])): ?>
+        <div class="side-doc-search-wrap" style="margin:10px 10px 4px 10px">
+            <div class="side-doc-search-box" style="position:relative;display:flex;align-items:center;width:100%">
+                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="position:absolute;left:8px;width:13px;height:13px;color:var(--muted,#64748b);pointer-events:none;opacity:.75" aria-hidden="true">
+                    <circle cx="11" cy="11" r="7"></circle>
+                    <path d="M21 21l-4.35-4.35"></path>
+                </svg>
+                <input type="text" id="side-doc-search" class="side-doc-search-input" placeholder="Search documents..." autocomplete="off" spellcheck="false" aria-label="Search lab and other documents" style="width:100%;padding:5px 24px 5px 26px;font-size:11.5px;font-family:inherit;border:1px solid rgba(148,163,184,0.3);border-radius:6px;background:rgba(255,255,255,0.65);color:var(--ink,#0f172a);outline:none;box-sizing:border-box">
+                <button type="button" id="side-doc-search-clear" class="side-doc-search-clear" title="Clear search" aria-label="Clear search" style="display:none;position:absolute;right:5px;top:50%;transform:translateY(-50%);align-items:center;justify-content:center;width:18px;height:18px;border:none;background:transparent;color:var(--muted,#64748b);cursor:pointer;border-radius:50%;padding:0">
+                    <svg fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="width:11px;height:11px">
+                        <path d="M18 6L6 18M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <?php endif ?>
         <?php foreach ($labGroups as $lgKey => $lg): if (! $lg['regs'] || ! $can('labdocs')) { continue; }
-            $lgHere = $segment === 'labdocs' && ($labCode === '' ? $lgKey === 'lab' : in_array($labCode, array_column($lg['regs'], 'code'), true)); ?>
+            $lgHere = $segment === 'labdocs' && ($labCode === '' ? $lgKey === 'lab' : in_array($labCode, array_column($lg['regs'], 'code'), true));
+            $groupLimit = ($lgKey === 'other') ? $otherLimit : $labLimit;
+        ?>
         <details class="side-group" data-grp="<?= esc($lgKey, 'attr') ?>"<?= $lgHere ? ' open data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
             <summary class="side-group-h" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer;list-style:none">
-                <span><?= esc($lg['title']) ?> <span style="font-weight:600;opacity:.7">(<?= count($lg['regs']) ?>)</span></span>
+                <span><?= esc($lg['title']) ?> <span class="side-group-count" style="font-weight:600;opacity:.7">(<?= count($lg['regs']) ?>)</span></span>
                 <svg class="side-group-c" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:14px;height:14px;transition:transform .15s ease-out" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
             </summary>
-            <?php foreach ($lg['regs'] as $lr): ?>
-            <a href="<?= site_url('labdocs/' . rawurlencode($lr['code'])) ?>" title="<?= esc($lr['menu_label'] ?: $lr['code'], 'attr') ?>" class="nav-link <?= ($segment === 'labdocs' && ($labCode === $lr['code'] || ($labCode === '' && $lgKey === 'lab' && $lr === $lg['regs'][0]))) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
-                <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5zM14 3v5h5M9 13h6M9 17h6M9 9h2"/></svg>
-                <?= esc($lr['menu_label'] ?: $lr['code']) ?>
+            <?php foreach ($lg['regs'] as $idx => $lr):
+                $isActive = ($segment === 'labdocs' && ($labCode === $lr['code'] || ($labCode === '' && $lgKey === 'lab' && $lr === $lg['regs'][0])));
+                $searchStr = strtolower(($lr['menu_label'] ?: $lr['code']) . ' ' . $lr['code'] . ' ' . $regTag($lr));
+                $hiddenStyle = ($idx >= $groupLimit) ? 'display:none;' : '';
+            ?>
+            <a href="<?= site_url('labdocs/' . rawurlencode($lr['code'])) ?>" title="<?= esc($lr['menu_label'] ?: $lr['code'], 'attr') ?>" class="nav-link side-doc-item <?= $isActive ? 'active' : '' ?>" data-search-text="<?= esc($searchStr, 'attr') ?>" style="padding:7px 12px;font-size:12.5px;<?= $hiddenStyle ?>">
+                <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px;flex:none"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5zM14 3v5h5M9 13h6M9 17h6M9 9h2"/></svg>
+                <span class="side-doc-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1"><?= esc($lr['menu_label'] ?: $lr['code']) ?></span>
                 <span class="nav-num"><?= esc($regTag($lr)) ?></span>
             </a>
             <?php endforeach ?>
+            <div class="side-doc-no-match" style="display:none;padding:6px 14px;font-size:11.5px;font-style:italic;color:var(--muted,#64748b)">No matching documents</div>
+            <?php if (count($lg['regs']) > 5): ?>
+            <div class="side-view-more-wrap" style="padding:4px 10px 6px">
+                <button type="button" class="side-view-more-btn" data-grp-more="<?= esc($lgKey, 'attr') ?>" style="display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:5px 8px;margin:2px 0 4px;border:1px dashed rgba(148,163,184,0.35);border-radius:6px;background:rgba(248,250,252,0.5);color:var(--muted,#64748b);font-size:11.5px;font-weight:600;cursor:pointer">
+                    <span class="side-view-more-text">View more (+5)</span>
+                    <svg class="side-view-more-chev" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="width:12px;height:12px;transition:transform .15s ease"><path d="M19 9l-7 7-7-7"/></svg>
+                </button>
+            </div>
+            <?php endif ?>
         </details>
         <?php endforeach ?>
         <style>
             .side-group > summary::-webkit-details-marker { display: none; }
             .side-group[open] .side-group-c { transform: rotate(180deg); }
             .side-group > summary:focus-visible { outline: 2px solid var(--brand, #35618f); outline-offset: 2px; border-radius: 6px; }
-            @media (prefers-reduced-motion: reduce) { .side-group-c { transition: none !important; } }
+            @media (prefers-reduced-motion: reduce) { .side-group-c, .side-view-more-chev { transition: none !important; } }
+            .side-doc-search-input:focus { border-color: var(--brand, #2563eb) !important; background: #fff !important; box-shadow: 0 0 0 2px rgba(37,99,235,0.12); }
+            .side-view-more-btn:hover { background: rgba(239,246,255,0.7) !important; border-color: var(--brand, #2563eb) !important; color: var(--brand, #2563eb) !important; }
+            html.side-collapsed .side-doc-search-wrap,
+            html.side-collapsed .side-view-more-wrap,
+            html.side-collapsed .side-doc-no-match { display: none !important; }
         </style>
         <script>
         /* each group opens and closes on its click and remembers it; the group of the page being viewed is always open */
@@ -165,8 +217,181 @@ foreach ($labLinks as $ll): ?>
             var k = 'nx.side.grp.' + d.dataset.grp, v = null;
             try { v = localStorage.getItem(k); } catch (e) {}
             if (!d.dataset.here) d.open = v === '1';
-            d.addEventListener('toggle', function () { try { localStorage.setItem(k, d.open ? '1' : '0'); } catch (e) {} });
+            d.addEventListener('toggle', function () {
+              var sInput = document.getElementById('side-doc-search');
+              if (!sInput || !sInput.value.trim()) {
+                try { localStorage.setItem(k, d.open ? '1' : '0'); } catch (e) {}
+              }
+            });
           });
+        })();
+
+        /* Lab Documents & Other Documents: 5-visible limit per group, View More (+5), and real-time Search */
+        (function () {
+          var searchInput = document.getElementById('side-doc-search');
+          var clearBtn = document.getElementById('side-doc-search-clear');
+          var groups = document.querySelectorAll('#sidebar .side-group');
+          if (!groups.length) return;
+
+          var STEP = 5;
+          var visibleLimits = {};
+          var wasOpenBeforeSearch = {};
+          var isSearching = false;
+
+          function saveLimit(key, val) {
+            try {
+              localStorage.setItem('nx.side.limit.' + key, String(val));
+              document.cookie = 'nx_side_limit_' + encodeURIComponent(key) + '=' + encodeURIComponent(val) + ';path=/;max-age=31536000;SameSite=Lax';
+            } catch (e) {}
+          }
+
+          // Restore saved limit per group from localStorage / cookie (persists on document clicks & page reloads)
+          groups.forEach(function (grp) {
+            var key = grp.dataset.grp || 'default';
+            var saved = null;
+            try { saved = parseInt(localStorage.getItem('nx.side.limit.' + key), 10); } catch (e) {}
+            if (!saved) {
+              var m = document.cookie.match(new RegExp('(?:^|; )nx_side_limit_' + key + '=([0-9]+)'));
+              if (m) saved = parseInt(m[1], 10);
+            }
+            var limit = (saved && saved >= STEP) ? saved : STEP;
+
+            // If this group contains the active document link, ensure it remains visible
+            var activeItem = grp.querySelector('.side-doc-item.active, a.side-doc-item[class*="active"]');
+            if (activeItem) {
+              var allItems = Array.from(grp.querySelectorAll('.side-doc-item'));
+              var activeIdx = allItems.indexOf(activeItem);
+              if (activeIdx !== -1 && activeIdx >= limit) {
+                limit = Math.ceil((activeIdx + 1) / STEP) * STEP;
+                saveLimit(key, limit);
+              }
+            }
+
+            visibleLimits[key] = limit;
+          });
+
+          function updateGroup(grp, query) {
+            var key = grp.dataset.grp || 'default';
+            var items = grp.querySelectorAll('.side-doc-item');
+            var moreWrap = grp.querySelector('.side-view-more-wrap');
+            var moreText = grp.querySelector('.side-view-more-text');
+            var moreChev = grp.querySelector('.side-view-more-chev');
+            var moreBtn = grp.querySelector('.side-view-more-btn');
+            var noMatch = grp.querySelector('.side-doc-no-match');
+            var countSpan = grp.querySelector('.side-group-count');
+            var total = items.length;
+
+            if (query) {
+              var matchCount = 0;
+              items.forEach(function (it) {
+                var text = (it.dataset.searchText || it.textContent || '').toLowerCase();
+                var match = text.indexOf(query) !== -1;
+                it.style.display = match ? '' : 'none';
+                if (match) matchCount++;
+              });
+
+              if (moreWrap) moreWrap.style.display = 'none';
+              if (noMatch) noMatch.style.display = matchCount === 0 ? '' : 'none';
+              if (countSpan) countSpan.textContent = '(' + matchCount + (matchCount === 1 ? ' match' : ' matches') + ')';
+
+              if (matchCount > 0) {
+                grp.open = true;
+              }
+            } else {
+              if (noMatch) noMatch.style.display = 'none';
+              if (countSpan) countSpan.textContent = '(' + total + ')';
+
+              var limit = visibleLimits[key] || STEP;
+              items.forEach(function (it, idx) {
+                it.style.display = (idx < limit) ? '' : 'none';
+              });
+
+              if (moreWrap) {
+                if (total <= STEP) {
+                  moreWrap.style.display = 'none';
+                } else {
+                  moreWrap.style.display = '';
+                  var remaining = total - limit;
+                  if (remaining > 0) {
+                    var nextAdd = Math.min(STEP, remaining);
+                    if (moreText) moreText.textContent = 'View more (+' + nextAdd + ' of ' + remaining + ' more)';
+                    if (moreBtn) moreBtn.dataset.action = 'more';
+                    if (moreChev) moreChev.style.transform = 'rotate(0deg)';
+                  } else {
+                    if (moreText) moreText.textContent = 'Show less';
+                    if (moreBtn) moreBtn.dataset.action = 'less';
+                    if (moreChev) moreChev.style.transform = 'rotate(180deg)';
+                  }
+                }
+              }
+            }
+          }
+
+          function renderAll() {
+            var query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+            if (clearBtn) clearBtn.style.display = query ? 'inline-flex' : 'none';
+
+            if (query && !isSearching) {
+              groups.forEach(function (grp) {
+                var key = grp.dataset.grp || 'default';
+                wasOpenBeforeSearch[key] = grp.open;
+              });
+              isSearching = true;
+            } else if (!query && isSearching) {
+              groups.forEach(function (grp) {
+                var key = grp.dataset.grp || 'default';
+                if (!grp.dataset.here && typeof wasOpenBeforeSearch[key] !== 'undefined') {
+                  grp.open = wasOpenBeforeSearch[key];
+                }
+              });
+              isSearching = false;
+            }
+
+            groups.forEach(function (grp) {
+              updateGroup(grp, query);
+            });
+          }
+
+          document.querySelectorAll('#sidebar .side-view-more-btn').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+              e.preventDefault();
+              var grpKey = btn.dataset.grpMore;
+              var grp = document.querySelector('#sidebar .side-group[data-grp="' + grpKey + '"]');
+              if (!grp) return;
+
+              if (btn.dataset.action === 'less') {
+                visibleLimits[grpKey] = STEP;
+                saveLimit(grpKey, STEP);
+              } else {
+                visibleLimits[grpKey] = (visibleLimits[grpKey] || STEP) + STEP;
+                saveLimit(grpKey, visibleLimits[grpKey]);
+              }
+              updateGroup(grp, searchInput ? searchInput.value.trim().toLowerCase() : '');
+            });
+          });
+
+          if (searchInput) {
+            searchInput.addEventListener('input', renderAll);
+            searchInput.addEventListener('keydown', function (e) {
+              if (e.key === 'Escape') {
+                searchInput.value = '';
+                renderAll();
+                searchInput.blur();
+              }
+            });
+          }
+
+          if (clearBtn) {
+            clearBtn.addEventListener('click', function () {
+              if (searchInput) {
+                searchInput.value = '';
+                renderAll();
+                searchInput.focus();
+              }
+            });
+          }
+
+          renderAll();
         })();
         </script>
     </nav>
