@@ -35,10 +35,24 @@ $field = static function (array $r): string {
 };
 ?>
 <div class="st" id="st-root" data-base="<?= esc(site_url(), 'attr') ?>">
-    <div class="card glass">
-        <h3>Settings</h3>
-        <p class="muted sm">Only an Admin sees and can open this page. What is saved here takes effect at once and is kept in the database (table <code>tbl_system_settings</code>); the database connection itself is written to <code>.env</code>, where the code reads it.</p>
-    </div>
+    <header class="st-top">
+        <div>
+            <h2>Settings</h2>
+            <p class="muted">System settings for Admins. What you save here takes effect at once and is kept in the database (table <code>tbl_system_settings</code>); the database connection itself is written to <code>.env</code>, where the code reads it.</p>
+        </div>
+        <label class="st-find"><span class="sr-only">Find a setting</span><input type="search" id="st-find" placeholder="Find a setting (for example key, threshold, e-mail)" autocomplete="off"></label>
+    </header>
+    <nav class="st-nav" id="st-nav" aria-label="Settings sections">
+        <a href="#su-root">Users &amp; roles</a>
+        <a href="#st-ai">AI assistant</a>
+        <a href="#st-service">InterLink service</a>
+        <a href="#st-db">Database</a>
+        <a href="#st-transfer">Transfer</a>
+        <a href="#st-defaults">Report defaults</a>
+        <a href="#st-approval">Approval</a>
+        <a href="#st-synology">Synology Chat</a>
+    </nav>
+    <div class="st-empty" id="st-empty" hidden>No setting matches that search.</div>
 
     <!-- Users & roles -->
     <div class="card glass" id="su-root">

@@ -46,7 +46,7 @@ class SettingsController extends BaseController
         return $this->render('settings/index', [
             'title'      => 'Settings',
             'withCss'    => 'settings.css',
-            'withJs'     => ['settings.js', 'settings-users.js'],
+            'withJs'     => ['settings.js', 'settings-users.js', 'settings-ui.js'],
             'rows'       => SystemSettings::forPage(),
             'categories' => SystemSettings::categories(),
             'db'         => $this->currentDb(),
