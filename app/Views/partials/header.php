@@ -4,7 +4,7 @@
  */
 $user      = service('auth')->user();
 $initials  = strtoupper(implode('', array_map(static fn ($p) => mb_substr($p, 0, 1), array_slice(explode(' ', trim($user['name'] ?? 'U')), 0, 2))));
-$isAdmin   = strcasecmp((string) ($user['role'] ?? ''), 'admin') === 0;
+$isAdmin   = \App\Libraries\Roles::isAdmin((string) ($user['role'] ?? ''));
 $aiEnabled = \App\Libraries\SystemSettings::get('ai.enabled', '1') !== '0';
 ?>
 <header class="top glass">
@@ -24,12 +24,12 @@ $aiEnabled = \App\Libraries\SystemSettings::get('ai.enabled', '1') !== '0';
             </button>
         <?php endif; ?>
 
-        <div class="who">
+        <a class="who" href="<?= site_url('account') ?>" title="Account Profile" style="text-decoration:none;color:inherit">
             <div class="who-t">
                 <b><?= esc($user['name'] ?? '') ?></b>
                 <span><?= esc($user['role'] ?? '') ?> · @<?= esc($user['username'] ?? '') ?></span>
             </div>
             <div class="avatar"><?= esc($initials) ?></div>
-        </div>
+        </a>
     </div>
 </header>

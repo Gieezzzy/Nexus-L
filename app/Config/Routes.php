@@ -38,6 +38,12 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->get('dashboard/data', 'DashboardController::data');
     $routes->get('help', 'HelpController::index', ['as' => 'help']);
     $routes->get('analytics', 'AnalyticsController::index', ['as' => 'analytics']);
+    $routes->get('account', 'AccountController::index', ['as' => 'account']);
+    $routes->post('account/save', 'AccountController::save');
+    $routes->post('account/password', 'AccountController::password');
+    $routes->post('account/prefs', 'AccountController::prefs');
+    $routes->post('account/signature', 'AccountController::signature');
+    $routes->get('settings', 'SettingsController::index', ['as' => 'settings']);
     $routes->get('/', static fn () => redirect()->route('dashboard'));
     $routes->post('logout', 'AuthController::logout', ['as' => 'logout']);
 
@@ -204,8 +210,13 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
 // Report Designer: admins only.
 $routes->group('', ['filter' => 'auth:admin'], static function (RouteCollection $routes): void {
     // Settings (Admin only): InterLink service address and key, the database in use and a transfer to another one, report defaults
-    $routes->get('settings', 'SettingsController::index', ['as' => 'settings']);
     $routes->post('settings/save', 'SettingsController::save');
+    $routes->get('settings/users', 'SettingsController::users');
+    $routes->post('settings/users/save', 'SettingsController::usersSave');
+    $routes->post('settings/users/create', 'SettingsController::usersCreate');
+    $routes->post('settings/users/reset', 'SettingsController::usersReset');
+    $routes->get('settings/roles/matrix', 'SettingsController::matrix');
+    $routes->post('settings/roles/matrix', 'SettingsController::matrixSave');
     $routes->post('settings/service/test', 'SettingsController::testService');
     $routes->post('settings/ai/test', 'SettingsController::testAi');
     $routes->post('settings/ai/seed', 'SettingsController::seedAiKnowledge');

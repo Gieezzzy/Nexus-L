@@ -3,6 +3,8 @@
  * Sidebar navigation. Add items to $menu; 'roles' restricts visibility.
  */
 $user = service('auth')->user();
+$myRole = (string) ($user['role'] ?? '');
+$can = static fn (string $mod, int $lvl = 1): bool => \App\Libraries\Roles::can($myRole, $mod, $lvl);
 $menu = [
     ['label' => 'Dashboard', 'url' => url_to('dashboard'), 'match' => ['', 'dashboard'], 'icon' => 'M3 12l9-9 9 9M5 10v10h5v-6h4v6h5V10'],
     ['label' => 'Inbox', 'url' => url_to('inbox'), 'match' => ['inbox'], 'icon' => 'M21 12a8 8 0 01-11.6 7.1L3 21l1.9-5.4A8 8 0 1121 12z', 'badge' => true],
@@ -18,7 +20,8 @@ $menu = [
     ]],
     ['label' => 'Help', 'url' => url_to('help'), 'match' => ['help'], 'icon' => 'M12 22a10 10 0 100-20 10 10 0 000 20zM9.1 9a3 3 0 015.8 1c0 2-3 3-3 3M12 17h.01'],
     ['label' => 'Brain', 'url' => site_url('brain'), 'match' => ['brain'], 'roles' => ['admin'], 'icon' => 'M12 2a7 7 0 00-4 12.7V17a2 2 0 002 2h4a2 2 0 002-2v-2.3A7 7 0 0012 2zM9 22h6', 'badge' => true, 'badgeId' => 'nav-brain'],
-    ['label' => 'Settings', 'url' => site_url('settings'), 'match' => ['settings'], 'roles' => ['admin'], 'icon' => 'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z'],
+    ['label' => 'Settings', 'url' => site_url('settings'), 'match' => ['settings'], 'icon' => 'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z'],
+    ['label' => 'Account Profile', 'url' => site_url('account'), 'match' => ['account'], 'icon' => 'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z'],
     ['label' => 'Report Designer', 'url' => site_url('designer'), 'match' => ['designer'], 'roles' => ['admin'], 'icon' => 'M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z'],
 ];
 $segment = service('uri')->getSegment(1);
@@ -32,7 +35,8 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
 
     <nav class="nav">
         <?php foreach ($menu as $item): ?>
-            <?php if (isset($item['roles']) && ! in_array(strtolower((string) ($user['role'] ?? '')), array_map('strtolower', $item['roles']), true)) continue; ?>
+            <?php if (isset($item['roles']) && ! \App\Libraries\Roles::isAdmin($myRole)) continue; ?>
+            <?php $modOf = ['Dashboard' => 'dashboard', 'Inbox' => 'inbox', 'QC Lab Reports (DTR)' => 'dtr', 'Analytics' => 'analytics', 'Help' => 'help'][$item['label']] ?? ''; if ($item['label'] === 'InterLink' ? (! $can('interlink') && ! $can('etrf')) : ($modOf !== '' && ! $can($modOf))) continue; ?>
             <?php if (! empty($item['children'])): ?>
                 <?php $grpOpen = in_array((string) $segment, $item['match'], true); $grpTab = (string) (service('request')->getGet('tab') ?? 'bonding'); $seg2 = (string) (service('uri')->getSegments()[1] ?? ''); ?>
                 <div class="nav-group" data-nav-group="<?= esc(strtolower($item['label']), 'attr') ?>">
@@ -63,18 +67,18 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
         <!-- Section for Monitoring & Physical Tests -->
         <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
             <div style="padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Tests</div>
-            <a href="<?= site_url('materials') ?>" class="nav-link <?= in_array((string) $segment, ['materials', 'material-testing'], true) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
+            <?php if ($can('materials')): ?><a href="<?= site_url('materials') ?>" class="nav-link <?= in_array((string) $segment, ['materials', 'material-testing'], true) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
                 <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M12 2l10 5-10 5L2 7l10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
                 Material Testing
-            </a>
-            <a href="<?= site_url('wholeshoe') ?>" class="nav-link <?= in_array((string) $segment, ['wholeshoe', 'whole-shoe-test'], true) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
+            </a><?php endif ?>
+            <?php if ($can('wholeshoe')): ?><a href="<?= site_url('wholeshoe') ?>" class="nav-link <?= in_array((string) $segment, ['wholeshoe', 'whole-shoe-test'], true) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
                 <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M3 18h18v-2H3v2zm19-4c0-1.1-.9-2-2-2h-2.5l-3-4.5c-.4-.6-1-1-1.7-1H8c-.8 0-1.5.5-1.8 1.2L4 12H3c-1.1 0-2 .9-2 2v2h21v-2z"/></svg>
                 Whole Shoe Test
-            </a>
-            <a href="<?= site_url('test-summary') ?>" class="nav-link <?= in_array((string) $segment, ['test-summary', 'tests-summary', 'test-results'], true) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
+            </a><?php endif ?>
+            <?php if ($can('testsummary')): ?><a href="<?= site_url('test-summary') ?>" class="nav-link <?= in_array((string) $segment, ['test-summary', 'tests-summary', 'test-results'], true) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
                 <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                 Test Results Summary
-            </a>
+            </a><?php endif ?>
         </div>
 
         <!-- Sub-navigation for QC Lab Digital Test Reports (#Digital Test Report) -->
@@ -89,7 +93,9 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
                 ['tab' => 'tracker',     'label' => 'Digital Test Report',    'icon' => 'M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z'],
                 ['tab' => 'calculators', 'label' => 'Calculators & Standards', 'icon' => 'M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z'],
             ];
-            foreach ($labLinks as $ll): ?>
+                        $labMod = ['bonding' => 'bonding', 'wholeshoe' => 'wholeshoe', 'material' => 'materials', 'thirdparty' => 'thirdparty'];
+            $labLinks = array_values(array_filter($labLinks, static fn ($l) => \App\Libraries\Roles::can($myRole, $labMod[$l['tab']] ?? 'dtr')));
+foreach ($labLinks as $ll): ?>
             <a href="<?= site_url('dtr?tab=' . $ll['tab']) ?>" class="nav-link <?= ($segment === 'dtr' && $activeTabParam === $ll['tab']) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
                 <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="<?= esc($ll['icon'], 'attr') ?>"/></svg>
                 <?= esc($ll['label']) ?>
@@ -130,7 +136,7 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
             return $t;
         };
         ?>
-        <?php foreach ($labGroups as $lgKey => $lg): if (! $lg['regs']) { continue; }
+        <?php foreach ($labGroups as $lgKey => $lg): if (! $lg['regs'] || ! $can('labdocs')) { continue; }
             $lgHere = $segment === 'labdocs' && ($labCode === '' ? $lgKey === 'lab' : in_array($labCode, array_column($lg['regs'], 'code'), true)); ?>
         <details class="side-group" data-grp="<?= esc($lgKey, 'attr') ?>"<?= $lgHere ? ' open data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
             <summary class="side-group-h" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer;list-style:none">

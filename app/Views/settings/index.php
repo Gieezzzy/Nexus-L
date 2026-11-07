@@ -40,6 +40,56 @@ $field = static function (array $r): string {
         <p class="muted sm">Only an Admin sees and can open this page. What is saved here takes effect at once and is kept in the database (table <code>tbl_system_settings</code>); the database connection itself is written to <code>.env</code>, where the code reads it.</p>
     </div>
 
+    <!-- Users & roles -->
+    <div class="card glass" id="su-root">
+        <div class="su-head">
+            <div>
+                <h3>Users &amp; roles</h3>
+                <p class="muted sm">Seven roles decide who can open what. A person can have several and gets the highest access any of them gives. A user with no role yet keeps the old open access until one is given. Changes apply within a minute, no new sign-in.</p>
+            </div>
+            <button type="button" class="nx-btn nx-primary" id="su-add">+ New user</button>
+        </div>
+
+        <div class="su-stats" id="su-stats" aria-live="polite"></div>
+
+        <div class="su-tools">
+            <input type="search" id="su-q" placeholder="Search name, username, department or role" aria-label="Search users">
+            <select id="su-frole" aria-label="Filter by role"><option value="">All roles</option></select>
+            <select id="su-fstat" aria-label="Filter by status"><option value="">Any status</option><option value="active">Active</option><option value="disabled">Disabled</option><option value="none">No role yet</option></select>
+        </div>
+        <div class="su-note" id="su-note" role="status"></div>
+
+        <div class="su-list" id="su-list"><div class="muted sm">Loading users...</div></div>
+
+        <h4 class="su-h4">Access of each role</h4>
+        <p class="muted sm">Select a cell to change it: <span class="su-pill l0">None</span> hides the menu entry and refuses the page, <span class="su-pill l1">View</span> can open and read, <span class="su-pill l2">Edit</span> can also add and change. The Admin column and the Admin-only pages cannot be changed.</p>
+        <div class="su-mxwrap"><table class="su-mx" id="su-matrix"></table></div>
+        <div class="st-actions"><button type="button" class="nx-btn nx-primary" id="su-msave">Save the access</button> <button type="button" class="nx-btn" id="su-mreset">Back to defaults</button></div>
+
+        <dialog id="su-dlg" class="su-dlg">
+            <form method="dialog" id="su-form" autocomplete="off">
+                <div class="su-dhead"><h3 id="su-dtitle">Edit user</h3><button type="button" class="su-x" id="su-dclose" aria-label="Close">&times;</button></div>
+                <div class="su-fgrid">
+                    <label>Username<input id="d-username" maxlength="50"></label>
+                    <label>Full name *<input id="d-name" maxlength="120"></label>
+                    <label>E-mail<input id="d-email" type="email" maxlength="150"></label>
+                    <label>Department<input id="d-dept" maxlength="100"></label>
+                    <label>Job title<input id="d-job" maxlength="100"></label>
+                    <label>Synology Chat ID<input id="d-syn" inputmode="numeric" maxlength="12"></label>
+                </div>
+                <fieldset class="su-roleset"><legend>Roles</legend><div id="d-roles"></div></fieldset>
+                <label class="su-switch" id="d-activewrap"><input type="checkbox" id="d-active"><span></span> Account is active</label>
+                <div class="su-result" id="d-result" hidden></div>
+                <div class="su-dfoot">
+                    <button type="button" class="nx-btn" id="d-reset">Reset password</button>
+                    <span class="su-sp"></span>
+                    <button type="button" class="nx-btn" id="d-cancel">Cancel</button>
+                    <button type="button" class="nx-btn nx-primary" id="d-save">Save</button>
+                </div>
+            </form>
+        </dialog>
+    </div>
+
     <!-- AI Assistant & Bot Engine -->
     <div class="card glass" id="st-ai">
         <h3><?= esc($categories['ai'] ?? 'AI Assistant & Bot Engine') ?> <small class="muted">(LangGraph, Rasa NLU, Mem0 &amp; Phoenix stack)</small></h3>

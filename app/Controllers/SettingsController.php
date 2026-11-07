@@ -14,7 +14,7 @@ class SettingsController extends BaseController
 {
     private function isAdmin(): bool
     {
-        return strcasecmp((string) ($this->auth->user()['role'] ?? ''), 'admin') === 0;
+        return \App\Libraries\Roles::isAdmin((string) ($this->auth->user()['role'] ?? ''));
     }
 
     private function deny()
@@ -34,8 +34,8 @@ class SettingsController extends BaseController
 
     public function index()
     {
-        if (! $this->isAdmin()) {
-            return redirect()->to(site_url('dashboard'))->with('error', 'You are not authorized to access that page.');
+        if (! $this->isAdmin()) {                         // everybody else has their own settings under the Account Profile
+            return redirect()->to(site_url('account?tab=preferences'));
         }
         try {
             SystemSettings::ensureTable();
@@ -46,13 +46,203 @@ class SettingsController extends BaseController
         return $this->render('settings/index', [
             'title'      => 'Settings',
             'withCss'    => 'settings.css',
-            'withJs'     => ['settings.js'],
+            'withJs'     => ['settings.js', 'settings-users.js'],
             'rows'       => SystemSettings::forPage(),
             'categories' => SystemSettings::categories(),
             'db'         => $this->currentDb(),
             'envPath'    => $this->envPath(),
             'envWritable' => is_writable($this->envPath()),
         ]);
+    }
+
+
+    // ------------------------------------------------------------------ users and roles (Admin)
+
+    private function userRow(array $u): array
+    {
+        return [
+            'id' => (int) $u['UserID'], 'username' => $u['Username'], 'name' => $u['FullName'], 'email' => (string) $u['Email'], 'department' => (string) $u['Department'],
+            'job_title' => (string) ($u['JobTitle'] ?? ''), 'synology_id' => $u['SynologyID'] !== null ? (int) $u['SynologyID'] : null,
+            'roles' => \App\Libraries\Roles::parse((string) $u['Role']), 'legacy' => \App\Libraries\Roles::isLegacy((string) $u['Role']), 'raw_role' => (string) $u['Role'],
+            'active' => (int) $u['IsActive'] === 1, 'locked' => ! empty($u['LockedUntil']) && strtotime((string) $u['LockedUntil']) > time(), 'last_login' => $u['LastLoginAt'] ?? null,
+        ];
+    }
+
+    /** GET settings/users */
+    public function users()
+    {
+        if (! $this->isAdmin()) {
+            return $this->deny();
+        }
+        $rows = (new \App\Models\UserModel())->orderBy('FullName')->findAll();
+
+        return $this->json(['ok' => true, 'users' => array_map(fn ($u) => $this->userRow($u), $rows), 'roles' => \App\Libraries\Roles::ROLES]);
+    }
+
+    private function tempPassword(): string
+    {
+        $a = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; $b = 'abcdefghijkmnopqrstuvwxyz'; $c = '23456789'; $d = '!@#$%&*?';
+        $pick = static fn (string $set, int $n) => implode('', array_map(static fn () => $set[random_int(0, strlen($set) - 1)], range(1, $n)));
+        $pw = $pick($a, 3) . $pick($b, 5) . $pick($c, 3) . $pick($d, 2);
+
+        return str_shuffle($pw);
+    }
+
+    /** the Role value from a list of role names (only the seven roles; none = the old plain "user") */
+    private function roleValue(array $list): string
+    {
+        $out = [];
+        foreach ($list as $r) {
+            $n = \App\Libraries\Roles::normalize((string) $r);
+            if ($n !== null && ! in_array($n, $out, true)) {
+                $out[] = $n;
+            }
+        }
+
+        return $out ? implode(';', $out) : 'user';
+    }
+
+    private function activeAdmins(?int $except = null): int
+    {
+        $n = 0;
+        foreach ((new \App\Models\UserModel())->where('IsActive', 1)->findAll() as $u) {
+            if (\App\Libraries\Roles::isAdmin((string) $u['Role']) && (int) $u['UserID'] !== (int) $except) {
+                $n++;
+            }
+        }
+
+        return $n;
+    }
+
+    /** POST settings/users/save {id, name, email, department, job_title, synology_id, roles[], active} */
+    public function usersSave()
+    {
+        if (! $this->isAdmin()) {
+            return $this->deny();
+        }
+        $p     = $this->request->getJSON(true) ?? [];
+        $model = new \App\Models\UserModel();
+        $id    = (int) ($p['id'] ?? 0);
+        $u     = $model->find($id);
+        if (! $u) {
+            return $this->json(['ok' => false, 'error' => 'That user does not exist.'], 404);
+        }
+        $role   = $this->roleValue((array) ($p['roles'] ?? []));
+        $active = ! empty($p['active']);
+        $name   = trim((string) ($p['name'] ?? $u['FullName']));
+        $email  = trim((string) ($p['email'] ?? ''));
+        if (mb_strlen($name) < 3 || mb_strlen($name) > 120) {
+            return $this->json(['ok' => false, 'error' => 'The full name must be 3 to 120 characters.'], 422);
+        }
+        if ($email !== '' && ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return $this->json(['ok' => false, 'error' => 'That e-mail address is not valid.'], 422);
+        }
+        if ($email !== '' && $model->where('Email', $email)->where('UserID !=', $id)->countAllResults() > 0) {
+            return $this->json(['ok' => false, 'error' => 'Another account already uses that e-mail address.'], 422);
+        }
+        // the system must always keep an active Admin, and nobody takes the Admin role or the access away from themselves by mistake
+        $stillAdmin = $active && \App\Libraries\Roles::isAdmin($role);
+        if (! $stillAdmin && \App\Libraries\Roles::isAdmin((string) $u['Role']) && (int) $u['IsActive'] === 1 && $this->activeAdmins($id) < 1) {
+            return $this->json(['ok' => false, 'error' => 'This is the last active Admin: keep the Admin role and the account active, or make another Admin first.'], 422);
+        }
+        if ($id === (int) $this->auth->id() && (! $active || ! \App\Libraries\Roles::isAdmin($role))) {
+            return $this->json(['ok' => false, 'error' => 'You cannot take the Admin role from yourself or disable your own account.'], 422);
+        }
+        $syn = $p['synology_id'] ?? null;
+        $model->update($id, [
+            'FullName' => $name, 'Email' => $email ?: null, 'Department' => trim((string) ($p['department'] ?? '')) ?: null, 'JobTitle' => trim((string) ($p['job_title'] ?? '')) ?: null,
+            'SynologyID' => ($syn !== null && $syn !== '' && ctype_digit((string) $syn)) ? (int) $syn : null, 'Role' => $role, 'IsActive' => $active ? 1 : 0,
+        ]);
+
+        return $this->json(['ok' => true, 'message' => $name . ' saved (' . ($role === 'user' ? 'no role' : str_replace(';', ', ', $role)) . ', ' . ($active ? 'active' : 'disabled') . ').', 'user' => $this->userRow($model->find($id))]);
+    }
+
+    /** POST settings/users/create {username, name, email, department, job_title, roles[]}: the temporary password is shown once */
+    public function usersCreate()
+    {
+        if (! $this->isAdmin()) {
+            return $this->deny();
+        }
+        $p     = $this->request->getJSON(true) ?? [];
+        $model = new \App\Models\UserModel();
+        $uname = trim((string) ($p['username'] ?? ''));
+        $name  = trim((string) ($p['name'] ?? ''));
+        $email = trim((string) ($p['email'] ?? ''));
+        if (! preg_match('/^[A-Za-z0-9_.-]{4,50}$/', $uname)) {
+            return $this->json(['ok' => false, 'error' => 'The username needs 4 to 50 letters, numbers, dots, dashes or underscores.'], 422);
+        }
+        if ($model->where('Username', $uname)->countAllResults() > 0) {
+            return $this->json(['ok' => false, 'error' => 'That username is already taken.'], 422);
+        }
+        if (mb_strlen($name) < 3 || mb_strlen($name) > 120) {
+            return $this->json(['ok' => false, 'error' => 'The full name must be 3 to 120 characters.'], 422);
+        }
+        if ($email !== '' && (! filter_var($email, FILTER_VALIDATE_EMAIL) || $model->where('Email', $email)->countAllResults() > 0)) {
+            return $this->json(['ok' => false, 'error' => 'The e-mail address is not valid or already used.'], 422);
+        }
+        $pw = $this->tempPassword();
+        $id = $model->insert([
+            'Username' => $uname, 'FullName' => $name, 'Email' => $email ?: null, 'Department' => trim((string) ($p['department'] ?? '')) ?: null, 'JobTitle' => trim((string) ($p['job_title'] ?? '')) ?: null,
+            'Password' => $pw, 'Role' => $this->roleValue((array) ($p['roles'] ?? [])), 'IsActive' => 1, 'FailedAttempts' => 0,
+        ], true);
+
+        return $this->json(['ok' => true, 'message' => "Account {$uname} created. Give the person the temporary password shown below; it is not shown again, and they should change it under Account Profile.", 'temp_password' => $pw, 'user' => $this->userRow($model->find($id))]);
+    }
+
+    /** POST settings/users/reset {id}: a new temporary password (shown once), the account unlocked */
+    public function usersReset()
+    {
+        if (! $this->isAdmin()) {
+            return $this->deny();
+        }
+        $model = new \App\Models\UserModel();
+        $id    = (int) (($this->request->getJSON(true) ?? [])['id'] ?? 0);
+        $u     = $model->find($id);
+        if (! $u) {
+            return $this->json(['ok' => false, 'error' => 'That user does not exist.'], 404);
+        }
+        $pw = $this->tempPassword();
+        $model->update($id, ['Password' => $pw, 'FailedAttempts' => 0, 'LockedUntil' => null]);
+
+        return $this->json(['ok' => true, 'message' => 'New temporary password for ' . $u['Username'] . '. It is shown once; the person signs in with it and changes it under Account Profile. Their open sessions were signed out.', 'temp_password' => $pw]);
+    }
+
+    /** GET settings/roles/matrix */
+    public function matrix()
+    {
+        if (! $this->isAdmin()) {
+            return $this->deny();
+        }
+
+        return $this->json(['ok' => true, 'matrix' => \App\Libraries\Roles::matrix(), 'defaults' => \App\Libraries\Roles::defaults(), 'modules' => \App\Libraries\Roles::MODULES, 'admin_only' => \App\Libraries\Roles::ADMIN_ONLY]);
+    }
+
+    /** POST settings/roles/matrix {matrix: {Role: {module: 0|1|2}}} or {reset: true} */
+    public function matrixSave()
+    {
+        if (! $this->isAdmin()) {
+            return $this->deny();
+        }
+        $p = $this->request->getJSON(true) ?? [];
+        if (! empty($p['reset'])) {
+            SystemSettings::set('roles.matrix', '', $this->me());
+
+            return $this->json(['ok' => true, 'message' => 'The access matrix is back to the defaults.', 'matrix' => \App\Libraries\Roles::defaults()]);
+        }
+        $clean = [];
+        foreach ((array) ($p['matrix'] ?? []) as $role => $mods) {
+            if (! isset(\App\Libraries\Roles::defaults()[$role]) || ! is_array($mods)) {
+                continue;
+            }
+            foreach ($mods as $mod => $lvl) {
+                if (isset(\App\Libraries\Roles::MODULES[$mod]) && ! in_array($mod, \App\Libraries\Roles::ADMIN_ONLY, true) && in_array((int) $lvl, [0, 1, 2], true)) {
+                    $clean[$role][$mod] = (int) $lvl;
+                }
+            }
+        }
+        SystemSettings::set('roles.matrix', json_encode($clean), $this->me());
+
+        return $this->json(['ok' => true, 'message' => 'The access matrix was saved. It applies to everybody within a minute.', 'matrix' => \App\Libraries\Roles::matrix()]);
     }
 
     /** POST settings/save {values: {key: value}}: a password left empty keeps what is saved */

@@ -12,7 +12,7 @@ class UserModel extends Model
     protected $useAutoIncrement = true;
     protected $allowedFields    = [
         'Username', 'FullName', 'Email', 'SynologyID', 'Department', 'Password', 'Role',
-        'IsActive', 'FailedAttempts', 'LockedUntil', 'LastLoginAt', 'LastLoginIP', 'PasswordChangedAt',
+        'IsActive', 'FailedAttempts', 'LockedUntil', 'LastLoginAt', 'LastLoginIP', 'PasswordChangedAt', 'Phone', 'EmployeeNo', 'JobTitle', 'Prefs',
     ];
 
     protected $useTimestamps = true;

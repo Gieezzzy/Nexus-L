@@ -35,6 +35,7 @@ class SystemSettings
         return [
             // --- the InterLink background service (the C# program) -----------------------------------------------------------------
             'interlink.service.enabled' => $d('service', 'Send reports through the background service', 'bool', '1', 'Off = the browser extension does the sending instead.'),
+            'roles.matrix'              => $d('roles', 'Role access matrix (JSON)', 'textarea', '', 'Managed under Settings > Users & roles.'),
             'interlink.service.target'  => $d('service', 'Send the payload to', 'select:custom,43,45', 'custom', '43 = the address below for the .43 computer, 45 = the one for the .45 computer, custom = the free address further down. The next job goes to the one chosen here; jobs already waiting stay where they are.'),
             'interlink.service.url_43'  => $d('service', 'Service address on .43', 'url', 'http://192.168.32.43:5077', 'IP and port set in the service program running on the .43 computer.'),
             'interlink.service.url_45'  => $d('service', 'Service address on .45', 'url', 'http://192.168.32.45:5077', 'IP and port set in the service program running on the .45 computer.'),

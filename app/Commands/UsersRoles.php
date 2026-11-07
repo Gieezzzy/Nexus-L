@@ -42,9 +42,8 @@ class UsersRoles extends BaseCommand
 
             return;
         }
-        $known = array_map(static fn ($r) => strtolower(preg_replace('/[^a-z0-9]/i', '', $r)), array_merge(LabDocRoles::ROLES, ['user']));
         foreach ($roles as $r) {
-            if (! in_array(strtolower(preg_replace('/[^a-z0-9]/i', '', $r)), $known, true)) {
+            if (\App\Libraries\Roles::normalize($r) === null && strtolower($r) !== 'user') {
                 CLI::error('Unknown role "' . $r . '". Roles: ' . implode(', ', LabDocRoles::ROLES));
 
                 return;

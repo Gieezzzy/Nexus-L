@@ -152,6 +152,8 @@ class Auth
                 return false;
             }
             $data['verified_at'] = time();
+            $data['role']        = (string) $user['Role'];        // a role the Admin just changed applies within a minute, no new sign-in
+            $data['name']        = (string) $user['FullName'];
         }
 
         $data['last_seen'] = time();

@@ -28,12 +28,35 @@ class AuthFilter implements FilterInterface
                 ->with('error', 'Please sign in to continue.');
         }
 
-        $role = strtolower(trim((string) ($auth->user()['role'] ?? '')));
-        if (! empty($arguments) && ! in_array($role, array_map('strtolower', $arguments), true)) {
-            return redirect()->route('dashboard')->with('error', 'You are not authorized to access that page.');
+        $role = (string) ($auth->user()['role'] ?? '');
+        if (! empty($arguments)) {
+            $ok = false;
+            foreach ($arguments as $a) {                       // auth:admin, or auth:manager,supervisor ... (any of the listed roles)
+                if (strtolower((string) $a) === 'admin' ? \App\Libraries\Roles::isAdmin($role) : in_array(\App\Libraries\Roles::normalize((string) $a), \App\Libraries\Roles::parse($role), true)) {
+                    $ok = true;
+                    break;
+                }
+            }
+            if (! $ok) {
+                return $this->refuse($request, 'You are not authorized to access that page.');
+            }
+        }
+        // a page of a module the user's roles give no access to (the matrix is under Settings > Users & roles)
+        $module = \App\Libraries\Roles::moduleOfPath((string) $request->getUri()->getPath());
+        if ($module !== '' && ! \App\Libraries\Roles::can($role, $module, 1)) {
+            return $this->refuse($request, 'Your role does not have access to ' . (\App\Libraries\Roles::MODULES[$module] ?? 'that page') . '.');
         }
 
         return null;
+    }
+
+    private function refuse(RequestInterface $request, string $msg)
+    {
+        if ($request->isAJAX() || str_contains((string) $request->getHeaderLine('Accept'), 'application/json')) {
+            return service('response')->setStatusCode(403)->setJSON(['ok' => false, 'error' => $msg]);
+        }
+
+        return redirect()->route('dashboard')->with('error', $msg);
     }
 
     public function after(RequestInterface $request, ResponseInterface $response, $arguments = null)
