@@ -164,3 +164,57 @@ async function lovPick(btnId, text, page) {
   else await sleep(300);
   return { state: 'ok' };
 }
+
+/**
+ * After Print & Submit: InterLink shows a confirmation view (a confirmation check box and a Next button) and then the
+ * "THANK YOU! For your online job submission" page with the Application No. One call does one step:
+ *   {state:'thank-you', appNo}   the last page is reached
+ *   {state:'advanced', clicked}  the confirmation box was ticked and Next (or Confirm / Proceed ...) pressed
+ *   {state:'error', message}     InterLink shows a validation message
+ *   {state:'waiting', buttons}   nothing to do yet (the page is loading); buttons = what is on screen, for the log
+ * It never presses Print & Submit or Save again.
+ */
+async function advanceNormalFormSubmitStep() {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const visible = (el) => !!el && el.offsetParent !== null && el.getBoundingClientRect().width > 0;
+  const text = (el) => String(el.value || el.textContent || '').replace(/\s+/g, ' ').trim();
+  const body = () => (document.body && document.body.innerText) || '';
+  const appNoOf = () => (body() + ' ' + location.href).match(/\b(A\d{8,12})\b/);
+
+  if (/THANK\s*YOU/i.test(body())) { const m = appNoOf(); return { state: 'thank-you', appNo: m ? m[1] : '' }; }
+
+  const errs = [...document.querySelectorAll('.dxeErrorCell,.dxeErrorFrame td,[id*="ErrorMessage" i],.validation-summary-errors')]
+    .filter((e) => visible(e) && text(e) && text(e) !== '*' && /missing|required|invalid|cannot|error/i.test(text(e)));
+  if (errs.length) return { state: 'error', message: errs.map(text).slice(0, 4).join('; ') };
+
+  // 1. the confirmation check box: an unticked box whose surrounding text is a confirmation / agreement
+  const confirmRe = /confirm|agree|accept|declare|certify|acknowledg|terms|understand|read and/i;
+  const formUp = !!document.getElementById('PH1_NormalFormSelector1_NF1_EGVNF') && [...document.querySelectorAll('[id*="TpEdr_"]')].some(visible);
+  const boxes = [
+    ...[...document.querySelectorAll('input[type="checkbox"]')].filter((b) => !b.checked).map((b) => ({ el: b, hit: b })),
+    ...[...document.querySelectorAll('span.dxWeb_edtCheckBoxUnchecked,span.dxICheckBox')].filter((b) => /Unchecked/i.test(b.className)).map((b) => ({ el: b, hit: b })),
+  ].filter((x) => visible(x.hit) || visible(x.el.parentElement));
+  let ticked = false;
+  for (const x of boxes) {
+    let n = x.el, ctx = '';
+    for (let i = 0; i < 4 && n && !ctx; i++) { n = n.parentElement; const t = n ? text(n) : ''; if (t && t.length < 400) ctx = t; }
+    if (!formUp || confirmRe.test(ctx)) {
+      if (confirmRe.test(ctx) || boxes.length === 1) { (visible(x.hit) ? x.hit : x.el.parentElement).click(); ticked = true; await sleep(300); break; }
+    }
+  }
+
+  // 2. the button that moves on (never Print & Submit / Save again)
+  const buttons = [...document.querySelectorAll('input[type=submit],input[type=button],button,a,div.dxbButton,span.dxb')]
+    .filter((b) => visible(b) && text(b) && text(b).length < 40);
+  const next = buttons.find((b) => /^(next|confirm|proceed|continue|submit|ok|yes)$/i.test(text(b)))
+    || buttons.find((b) => /^next\b|confirm/i.test(text(b)));
+  if (next && (ticked || !boxes.length) && !/print\s*&\s*submit|^save/i.test(text(next))) {
+    if (!ticked && formUp) return { state: 'waiting', buttons: buttons.map(text).slice(0, 10) };   // the form itself is still up: not a confirmation view
+    const label = text(next);
+    next.click();
+    await sleep(600);
+    const m = appNoOf();
+    return { state: 'advanced', clicked: label, appNo: m ? m[1] : '' };
+  }
+  return { state: 'waiting', buttons: buttons.map(text).slice(0, 10), boxes: boxes.length };
+}

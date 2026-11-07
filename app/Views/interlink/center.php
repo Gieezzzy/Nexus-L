@@ -56,8 +56,4 @@
         <h5 style="margin:0 0 4px">eTRF requests moved</h5>
         <p class="muted sm" style="margin:0">Creating a new request or test in InterLink (VF eTRF - Material, Product, PULLTESTTemplate, bonding, Product WHOLE SHOE TEST) is now in the sidebar: <a href="<?= site_url('interlink/etrf') ?>"><b>InterLink &rarr; VF eTRF</b></a>.</p>
     </div>
-        </div>
-    </div>
-    <div>
-    </div>
 </div>

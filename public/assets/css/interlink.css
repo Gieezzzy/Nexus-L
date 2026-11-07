@@ -1447,3 +1447,31 @@
 .uf-namefmt { margin-top: 4px; font-size: 11.5px; color: #475569; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .uf-namefmt b { font-family: ui-monospace, Menlo, Consolas, monospace; color: #0f172a; }
 .uf-namefmt .muted { color: #94a3b8; }
+
+/* Applications grid: 38 columns. One line per row (long values are cut with an ellipsis and show in full on hover),
+   action buttons side by side, and the headings stay in view while the list scrolls. */
+.itk-grid-wrap { max-height: 72vh; overflow: auto; }
+.itk-grid { min-width: 100%; width: max-content; }
+.itk-grid tbody td { white-space: nowrap; max-width: 230px; overflow: hidden; text-overflow: ellipsis; padding: 5px 8px; }
+.itk-grid tbody td.itk-wrap-ok { white-space: normal; }
+.itk-th-row th { white-space: nowrap; position: sticky; top: 0; z-index: 3; padding: 8px 10px; }
+.itk-filter-row td { position: sticky; top: 35px; z-index: 2; min-width: 84px; }
+.itk-action-cell { flex-direction: row; justify-content: center; gap: 4px; }
+
+/* Report Submission: breathing room in the grid toolbar, and tighter action columns on narrow screens so Application No. comes into view sooner */
+.itk-toolbar { flex-wrap: wrap; gap: 10px 14px; }
+.itk-toolbar-left, .itk-toolbar-right { flex-wrap: wrap; }
+.itk-pager { gap: 8px 16px; padding: 10px 12px; }
+@media (max-width: 900px) {
+  .itk-th-row th:nth-child(-n+4) { white-space: normal; min-width: 0; padding: 6px 4px; font-size: 11px; line-height: 1.2; }
+  .itk-grid tbody td:nth-child(-n+4) { padding: 4px; max-width: 96px; }
+  .itk-th-row th:nth-child(3), .itk-grid tbody td:nth-child(3) { min-width: 84px; }
+  .itk-action-cell { gap: 3px; }
+  .itk-filter-row td:nth-child(-n+4) { min-width: 0; }
+}
+@media (max-width: 480px) {
+  .itk-content { padding: 10px 10px 16px; }
+  .itk-page-title { font-size: 15px; }
+  .itk-grid-wrap { max-height: 68vh; }
+}
+.itk-pager-nums { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-left: 0; max-width: 100%; }

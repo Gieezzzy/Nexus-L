@@ -537,3 +537,15 @@ img, video { max-width: 100%; }
 }
 
 .nav-link .nav-num{display:none}
+
+/* small screens: a one-line top bar (the page title used to wrap onto three lines next to the AI Brain pill) */
+@media (max-width:640px){
+  .top{padding:0 10px;gap:6px}
+  .top>div:first-child{min-width:0;flex:1 1 auto}
+  .top>div:first-child>div{min-width:0}
+  .top h1{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .top .crumb{display:none}
+  .top .nx-ai-toggle{padding:6px 9px}
+  .top .nx-ai-toggle-text{display:none}
+  .top .who-t{display:none}
+}

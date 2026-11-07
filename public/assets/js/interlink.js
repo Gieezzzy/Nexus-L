@@ -2401,3 +2401,9 @@
   setTimeout(() => fetchLiveInterlinkPage(1, 15, false, !hasGridSender()), 500);
   startOrStopAutoSync();
 })();
+
+// grid cells are cut to one line: show the whole value when the pointer rests on a cut cell
+document.addEventListener('mouseover', function (e) {
+  var td = e.target.closest && e.target.closest('#itk-grid-tbody td');
+  if (td && !td.title && td.scrollWidth > td.clientWidth + 1) td.title = (td.innerText || '').replace(/\s+/g, ' ').trim();
+});

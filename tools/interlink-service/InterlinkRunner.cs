@@ -594,6 +594,8 @@ public sealed class InterlinkRunner : IAsyncDisposable
                     continue;
                 }
 
+                if (step is 1 or 5 or 10 && adv is { ValueKind: JsonValueKind.Object } waitObj && waitObj.TryGetProperty("buttons", out var btns))
+                    say($"InterLink confirmation view not recognised yet; on screen: {string.Join(" | ", btns.EnumerateArray().Select(b => b.GetString() ?? ""))}");
                 await Task.Delay(1200, ct);
                 if (!string.IsNullOrWhiteSpace(genAppNo) && step >= 4)
                     break;
