@@ -40,6 +40,24 @@
     });
   });
 
+  // ---- Brain Trainer app token: show / generate / copy ---------------------------------------------------------------------------
+  const tk = $('#st-trainer-token');
+  if (tk) {
+    const tmsg = $('#st-trainer-msg');
+    $('#st-trainer-show').addEventListener('click', async () => {
+      try { const j = await api('settings/trainer-token'); tk.value = j.token || ''; say(tmsg, j.token ? '' : 'No token yet - press Generate.', j.token ? '' : 'bad'); } catch (e) { say(tmsg, e.message, 'bad'); }
+    });
+    $('#st-trainer-gen').addEventListener('click', async () => {
+      if (tk.dataset.had !== '0' && !confirm('Generate a new token? The Brain Trainer app stops working until the new token is typed into it.')) return;
+      try { const j = await api('settings/trainer-token', {}); tk.value = j.token; tk.dataset.had = '1'; say(tmsg, 'New token generated and saved. Copy it into the app.', 'ok'); } catch (e) { say(tmsg, e.message, 'bad'); }
+    });
+    $('#st-trainer-copy').addEventListener('click', async () => {
+      if (!tk.value) { say(tmsg, 'Press Show or Generate first.', 'bad'); return; }
+      try { await navigator.clipboard.writeText(tk.value); } catch (e) { tk.select(); document.execCommand('copy'); }
+      say(tmsg, 'Copied.', 'ok');
+    });
+  }
+
   // ---- AI Assistant & Bot Engine test ------------------------------------------------------------------------------------------
   $('#st-ai-test')?.addEventListener('click', async () => {
     const msg = $('#st-ai-msg');

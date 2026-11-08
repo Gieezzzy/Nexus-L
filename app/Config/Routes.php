@@ -38,6 +38,13 @@ $routes->get('photo/(:segment)', 'PhotoLinkController::page/$1');
 $routes->post('photo/(:segment)/upload', 'PhotoLinkController::upload/$1');
 // the ERP agent reports what it did with a report (its token is the key)
 $routes->post('erp-agent/callback', 'ErpAgentController::callback');
+// Brain Trainer Windows app (token in X-Trainer-Token)
+$routes->get('brain-trainer/info', 'BrainTrainerController::info');
+$routes->get('brain-trainer/status', 'BrainTrainerController::status');
+$routes->get('brain-trainer/bench', 'BrainTrainerController::bench');
+$routes->post('brain-trainer/start', 'BrainTrainerController::start');
+$routes->post('brain-trainer/stop', 'BrainTrainerController::stop');
+$routes->post('brain-trainer/resume', 'BrainTrainerController::resume');
 $routes->post('photo/(:segment)/claim', 'PhotoLinkController::claim/$1');
 $routes->post('photo/(:segment)/release', 'PhotoLinkController::release/$1');
 
@@ -262,6 +269,8 @@ $routes->group('', ['filter' => 'auth:admin'], static function (RouteCollection 
     $routes->post('settings/transfer/start', 'SettingsController::transferStart');
     $routes->get('settings/transfer/status', 'SettingsController::transferStatus');
     $routes->get('designer', 'DesignerController::index', ['as' => 'designer']);
+    $routes->get('settings/trainer-token', 'SettingsController::trainerToken');
+    $routes->post('settings/trainer-token', 'SettingsController::trainerToken');
     $routes->post('designer/save', 'DesignerController::save');
     $routes->post('designer/reset', 'DesignerController::reset');
     $routes->get('designer/maps', 'DesignerController::maps');

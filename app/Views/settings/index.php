@@ -109,7 +109,20 @@ $field = static function (array $r): string {
     <div class="card glass" id="st-ai">
         <h3><?= esc($categories['ai'] ?? 'AI Assistant & Bot Engine') ?> <small class="muted">(LangGraph, Rasa NLU, Mem0 &amp; Phoenix stack)</small></h3>
         <p class="muted sm">Configure operating mode (Shadow vs. Live), local Python service address, shared API key, confidence thresholds, and safe fallback messaging.</p>
-        <?php foreach ($byCat['ai'] ?? [] as $r) echo $field($r); ?>
+        <?php foreach ($byCat['ai'] ?? [] as $r) { if ($r['key'] === 'ai.trainer_token') { continue; } echo $field($r); } ?>
+        <div class="st-row" id="st-trainer">
+            <span class="st-label">Brain Trainer app token</span>
+            <div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                    <input type="text" id="st-trainer-token" readonly placeholder="no token yet" style="flex:1;min-width:260px;font-family:Consolas,monospace" autocomplete="off">
+                    <button type="button" class="nx-btn" id="st-trainer-show">Show</button>
+                    <button type="button" class="nx-btn nx-primary" id="st-trainer-gen">Generate new token</button>
+                    <button type="button" class="nx-btn" id="st-trainer-copy">Copy</button>
+                </div>
+                <small class="muted">Type this token into the NEXUS-L Brain Trainer Windows app (with this site's address). Generating a new one signs the app out until the new token is entered. Saved at once; no need to press Save.</small>
+                <span class="st-msg" id="st-trainer-msg"></span>
+            </div>
+        </div>
         <div class="st-actions">
             <button type="button" class="nx-btn nx-primary" data-save="st-ai">Save</button>
             <button type="button" class="nx-btn" id="st-ai-test">Test AI Service</button>

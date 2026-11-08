@@ -310,6 +310,22 @@ class SettingsController extends BaseController
         return $this->json($out);
     }
 
+    /** GET settings/trainer-token: the saved Brain Trainer app token (Admin only). POST: makes a new one and saves it. */
+    public function trainerToken()
+    {
+        if (! $this->isAdmin()) {
+            return $this->deny();
+        }
+        if ($this->request->getMethod() === 'post') {
+            $t = bin2hex(random_bytes(12));
+            SystemSettings::set('ai.trainer_token', $t, $this->me());
+
+            return $this->json(['ok' => true, 'token' => $t]);
+        }
+
+        return $this->json(['ok' => true, 'token' => (string) SystemSettings::get('ai.trainer_token', '')]);
+    }
+
     /** POST settings/ai/test {url?, key?}: is the local Python AI service reachable? */
     public function testAi()
     {

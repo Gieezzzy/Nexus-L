@@ -102,6 +102,7 @@ class SystemSettings
             'ai.confidence_threshold'    => $d('ai', 'Minimum Confidence Threshold (0.0 - 1.0)', 'number', '0.85', 'Answers scoring below this threshold are safely abstained or escalated to human admins.'),
             'ai.fallback_message'        => $d('ai', 'Safe Abstain Message', 'textarea', 'Checking system status... I cannot verify this action against current system documentation with full confidence. Escalating directly to an administrator.', 'Exact text displayed to users when confidence drops below threshold.'),
             'ai.seeded_problems_v1'      => $d('ai', 'Problems Auto-Seeded Flag', 'text', '0', 'Internal flag indicating whether the 200 QC Lab problem solutions have been seeded.'),
+            'ai.trainer_token'           => $d('ai', 'Brain Trainer app token', 'password', '', 'The token typed into the Brain Trainer Windows app (X-Trainer-Token). Empty = the app is refused.'),
             'ai.git_synced_v201'         => $d('ai', 'Git Auto-Sync Flag', 'text', '0', 'Internal flag indicating whether Phase 201 has been pushed to git.'),
         ];
     }
