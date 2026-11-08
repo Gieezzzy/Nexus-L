@@ -209,6 +209,13 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('labdocs/(:segment)', 'LabDocsController::show/$1');
     $routes->post('labdocs/(:segment)/save', 'LabDocsController::save/$1');
 
+    // Calendar Monitoring Suite (Aggregated Bonding, Material, Whole Shoe Calendar)
+    $routes->get('calendar-monitoring', 'CalendarMonitoringController::index', ['as' => 'calendar-monitoring']);
+    $routes->get('calendar', 'CalendarMonitoringController::index');
+    $routes->get('calendar-monitoring/events', 'CalendarMonitoringController::events');
+    $routes->get('calendar-monitoring/day-details', 'CalendarMonitoringController::dayDetails');
+    $routes->get('calendar-monitoring/quick-stats', 'CalendarMonitoringController::quickStats');
+
     // Material Testing & Cyclic Monitoring Suite (Marc)
     $routes->get('materials', 'MaterialsController::index', ['as' => 'materials']);
     $routes->get('material-testing', 'MaterialsController::index');
@@ -262,6 +269,8 @@ $routes->group('', ['filter' => 'auth:admin'], static function (RouteCollection 
     $routes->post('settings/roles/matrix', 'SettingsController::matrixSave');
     $routes->post('settings/service/test', 'SettingsController::testService');
     $routes->post('settings/ai/test', 'SettingsController::testAi');
+    $routes->get('settings/trainer-token', 'SettingsController::trainerToken');
+    $routes->post('settings/trainer-token', 'SettingsController::trainerToken');
     $routes->post('settings/ai/seed', 'SettingsController::seedAiKnowledge');
     $routes->post('settings/git/sync', 'SettingsController::gitSync');
     $routes->post('settings/db/test', 'SettingsController::dbTest');
@@ -269,8 +278,6 @@ $routes->group('', ['filter' => 'auth:admin'], static function (RouteCollection 
     $routes->post('settings/transfer/start', 'SettingsController::transferStart');
     $routes->get('settings/transfer/status', 'SettingsController::transferStatus');
     $routes->get('designer', 'DesignerController::index', ['as' => 'designer']);
-    $routes->get('settings/trainer-token', 'SettingsController::trainerToken');
-    $routes->post('settings/trainer-token', 'SettingsController::trainerToken');
     $routes->post('designer/save', 'DesignerController::save');
     $routes->post('designer/reset', 'DesignerController::reset');
     $routes->get('designer/maps', 'DesignerController::maps');
