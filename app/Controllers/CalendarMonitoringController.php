@@ -83,6 +83,20 @@ class CalendarMonitoringController extends BaseController
         return '';
     }
 
+    /** the address of the actual report of a Lab Ref: the DTR page opens that record by itself (no searching) */
+    private static function sheetUrl(string $domain, string $slug, int $sourceId, string $labRef, bool $exact): string
+    {
+        $ref = rawurlencode($labRef);
+        if ($domain === 'wholeshoe') {
+            return site_url('dtr?open=wholeshoe&labref=' . $ref);
+        }
+        if ($domain === 'bonding') {
+            return $exact && $sourceId > 0 ? site_url('dtr?open=bonding:' . $sourceId) : site_url('dtr?open=bonding&ref=' . $ref);
+        }
+
+        return $sourceId > 0 && preg_match('/^[a-z]+$/', $slug) ? site_url('dtr?open=' . $slug . ':' . $sourceId) : site_url('dtr?q=' . $ref);
+    }
+
     private static function domainOf(string $slug): string
     {
         return $slug === 'bonding' ? 'bonding' : (in_array($slug, ['wholeshoe', 'whole'], true) ? 'wholeshoe' : 'material');
@@ -134,7 +148,7 @@ class CalendarMonitoringController extends BaseController
                 'erp_status'   => (string) $r['erp_status'],
                 'remarks'      => trim((string) ($r['b_mode'] ? 'Mode of failure: ' . $r['b_mode'] : ($r['b_remarks'] ?: ''))),
                 'time_slot'    => '',
-                'view_url'     => site_url('dtr?labref=' . rawurlencode((string) $r['lab_ref_no'])),
+                'view_url'     => self::sheetUrl($dom, (string) $r['form_slug'], (int) $r['source_id'], (string) $r['lab_ref_no'], $r['source_table'] === 'tbl_dtr_bonding_info'),
             ];
             $seen[strtoupper((string) $r['lab_ref_no'])] = true;
         }
@@ -159,7 +173,7 @@ class CalendarMonitoringController extends BaseController
                 'status' => $st, 'result' => $st === 'completed' ? self::result((string) $r['FinalResult']) : '', 'result_raw' => (string) $r['FinalResult'],
                 'technician' => (string) $r['EncodedBy'], 'erp_status' => '',
                 'remarks' => (string) ($r['Findings'] ?: 'Line ' . $r['LineNo'] . ', Building ' . $r['Building']),
-                'time_slot' => (string) $r['t'], 'view_url' => site_url('dtr?labref=' . rawurlencode((string) $r['LabRefNo'])),
+                'time_slot' => (string) $r['t'], 'view_url' => self::sheetUrl('wholeshoe', 'wholeshoe', 0, (string) $r['LabRefNo'], false),
             ];
             $seen[strtoupper((string) $r['LabRefNo'])] = true;
         }
@@ -183,7 +197,7 @@ class CalendarMonitoringController extends BaseController
                 'status' => (int) $r['Lacking'] === 1 ? 'pending' : 'ongoing', 'result' => '', 'result_raw' => '',
                 'technician' => (string) ($r['Technician'] ?: $r['EncodedBy']), 'erp_status' => '',
                 'remarks' => 'Line ' . $r['LineNo'] . ' ' . $r['Side'] . ', Building ' . $r['Building'] . ((int) $r['Lacking'] === 1 ? ' - lacking' : ' - collected, report not saved yet'),
-                'time_slot' => (string) $r['t'], 'view_url' => site_url('dtr?labref=' . rawurlencode((string) $r['LabRefNo'])),
+                'time_slot' => (string) $r['t'], 'view_url' => self::sheetUrl('bonding', 'bonding', 0, (string) $r['LabRefNo'], false),
             ];
         }
 

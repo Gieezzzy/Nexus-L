@@ -980,7 +980,7 @@
 /* Drawer mini stats ribbon */
 .cal-drawer-stats {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(7, 1fr);
   gap: 6px;
   padding: 10px 20px;
   background: rgba(241, 245, 249, 0.6);
@@ -996,7 +996,15 @@
   padding: 5px 3px;
   border-radius: 7px;
   border: 1px solid rgba(226, 232, 240, 0.8);
+  font: inherit;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease, background 0.12s ease;
 }
+button.cal-dstat-item:hover { border-color: #94a3b8; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08); transform: translateY(-1px); }
+button.cal-dstat-item:focus-visible { outline: 2px solid #0f766e; outline-offset: 2px; }
+button.cal-dstat-item.is-active { background: #0f172a; border-color: #0f172a; box-shadow: 0 3px 10px rgba(15, 23, 42, 0.25); }
+button.cal-dstat-item.is-active .dstat-num, button.cal-dstat-item.is-active .dstat-lbl { color: #fff; }
+.dstat-pending .dstat-num { color: #d97706; }
 .dstat-num {
   font-size: 14px;
   font-weight: 800;
@@ -1215,4 +1223,37 @@
     min-height: 85px;
     padding: 3px 5px;
   }
+}
+
+
+/* ---- Loading: Facebook-style shimmer in place of an empty view ---- */
+@keyframes calShimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+.cal-skel-cell .nx-shimmer, .cal-skel-card .nx-shimmer, .cal-skel-dcard .nx-shimmer, .cal-week-col .nx-shimmer, .cal-skel-grid .nx-shimmer {
+  display: block;
+  background: linear-gradient(90deg, #eef2f7 20%, #e2e8f0 45%, #eef2f7 70%);
+  background-size: 200% 100%;
+  animation: calShimmer 1.4s infinite linear;
+  border-radius: 6px;
+}
+.cal-skel-cell { cursor: default; pointer-events: none; }
+.cal-skel-num { width: 22px; height: 14px; }
+.cal-skel-bar { height: 12px; width: 100%; margin-top: 6px; }
+.cal-skel-bar.short { width: 55%; }
+.cal-skel-card { border: 1px solid rgba(226, 232, 240, 0.9); border-radius: 8px; padding: 10px; background: #fff; display: flex; flex-direction: column; gap: 6px; }
+.cal-skel-card .cal-skel-bar { margin-top: 0; }
+.cal-skel-dcard { display: flex; flex-direction: column; gap: 12px; pointer-events: none; }
+.cal-skel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cal-skel-grid .cal-skel-bar { margin-top: 0; height: 14px; }
+.cal-kpis.is-loading .cal-kpi-val {
+  color: transparent !important;
+  background: linear-gradient(90deg, #eef2f7 20%, #e2e8f0 45%, #eef2f7 70%);
+  background-size: 200% 100%;
+  animation: calShimmer 1.4s infinite linear;
+  border-radius: 6px;
+  width: 64px;
+  user-select: none;
+}
+.cal-retry { border: 1px solid #cbd5e1; background: #fff; border-radius: 6px; padding: 4px 10px; font: inherit; cursor: pointer; margin-left: 6px; }
+@media (prefers-reduced-motion: reduce) {
+  .cal-skel-cell .nx-shimmer, .cal-skel-card .nx-shimmer, .cal-skel-dcard .nx-shimmer, .cal-week-col .nx-shimmer, .cal-skel-grid .nx-shimmer, .cal-kpis.is-loading .cal-kpi-val { animation: none; }
 }

@@ -205,31 +205,35 @@ $u = service('auth')->user();
         </header>
 
         <!-- Mini stats banner inside drawer -->
-        <div class="cal-drawer-stats" id="drawer-stats">
-            <div class="cal-dstat-item">
+        <div class="cal-drawer-stats" id="drawer-stats" role="group" aria-label="Filter this day's tests">
+            <button type="button" class="cal-dstat-item is-active" data-dfilter="all" aria-pressed="true" title="Show every test of the day">
                 <span class="dstat-num" id="dstat-total">0</span>
                 <span class="dstat-lbl">Total</span>
-            </div>
-            <div class="cal-dstat-item dstat-bonding">
+            </button>
+            <button type="button" class="cal-dstat-item dstat-bonding" data-dfilter="domain" data-value="bonding" aria-pressed="false" title="Show only Bonding">
                 <span class="dstat-num" id="dstat-bonding">0</span>
                 <span class="dstat-lbl">Bonding</span>
-            </div>
-            <div class="cal-dstat-item dstat-material">
+            </button>
+            <button type="button" class="cal-dstat-item dstat-material" data-dfilter="domain" data-value="material" aria-pressed="false" title="Show only Material tests">
                 <span class="dstat-num" id="dstat-material">0</span>
                 <span class="dstat-lbl">Material</span>
-            </div>
-            <div class="cal-dstat-item dstat-wholeshoe">
+            </button>
+            <button type="button" class="cal-dstat-item dstat-wholeshoe" data-dfilter="domain" data-value="wholeshoe" aria-pressed="false" title="Show only Whole Shoe">
                 <span class="dstat-num" id="dstat-wholeshoe">0</span>
                 <span class="dstat-lbl">Whole Shoe</span>
-            </div>
-            <div class="cal-dstat-item dstat-ongoing">
+            </button>
+            <button type="button" class="cal-dstat-item dstat-ongoing" data-dfilter="status" data-value="ongoing" aria-pressed="false" title="Show only Ongoing">
                 <span class="dstat-num" id="dstat-ongoing">0</span>
                 <span class="dstat-lbl">Ongoing</span>
-            </div>
-            <div class="cal-dstat-item dstat-completed">
+            </button>
+            <button type="button" class="cal-dstat-item dstat-pending" data-dfilter="status" data-value="pending" aria-pressed="false" title="Show only Pending">
+                <span class="dstat-num" id="dstat-pending">0</span>
+                <span class="dstat-lbl">Pending</span>
+            </button>
+            <button type="button" class="cal-dstat-item dstat-completed" data-dfilter="status" data-value="completed" aria-pressed="false" title="Show only Completed">
                 <span class="dstat-num" id="dstat-completed">0</span>
                 <span class="dstat-lbl">Completed</span>
-            </div>
+            </button>
         </div>
 
         <!-- Filter tabs inside drawer -->

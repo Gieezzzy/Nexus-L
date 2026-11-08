@@ -27,6 +27,7 @@
     drawerDate: null,
     drawerItems: [],
     drawerDomainTab: 'all',
+    drawerStatus: '',   // '' | 'ongoing' | 'pending' | 'completed' (the status tiles of the day panel)
     drawerFilter: ''
   };
 
@@ -173,34 +174,97 @@
     }
   }
 
+  // ---- data loading: a range already seen is drawn at once (and refreshed quietly), a new one shows a shimmer skeleton -----------------
+  const evCache = new Map();        // 'start|end' -> { data, t }
+  const FRESH_MS = 25000;
+  let evAbort = null;
+  let evSeq = 0;
+  const rangeKey = (r) => r.start + '|' + r.end;
+
+  async function fetchRange(r, signal) {
+    const url = eventsUrl + '?start=' + encodeURIComponent(r.start) + '&end=' + encodeURIComponent(r.end);
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' }, signal });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (!data || !data.ok) throw new Error('Bad answer');
+    return data;
+  }
+
+  function paint(data) {
+    state.eventsCache = data;
+    kpiBox && kpiBox.classList.remove('is-loading');
+    renderKPIs(data.kpis);
+    if (state.view === 'month') renderMonthGrid(data); else renderWeekGrid(data);
+  }
+
+  const kpiBox = document.getElementById('cal-kpis');
+
+  function skeleton() {
+    if (kpiBox) kpiBox.classList.add('is-loading');
+    const r = getActiveRange();
+    if (state.view === 'month') {
+      const n = Math.round((parseYmd(r.end) - parseYmd(r.start)) / 86400000) + 1;
+      let h = '';
+      for (let i = 0; i < n; i++) {
+        h += '<div class="cal-day-cell cal-skel-cell"><span class="nx-shimmer cal-skel-num"></span><span class="nx-shimmer cal-skel-bar"></span><span class="nx-shimmer cal-skel-bar short"></span><span class="nx-shimmer cal-skel-bar"></span></div>';
+      }
+      dom.monthGrid.innerHTML = h;
+    } else {
+      let h = '';
+      for (let i = 0; i < 7; i++) {
+        h += '<div class="cal-week-col"><div class="cal-week-col-head"><span class="nx-shimmer cal-skel-bar" style="width:60%"></span></div><div class="cal-week-cards-stack">'
+          + '<div class="cal-skel-card"><span class="nx-shimmer cal-skel-bar"></span><span class="nx-shimmer cal-skel-bar short"></span></div>'.repeat(3) + '</div></div>';
+      }
+      dom.weekGrid.innerHTML = h;
+    }
+  }
+
+  function prefetchNeighbours() {
+    const idle = window.requestIdleCallback || ((f) => setTimeout(f, 400));
+    idle(() => {
+      const keep = new Date(state.currentDate);
+      [-1, 1].forEach((dir) => {
+        const d = new Date(keep);
+        if (state.view === 'month') { d.setDate(1); d.setMonth(d.getMonth() + dir); } else { d.setDate(d.getDate() + 7 * dir); }
+        const saved = state.currentDate; state.currentDate = d;
+        const r = getActiveRange(); state.currentDate = saved;
+        if (!evCache.has(rangeKey(r))) {
+          fetchRange(r).then((data) => evCache.set(rangeKey(r), { data, t: Date.now() })).catch(() => {});
+        }
+      });
+    });
+  }
+
   // Fetch Events from API
-  async function loadEvents() {
+  async function loadEvents(force) {
     const range = getActiveRange();
     updateTitle();
+    const key = rangeKey(range);
+    const seq = ++evSeq;
+    const hit = evCache.get(key);
+    if (hit) paint(hit.data); else skeleton();
+    if (hit && !force && Date.now() - hit.t < FRESH_MS) { prefetchNeighbours(); return; }
 
+    if (evAbort) evAbort.abort();
+    evAbort = new AbortController();
     try {
       state.loading = true;
-      const url = eventsUrl + '?start=' + encodeURIComponent(range.start) + '&end=' + encodeURIComponent(range.end);
-      const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-      if (!res.ok) {
-        console.warn('Calendar events HTTP error:', res.status);
-        return;
-      }
-      const data = await res.json();
-
-      if (data && data.ok) {
-        state.eventsCache = data;
-        renderKPIs(data.kpis);
-        if (state.view === 'month') {
-          renderMonthGrid(data);
-        } else {
-          renderWeekGrid(data);
-        }
-      }
+      const data = await fetchRange(range, evAbort.signal);
+      evCache.set(key, { data, t: Date.now() });
+      if (seq !== evSeq) return;      // the person moved on to another month / week meanwhile
+      paint(data);
+      prefetchNeighbours();
     } catch (err) {
-      console.error('Failed to load calendar events:', err);
+      if (err && err.name === 'AbortError') return;
+      console.warn('Calendar events failed:', err);
+      if (!hit && seq === evSeq) {
+        const box = state.view === 'month' ? dom.monthGrid : dom.weekGrid;
+        box.innerHTML = '<div class="cal-empty-day" style="grid-column:1/-1;padding:40px"><p>Could not load the calendar. <button type="button" class="cal-retry" id="cal-retry">Try again</button></p></div>';
+        const b = document.getElementById('cal-retry'); if (b) b.addEventListener('click', () => loadEvents(true));
+        if (kpiBox) kpiBox.classList.remove('is-loading');
+      }
     } finally {
-      state.loading = false;
+      if (seq === evSeq) state.loading = false;
     }
   }
 
@@ -243,7 +307,7 @@
     const curYear = state.currentDate.getFullYear();
 
     const grid = dom.monthGrid;
-    grid.innerHTML = '';
+    const frag = document.createDocumentFragment();
 
     const startObj = parseYmd(range.start);
     const endObj = parseYmd(range.end);
@@ -341,10 +405,12 @@
       cell.addEventListener('click', () => {
         openDrawer(dStr, dayData);
       });
+      if (dayData.total > 0) cell.addEventListener('pointerenter', () => warmDay(dStr), { once: true });
 
-      grid.appendChild(cell);
+      frag.appendChild(cell);
       curr.setDate(curr.getDate() + 1);
     }
+    grid.replaceChildren(frag);
   }
 
   // =========================================================================
@@ -355,7 +421,7 @@
     const daysData = data.days || {};
     const weekItems = data.week_items || [];
     const grid = dom.weekGrid;
-    grid.innerHTML = '';
+    const frag = document.createDocumentFragment();
 
     const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     let curr = new Date(range.mon);
@@ -475,66 +541,83 @@
         });
       });
 
-      grid.appendChild(col);
+      frag.appendChild(col);
       curr.setDate(curr.getDate() + 1);
     }
+    grid.replaceChildren(frag);
   }
 
   // =========================================================================
   // DRILLDOWN SLIDE-OVER DRAWER
   // =========================================================================
+  const dayCache = new Map();   // date -> { data, t }
+  const DAY_FRESH_MS = 30000;
+
+  function fetchDay(dateStr) {
+    return fetch(detailsUrl + '?date=' + encodeURIComponent(dateStr), { headers: { 'Accept': 'application/json' } })
+      .then((r) => r.json())
+      .then((d) => { if (d && d.ok) dayCache.set(dateStr, { data: d, t: Date.now() }); return d; });
+  }
+
+  function warmDay(dateStr) {
+    const c = dayCache.get(dateStr);
+    if (!c || Date.now() - c.t > DAY_FRESH_MS) fetchDay(dateStr).catch(() => {});
+  }
+
+  function drawerSkeleton() {
+    let h = '';
+    for (let i = 0; i < 4; i++) {
+      h += '<div class="cal-dcard cal-skel-dcard"><div style="display:flex;justify-content:space-between;gap:10px"><span class="nx-shimmer cal-skel-bar" style="width:46%;height:16px"></span><span class="nx-shimmer cal-skel-bar" style="width:22%;height:16px"></span></div>'
+        + '<div class="cal-skel-grid"><span class="nx-shimmer cal-skel-bar"></span><span class="nx-shimmer cal-skel-bar"></span><span class="nx-shimmer cal-skel-bar"></span><span class="nx-shimmer cal-skel-bar"></span></div>'
+        + '<span class="nx-shimmer cal-skel-bar short"></span></div>';
+    }
+    dom.drawerItemsList.innerHTML = h;
+  }
+
+  function showDay(d) {
+    state.drawerItems = d.items || [];
+    updateDrawerStats(d.summary || {});
+    syncDrawerFilters();
+    renderDrawerItems();
+  }
+
   async function openDrawer(dateStr, daySummary) {
     state.drawerDate = dateStr;
     state.drawerDomainTab = 'all';
+    state.drawerStatus = '';
     state.drawerFilter = '';
 
     dom.drawerDateBadge.textContent = dateStr;
     dom.drawerTitle.textContent = formatDisplayDate(dateStr);
     dom.drawerSubtitle.textContent = 'Laboratory test records & quality results';
-
-    // Show loading indicator
-    dom.drawerItemsList.innerHTML = `
-      <div class="cal-drawer-loading">
-        <div class="cal-spinner"></div>
-        <p>Loading test records for ${escapeHtml(dateStr)}…</p>
-      </div>
-    `;
-
-    // Reset tabs active state
-    dom.drawerTabs.forEach(t => {
-      t.classList.toggle('active', t.dataset.tab === 'all');
-    });
     if (dom.drawerSearchInput) dom.drawerSearchInput.value = '';
 
-    // Show drawer
+    // Show drawer at once; the cards come from the cache or a shimmer stands in for them
     dom.backdrop.classList.add('active');
     dom.drawer.classList.add('active');
     dom.drawer.setAttribute('aria-hidden', 'false');
 
-    try {
-      const res = await fetch(detailsUrl + '?date=' + encodeURIComponent(dateStr), {
-        headers: { 'Accept': 'application/json' }
-      });
-      const data = await res.json();
+    const hit = dayCache.get(dateStr);
+    if (hit) {
+      showDay(hit.data);
+      if (Date.now() - hit.t < DAY_FRESH_MS) return;
+    } else {
+      state.drawerItems = [];
+      const s = daySummary || {};
+      updateDrawerStats({ total: s.total || 0, bonding: (s.bonding || {}).total || 0, material: (s.material || {}).total || 0, wholeshoe: (s.wholeshoe || {}).total || 0,
+        ongoing: s.ongoing || 0, pending: s.pending || 0, completed: s.completed || 0 });
+      syncDrawerFilters();
+      drawerSkeleton();
+    }
 
-      if (data && data.ok) {
-        state.drawerItems = data.items || [];
-        updateDrawerStats(data.summary || {});
-        renderDrawerItems();
-      } else {
-        dom.drawerItemsList.innerHTML = `
-          <div class="cal-empty-day">
-            <p>No records found for this date.</p>
-          </div>
-        `;
-      }
+    try {
+      const data = await fetchDay(dateStr);
+      if (state.drawerDate !== dateStr) return;
+      if (data && data.ok) showDay(data);
+      else if (!hit) dom.drawerItemsList.innerHTML = '<div class="cal-empty-day"><p>No records found for this date.</p></div>';
     } catch (err) {
       console.error('Failed to load day details:', err);
-      dom.drawerItemsList.innerHTML = `
-        <div class="cal-empty-day" style="color:#ef4444">
-          <p>Failed to load records. Please try again.</p>
-        </div>
-      `;
+      if (!hit) dom.drawerItemsList.innerHTML = '<div class="cal-empty-day" style="color:#ef4444"><p>Failed to load records. Please try again.</p></div>';
     }
   }
 
@@ -550,6 +633,7 @@
     const material = summary.material || 0;
     const wholeshoe = summary.wholeshoe || 0;
     const ongoing = summary.ongoing || 0;
+    const pending = summary.pending || 0;
     const completed = summary.completed || 0;
 
     dom.dstatTotal.textContent = total;
@@ -557,12 +641,25 @@
     dom.dstatMaterial.textContent = material;
     dom.dstatWholeshoe.textContent = wholeshoe;
     dom.dstatOngoing.textContent = ongoing;
+    const pe = document.getElementById('dstat-pending'); if (pe) pe.textContent = pending;
     dom.dstatCompleted.textContent = completed;
 
     dom.dtabCountAll.textContent = total;
     dom.dtabCountBonding.textContent = bonding;
     dom.dtabCountMaterial.textContent = material;
     dom.dtabCountWholeshoe.textContent = wholeshoe;
+  }
+
+  // the tiles and the tabs show the same filters: keep their highlight in step
+  function syncDrawerFilters() {
+    dom.drawerTabs.forEach((t) => t.classList.toggle('active', t.dataset.tab === state.drawerDomainTab));
+    document.querySelectorAll('#drawer-stats [data-dfilter]').forEach((el) => {
+      const k = el.dataset.dfilter, v = el.dataset.value;
+      const on = k === 'all' ? (state.drawerDomainTab === 'all' && !state.drawerStatus)
+        : k === 'domain' ? state.drawerDomainTab === v : state.drawerStatus === v;
+      el.classList.toggle('is-active', on);
+      el.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
   }
 
   function renderDrawerItems() {
@@ -572,6 +669,7 @@
 
     const filtered = state.drawerItems.filter(item => {
       if (tab !== 'all' && item.domain !== tab) return false;
+      if (state.drawerStatus && item.status !== state.drawerStatus) return false;
       if (q) {
         const matches = (item.lab_ref_no && item.lab_ref_no.toLowerCase().includes(q)) ||
                         (item.tr_no && item.tr_no.toLowerCase().includes(q)) ||
@@ -738,7 +836,8 @@
 
     // Refresh
     dom.btnRefresh.addEventListener('click', () => {
-      loadEvents();
+      evCache.clear(); dayCache.clear();
+      loadEvents(true);
     });
 
     // View toggles (Month vs Week)
@@ -810,10 +909,22 @@
     // Drawer domain tabs
     dom.drawerTabs.forEach(tab => {
       tab.addEventListener('click', () => {
-        dom.drawerTabs.forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
         state.drawerDomainTab = tab.dataset.tab;
+        syncDrawerFilters();
         renderDrawerItems();
+      });
+    });
+
+    // The tiles above the list filter it too: Total clears, Bonding / Material / Whole Shoe pick a kind, Ongoing / Pending / Completed pick a status
+    document.querySelectorAll('#drawer-stats [data-dfilter]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const k = el.dataset.dfilter, v = el.dataset.value;
+        if (k === 'all') { state.drawerDomainTab = 'all'; state.drawerStatus = ''; }
+        else if (k === 'domain') { state.drawerDomainTab = state.drawerDomainTab === v ? 'all' : v; }
+        else { state.drawerStatus = state.drawerStatus === v ? '' : v; }
+        syncDrawerFilters();
+        renderDrawerItems();
+        const l = dom.drawerItemsList; if (l) l.scrollTop = 0;
       });
     });
 

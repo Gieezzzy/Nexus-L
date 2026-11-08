@@ -3426,6 +3426,22 @@
       }, 900);
       return;
     }
+    // ?open=wholeshoe&labref=<Lab Ref No> (from Calendar Monitoring): the Whole Shoe report page with that Lab Ref chosen (the picker reads ?labref itself)
+    if (slug === 'wholeshoe' && !id) {
+      const want = String(q.get('labref') || ref || '').trim();
+      setTimeout(async () => {
+        switchTab('wholeshoe');
+        if (typeof markDtrNav === 'function') markDtrNav('wholeshoe');
+        if (!want) return;
+        const sel = $('#ws-labref');
+        for (let i = 0; i < 40 && sel && sel.options.length < 2 && !/Could not|no whole shoe/i.test(sel.textContent); i++) await new Promise((r) => setTimeout(r, 150));   // the picker is filled by its own request
+        if (!sel) return;
+        if (![...sel.options].some((o) => o.value === want)) sel.add(new Option(want, want));   // older / not in the picker's newest-100 list
+        sel.value = want;
+        sel.dispatchEvent(new Event('change'));
+      }, 500);
+      return;
+    }
     if (!slug || !/^[a-z]+$/.test(slug) || !/^\d+$/.test(id || '')) return;
     setTimeout(async () => {
       await bondingReady; // the blank form must not overwrite the linked report
@@ -3538,10 +3554,10 @@
         return `
           <tr class="clickable-row wst-row" data-id="${r.id}" style="cursor:pointer">
             <td class="mono">${i + 1}</td>
-            <td><b class="mono" style="color:var(--brand,#2563eb);font-size:13.5px">${esc(r.labreference)}</b></td>
-            <td>${esc(r.testdate || '—')}</td>
-            <td><span style="font-weight:600">${esc(r.type || 'Standard')}</span></td>
-            <td><span class="mono sm muted">${esc(r.machine_number || 'MC-01')} &bull; ${esc(r.technician || r.operator || 'QC')}</span></td>
+            <td><b class="mono" style="color:var(--brand,#2563eb);font-size:13.5px">${escHtml(r.labreference)}</b></td>
+            <td>${escHtml(r.testdate || '—')}</td>
+            <td><span style="font-weight:600">${escHtml(r.type || 'Standard')}</span></td>
+            <td><span class="mono sm muted">${escHtml(r.machine_number || 'MC-01')} &bull; ${escHtml(r.technician || r.operator || 'QC')}</span></td>
             <td>
               <div style="display:flex;align-items:center;gap:8px">
                 <div style="flex:1;background:rgba(255,255,255,0.06);height:6px;border-radius:3px;overflow:hidden;min-width:70px">
@@ -3550,7 +3566,7 @@
                 <span class="mono sm" style="white-space:nowrap">${currCycles.toLocaleString()} / ${targetCycles.toLocaleString()}</span>
               </div>
             </td>
-            <td><span class="dtr-pill ${pillClass}">${esc(r.status || 'PENDING')}</span></td>
+            <td><span class="dtr-pill ${pillClass}">${escHtml(r.status || 'PENDING')}</span></td>
             <td style="text-align:right">
               <button type="button" class="dtr-btn-xs dtr-btn-primary wst-open-record-btn" data-id="${r.id}" style="box-shadow:0 1px 4px rgba(37,99,235,0.25)">
                 <svg class="ic" aria-hidden="true" style="margin-right:2px"><use href="#i-grid"/></svg> Open Monitor
@@ -3570,7 +3586,7 @@
       });
     } catch (err) {
       console.error('loadWstRecords failed:', err);
-      tbody.innerHTML = `<tr><td colspan="8" style="color:#ef4444;text-align:center;padding:24px">Failed to load test sessions from dbnexus: ${esc(err.message)}<br><button type="button" class="dtr-btn-xs dtr-btn-outline" id="btn-wst-retry-load" style="margin-top:10px;display:inline-flex;align-items:center;gap:4px"><svg class="ic" aria-hidden="true"><use href="#i-sync"/></svg> Retry</button></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" style="color:#ef4444;text-align:center;padding:24px">Failed to load test sessions from dbnexus: ${escHtml(err.message)}<br><button type="button" class="dtr-btn-xs dtr-btn-outline" id="btn-wst-retry-load" style="margin-top:10px;display:inline-flex;align-items:center;gap:4px"><svg class="ic" aria-hidden="true"><use href="#i-sync"/></svg> Retry</button></td></tr>`;
       $('#btn-wst-retry-load')?.addEventListener('click', () => loadWstRecords(category, q));
     }
   };
