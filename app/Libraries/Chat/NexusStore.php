@@ -10,6 +10,12 @@ use CodeIgniter\Database\BaseConnection;
  */
 class NexusStore extends ChatStore
 {
+    /** system senders that post into the Inbox (no account behind them): id => [name, description] */
+    public const BOTS = [
+        'interlink_etrf' => ['InterLink 2.0 — Application No.', 'Intertek InterLink Automated Service'],
+        'lab_alerts'     => ['Lab Alerts — NEXUS-L', 'Automated lab notifications (NEXUS-L Notifier)'],
+    ];
+
     private BaseConnection $db;
 
     public function __construct()
@@ -133,6 +139,14 @@ class NexusStore extends ChatStore
 
     public function person(string $id): ?array
     {
+        if (isset(self::BOTS[$id]) || $id === '0') {
+            $b = self::BOTS[$id] ?? self::BOTS['interlink_etrf'];
+
+            return [
+                'id' => $id, 'name' => $b[0], 'username' => isset(self::BOTS[$id]) ? $id : 'interlink_etrf',
+                'online' => true, 'avatar' => null, 'src' => 'n', 'dept' => $b[1], 'synologyId' => null,
+            ];
+        }
         $r = $this->run('SELECT UserID, FullName, Username, Department, SynologyID FROM tbl_users WHERE UserID = ? AND IsActive = 1', [(int) $id])[0] ?? null;
 
         return $r === null ? null : $this->shapePerson($r);
@@ -167,12 +181,17 @@ class NexusStore extends ChatStore
 
     protected function people(array $ids): array
     {
-        $ids = array_values(array_filter(array_map('intval', $ids)));
-        if (! $ids) {
-            return [];
-        }
-        $in  = implode(',', $ids);
         $out = [];
+        foreach ($ids as $rawId) {
+            if (isset(self::BOTS[(string) $rawId]) || $rawId === '0') {
+                $out[(string) $rawId] = $this->person((string) $rawId);
+            }
+        }
+        $numIds = array_values(array_filter(array_map('intval', $ids)));
+        if (! $numIds) {
+            return $out;
+        }
+        $in = implode(',', $numIds);
         foreach ($this->run("SELECT UserID, FullName, Username, Department, SynologyID FROM tbl_users WHERE UserID IN ({$in})") as $r) {
             $out[(string) $r['UserID']] = $this->shapePerson($r);
         }

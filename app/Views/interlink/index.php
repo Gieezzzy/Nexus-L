@@ -444,7 +444,7 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                     </div>
 
                     <div class="uf-field" data-field-wrap="report_no">
-                        <label><span class="uf-req">*</span> Report No. <small class="muted">(DXEditor17)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
+                        <label><span class="uf-req">*</span> Report No. <span class="uf-sync-tag hidden">✓ Synced</span></label>
                         <input type="text" id="uf_report_no" data-uf-field="report_no" value="" placeholder="Click 'Sync NEXUS-L Data' to fill Report No.">
                     </div>
                     <div class="uf-field" data-field-wrap="is_retest">
@@ -461,7 +461,7 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                         </div>
                     </div>
                     <div class="uf-field" data-field-wrap="previous_report_no">
-                        <label>Previous Test Report No <small class="muted">(DXEditor19)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
+                        <label>Previous Test Report No <span class="uf-sync-tag hidden">✓ Synced</span></label>
                         <input type="text" id="uf_previous_report_no" data-uf-field="previous_report_no" value="">
                     </div>
                 </div>
@@ -600,11 +600,11 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                             </div>
 
                             <div class="uf-field" data-field-wrap="age_group">
-                                <label><span class="uf-req">*</span> Age Group <small class="muted">(DXEditor44)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
+                                <label><span class="uf-req">*</span> Age Group <span class="uf-sync-tag hidden">✓ Synced</span></label>
                                 <input type="text" id="uf_age_group" data-uf-field="age_group" value="Adult">
                             </div>
                             <div class="uf-field" data-field-wrap="cargo_receive_date">
-                                <label><span class="uf-req">*</span> Cargo Receive Date <small class="muted">(DXEditor45)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
+                                <label><span class="uf-req">*</span> Cargo Receive Date <span class="uf-sync-tag hidden">✓ Synced</span></label>
                                 <input type="text" id="uf_cargo_receive_date" data-uf-field="cargo_receive_date" value="06 Nov 2026">
                             </div>
                             <div class="uf-field" data-field-wrap="product_category">
@@ -617,11 +617,11 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                                 <input type="text" id="uf_test_packages" data-uf-field="test_packages" value="<?= esc($defaults['test_packages'] ?? 'VANS Pull Strength', 'attr') ?>">
                             </div>
                             <div class="uf-field" data-field-wrap="care_instruction">
-                                <label>Care Instruction <small class="muted">(DXEditor46)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
+                                <label>Care Instruction <span class="uf-sync-tag hidden">✓ Synced</span></label>
                                 <input type="text" id="uf_care_instruction" data-uf-field="care_instruction" value="">
                             </div>
                             <div class="uf-field" data-field-wrap="fiber_composition">
-                                <label>Fiber Composition <small class="muted">(DXEditor48)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
+                                <label>Fiber Composition <span class="uf-sync-tag hidden">✓ Synced</span></label>
                                 <input type="text" id="uf_fiber_composition" data-uf-field="fiber_composition" value="">
                             </div>
                         </div>
@@ -645,7 +645,7 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                                 <input type="text" id="uf_thickness" data-uf-field="thickness" value="">
                             </div>
                             <div class="uf-field" data-field-wrap="finishing">
-                                <label>Finishing <small class="muted">(DXEditor44)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
+                                <label>Finishing <span class="uf-sync-tag hidden">✓ Synced</span></label>
                                 <input type="text" id="uf_finishing" data-uf-field="finishing" value="">
                             </div>
                             <div class="uf-field" data-field-wrap="end_use">
@@ -655,7 +655,7 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                         </div>
 
                         <div class="uf-field uf-mt" data-field-wrap="lab_remarks">
-                            <label>Remarks <small class="muted">(DXEditor50)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
+                            <label>Remarks <span class="uf-sync-tag hidden">✓ Synced</span></label>
                             <input type="text" id="uf_lab_remarks" data-uf-field="lab_remarks" value="">
                         </div>
                     </div>
@@ -665,13 +665,13 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                 <div class="uf-accordion uf-mt">
                     <button type="button" class="uf-acc-head" data-acc-target="uf-acc-gcc">
                         <span class="uf-acc-arrow">⌄</span>
-                        <b>GCC/CPC &amp; Factory Address Information (DXEditor52–DXEditor62)</b>
+                        <b>GCC/CPC &amp; Factory Address Information</b>
                     </button>
 
                     <div class="uf-acc-body" id="uf-acc-gcc">
                         <div class="uf-grid-3">
                             <div class="uf-field" data-field-wrap="gcc_cpc_required">
-                                <label>GCC/CPC Required? <small class="muted">(DXEditor52)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
+                                <label>GCC/CPC Required? <span class="uf-sync-tag hidden">✓ Synced</span></label>
                                 <select id="uf_gcc_cpc_required" data-uf-field="gcc_cpc_required">
                                     <option value="No">No</option>
                                     <option value="Yes">Yes</option>
@@ -682,33 +682,33 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                                 <input type="text" id="uf_product_id" data-uf-field="product_id" value="VN000ZB8">
                             </div>
                             <div class="uf-field" data-field-wrap="manufacture_date">
-                                <label>Manufacture Date (MM/YYYY) <small class="muted">(DXEditor54)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
+                                <label>Manufacture Date (MM/YYYY) <span class="uf-sync-tag hidden">✓ Synced</span></label>
                                 <input type="text" id="uf_manufacture_date" data-uf-field="manufacture_date" value="10/2026">
                             </div>
 
                             <div class="uf-field" data-field-wrap="factory_address">
-                                <label>Factory Address <small class="muted">(DXEditor55)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
+                                <label>Factory Address <span class="uf-sync-tag hidden">✓ Synced</span></label>
                                 <input type="text" id="uf_factory_address" data-uf-field="factory_address" value="<?= esc($defaults['factory_address'] ?? 'Lot 1P7-A,Phase 2,Subic Bay GatewayPark, Subic Bay Freeport Zone', 'attr') ?>">
                             </div>
                             <div class="uf-field" data-field-wrap="factory_country">
-                                <label>Factory Country <small class="muted">(DXEditor56)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
+                                <label>Factory Country <span class="uf-sync-tag hidden">✓ Synced</span></label>
                                 <input type="text" id="uf_factory_country" data-uf-field="factory_country" value="<?= esc($defaults['factory_country'] ?? 'Philippines', 'attr') ?>">
                             </div>
                             <div class="uf-field" data-field-wrap="factory_city">
-                                <label>Factory City <small class="muted">(DXEditor58)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
+                                <label>Factory City <span class="uf-sync-tag hidden">✓ Synced</span></label>
                                 <input type="text" id="uf_factory_city" data-uf-field="factory_city" value="<?= esc($defaults['factory_city'] ?? 'Subic Bay', 'attr') ?>">
                             </div>
 
                             <div class="uf-field" data-field-wrap="factory_state_province">
-                                <label>Factory State/Province <small class="muted">(DXEditor59)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
+                                <label>Factory State/Province <span class="uf-sync-tag hidden">✓ Synced</span></label>
                                 <input type="text" id="uf_factory_state_province" data-uf-field="factory_state_province" value="<?= esc($defaults['factory_state_province'] ?? '03', 'attr') ?>">
                             </div>
                             <div class="uf-field" data-field-wrap="factory_zip_postal">
-                                <label>Factory Zip/Postal Code <small class="muted">(DXEditor60)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
+                                <label>Factory Zip/Postal Code <span class="uf-sync-tag hidden">✓ Synced</span></label>
                                 <input type="text" id="uf_factory_zip_postal" data-uf-field="factory_zip_postal" value="2222">
                             </div>
                             <div class="uf-field" data-field-wrap="factory_email">
-                                <label>Factory Email <small class="muted">(DXEditor61)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
+                                <label>Factory Email <span class="uf-sync-tag hidden">✓ Synced</span></label>
                                 <input type="text" id="uf_factory_email" data-uf-field="factory_email" value="dtp_qcasst@dtshoes.com">
                             </div>
                         </div>
@@ -726,15 +726,15 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
             <div id="uf-tab-result" class="uf-tab-panel hidden">
                 <div class="uf-grid-3">
                     <div class="uf-field" data-field-wrap="report_no_tab2">
-                        <label><span class="uf-req">*</span> Report No. <small class="muted">(DXEditor5)</small></label>
+                        <label><span class="uf-req">*</span> Report No.</label>
                         <input type="text" id="uf_tab2_report_no" readonly value="">
                     </div>
                     <div class="uf-field" data-field-wrap="report_issue_date">
-                        <label><span class="uf-req">*</span> Report Issue Date <small class="muted">(DXEditor6_I)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
+                        <label><span class="uf-req">*</span> Report Issue Date <span class="uf-sync-tag hidden">✓ Synced</span></label>
                         <input type="text" id="uf_report_issue_date" data-uf-field="report_issue_date" value="">
                     </div>
                     <div class="uf-field" data-field-wrap="overall_result">
-                        <label><span class="uf-req">*</span> Overall Result <small class="muted">(TRPT_RESULT_DISP_0)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
+                        <label><span class="uf-req">*</span> Overall Result <span class="uf-sync-tag hidden">✓ Synced</span></label>
                         <select id="uf_overall_result" data-uf-field="overall_result">
                             <option value="">- Select -</option>
                             <option value="Pass">Pass</option>
@@ -746,7 +746,7 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
 
                 <div class="uf-grid-2 uf-mt">
                     <div class="uf-field" data-field-wrap="attachment_name">
-                        <label><span class="uf-req">*</span> Report Attachment (PDF) <small class="muted">(JOB_DUMMY_004)</small> <span class="uf-sync-tag hidden">✓ Synced</span></label>
+                        <label><span class="uf-req">*</span> Report Attachment (PDF) <span class="uf-sync-tag hidden">✓ Synced</span></label>
                         <div class="uf-email-wrap">
                             <input type="text" id="uf_attachment_name" data-uf-field="attachment_name" value="" placeholder="Generate from the Lab Reference or Browse for a PDF">
                             <button type="button" class="uf-action-btn uf-btn-gen" id="uf-btn-generate-pdf" style="margin:2px" title="Create the test report PDF from the synced Lab Reference (Digital Test Report)">Generate Report</button>
@@ -779,7 +779,7 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                         </div>
                     </div>
                     <div class="uf-field" data-field-wrap="supplementary_attachment">
-                        <label>Supplementary Attachment <small class="muted">(JOB_DUMMY_005)</small></label>
+                        <label>Supplementary Attachment</label>
                         <input type="text" id="uf_supplementary_attachment" data-uf-field="supplementary_attachment" placeholder="Optional supplementary file">
                     </div>
                 </div>
@@ -787,15 +787,15 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                 <!-- Sub-Grid 1: Sample Information (JOB_DUMMY_007_SAMPLE_ITEM) -->
                 <div class="uf-accordion uf-mt">
                     <div class="uf-subgrid-head">
-                        <b>Sample Information <small class="muted">(JOB_DUMMY_007_SAMPLE_ITEM)</small></b>
+                        <b>Sample Information</b>
                         <span class="uf-sync-tag" id="uf-samples-badge">Synced from NEXUS-L</span>
                     </div>
                     <table class="il-sync-table uf-subtable">
                         <thead>
                             <tr>
-                                <th style="width:120px">Sample ID (FLD01)</th>
-                                <th>* Sample Description (FLD24)</th>
-                                <th style="width:220px">Sample Color (FLD25)</th>
+                                <th style="width:120px">Sample ID</th>
+                                <th>* Sample Description</th>
+                                <th style="width:220px">Sample Color</th>
                             </tr>
                         </thead>
                         <tbody id="uf-sample-items-tbody">
@@ -807,17 +807,17 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                 <!-- Sub-Grid 2: Test Item Result (JOB_DUMMY_008_TEST_ITEM_INP) -->
                 <div class="uf-accordion uf-mt">
                     <div class="uf-subgrid-head">
-                        <b>Test Item Result <small class="muted">(JOB_DUMMY_008_TEST_ITEM_INP)</small></b>
+                        <b>Test Item Result</b>
                         <span class="uf-sync-tag">Pass / Fail / Data</span>
                     </div>
                     <table class="il-sync-table uf-subtable">
                         <thead>
                             <tr>
-                                <th style="width:110px">* Sample ID (FLD03)</th>
-                                <th>* Test Item Name (FLD07)</th>
+                                <th style="width:110px">* Sample ID</th>
+                                <th>* Test Item Name</th>
                                 <th style="width:180px">Standard / Method</th>
                                 <th style="width:210px">Actual Summary</th>
-                                <th style="width:130px">* Test Item Result (FLD15)</th>
+                                <th style="width:130px">* Test Item Result</th>
                             </tr>
                         </thead>
                         <tbody id="uf-test-items-tbody">
@@ -829,7 +829,7 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                 <!-- Sub-Grid 3: Test Item Result For Reading (JOB_DUMMY_013) -->
                 <div class="uf-accordion uf-mt">
                     <div class="uf-subgrid-head">
-                        <b>Test Item Result For Reading <small class="muted">(JOB_DUMMY_013)</small></b>
+                        <b>Test Item Result For Reading</b>
                         <span class="uf-sync-tag">Specimen Readings</span>
                     </div>
                     <table class="il-sync-table uf-subtable">

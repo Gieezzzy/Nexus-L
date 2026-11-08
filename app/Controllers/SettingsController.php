@@ -310,6 +310,22 @@ class SettingsController extends BaseController
         return $this->json($out);
     }
 
+    /** GET settings/notifier-token: the saved Notifier app token (Admin only). POST: makes a new one and saves it. */
+    public function notifierToken()
+    {
+        if (! $this->isAdmin()) {
+            return $this->deny();
+        }
+        if ($this->request->getMethod() === 'post') {
+            $t = bin2hex(random_bytes(12));
+            SystemSettings::set('notify.token', $t, $this->me());
+
+            return $this->json(['ok' => true, 'token' => $t]);
+        }
+
+        return $this->json(['ok' => true, 'token' => (string) SystemSettings::get('notify.token', '')]);
+    }
+
     /** GET settings/trainer-token: the saved Brain Trainer app token (Admin only). POST: makes a new one and saves it. */
     public function trainerToken()
     {
