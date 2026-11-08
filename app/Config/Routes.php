@@ -221,6 +221,14 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->post('labdocs/(:segment)/save', 'LabDocsController::save/$1');
 
     // Calendar Monitoring Suite (Aggregated Bonding, Material, Whole Shoe Calendar)
+    // Quality Insights (line map, failure modes, supplier scorecard)
+    $routes->get('quality-insights', 'QualityInsightsController::index', ['as' => 'quality-insights']);
+    $routes->get('quality-insights/line-map', 'QualityInsightsController::lineMap');
+    $routes->get('quality-insights/line-details', 'QualityInsightsController::lineDetails');
+    $routes->get('quality-insights/failures', 'QualityInsightsController::failures');
+    $routes->get('quality-insights/failure-details', 'QualityInsightsController::failureDetails');
+    $routes->get('quality-insights/suppliers', 'QualityInsightsController::suppliers');
+    $routes->get('quality-insights/supplier-details', 'QualityInsightsController::supplierDetails');
     $routes->get('calendar-monitoring', 'CalendarMonitoringController::index', ['as' => 'calendar-monitoring']);
     $routes->get('calendar', 'CalendarMonitoringController::index');
     $routes->get('calendar-monitoring/events', 'CalendarMonitoringController::events');

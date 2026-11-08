@@ -104,6 +104,7 @@ class SystemSettings
             'ai.seeded_problems_v1'      => $d('ai', 'Problems Auto-Seeded Flag', 'text', '0', 'Internal flag indicating whether the 200 QC Lab problem solutions have been seeded.'),
             'ai.trainer_token'           => $d('ai', 'Brain Trainer app token', 'password', '', 'The token typed into the Brain Trainer Windows app (X-Trainer-Token). Empty = the app is refused.'),
             'notify.token'               => $d('ai', 'Notifier app token', 'password', '', 'The token typed into the NEXUS-L Notifier Windows app (X-Notifier-Token). Empty = the app is refused.'),
+            'insights.aliases'           => $d('ai', 'Supplier spelling merges (Quality Insights)', 'textarea', '', 'One per line: WRONG SPELLING=RIGHT NAME. For example NNAPAO=NANPAO. Suppliers written both ways are counted as one in the scorecard.'),
             'ai.git_synced_v201'         => $d('ai', 'Git Auto-Sync Flag', 'text', '0', 'Internal flag indicating whether Phase 201 has been pushed to git.'),
         ];
     }

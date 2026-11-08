@@ -84,7 +84,7 @@ class CalendarMonitoringController extends BaseController
     }
 
     /** the address of the actual report of a Lab Ref: the DTR page opens that record by itself (no searching) */
-    private static function sheetUrl(string $domain, string $slug, int $sourceId, string $labRef, bool $exact): string
+    public static function sheetUrl(string $domain, string $slug, int $sourceId, string $labRef, bool $exact): string
     {
         $ref = rawurlencode($labRef);
         if ($domain === 'wholeshoe') {
@@ -103,7 +103,7 @@ class CalendarMonitoringController extends BaseController
     }
 
     /** every test whose day (test date, else collection date) falls in $start..$end, as one normal shape */
-    private function records(string $start, string $end): array
+    public function records(string $start, string $end): array
     {
         $db   = $this->db();
         $rows = [];

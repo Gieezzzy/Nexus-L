@@ -177,7 +177,7 @@ class NotifierController extends BaseController
     /** "DTP20261103SHA1-L" -> ['building' => 'A', 'line' => 'A1'] (the building and line letters are part of the Lab Ref) */
     private static function lineOf(string $ref): array
     {
-        if (preg_match('/^DTP\d{8}[A-Z]{2}([A-Z])(\d+)/', strtoupper($ref), $m)) {
+        if (preg_match('/^DTP\d{8}[A-Z]{2,3}([A-Z])(\d+)/', strtoupper($ref), $m)) {
             return ['building' => $m[1], 'line' => $m[1] . $m[2]];
         }
 

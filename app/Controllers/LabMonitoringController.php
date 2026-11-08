@@ -165,6 +165,9 @@ class LabMonitoringController extends BaseController
      */
     public function erpSubmit()
     {
+        if (! \App\Libraries\Roles::can((string) (service('auth')->user()['role'] ?? ''), 'erpfinish', 2)) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'error' => 'Your role may view ERP Finish Monitoring but not send or change reports (Settings > Users & roles).']);
+        }
         $p   = $this->request->getJSON(true) ?? [];
         $ids = array_values(array_unique(array_filter(array_map('intval', (array) ($p['ids'] ?? [])))));
         if (! $ids || count($ids) > 500) {
@@ -312,6 +315,9 @@ class LabMonitoringController extends BaseController
     /** POST lab-monitoring/erp-status {id, status: OK|Submitted|Ongoing|Pending|''} */
     public function setErp()
     {
+        if (! \App\Libraries\Roles::can((string) (service('auth')->user()['role'] ?? ''), 'erpfinish', 2)) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'error' => 'Your role may view ERP Finish Monitoring but not send or change reports (Settings > Users & roles).']);
+        }
         $p  = $this->request->getJSON(true) ?? [];
         $id = (int) ($p['id'] ?? 0);
         $s  = (string) ($p['status'] ?? '');

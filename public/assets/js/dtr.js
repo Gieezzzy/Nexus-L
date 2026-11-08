@@ -1840,6 +1840,12 @@
       if (inp.name) fields[inp.name] = inp.value;
     });
     if (fields.POLotNO) fields.POLotNO = fields.POLotNO.split(' / ')[0].trim();   // the field shows "Production Code / MTL #"; only the code is stored
+    // a Fail / Tolerable result must say how it failed (Quality Insights and the lab alerts read it)
+    if (/^(fail|failed|tolerable)$/i.test(String(fields.Result || '').trim()) && !String(fields.ModeOfFailure || '').trim().replace(/^-$/, '')) {
+      showToast('Write the Mode of Failure(s) first: a ' + String(fields.Result).trim().toUpperCase() + ' result needs it (for example Adhesive failure, Foxing to outsole).', true);
+      const mf = $('#bf_ModeOfFailure'); if (mf) { mf.focus(); mf.classList.add('dtr-need'); setTimeout(() => mf.classList.remove('dtr-need'), 2500); }
+      return;
+    }
     const bondingPoints = {
       UTFMin: $('#bp_UTFMin')?.value || null,
       UTFMax: $('#bp_UTFMax')?.value || null,

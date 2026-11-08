@@ -1435,6 +1435,10 @@ class DtrController extends BaseController
             return $this->response->setStatusCode(400)->setJSON(['ok' => false, 'error' => 'Invalid form category.']);
         }
 
+        // a bonding report rated Fail / Tolerable must say how it failed (Quality Insights and the lab alerts read it)
+        if ($slug === 'bonding' && preg_match('/^(fail|failed|tolerable)$/i', trim((string) ($fields['Result'] ?? ''))) && trim(preg_replace('/^-$/', '', trim((string) ($fields['ModeOfFailure'] ?? '')))) === '') {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'error' => 'Write the Mode of Failure(s): a ' . strtoupper(trim((string) $fields['Result'])) . ' result needs it.', 'csrf' => csrf_hash()]);
+        }
         $cfg   = self::FORM_CONFIG[$slug];
         $table = $cfg['table'];
         $pk    = $cfg['pk'];
