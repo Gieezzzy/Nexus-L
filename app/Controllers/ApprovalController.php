@@ -127,7 +127,7 @@ class ApprovalController extends BaseController
         return 'x' . bin2hex(random_bytes(19)); // can never match a link (links are 40 hex digits)
     }
 
-    private function synology(array $userIds, string $text): void
+    private function synology(array $userIds, string $text, ?string $fileUrl = null): void
     {
         $rows = $this->db()->table('tbl_users')->select('SynologyID')->whereIn('UserID', $userIds ?: [0])->get()->getResultArray();
         $ids  = array_values(array_filter(array_map('intval', array_column($rows, 'SynologyID'))));
@@ -137,7 +137,7 @@ class ApprovalController extends BaseController
         // one message per person: Synology rejects a list of several recipients with "record is not valid"
         foreach (array_unique($ids) as $id) {
             try {
-                (new SynologyChat())->send($id, $text);
+                (new SynologyChat())->send($id, $text, false, $fileUrl);
             } catch (\Throwable $e) {
                 log_message('error', 'Approval Synology notice failed: ' . $e->getMessage());
             }
@@ -262,9 +262,17 @@ class ApprovalController extends BaseController
                 'required_name' => $printed !== '' ? mb_substr($printed, 0, 120) : null,
             ]);
         }
-        $signers = array_column($signRows, 'user_id');
-        $this->synology($signers, "NEXUS-L: report {$lr['lab_ref_no']} (" . ($app ?: $lr['tr_no']) . ", {$lr['overall_result']}) from "
-            . ($me['name'] ?? 'the lab') . " is waiting for your approval before it goes to InterLink.\nThis link works once and expires in " . $linkMinutes . " minutes:\n" . site_url('approve/' . $token));
+        // each required signatory gets their own message with the QR code (a picture Synology fetches from qr.png) and the link
+        $link   = site_url('approve/' . $token);
+        $qrUrl  = site_url('approve/' . $token . '/qr.png');
+        $about  = "report {$lr['lab_ref_no']} (" . ($app ?: $lr['tr_no']) . ", {$lr['overall_result']}) from " . ($me['name'] ?? 'the lab');
+        foreach ($signRows as $sr) {
+            $this->synology([(int) $sr['user_id']], "NEXUS-L: Hello " . trim((string) $sr['full_name']) . ", {$about} is waiting for YOUR approval before it goes to InterLink.
+"
+                . "Scan the QR code below with your phone, or open this link. It works once and expires in {$linkMinutes} minutes:
+{$link}", $qrUrl);
+        }
+        $this->emailSigners($signRows, $link, $about, $linkMinutes);
 
         return $this->json(['ok' => true, 'approval' => $this->publicRow($this->latest($lr['lab_ref_no']))]);
     }
@@ -339,6 +347,54 @@ class ApprovalController extends BaseController
             ->setBody((string) file_get_contents($f));
     }
 
+    /**
+     * One e-mail per required signatory, put into tbl_email_outbox: the Server HTML Handler (tray program) sends it from the lab's mail
+     * account, with the QR code as an inline picture. A signatory with no e-mail address on the account is skipped (Synology still reaches them).
+     */
+    private function emailSigners(array $signRows, string $link, string $about, int $minutes): void
+    {
+        if (\App\Libraries\SystemSettings::get('approval.email', '1') === '0') {
+            return;
+        }
+        try {
+            $db = $this->db();
+            $db->query('CREATE TABLE IF NOT EXISTS tbl_email_outbox (id BIGINT AUTO_INCREMENT PRIMARY KEY, source VARCHAR(50) NOT NULL DEFAULT \'NEXUS-L\', to_address TEXT NOT NULL, cc_address TEXT NULL,
+                subject VARCHAR(255) NOT NULL, body MEDIUMTEXT NOT NULL, is_html TINYINT(1) NOT NULL DEFAULT 1, status VARCHAR(10) NOT NULL DEFAULT \'queued\', attempts INT NOT NULL DEFAULT 0,
+                last_error TEXT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, next_attempt_at DATETIME NULL, sent_at DATETIME NULL, KEY idx_outbox_status (status, next_attempt_at))
+                ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+            $qr = 'data:image/png;base64,' . base64_encode(\App\Libraries\QrPng::make($link));
+            foreach ($signRows as $sr) {
+                $u = $db->table('tbl_users')->select('Email')->where('UserID', (int) $sr['user_id'])->get()->getRowArray();
+                $to = trim((string) ($u['Email'] ?? ''));
+                if ($to === '' || ! filter_var($to, FILTER_VALIDATE_EMAIL)) {
+                    continue;
+                }
+                $name = esc(trim((string) $sr['full_name']));
+                $html = '<div style="font-family:Segoe UI,Arial,sans-serif;max-width:560px;margin:0 auto;color:#111827">'
+                    . '<h2 style="margin:0 0 8px">Report waiting for your approval</h2>'
+                    . "<p>Hello {$name},</p><p>" . esc($about) . ' is waiting for <b>your</b> approval before it goes to InterLink.</p>'
+                    . '<p style="margin:18px 0"><a href="' . esc($link, 'attr') . '" style="background:#2563eb;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;display:inline-block">Open the report and approve</a></p>'
+                    . '<p>Or scan this QR code with your phone camera:</p>'
+                    . '<p><img src="' . $qr . '" width="200" height="200" alt="QR code to open the approval page" style="border:1px solid #e5e7eb;border-radius:8px"></p>'
+                    . "<p style=\"font-size:13px;color:#4b5563\">The link works once and expires in {$minutes} minutes. Open it on the company Wi-Fi. If it expired, ask the lab to send the report for approval again.</p>"
+                    . '<p style="font-size:12px;color:#6b7280">NEXUS-L Laboratory System - this message was sent automatically.</p></div>';
+                $db->table('tbl_email_outbox')->insert(['source' => 'NEXUS-L approval', 'to_address' => $to, 'subject' => mb_substr('NEXUS-L: report approval needed - ' . $about, 0, 250), 'body' => $html, 'is_html' => 1]);
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'Approval e-mail not queued: ' . $e->getMessage());
+        }
+    }
+
+    /** GET approve/<token>/qr.png: the QR code of a live link as a picture (Synology and the e-mail fetch it; a link that is spent or expired gives nothing) */
+    public function qr(string $token)
+    {
+        if (! $this->liveLink($token)) {
+            return $this->response->setStatusCode(404)->setBody('');
+        }
+
+        return $this->response->setHeader('Content-Type', 'image/png')->setHeader('Cache-Control', 'no-store')->setBody(\App\Libraries\QrPng::make(site_url('approve/' . $token)));
+    }
+
     /** GET approve/<token>: the page the QR code opens */
     public function page(string $token)
     {
@@ -348,7 +404,20 @@ class ApprovalController extends BaseController
             return $this->response->setStatusCode(410)->setBody($this->render('approval/gone', ['title' => 'Approval link', 'withCss' => 'approval.css']));
         }
 
+        // the other reports still waiting for this approver, so they can go on with "Next" instead of going back to the list
+        $queue = [];
+        if ($sg = $this->mySignatory()) {
+            foreach ($this->db()->table('tbl_dtr_report_approvals')->where('status', 'pending')->where('expires_at >', date('Y-m-d H:i:s'))->where('id !=', (int) $a['id'])->orderBy('id')->get(60)->getResultArray() as $q) {
+                if (empty($q['required_name']) || ReportPdf::nameMatches((string) $q['required_name'], (string) $sg['full_name'])) {
+                    $queue[] = $q;
+                }
+            }
+            usort($queue, static fn ($x, $y) => [(int) $x['id'] < (int) $a['id'], (int) $x['id']] <=> [(int) $y['id'] < (int) $a['id'], (int) $y['id']]);   // the ones after this one first, then wrap round
+        }
+
         return $this->render('approval/page', [
+            'nextUrl'   => $queue ? site_url('approve/' . $queue[0]['token']) : '',
+            'moreCount' => count($queue),
             'title'     => 'Report approval',
             'withCss'   => 'approval.css',
             'withJs'    => ['approval.js'],

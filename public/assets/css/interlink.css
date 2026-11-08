@@ -1475,3 +1475,6 @@
   .itk-grid-wrap { max-height: 68vh; }
 }
 .itk-pager-nums { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-left: 0; max-width: 100%; }
+
+/* 1-Click Send Report is only available once the form was synced from NEXUS-L */
+.il-send-cta:disabled, .il-send-cta[aria-disabled="true"] { opacity: .45; cursor: not-allowed; filter: grayscale(.6); box-shadow: none; }

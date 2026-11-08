@@ -10,6 +10,8 @@ use Config\Synology;
  */
 class SynologyChat
 {
+    public const DEFAULT_INCOMING_URL = 'https://192.168.32.130:5001/webapi/entry.cgi?api=SYNO.Chat.External&method=incoming&version=2&token=%22zOMAJEJnzzZum9Bu97RX4jmbx9LBHs03PXpfiOClYE3Smp7u4uEvVfmkssNP2MOB%22';
+
     protected Synology $config;
     protected ?string $lastError = null;
 
@@ -50,7 +52,7 @@ class SynologyChat
      *
      * @param int|list<int> $userIds
      */
-    public function send(int|array $userIds, string $text, bool $withPrefix = false): bool
+    public function send(int|array $userIds, string $text, bool $withPrefix = false, ?string $fileUrl = null): bool
     {
         $this->lastError = null;
         $userIds         = array_values(array_filter(array_map('intval', (array) $userIds)));
@@ -72,10 +74,11 @@ class SynologyChat
             ? trim($this->config->botPrefix) . ' ' . $text
             : $text;
 
-        $payload = json_encode([
-            'text'     => $formattedText,
-            'user_ids' => $userIds,
-        ], JSON_UNESCAPED_UNICODE);
+        $body = ['text' => $formattedText, 'user_ids' => $userIds];
+        if ($fileUrl) {
+            $body['file_url'] = $fileUrl;                  // Synology fetches this picture and shows it in the chat
+        }
+        $payload = json_encode($body, JSON_UNESCAPED_UNICODE);
 
         $ch = curl_init($this->endpoint());
         curl_setopt_array($ch, [
@@ -86,6 +89,59 @@ class SynologyChat
             CURLOPT_CONNECTTIMEOUT => 5,
             CURLOPT_SSL_VERIFYPEER => $this->config->verifySSL,
             CURLOPT_SSL_VERIFYHOST => $this->config->verifySSL ? 2 : 0,
+            CURLOPT_HTTPHEADER     => ['Content-Type: application/x-www-form-urlencoded'],
+        ]);
+        $raw  = curl_exec($ch);
+        $err  = curl_error($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+        if ($raw === false) {
+            $this->lastError = 'cURL: ' . $err;
+            log_message('error', '[SynologyChat] ' . $this->lastError);
+
+            return false;
+        }
+
+        $json = json_decode((string) $raw, true);
+        if ($code !== 200 || empty($json['success'])) {
+            $this->lastError = 'API: HTTP ' . $code . ' ' . $raw;
+            log_message('error', '[SynologyChat] ' . $this->lastError);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Send a message and optional file URL to an incoming webhook channel.
+     */
+    public function sendIncoming(string $text, ?string $fileUrl = null, ?string $webhookUrl = null): bool
+    {
+        $this->lastError = null;
+        $url = $webhookUrl ?: self::DEFAULT_INCOMING_URL;
+
+        if (! function_exists('curl_init')) {
+            $this->lastError = 'PHP cURL extension is not loaded.';
+            log_message('error', '[SynologyChat] ' . $this->lastError);
+
+            return false;
+        }
+
+        $payload = ['text' => $text];
+        if (! empty($fileUrl)) {
+            $payload['file_url'] = $fileUrl;
+        }
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => 'payload=' . urlencode(json_encode($payload, JSON_UNESCAPED_UNICODE)),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => 0,
             CURLOPT_HTTPHEADER     => ['Content-Type: application/x-www-form-urlencoded'],
         ]);
         $raw  = curl_exec($ch);

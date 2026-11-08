@@ -87,6 +87,22 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
             </a><?php endif ?>
         </details>
 
+        <!-- Lab Monitoring: ERP Finish Monitoring (more tabs later) -->
+        <?php $monOpen = (string) $segment === 'lab-monitoring'; ?>
+        <?php if ($can('interlink')): ?>
+        <details class="side-group side-group-collapsible" data-grp="labmon"<?= $monOpen ? ' open data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
+            <summary class="side-group-h" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer;list-style:none">
+                <span>Lab Monitoring</span>
+                <svg class="side-group-c" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:14px;height:14px;transition:transform .15s ease-out" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+            </summary>
+            <a href="<?= site_url('lab-monitoring/erp-finish') ?>" class="nav-link <?= $monOpen ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
+                <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                ERP Finish Monitoring
+            </a>
+        </details>
+        <?php endif ?>
+
+
         <!-- Sub-navigation for QC Lab Digital Test Reports (#Digital Test Report) -->
         <?php
         $labLinks = [

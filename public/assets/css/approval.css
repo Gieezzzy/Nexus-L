@@ -44,3 +44,46 @@
 .apv-tick.bad { background: #ef4444; }
 @keyframes apv-rot { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .apv-spin { animation-duration: 2.4s; } }
+
+/* ---- layout: report on the left, the decision beside it (stacked on small screens) ---- */
+.apv { max-width: 1320px; gap: 16px; }
+.apv-top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px 24px; padding: 2px 2px 0; }
+.apv-title h2 { margin: 0 0 4px; font-size: 24px; letter-spacing: -.01em; }
+.apv-facts-line { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 14px; color: #475569; }
+.apv-facts-line b { color: #0f172a; font-size: 15px; }
+.apv-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.apv-expiry { font-size: 13px; color: #92400e; background: #fef3c7; padding: 6px 12px; border-radius: 999px; }
+.apv-next { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; text-decoration: none; font-weight: 600; background: #0f172a; color: #fff; border-color: #0f172a; }
+.apv-next:hover { background: #1e293b; color: #fff; }
+.apv-count { font-weight: 500; font-size: 12.5px; background: rgba(255,255,255,.16); border-radius: 999px; padding: 2px 9px; }
+.apv-layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 20px; align-items: start; }
+.apv-doc { min-width: 0; }
+.apv-note { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px; }
+.apv-sign { position: sticky; top: 76px; max-width: none; background: #fff; border: 1px solid #dbe3ee; border-radius: 12px; padding: 18px 18px 16px; box-shadow: 0 6px 20px rgba(15,23,42,.07); }
+.apv-sign h3 { margin: 0 0 10px; font-size: 17px; }
+.apv-who { margin: 0 0 6px; display: flex; flex-direction: column; font-size: 14px; }
+.apv-who span { color: #64748b; font-size: 13px; }
+.apv-lbl { display: block; margin: 12px 0 5px; font-size: 13px; font-weight: 600; color: #1f2937; }
+.apv-lbl .muted { font-weight: 400; }
+.apv-sign .apv-pad { height: 160px; border: 1.5px dashed #94a3b8; background: #f8fafc; }
+.apv-sign .apv-pad:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.apv-sign textarea { border-radius: 8px; padding: 9px 11px; resize: vertical; min-height: 72px; }
+.apv-sign textarea:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; border-color: #2563eb; }
+.apv-row .nx-btn { min-height: 40px; }
+.apv-actions { display: grid; gap: 8px; margin-top: 14px; }
+.apv-actions .nx-btn { min-height: 48px; font-weight: 600; justify-content: center; }
+.apv-reject { background: #fff; }
+.apv-reject:hover { background: #fef2f2; }
+.apv-next:focus-visible, .apv-sign .nx-btn:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.apv-sheet { box-shadow: none; border-color: #dbe3ee; }
+
+@media (max-width: 1000px) {
+  .apv-layout { grid-template-columns: minmax(0, 1fr); }
+  .apv-sign { position: static; }
+}
+@media (max-width: 640px) {
+  .apv-title h2 { font-size: 21px; }
+  .apv-meta { width: 100%; }
+  .apv-next { flex: 1 1 100%; justify-content: center; }
+  .apv-sheet { padding: 8px; }
+}

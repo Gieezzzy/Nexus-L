@@ -14,8 +14,10 @@
     <link rel="apple-touch-icon" href="<?= base_url('favicon.png') ?>">
     <link rel="stylesheet" href="<?= nx_asset('css/dash.css') ?>">
     <?php if (! empty($withCss)): ?><link rel="stylesheet" href="<?= nx_asset('css/' . $withCss) ?>"><?php endif ?>
+    <?php $pg = explode('/', trim((string) uri_string(), '/'))[0] ?? ''; $pg = in_array($pg, ['interlink', 'help', 'designer', 'brain', 'labdocs', 'lab-monitoring'], true) ? $pg : ''; ?>
+    <?php if ($pg !== ''): ?><link rel="stylesheet" href="<?= nx_asset('css/polish.css') ?>"><?php endif ?>
 </head>
-<body>
+<body<?= $pg !== '' ? ' data-pg="' . $pg . '"' : '' ?>>
 <?= view('partials/icons') ?>
     <a class="skip-link" href="#main-content">Skip to main content</a>
     <?= view('partials/sidebar') ?>

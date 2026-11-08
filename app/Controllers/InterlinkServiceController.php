@@ -423,6 +423,8 @@ class InterlinkServiceController extends BaseController
         if ($state === 'done' && $genApp !== '' && preg_match('/^A\d{6,}$/i', $genApp)) {
             if ($lab !== '') {
                 $this->db()->table('tbl_dtr_unified_labrefs')->where('lab_ref_no', $lab)->update(['tr_no' => $genApp]);
+                // each eTRF type keeps its own Application No. for this Lab Ref (the earlier ones go to its history)
+                \App\Libraries\EtrfAppNos::record($lab, (string) ($etrfRow['etrf_type'] ?? ''), $genApp);
                 $uRows = $this->db()->table('tbl_dtr_unified_labrefs')->where('lab_ref_no', $lab)->get()->getResultArray();
                 foreach ($uRows as $ur) {
                     $slug = (string) ($ur['form_slug'] ?? '');

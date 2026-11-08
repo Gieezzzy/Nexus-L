@@ -30,6 +30,17 @@ $routes->post('interlink/service/callback', 'InterlinkServiceController::callbac
 $routes->get('interlink/service/verify', 'InterlinkServiceController::verify');
 $routes->post('interlink/service/lov', 'InterlinkLovController::receive');
 
+// the QR picture of a live approval link: fetched by Synology / the mail program, so no sign-in; the link itself is the key and it dies when used or expired
+$routes->get('approve/(:segment)/qr.png', 'ApprovalController::qr/$1');
+// phone camera link for a shoe picture: the one-off token in the address is the key (no sign-in on the phone)
+$routes->get('photo/(:segment)/qr.png', 'PhotoLinkController::qr/$1');
+$routes->get('photo/(:segment)', 'PhotoLinkController::page/$1');
+$routes->post('photo/(:segment)/upload', 'PhotoLinkController::upload/$1');
+// the ERP agent reports what it did with a report (its token is the key)
+$routes->post('erp-agent/callback', 'ErpAgentController::callback');
+$routes->post('photo/(:segment)/claim', 'PhotoLinkController::claim/$1');
+$routes->post('photo/(:segment)/release', 'PhotoLinkController::release/$1');
+
 // ---------------------------------------------------------------------
 // Authenticated routes - nothing below is reachable without logging in
 // ---------------------------------------------------------------------
@@ -37,6 +48,10 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->get('dashboard', 'DashboardController::index', ['as' => 'dashboard']);
     $routes->get('dashboard/data', 'DashboardController::data');
     $routes->get('help', 'HelpController::index', ['as' => 'help']);
+    $routes->get('thirdparty/qima-image', 'ThirdPartyController::qimaImage');
+    $routes->post('thirdparty/qima-import', 'ThirdPartyController::qimaImport');
+    $routes->get('thirdparty', 'ThirdPartyController::index');
+    $routes->get('thirdparty/(:segment)', 'ThirdPartyController::index/$1');
     $routes->get('analytics', 'AnalyticsController::index', ['as' => 'analytics']);
     $routes->get('account', 'AccountController::index', ['as' => 'account']);
     $routes->post('account/save', 'AccountController::save');
@@ -73,6 +88,15 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->post('inbox/triggered/(:segment)/(:num)', 'InboxController::markTriggered/$1/$2');
 
     // Intertek InterLink 2.0 Report Automation & Sync
+    // Lab Monitoring: ERP Finish Monitoring
+    $routes->get('lab-monitoring', 'LabMonitoringController::erp', ['as' => 'lab-monitoring']);
+    $routes->get('lab-monitoring/erp-finish', 'LabMonitoringController::erp');
+    $routes->get('lab-monitoring/data', 'LabMonitoringController::data');
+    $routes->get('lab-monitoring/erp-log', 'LabMonitoringController::erpLog');
+    $routes->get('lab-monitoring/agent-status', 'LabMonitoringController::agentStatus');
+    $routes->post('lab-monitoring/erp-status', 'LabMonitoringController::setErp');
+    $routes->post('lab-monitoring/erp-submit', 'LabMonitoringController::erpSubmit');
+
     $routes->get('interlink', 'InterlinkController::index', ['as' => 'interlink']);
     $routes->get('interlink/reports', 'InterlinkController::reports');
     $routes->get('interlink/report/(:segment)', 'InterlinkController::report/$1');
@@ -117,6 +141,9 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('dtr/lookup', 'DtrController::lookup');
     $routes->get('dtr/shoe-lookup', 'DtrController::shoeLookup');
     $routes->get('dtr/shoe-search', 'DtrController::shoeSearch');
+    $routes->get('dtr/erp-shoe-search', 'DtrController::erpShoeSearch');
+    $routes->get('dtr/erp-image', 'DtrController::erpImage');
+    $routes->get('dtr/bonding-std', 'DtrController::bondingStd');
     $routes->get('dtr/retest-list', 'DtrController::retestList');
     $routes->post('dtr/wholeshoe-save', 'DtrController::wholeShoeSave');
     $routes->post('dtr/intake-save', 'DtrController::intakeSave');
@@ -142,9 +169,14 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('approve/(:segment)/pdf', 'ApprovalController::preview/$1');
     $routes->get('approve/(:segment)', 'ApprovalController::page/$1');
     $routes->post('approve/(:segment)', 'ApprovalController::decide/$1');
+    $routes->post('dtr/photo-link', 'PhotoLinkController::create');
+    $routes->get('dtr/photo-status', 'PhotoLinkController::status');
+    $routes->get('dtr/photo-image', 'PhotoLinkController::image');
     $routes->get('dtr/layout', 'DesignerController::layout');
 
     $routes->get('dtr/bonding-access-pdf', 'DtrController::bondingAccessPdf');
+    $routes->post('dtr/send-synology', 'DtrController::sendSynology');
+    $routes->post('dtr/send-email', 'DtrController::sendEmail');
 
     // Laboratory Documents: the registers of the "#" folders of the Lab Documents share
     $routes->get('labdocs', 'LabDocsController::index', ['as' => 'labdocs']);
@@ -157,11 +189,15 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('labdocs/(:segment)/doc/(:segment)', 'LabDocsController::doc/$1/$2');
     $routes->get('labdocs/(:segment)/file/(:segment)', 'LabDocsController::file/$1/$2');
     $routes->get('labdocs/(:segment)/b/(:segment)', 'LabDocsController::book/$1/$2');
+    $routes->get('labdocs/(:segment)/b/(:segment)/download', 'LabDocsController::bookDownload/$1/$2');
     $routes->get('labdocs/(:segment)/b/(:segment)/sheet/(:num)', 'LabDocsController::sheet/$1/$2/$3');
     $routes->post('labdocs/(:segment)/b/(:segment)/save', 'LabDocsController::saveBook/$1/$2');
     $routes->post('labdocs/(:segment)/rev/(:num)/delete', 'LabDocsController::deleteRev/$1/$2');
     $routes->get('labdocs/(:segment)/v/(:num)', 'LabDocsController::fileView/$1/$2');
     $routes->get('labdocs/(:segment)/f/(:num)', 'LabDocsController::fileGet/$1/$2');
+    $routes->post('labdocs/(:segment)/f/(:num)/save-docx', 'LabDocsController::saveDocxFile/$1/$2');
+    $routes->post('labdocs/(:segment)/f/(:num)/save-ppt', 'LabDocsController::savePptFile/$1/$2');
+    $routes->post('labdocs/(:segment)/f/(:num)/save-pdf', 'LabDocsController::savePdfFile/$1/$2');
     $routes->get('labdocs/(:segment)/thumb/(:num)', 'LabDocsController::thumb/$1/$2');
     $routes->get('labdocs/(:segment)', 'LabDocsController::show/$1');
     $routes->post('labdocs/(:segment)/save', 'LabDocsController::save/$1');

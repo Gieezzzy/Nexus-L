@@ -662,7 +662,22 @@
     } catch (e) { /* the grids stay as they were */ }
   };
 
+  // "Synced" = the Upload Form was filled from NEXUS-L (Sync NEXUS-L Data) for this application and Lab Reference. 1-Click Send Report works only then.
+  state.syncedFor = '';
+  state.syncedLab = '';
+  const updateSendGate = () => {
+    const btn = $('#btn-oneclick-send-top'); if (!btn) return;
+    const appNo = state.activeAppNo || $('#uf_application_no')?.value || '';
+    const ok = !!appNo && state.syncedFor === appNo;
+    btn.disabled = !ok;
+    btn.setAttribute('aria-disabled', ok ? 'false' : 'true');
+    btn.title = ok ? `Send this synced report (${state.syncedLab || appNo}) to InterLink` : 'Sync NEXUS-L Data first: the report can only be sent after the form has been filled from NEXUS-L';
+  };
+
   const populateInitialUploadForm = (report) => {
+    state.syncedFor = '';   // a form that was just opened or reset is not synced
+    state.syncedLab = '';
+    updateSendGate();
     clearSyncedHighlights();
     const isAlreadySynced = Number(report.synced_to_interlink) === 1;
     const isMaterial = report.sample_type === 'Material';
@@ -1240,7 +1255,7 @@
   // =========================================================================
   // 4. EXECUTE FORM FILL & 1-CLICK LIVE REPORT SEND
   // =========================================================================
-  const executeSync = async (sendLive = false) => {
+  const executeSync = async (sendLive = false, override = null) => {
     const confirmBtn = $('#btn-confirm-sync');
     const liveBtn = $('#btn-confirm-and-send-live');
     const appNo = state.activeAppNo || $('#uf_application_no')?.value || 'A005967935';
@@ -1248,7 +1263,9 @@
     const fieldsToSync = {};
     const checks = $$('#sync-fields-tbody .sync-field-check');
 
-    if (checks.length > 0) {
+    if (override) {
+      Object.assign(fieldsToSync, override);   // 1-Click Send of a synced form: exactly what the form shows now
+    } else if (checks.length > 0) {
       checks.forEach((chk) => {
         if (!chk.checked) return;
         const key = chk.dataset.syncCheck;
@@ -1292,8 +1309,8 @@
       // Sending is done by the person responsible, in their own browser: show the helper that fills the InterLink form
       if (sendLive && window.nxFillHelper) window.nxFillHelper(appNo, fieldsToSync, currentLabRef(), modeFor(appNo) === 'add' ? 'add' : 'edit');   // the Lab Reference chosen in the dialog: its samples and test items go with the send
 
-      // Fill every selected field into UploadForm.aspx (Tab 1 + Tab 2) with visual highlight
-      Object.keys(fieldsToSync).forEach((key) => {
+      // Fill every selected field into UploadForm.aspx (Tab 1 + Tab 2) with visual highlight (not when sending the form as it stands)
+      if (!override) Object.keys(fieldsToSync).forEach((key) => {
         const val = fieldsToSync[key];
 
         if (key === 'is_retest') {
@@ -1314,16 +1331,21 @@
         }
       });
 
-      if (fieldsToSync.report_no && $('#uf_tab2_report_no')) {
+      if (!override && fieldsToSync.report_no && $('#uf_tab2_report_no')) {
         $('#uf_tab2_report_no').value = fieldsToSync.report_no;
       }
 
       // this Lab Reference may already have a report approved and signed: show it as the attachment (under the user's file
       // name format) instead of a name made up by the sync
-      restoreApproval($('#dlg-lr-labref')?.value || '');
+      if (!override) {
+        restoreApproval($('#dlg-lr-labref')?.value || '');
 
-      // Render Tab 2 Sample Info, Test Items, and Test Readings from the selected LabRefNo
-      renderTab2SubGrids(state.activeSamples, state.activeItems, state.activeReadings);
+        // Render Tab 2 Sample Info, Test Items, and Test Readings from the selected LabRefNo
+        renderTab2SubGrids(state.activeSamples, state.activeItems, state.activeReadings);
+      }
+      // the form now holds NEXUS-L's values for this application and Lab Reference: it counts as synced
+      if (!override) { state.syncedFor = appNo; state.syncedLab = String($('#dlg-lr-labref')?.value || '').trim(); }
+      updateSendGate();
 
       if (res.report) {
         const idx = state.reports.findIndex((r) => r.application_no === res.report.application_no);
@@ -2281,10 +2303,12 @@
 
   // Open Pre-Sync Confirmation Dialog
   $('#btn-open-sync-dialog')?.addEventListener('click', openSyncDialog);
-  $('#btn-banner-sync')?.addEventListener('click', openSyncDialog);
-  $('#btn-oneclick-send-top')?.addEventListener('click', openSyncDialog);
-  $('#btn-banner-oneclick')?.addEventListener('click', openSyncDialog);
-  $('#uf-btn-submit-live')?.addEventListener('click', openSyncDialog);
+  $('#btn-oneclick-send-top')?.addEventListener('click', () => {
+    const appNo = state.activeAppNo || $('#uf_application_no')?.value || '';
+    if (!appNo || state.syncedFor !== appNo) { updateSendGate(); showToast('Sync NEXUS-L Data first: the report can only be sent after the form was filled from NEXUS-L.', true); return; }
+    executeSync(true, getCurrentFormValues());   // sends the synced form as it stands, without opening the dialog
+  });
+  updateSendGate();
   $('#btn-close-sync-dialog')?.addEventListener('click', closeSyncDialog);
   $('#btn-cancel-sync')?.addEventListener('click', closeSyncDialog);
 

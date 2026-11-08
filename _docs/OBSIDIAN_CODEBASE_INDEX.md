@@ -1,7 +1,7 @@
 ---
 type: "CodebaseIndex"
 tags: [obsidian, graphify, icm, codebase-index, nexus-l, interlink, dtr, qc-lab]
-updated: "2026-10-31"
+updated: "2026-11-08"
 ---
 
 # NEXUS-L - Codebase Index
@@ -29,6 +29,13 @@ NEXUS-L is the laboratory intelligence and execution system built on CodeIgniter
 | `public/assets/js/interlink.js` | Pre-Sync Dialog logic, dynamic LabRef ComboBox loading, field highlight syncing, 1-click submission, and the Upload Form **Generate Report** button (`window.nxReportPdf`: Lab Ref → DTR print sheet → `dtr/sheet-pdf` PDF attachment). |
 | `app/Libraries/ReportPdf.php` | Material report PDFs without Access (blank form + dbnexus values via `tools/build/render-report.js`), sign-off line finder, signature background removal, stamping. Forms in `app/Libraries/report_templates/`. |
 | `app/Controllers/ApprovalController.php` | QR approval of reports by registered Managers / Supervisors: request, single-use links, sign, signed PDF, verify (`dtr/approval/verify`), signatories admin, per-user PDF name format. |
+| `app/Controllers/LabMonitoringController.php`, `app/Views/labmonitor/erp.php`, `public/assets/js/labmon.js` | Lab Monitoring > ERP Finish Monitoring: month view of bonding lab refs, ERP / InterLink status, row dialog (read-only U60 report), single and bulk **Submit to ERP**, ERP log, ERP PC badge. |
+| `app/Libraries/ErpMonitor.php`, `app/Libraries/ErpAgent.php`, `app/Controllers/ErpAgentController.php`, `app/Commands/ErpImport.php` | ERP payload / import from the daily tracker workbook; client for the ERP Agent (PC .43 / .45); result callback; `php spark erp:import`. |
+| `E:\desktop\MaterialTest\NexusErpAgent\` | **NEXUS-L ERP Agent** (C# tray app): HTTP API, FIFO queue, ERP driver on a hidden desktop, log view, Inno Setup installer. |
+| `app/Libraries/EtrfAppNos.php` | One Application No. column + history per eTRF type on `tbl_dtr_unified_labrefs`. |
+| `app/Controllers/PhotoLinkController.php`, `public/assets/js/dtr-photo.js`, `dtr-photo-attach.js`, `app/Views/photo/capture.php` | Phone camera QR links (shoe picture, Send Report photo): token, lock, live update. |
+| `app/Libraries/QrPng.php` | QR code PNG maker (Synology message, e-mail, photo links). |
+| `public/assets/css/polish.css`, `labmon.css` | Shared page polish (InterLink, eTRF, Help, Designer, Brain, documents) and the ERP Finish Monitoring styles. |
 | `app/Libraries/Brain.php` | Bot knowledge search: per-word, rarity-weighted matching and ranking (cached corpus), confidence. |
 | `tools/interlink-sender/` | Chrome extension (v1.4.0): fills and saves InterLink forms, reads the live grid, and refuses to save anything not approved. |
 | `tools/interlink-service/` | C# .NET 9 background service (Playwright, headless Chromium): submits approved reports to InterLink without a visible browser; see its README. NEXUS-L side: `InterlinkServiceController`. |
@@ -45,7 +52,8 @@ NEXUS-L is the laboratory intelligence and execution system built on CodeIgniter
 | **InterLink 2.0** | `tbl_interlink_reports`, `tbl_interlink_sync_logs` | Ported Intertek form columns, live sync state, and audit history. |
 | **Material Results** | `tbl_dtr_fabric_results`, `tbl_dtr_leather_results`, `tbl_dtr_wst_results`, `tbl_dtr_fthl_results`, `tbl_dtr_hardware_results`, `tbl_dtr_label_results`, `tbl_dtr_sklfm_results`, `tbl_dtr_rubber_results`, `tbl_dtr_box_results`, `tbl_dtr_insole_results` | Complete test readings across all 10 material categories migrated from Access. |
 | **Bonding U60** | `tbl_dtr_bonding_info`, `tbl_dtr_bonding_points`, `tbl_dtr_bonding_spot_points` | Whole shoe bonding headers, 132-column point readings, and spot data. |
-| **Master Index** | `tbl_dtr_unified_labrefs` | 4,568 unified test reports indexed with JSON test item results for instant Pre-Sync Dialog ComboBox lookup. |
+| **ERP & photos** | `tbl_erp_submissions`, `tbl_photo_links` | ERP send log with payload and status; one-off phone camera links with lock. |
+| **Master Index** | `tbl_dtr_unified_labrefs` | 4,670 unified test reports (bonding incl. uncollected samples, Whole Shoe) indexed with JSON test item results for instant Pre-Sync Dialog ComboBox lookup. |
 | **Masters & DSR** | `tbl_dtr_standards`, `tbl_dtr_materials_master`, `tbl_dtr_dsr`, `tbl_dtr_shoe_list`, `tbl_dtr_material_list` | Reference data for automatic material, shoe, and thickness-dependent standards lookups. |
 
 ## Machine Data Folders (`\\192.168.32.45\OUTDATA\`)
@@ -57,7 +65,9 @@ NEXUS-L is the laboratory intelligence and execution system built on CodeIgniter
 - *Strict Rule:* Network files are read-only; never modified or deleted.
 
 
-## Status (2026-10-31)
+## Status (2026-11-08)
+- ERP Finish Monitoring sends reports to the ERP Agent (ICM Phase 206); the agent enters them in the ERP client in the background (hidden desktop) one at a time.
+- Per-eTRF Application Nos., phone camera links and report approval messages (Synology + e-mail with QR) are live (ICM Phase 206).
 - NEXUS-L is detached from Access: `dbnexus` is the only database; reports print from it (ICM Phase 196).
 - Nothing is saved in InterLink without an approved, signed report (ICM Phases 194 and 197).
 - AI Assistant & Help Bot fully operational (ICM Phase 200 & 201): live read-only DB querying, Synology Chat approval reminders, 200 problem knowledge corpus, and interactive test computation engine with follow-up validation.

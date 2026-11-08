@@ -714,9 +714,15 @@
     }
   };
 
+  // the Application No. each eTRF type got for this Lab Ref (current one, earlier ones in the tooltip)
+  const ETRF_KEYS = [['mat', 'Material'], ['prod', 'Product'], ['pull', 'PULLTEST'], ['bonding', 'Bonding'], ['whole', 'Whole Shoe'], ['adult', 'Product Adult']];
+  const etrfApps = (r) => ETRF_KEYS.filter(([k]) => r[`etrf_${k}_app`]).map(([k, l]) => {
+    const hist = (r[`etrf_${k}_hist`] || '').trim();
+    return `<br><span class="muted sm" title="${hist ? 'Earlier: ' + esc(hist) : 'No earlier Application No.'}">${l}: <b>${esc(r[`etrf_${k}_app`])}</b>${hist ? ' (+' + hist.split(';').length + ' earlier)' : ''}</span>`;
+  }).join('');
   const renderLabrefs = () => {
     $('#et-labrefs').innerHTML = S.labrefs.map((r) => `<tr class="pick ${S.ref === r.lab_ref_no ? 'on' : ''}" data-ref="${esc(r.lab_ref_no)}" data-mtl="${esc(r.mtl_no || '')}" data-po="${esc(r.po_lot_no || '')}">
-      <td><b>${esc(r.lab_ref_no)}</b>${r.tr_no ? `<br><span class="muted sm">TR: ${esc(r.tr_no)}</span>` : ''}</td>
+      <td><b>${esc(r.lab_ref_no)}</b>${r.tr_no ? `<br><span class="muted sm">TR: ${esc(r.tr_no)}</span>` : ''}${etrfApps(r)}</td>
       <td>${esc(r.form_category)}</td>
       <td><code>${esc(r.mtl_no || '-')}</code></td>
       <td>${esc(r.po_lot_no || '-')}</td>

@@ -101,7 +101,7 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                     <span>Sync NEXUS-L Data</span>
                     <small id="sync-btn-appno"></small>
                 </button>
-                <button type="button" id="btn-oneclick-send-top" class="il-send-cta" title="Review & 1-Click Send Report to InterLink">
+                <button type="button" id="btn-oneclick-send-top" class="il-send-cta" title="Fill the form from the matching Lab Reference and send the report to InterLink">
                     <svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> 1-Click Send Report
                 </button>
             </div>
@@ -395,13 +395,6 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                 </button>
                 <button type="button" id="btn-view-eform" class="uf-btn-secondary" title="Open NormalForm.aspx [10000] (E)">
                     View eApplication (E)
-                </button>
-                <button type="button" id="btn-banner-sync" class="uf-btn-sync-now">
-                    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                    Review &amp; Sync NEXUS-L Data
-                </button>
-                <button type="button" id="btn-banner-oneclick" class="il-send-cta">
-                    <svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> 1-Click Sync &amp; Send Report
                 </button>
             </div>
         </div>
@@ -865,7 +858,6 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
             <div class="uf-bottom-bar">
                 <div class="uf-bottom-left">
                     <button type="button" id="uf-btn-save" class="uf-action-btn">Save</button>
-                    <button type="button" id="uf-btn-submit-live" class="il-send-cta"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> Submit &amp; Send Report to InterLink</button>
                     <button type="button" id="uf-btn-new" class="uf-action-btn">New</button>
                 </div>
                 <div class="uf-bottom-right">
@@ -947,7 +939,8 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                         <option value="rubber">Rubber Outsole (RB)</option>
                         <option value="box">Carton Box (IB / OB)</option>
                         <option value="insole">Insole Board (SL)</option>
-                        <option value="bonding">Whole Shoe Bonding (U60)</option>
+                        <option value="bonding">Shoe Bonding (U60)</option>
+                        <option value="wholeshoe">Whole Shoe</option>
                     </select>
                 </div>
                 <div class="uf-field" style="margin:0">

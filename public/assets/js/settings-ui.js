@@ -43,4 +43,16 @@
     });
     if (empty) empty.hidden = shown > 0;
   });
+
+  // "Check the ERP PC": is the agent reachable with the saved address, port and token
+  const chk = document.getElementById('st-erp-test');
+  if (chk) chk.addEventListener('click', async () => {
+    const msg = document.getElementById('st-erp-msg'); msg.textContent = 'Checking...'; msg.style.color = '';
+    try {
+      const base = (document.querySelector('meta[name="base-url"]')?.content || '/').replace(/\/?$/, '/');
+      const j = await fetch(base + 'lab-monitoring/agent-status', { credentials: 'same-origin' }).then((r) => r.json());
+      msg.style.color = j.online ? '#15803d' : '#b91c1c';
+      msg.textContent = j.online ? `Online at ${j.where}. ${j.erp || ''} Waiting: ${j.queued}.` : `Not reachable at ${j.where}: ${j.error || 'no answer'}`;
+    } catch (e) { msg.style.color = '#b91c1c'; msg.textContent = 'Could not check: ' + e.message; }
+  });
 })();

@@ -62,6 +62,58 @@
     else if (v === 'FAIL' || v === 'ERROR') el.classList.add('dtr-rate-fail');
   };
 
+  // Leather sheet (Lab VF 006): the printed VF layout over the same record. Each input carries its table column in data-col;
+  // typing is mirrored into the matching hidden material-form field so its averages and ratings keep running, then copied back.
+  // One printed sheet per material form (#dtr-sheet-<slug>): leather, fabric ...; leatherSheet is the one for the form on screen.
+  const allSheets = $$('.lf-sheet');
+  let leatherSheet = null;
+  const leatherMatForm = $('#dtr-material-form');
+  const leatherGeneric = (col) => $(`#mf_${col.replace(/[^a-zA-Z0-9_]/g, '')}`) || $(`[name="${CSS.escape(col)}"]`, leatherMatForm);
+  const leatherSheetSync = () => {
+    if (!leatherSheet || leatherSheet.hidden) return;
+    $$('.lf-out, .lf-std', leatherSheet).forEach((el) => {
+      const g = leatherGeneric(el.dataset.col);
+      if (g && g !== el) el.value = g.value;
+      else if (!g && el.dataset.from) {   // an average the hidden form does not calculate (e.g. Yarn Count): mean of the row's own readings
+        const nums = el.dataset.from.split('|').map((c) => parseFloat($(`[data-col="${CSS.escape(c)}"]`, leatherSheet)?.value)).filter((n) => !Number.isNaN(n));
+        el.value = nums.length ? (nums.reduce((a, b) => a + b, 0) / nums.length).toFixed(2) : '';
+      }
+      // a result the hidden form cannot calculate (no matching field / no readings to average) is typed in by the technician
+      if (el.classList.contains('lf-out') && !el.dataset.from) el.readOnly = !!g;
+      if (el.classList.contains('dtr-rate-inp')) styleRatingInput(el);
+    });
+  };
+  const leatherSheetFill = (record) => {
+    if (!leatherSheet) return;
+    $$('[data-col]', leatherSheet).forEach((el) => {
+      const raw = record ? record[el.dataset.col] : '';
+      const v = raw == null ? '' : String(raw);
+      if (el.type === 'radio') el.checked = v === el.value;
+      else el.value = /^\d{4}-\d{2}-\d{2} 00:00:00$/.test(v) ? v.slice(0, 10) : v;
+    });
+    leatherSheetSync();
+  };
+  const applyLeatherView = () => {
+    leatherSheet = $(`#dtr-sheet-${activeSlug}`) || null;
+    allSheets.forEach((s) => { s.hidden = s !== leatherSheet; });
+    if (leatherMatForm) leatherMatForm.hidden = !!leatherSheet;
+  };
+  allSheets.forEach((sheet) => {
+    sheet.addEventListener('input', (e) => {
+      const el = e.target;
+      if (!el.dataset || !el.dataset.col || el.classList.contains('lf-out')) return;
+      const g = leatherGeneric(el.dataset.col);
+      if (g && el.type !== 'radio') {
+        g.value = el.value;
+        g.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      leatherSheetSync();
+    });
+    sheet.addEventListener('change', (e) => {
+      if (e.target.dataset && e.target.dataset.col === 'Technician') e.target.value = withMachineNo(e.target.value);
+    });
+  });
+
   // Technician with the equipment code ("DTP-QC-048 - L. Aquidado"): names, machine nos. and older formats are completed from this list
   const TECHNICIANS = [
     { no: '048', name: 'L. Aquidado', alias: ['lucila'] },
@@ -69,7 +121,7 @@
     { no: '001', name: 'L. Tuddao', alias: ['larina'] },
     { no: '064', name: 'J. Barrera', alias: ['jessa'] },
     { no: '066', name: 'J. Parrilla', alias: ['joy'] },
-    { no: '067', name: 'R. Cabiga', alias: ['rose'] },
+    { no: '067', name: 'R. Cabigas', alias: ['rose'] },
   ];
   const withMachineNo = (value) => {
     const v = String(value ?? '').trim();
@@ -119,45 +171,67 @@
   const intakeEl = { back: $('#dtr-intake-backdrop'), tbody: $('#dtr-intake-tbody'), msg: $('#dtr-intake-msg') };
 
   // A row for one line. The "+" beside the line number adds another row for that same line (extra = true, with a remove button).
-  const intakeRowHtml = (line, extra, rightSide) => `
+  // o.type = preset Test Type; o.pick = the line is chosen from a list (First Case); o.noLine = no line and no Active toggle (Tech Trial)
+  const intakeRowHtml = (line, extra, rightSide, o = {}) => {
+    const type = o.type || 'DAILY';
+    const b = String(line).charAt(0);
+    const lineCount = b === 'B' ? 14 : 12;
+    const lineOpts = Array.from({ length: lineCount }, (_, i) => `<option value="${b}${i + 1}"${`${b}${i + 1}` === line ? ' selected' : ''}>${b}${i + 1}</option>`).join('');
+    const lineCell = o.noLine
+      ? '<td class="ik-linecell"><span class="muted sm">-</span></td>'
+      : `<td class="ik-linecell">${o.pick ? `<select class="ik-linesel" aria-label="Line">${lineOpts}</select>` : `<b>${line}</b>`} <button type="button" class="ik-addrow" title="Add another row for ${line}" aria-label="Add another row for ${line}">+</button>${extra ? '<button type="button" class="ik-delrow" title="Remove this row" aria-label="Remove this row">&times;</button>' : ''}</td>`;
+    const typeOpts = ['DAILY', 'TECH TRIAL', 'FIRST CASE', 'RETEST'].map((t) => `<option${t === type ? ' selected' : ''}>${t}</option>`).join('');
+    return `
         <tr data-line="${line}"${extra ? ' data-extra="1"' : ''}>
-          <td><label class="dtr-switch"><input type="checkbox" class="ik-active" checked><span></span></label></td>
-          <td class="ik-linecell"><b>${line}</b> <button type="button" class="ik-addrow" title="Add another row for ${line}" aria-label="Add another row for ${line}">+</button>${extra ? '<button type="button" class="ik-delrow" title="Remove this row" aria-label="Remove this row">&times;</button>' : ''}</td>
+          <td>${o.noLine ? '' : '<label class="dtr-switch"><input type="checkbox" class="ik-active" checked><span></span></label>'}</td>
+          ${lineCell}
           <td><div class="dtr-side-toggle"><button type="button" data-side="L" class="${rightSide ? '' : 'active'}">L</button><button type="button" data-side="R" class="${rightSide ? 'active' : ''}">R</button></div></td>
-          <td class="ik-labref mono"></td>
-          <td><input type="text" class="ik-code" placeholder="Enter code"></td>
-          <td><input type="text" class="ik-style" placeholder="Enter style"></td>
-          <td><input type="text" class="ik-color" placeholder="Enter colorway"></td>
-          <td><input type="text" class="ik-mtl" placeholder="Enter MTL #"></td>
-          <td><button type="button" class="dtr-btn dtr-btn-outline ik-lib">Library</button></td>
-          <td><input type="text" class="ik-tech" list="dtr-tech-list" placeholder="Technician" autocomplete="off"></td>
-          <td><select class="ik-type"><option>DAILY</option><option>TECH TRIAL</option><option>FIRST CASE</option><option>RETEST</option></select></td>
+          <td class="ik-labref mono"><span class="ik-lr"></span>${o.noLine ? `<button type="button" class="ik-addrow" title="Add another tech trial row" aria-label="Add another tech trial row">+</button>${extra ? '<button type="button" class="ik-delrow" title="Remove this row" aria-label="Remove this row">&times;</button>' : ''}` : ''}</td>
+          <td><select class="ik-type">${typeOpts}</select></td>
+          <td><input type="text" class="ik-code" placeholder="Type to filter" autocomplete="off"></td>
+          <td><input type="text" class="ik-style" placeholder="Style" readonly tabindex="-1"></td>
+          <td><input type="text" class="ik-color" placeholder="Colorway" readonly tabindex="-1"></td>
+          <td><input type="text" class="ik-mtl" placeholder="MTL #" readonly tabindex="-1"></td>
+          <td class="ik-imgcell"><img class="ik-img" alt="" hidden></td>
           <td class="ik-pulls"><label><input type="checkbox" class="ik-pt" value="HEEL PULL"> Heel Pull</label><label><input type="checkbox" class="ik-pt" value="EYELET"> Eyelet</label><label><input type="checkbox" class="ik-pt" value="D-RING"> D-Ring</label><label><input type="checkbox" class="ik-pt" value="RIVET"> Rivet</label></td>
-          <td style="text-align:center"><input type="checkbox" class="ik-lacking" aria-label="Lacking"></td>
-          <td><textarea class="ik-retest-note" rows="2" placeholder="Retest details"></textarea></td>
+          <td style="text-align:center"><input type="checkbox" class="ik-lacking" aria-label="Lacking"><input type="date" class="ik-lackdate" tabindex="-1" aria-label="Lacking date" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none"><div class="ik-lackshow"></div></td>
+          <td><textarea class="ik-retest-note" rows="2" placeholder="Remarks"></textarea></td>
         </tr>`;
+  };
   const renderIntakeRows = () => {
     if (!intakeEl.tbody) return;
     const b = intake.building;
     let html = '';
     const lineCount = b === 'B' ? 14 : 12;
-    for (let i = 1; i <= lineCount; i++) html += intakeRowHtml(`${b}${i}`, false, i % 2 === 0);
+    const mode = intake.mode || 'DAILY';
+    $('#dtr-intake-table')?.classList.toggle('ik-trial', mode === 'TECH TRIAL');   // Active and Line columns are hidden for a tech trial
+    if (mode === 'TECH TRIAL') html = intakeRowHtml(`${b}0`, false, false, { type: mode, noLine: true });          // one row, no line, no Active toggle
+    else if (mode === 'FIRST CASE') html = intakeRowHtml(`${b}1`, false, false, { type: mode, pick: true });       // one row, the line is chosen
+    else for (let i = 1; i <= lineCount; i++) html += intakeRowHtml(`${b}${i}`, false, i % 2 === 0, { type: mode });   // DAILY / RETEST: every line
     intakeEl.tbody.innerHTML = html;
     const label = $('#dtr-intake-batch-label');
     if (label) label.textContent = `${b} • ${$('#dtr-intake-collection')?.value || ''}`;
     refreshIntakeLabRefs();
   };  // Lab Ref No = DTP + production date (YYYYMMDD) + SH + building + line number + -side (same rule the server uses on save)
   const refreshIntakeLabRefs = () => {
-    const d = ($('#dtr-intake-production')?.value || '').replace(/-/g, '');
+    const prodDate = $('#dtr-intake-production')?.value || '';
+    let trialNo = 0;   // tech trial rows are numbered 1, 2, 3 ... in the order shown (the server confirms the free number on save)
     $$('#dtr-intake-tbody tr').forEach((tr) => {
+      // a lacking specimen is booked under the date it is due, so the real specimen collected that day updates it instead of duplicating it
+      const lackDate = tr.querySelector('.ik-lacking').checked ? tr.querySelector('.ik-lackdate').value : '';
+      const d = (lackDate || prodDate).replace(/-/g, '');
       const side = tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L';
       const isRetest = tr.querySelector('.ik-type').value === 'RETEST' || tr.querySelector('.ik-retest-note').value.trim() !== '';
-      tr.querySelector('.ik-labref').textContent = d ? `DTP${d}SH${tr.dataset.line}-${side}${isRetest ? '-R01' : ''}` : '';   // retest: -R01, -R02... (the server picks the next free number)
+      const isTrial = tr.querySelector('.ik-type').value === 'TECH TRIAL';
+      // tech trial has no line: <date>TECHTRIAL<n>-<side> (the server picks the next free n)
+      if (isTrial) trialNo++;
+      tr.querySelector('.ik-lr').textContent = d ? (isTrial ? `${d}TECHTRIAL${trialNo}-${side}` : `DTP${d}SH${tr.dataset.line}-${side}${isRetest ? '-R01' : ''}`) : '';   // retest: -R01, -R02... (the server picks the next free number)
     });
   };
 
   const openIntake = () => {
     intake.building = 'A';
+    intake.mode = 'DAILY';
     intakeProdTouched = false;
     $$('#dtr-intake-building button').forEach((x) => x.classList.toggle('active', x.dataset.building === 'A'));
     if (intakeEl.msg) intakeEl.msg.textContent = '';
@@ -176,6 +250,30 @@
       $$('#dtr-intake-building button').forEach((x) => x.classList.toggle('active', x === btn));
       renderIntakeRows();
     });
+  });
+
+  // Test Type of a row can reshape the batch: FIRST CASE = one row (line chosen, + kept), TECH TRIAL = one row without Active / Line;
+  // choosing DAILY / RETEST while the batch is reduced brings back every line
+  intakeEl.tbody?.addEventListener('change', (e) => {
+    if (!e.target.classList.contains('ik-type')) return;
+    const v = e.target.value;
+    const reduced = intake.mode === 'TECH TRIAL' || intake.mode === 'FIRST CASE';
+    if (v === 'TECH TRIAL' || v === 'FIRST CASE' || (reduced && (v === 'DAILY' || v === 'RETEST'))) {
+      intake.mode = v;
+      renderIntakeRows();
+      if (v === 'RETEST') {
+        retestRow = intakeEl.tbody.querySelector('tr');
+        retestEl.search.value = '';
+        retestEl.back.classList.remove('hidden');
+        loadRetestList();
+      }
+    }
+  });
+  intakeEl.tbody?.addEventListener('change', (e) => {
+    if (!e.target.classList.contains('ik-linesel')) return;
+    const tr = e.target.closest('tr');
+    tr.dataset.line = e.target.value;
+    refreshIntakeLabRefs();
   });
 
   let intakeProdTouched = false;   // production date follows the collection date until it is edited by hand
@@ -221,6 +319,7 @@
           tr.querySelector('.ik-style').value = s.StyleNo || '';
           tr.querySelector('.ik-color').value = s.Colorway || '';
           tr.querySelector('.ik-mtl').value = s.MTL || '';
+          setIntakeImage(tr);
           closeLibrary();
         };
       } catch (err) {
@@ -232,7 +331,85 @@
     input.focus();
     search();
   };
-  document.addEventListener('mousedown', (e) => { if (libPanel && !libPanel.contains(e.target) && !e.target.closest('.ik-lib')) closeLibrary(); });
+  document.addEventListener('mousedown', (e) => { if (libPanel && !libPanel.contains(e.target) && !e.target.closest('.ik-lib, .ik-code')) closeLibrary(); });
+
+  // Shoe picture in the intake row: \\192.168.32.43\ERP Image\<MTL #>.JPG (served by dtr/erp-image)
+  const setIntakeImage = (tr) => {
+    const img = tr.querySelector('.ik-img');
+    if (!img) return;
+    const mtl = tr.querySelector('.ik-mtl').value.trim();
+    const note = (state) => tr.dispatchEvent(new CustomEvent('ik:image', { bubbles: true, detail: { state } }));   // dtr-photo.js shows a QR for a shoe the ERP has no picture of
+    if (!/^[A-Za-z0-9_-]{3,40}$/.test(mtl)) { img.hidden = true; img.removeAttribute('src'); note('none'); return; }
+    img.onload = () => { img.hidden = false; note('ok'); };
+    img.onerror = () => { img.hidden = true; note('missing'); };
+    img.src = `${BASE_URL}dtr/erp-image?mtl=${encodeURIComponent(mtl)}`;
+  };
+  // click a thumbnail -> larger picture (click anywhere or Esc to close)
+  document.addEventListener('click', (e) => {
+    const img = e.target.closest('.ik-img');
+    if (!img || img.hidden || !img.src) return;
+    const z = document.createElement('div');
+    z.className = 'ik-zoom';
+    z.innerHTML = `<img src="${img.src}" alt="">`;
+    const close = () => { z.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = (k) => { if (k.key === 'Escape') close(); };
+    z.addEventListener('click', close);
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(z);
+  });
+  // Production Code box doubles as the filter: typing lists matching ERP production orders (dberp.production_orders)
+  let codeTimer = null;
+  const suggestProdCode = (tr, input) => {
+    clearTimeout(codeTimer);
+    codeTimer = setTimeout(async () => {
+      closeLibrary();
+      const rect = input.getBoundingClientRect();
+      libPanel = document.createElement('div');
+      libPanel.className = 'dtr-lib-panel';
+      libPanel.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 540)) + 'px';
+      libPanel.style.top = Math.min(rect.bottom + 2, window.innerHeight - 300) + 'px';
+      libPanel.innerHTML = '<div class="lib-list"><div class="lib-empty">Searching...</div></div>';
+      document.body.appendChild(libPanel);
+      const panel = libPanel;
+      const list = panel.querySelector('.lib-list');
+      try {
+        const res = await apiFetch(`dtr/erp-shoe-search?q=${encodeURIComponent(input.value.trim())}`);
+        const shoes = (res && res.shoes) || [];
+        if (!shoes.length) { list.innerHTML = '<div class="lib-empty">No production code found.</div>'; return; }
+        list.innerHTML = shoes.map((s, i) => `<div class="lib-item" data-i="${i}"><b>${escHtml(s.ProdCode || '')}</b><span>${escHtml(s.StyleNo || '')}</span><span>${escHtml(s.Colorway || '')} ${s.MTL ? '- ' + escHtml(s.MTL) : ''}</span></div>`).join('');
+        list.onclick = (ev) => {
+          const item = ev.target.closest('.lib-item');
+          if (!item) return;
+          const s = shoes[Number(item.dataset.i)];
+          tr.querySelector('.ik-code').value = s.ProdCode || '';
+          tr.querySelector('.ik-style').value = s.StyleNo || '';
+          tr.querySelector('.ik-color').value = s.Colorway || '';
+          tr.querySelector('.ik-mtl').value = s.MTL || '';
+          setIntakeImage(tr);
+          closeLibrary();
+        };
+      } catch (err) {
+        // a reply that is not JSON is the login page: the session ended; anything else is a network / server problem
+        list.innerHTML = err instanceof SyntaxError
+          ? '<div class="lib-empty">Your session has ended. Refresh the page and sign in again.</div>'
+          : '<div class="lib-empty">ERP lookup failed (' + escHtml(String(err.message || err)) + ').</div>';
+      }
+    }, 250);
+  };
+  intakeEl.tbody?.addEventListener('input', (e) => {
+    if (!e.target.classList.contains('ik-code')) return;
+    const tr = e.target.closest('tr');
+    // style / colorway / MTL / image come only from the picked production code: editing or clearing the code resets them
+    ['.ik-style', '.ik-color', '.ik-mtl'].forEach((s) => { tr.querySelector(s).value = ''; });
+    setIntakeImage(tr);
+    suggestProdCode(tr, e.target);
+  });
+  intakeEl.tbody?.addEventListener('focusin', (e) => {
+    if (e.target.classList.contains('ik-code') && !libPanel) suggestProdCode(e.target.closest('tr'), e.target);
+  });
+  intakeEl.tbody?.addEventListener('change', (e) => {
+    if (e.target.classList.contains('ik-mtl')) setIntakeImage(e.target.closest('tr'));
+  });
   intakeEl.tbody?.addEventListener('click', async (e) => {
     const tr = e.target.closest('tr');
     if (!tr) return;
@@ -246,7 +423,9 @@
       let last = tr;
       while (last.nextElementSibling && last.nextElementSibling.dataset.line === last.dataset.line) last = last.nextElementSibling;
       const lastSide = last.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L';
-      last.insertAdjacentHTML('afterend', intakeRowHtml(last.dataset.line, true, lastSide === 'L'));
+      // First Case: the new row keeps the Test Type and gets its own line dropdown, preset to the same line
+      const firstCase = intake.mode === 'FIRST CASE';
+      last.insertAdjacentHTML('afterend', intakeRowHtml(last.dataset.line, true, lastSide === 'L', { type: firstCase ? 'FIRST CASE' : (intake.mode === 'TECH TRIAL' ? 'TECH TRIAL' : 'DAILY'), pick: firstCase, noLine: intake.mode === 'TECH TRIAL' }));
       refreshIntakeLabRefs();
       last.nextElementSibling.querySelector('.ik-code')?.focus();
       return;
@@ -290,6 +469,8 @@
         retestRow.querySelector('.ik-style').value = r.ModelStyle || '';
         retestRow.querySelector('.ik-color').value = r.Color || '';
         retestRow.querySelector('.ik-code').value = r.POLotNO || retestRow.querySelector('.ik-code').value;
+        retestRow.querySelector('.ik-mtl').value = r.MTL || '';
+        setIntakeImage(retestRow);   // the shoe picture follows the MTL # of the failed specimen
         const why = [r.ModeOfFailure, r.Analysis].filter(Boolean).join(' - ');
         retestRow.querySelector('.ik-retest-note').value = `Retest of ${r.LabRefNo}\nFailed: ${why || 'no analysis recorded'}`;
         const sideBtn = retestRow.querySelector(`.dtr-side-toggle button[data-side="${/-R$/.test(r.LabRefNo) ? 'R' : 'L'}"]`);
@@ -311,6 +492,17 @@
     if (!tr) return;
     if (e.target.classList.contains('ik-active')) tr.classList.toggle('inactive', !e.target.checked);
     if (e.target.classList.contains('ik-tech')) e.target.value = withMachineNo(e.target.value);
+    if (e.target.classList.contains('ik-lacking')) {
+      const di = tr.querySelector('.ik-lackdate');
+      if (e.target.checked) {
+        if (!di.value) di.value = $('#dtr-intake-production')?.value || '';
+        try { di.showPicker(); } catch (_) { /* older browsers: the default date stays */ }
+      } else di.value = '';
+    }
+    if (e.target.classList.contains('ik-lacking') || e.target.classList.contains('ik-lackdate')) {
+      tr.querySelector('.ik-lackshow').textContent = tr.querySelector('.ik-lacking').checked ? tr.querySelector('.ik-lackdate').value.slice(5) : '';
+      refreshIntakeLabRefs();
+    }
     if (e.target.classList.contains('ik-type') || e.target.classList.contains('ik-retest-note')) refreshIntakeLabRefs();
     if (e.target.classList.contains('ik-type') && e.target.value === 'RETEST') {
       retestRow = tr;
@@ -324,7 +516,8 @@
     const rows = [];
     const shutdowns = [];
     $$('#dtr-intake-tbody tr').forEach((tr) => {
-      if (!tr.querySelector('.ik-active').checked) { if (!tr.dataset.extra) shutdowns.push(tr.dataset.line); return; }   // main row toggled off = line shutdown (an extra row only skips itself)
+      const act = tr.querySelector('.ik-active');
+      if (act && !act.checked) { if (!tr.dataset.extra) shutdowns.push(tr.dataset.line); return; }   // main row toggled off = line shutdown (an extra row only skips itself)
       const row = {
         line: tr.dataset.line,
         side: tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L',
@@ -334,10 +527,11 @@
         mtl: tr.querySelector('.ik-mtl').value.trim(),
         test: 'Bonding',
         pullTypes: [...tr.querySelectorAll('.ik-pt:checked')].map((c) => c.value),
-        tech: withMachineNo(tr.querySelector('.ik-tech').value.trim()),
+        tech: '',
         type: tr.querySelector('.ik-type').value,
         retestNote: tr.querySelector('.ik-retest-note').value.trim().replace(/\s*\n\s*/g, ' | '),
         lacking: tr.querySelector('.ik-lacking').checked,
+        lackingDate: tr.querySelector('.ik-lacking').checked ? tr.querySelector('.ik-lackdate').value : '',
       };
       row.retest = row.type === 'RETEST' || row.retestNote !== '';
       if (row.code || row.style || row.color || row.mtl) rows.push(row);
@@ -637,12 +831,11 @@
         const j = await apiFetch('dtr/wholeshoe-labrefs');
         const rows = j.rows || [];
         wsRenderSections(j.sections || [], {});   // blank sheet with every test section until a Lab Ref is chosen
-        wsSel.innerHTML = rows.length
-          ? rows.map((r) => `<option value="${escHtml(r.LabRefNo)}">${escHtml(r.LabRefNo)}</option>`).join('')
-          : '<option value="">- no whole shoe intake yet -</option>';
+        // no record is loaded by default: an empty choice first, a Lab Ref loads only when picked (or opened from a list)
+        wsSel.innerHTML = '<option value="">' + (rows.length ? '- Select Lab Ref No -' : '- no whole shoe intake yet -') + '</option>'
+          + rows.map((r) => `<option value="${escHtml(r.LabRefNo)}">${escHtml(r.LabRefNo)}</option>`).join('');
         const want = new URLSearchParams(location.search).get('labref');
-        if (want && rows.some((r) => r.LabRefNo === want)) wsSel.value = want;
-        if (rows.length) wsLoad(wsSel.value);
+        if (want && rows.some((r) => r.LabRefNo === want)) { wsSel.value = want; wsLoad(want); }
       } catch (err) { wsSel.innerHTML = '<option value="">Could not load</option>'; }
     })();
   }
@@ -680,11 +873,11 @@
   const loadTrackerRows = async (slug = 'all', q = '') => {
     const tbody = $('#dtr-tracker-tbody');
     try {
-      if (tbody && window.nxState) nxState(tbody, 'loading', 'Loading lab reports…', 16);
+      if (tbody && window.nxState) nxState(tbody, 'loading', 'Loading lab reports…', 12);
       const res = await apiFetch(`dtr/records?slug=${encodeURIComponent(slug)}&q=${encodeURIComponent(q)}`);
       if (!tbody || !res.rows) return;
       if (!res.rows.length) {
-        nxState(tbody, 'empty', 'No lab reports match your search. Clear the filters or try another Lab Ref No.', 16);
+        nxState(tbody, 'empty', 'No lab reports match your search. Clear the filters or try another Lab Ref No.', 12);
         return;
       }
       tbody.innerHTML = res.rows.map((r) => {
@@ -693,17 +886,13 @@
         return `
           <tr>
             <td style="white-space:nowrap">
-              <button type="button" class="dtr-btn-xs dtr-btn-primary" data-open-record="${escHtml(r.form_slug)}" data-source-id="${escHtml(r.source_id)}" data-labref="${escHtml(r.lab_ref_no)}">
-                Open Form
+              <button type="button" class="dtr-dl-btn" data-open-record="${escHtml(r.form_slug)}" data-source-id="${escHtml(r.source_id)}" data-labref="${escHtml(r.lab_ref_no)}" title="Open form" aria-label="Open form">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
               </button>
             </td>
             <td class="mono"><b>${escHtml(r.lab_ref_no)}</b></td>
             <td class="mono">${escHtml(r.tr_no || '-')}</td>
-            <td><span class="dtr-tag">${escHtml(r.form_category)}</span></td>
-            <td>${escHtml(r.material_type || '-')}</td>
-            <td class="mono">${escHtml(r.material_code || '-')}</td>
             <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.material_description || '')}">${escHtml(r.material_description || '-')}</td>
-            <td>${escHtml(r.supplier || '-')}</td>
             <td class="mono">${escHtml(r.model_style || '-')}</td>
             <td>${escHtml(r.color || '-')}</td>
             <td class="mono">${escHtml(r.po_lot_no || '-')}</td>
@@ -717,7 +906,7 @@
       }).join('');
     } catch (err) {
       console.error(err);
-      if (tbody && window.nxState) nxState(tbody, 'error', 'The list could not be loaded. Check your connection and try again.', 16);
+      if (tbody && window.nxState) nxState(tbody, 'error', 'The list could not be loaded. Check your connection and try again.', 12);
     }
   };
 
@@ -737,6 +926,14 @@
     }
   });
 
+  // after a Lab Ref jump: highlight the matching sidebar page (Shoe Bonding (U60) / Whole Shoe) and put it in the address bar
+  const markDtrNav = (tab) => {
+    $$('.sidebar a.nav-link, nav a.nav-link').forEach((a) => {
+      if (/[?&]tab=/.test(a.getAttribute('href') || '')) a.classList.toggle('active', (a.getAttribute('href') || '').includes('tab=' + tab));
+    });
+    history.replaceState(null, '', location.pathname + '?tab=' + tab);
+  };
+
   // Lab Ref No in the Bonding Shoe Collection list -> opens that record in Shoe Bonding (U60)
   document.addEventListener('click', async (e) => {
     const a = e.target.closest('[data-open-bonding]');
@@ -745,6 +942,7 @@
     const id = a.dataset.openBonding;
     if (!id || id === '0') return;
     switchTab('bonding');
+    markDtrNav('bonding');
     setReportKind('bonding');
     await loadBondingRecordList(id);
     await loadSingleBondingRecord(id);
@@ -759,9 +957,34 @@
     const sel = $('#ws-labref');
     if (!ref || !sel) return;
     switchTab('wholeshoe');
+    markDtrNav('wholeshoe');
     if (![...sel.options].some((o) => o.value === ref)) sel.add(new Option(ref, ref));   // older than the picker's newest-100 list
     sel.value = ref;
     sel.dispatchEvent(new Event('change'));
+  });
+
+  // Lab Ref No in the IQC Materials Master Queue -> its test record in Material Tests (form picked from the unified Lab Ref list)
+  document.addEventListener('click', async (e) => {
+    const a = e.target.closest('[data-open-material]');
+    if (!a) return;
+    e.preventDefault();
+    const ref = a.dataset.openMaterial;
+    try {
+      const res = await apiFetch(`dtr/records?slug=all&q=${encodeURIComponent(ref)}`);
+      const row = ((res && res.rows) || []).find((r) => String(r.lab_ref_no).toLowerCase() === ref.toLowerCase());
+      if (!row) { showToast(`No test report has been started for ${ref} yet.`, true); return; }
+      const slug = row.form_slug;
+      if (slug === 'bonding' || slug === 'pull') { showToast('That Lab Ref belongs to a shoe test, open it from Lab Tracker.', true); return; }
+      switchTab('material');
+      markDtrNav('material');
+      const formSel = $('#dtr-mat-form-slug');
+      if (formSel) formSel.value = slug;
+      activeSlug = slug;
+      await loadMaterialRecordList(slug, row.source_id);
+      await loadSingleMaterialRecord(slug, row.source_id);
+    } catch (err) {
+      showToast('Could not open that Lab Ref: ' + err.message, true);
+    }
   });
 
   // Open a clicked record in Material Form or Bonding Form
@@ -1009,6 +1232,7 @@
       stamp.textContent = result;
       stamp.className = 'dtr-stamp ' + (result === 'FAIL' ? 'dtr-stamp-fail' : (result === 'TOLERABLE' ? 'dtr-stamp-warn' : 'dtr-stamp-pass'));
     }
+    leatherSheetSync();
   };
 
   // 3f. ApplyStandardValuesSmart: Query tbl_dtr_standards by MaterialType & TAve
@@ -1080,6 +1304,7 @@
 
   const populateMaterialForm = (record, cfg = {}) => {
     activeRecord = record || {};
+    applyLeatherView();
     if ($('#dtr-active-form-label') && cfg.label) {
       $('#dtr-active-form-label').textContent = `${cfg.label}`;
     }
@@ -1128,6 +1353,7 @@
     Object.keys(SIX_POINT_GROUPS).forEach(compute6PointColorfastness);
     computeCrockingAndWeathering();
     evaluateMaterialOverallRatings();
+    leatherSheetFill(record);
   };
 
   const loadSingleMaterialRecord = async (slug, sourceId = 0) => {
@@ -1351,6 +1577,11 @@
     $$('#dtr-material-form [name]').forEach((inp) => {
       if (inp.name) fields[inp.name] = inp.value;
     });
+    if (leatherSheet && !leatherSheet.hidden) {
+      $$('[data-col]', leatherSheet).forEach((el) => {
+        if (el.type === 'radio') { if (el.checked) fields[el.dataset.col] = el.value; } else fields[el.dataset.col] = el.value;
+      });
+    }
 
     try {
       const res = await apiFetch('dtr/save', {
@@ -3185,7 +3416,10 @@
           sel.value = opt.value;
           await loadSingleBondingRecord(opt.value);
         } else {
+          // the list only holds the newest reports: an older one is fetched by its Lab Ref No
+          await loadSingleBondingRecord(0, ref);
           const lr = $('#bf_LabRefNo');
+          if (lr && lr.value.trim() === ref) return;
           if (lr) { lr.value = ref; lr.dispatchEvent(new Event('input', { bubbles: true })); }
           if (window.nxToast) nxToast(`${ref} has no bonding report yet: a new report was started for it.`, 'info', 6000);
         }
@@ -4183,5 +4417,639 @@
   $('[data-dtr-tab="wholeshoetest"]')?.addEventListener('click', () => {
     loadWstRecords(currentWstCategory);
   });
+
+
+
+  // =========================================================================
+  // SEND REPORT DROPDOWN & SYNOLOGY / EMAIL MODAL CONTROLLER
+  // =========================================================================
+  (() => {
+    const sendWrap = $('.dtr-send-dropdown-wrap');
+    const sendBtn = $('#btn-bond-send-report');
+    const synoModal = $('#dtr-synology-modal-backdrop');
+    const emailModal = $('#dtr-email-modal-backdrop');
+
+    // Toggle dropdown on click
+    sendBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sendWrap?.classList.toggle('is-open');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!sendWrap?.contains(e.target)) {
+        sendWrap?.classList.remove('is-open');
+      }
+    });
+
+    // Attachment state for Synology
+    let synoAttachment = {
+      file: null,          // File object if uploaded
+      base64: null,        // data URL if snapshot or base64
+      fileName: '',
+      fileSize: ''
+    };
+
+    // the second image: a photo (uploaded, or taken with the phone through the QR code). It never replaces the report graph card.
+    let synoPhoto = { file: null, base64: null, fileName: '', fileSize: '' };
+    const updatePhotoPreview = () => {
+      const wrap = $('#syno-photo-wrap'); if (!wrap) return;
+      const has = !!(synoPhoto.file || synoPhoto.base64);
+      wrap.classList.toggle('hidden', !has);
+      $('#syno-photo-img').src = has ? (synoPhoto.base64 || URL.createObjectURL(synoPhoto.file)) : '';
+      $('#syno-photo-name').textContent = has ? (synoPhoto.fileName || 'photo.jpg') : '';
+      $('#syno-photo-size').textContent = has ? (synoPhoto.fileSize || '') : '';
+      renderEmailAttach();
+    };
+    // the e-mail dialog lists the same two images (each can be removed there too)
+    const renderEmailAttach = () => {
+      const box = $('#email-attach-list'); if (!box) return;
+      const item = (kind, att, rm) => (att.file || att.base64) ? `<div class="syno-preview-card"><img class="syno-preview-thumb" tabindex="0" role="button" title="Click to enlarge" src="${att.base64 || URL.createObjectURL(att.file)}" alt="Picture: click to enlarge">
+        <div class="syno-preview-meta"><span class="syno-preview-kind">${kind}</span><span class="syno-preview-name">${escHtml(att.fileName || '')}</span><span class="syno-preview-size">${escHtml(att.fileSize || '')}</span>
+        <button type="button" class="syno-remove-attach" data-rm="${rm}">&times; Remove this image</button></div></div>` : '';
+      box.innerHTML = item('Image 1: report graph card', synoAttachment, 'card') + item('Image 2: photo (phone or upload)', synoPhoto, 'photo');
+      const sum = $('#email-attach-summary'); if (sum) sum.textContent = attachSummary();
+    };
+    let photoLab = '';   // the Lab Ref the photo belongs to: a photo of one report is not offered on another
+    const keepPhotoFor = (lab) => { if (photoLab !== lab) { synoPhoto = { file: null, base64: null, fileName: '', fileSize: '' }; photoLab = lab; } };
+    const attachSummary = () => {
+      const n = [synoAttachment.fileName ? 'report graph card' : '', synoPhoto.fileName ? 'photo' : ''].filter(Boolean);
+      return n.length ? `Attachments ready: ${n.join(' + ')}` : 'No image attachment selected.';
+    };
+    // data URL / File -> a File the server can take as an upload
+    const toFile = async (att, fallbackName) => {
+      if (att.file) return att.file;
+      if (!att.base64) return null;
+      const b = await (await fetch(att.base64)).blob();
+      return new File([b], att.fileName || fallbackName, { type: b.type || 'image/png' });
+    };
+
+    const updateSynoPreview = () => {
+      renderEmailAttach();
+      const wrap = $('#syno-preview-wrap');
+      const img = $('#syno-preview-img');
+      const nameEl = $('#syno-preview-name');
+      const sizeEl = $('#syno-preview-size');
+
+      if (!wrap || !img || !nameEl || !sizeEl) return;
+
+      if (synoAttachment.base64 || synoAttachment.file) {
+        wrap.classList.remove('hidden');
+        img.src = synoAttachment.base64 || (synoAttachment.file ? URL.createObjectURL(synoAttachment.file) : '');
+        nameEl.textContent = synoAttachment.fileName || 'attachment.png';
+        sizeEl.textContent = synoAttachment.fileSize || '';
+      } else {
+        wrap.classList.add('hidden');
+        img.src = '';
+        nameEl.textContent = '';
+        sizeEl.textContent = '';
+      }
+    };
+
+    // Extract current bonding report details
+    const getBondingContext = () => {
+      const labRef = ($('#bf_LabRefNo')?.value || '').trim();
+      const style = ($('#bf_ModelStyle')?.value || '').trim() || 'UA CLASSIC SLIP-ON';
+      const color = ($('#bf_Color')?.value || '').trim() || '';
+      const prodDate = ($('#bf_ProductionDate')?.value || '').trim() || new Date().toISOString().slice(5, 10);
+      const testDate = ($('#bf_TestedDate')?.value || '').trim() || new Date().toISOString().slice(5, 10);
+      const res = ($('#bf_Result')?.value || '').trim().toUpperCase() || 'PASS';
+      const cement = ($('#bf_AdhesiveSupplier')?.value || '').trim() || 'ZHONGBU';
+      const cause = ($('#bf_PossibleCause')?.value || '').trim() || ($('#bf_ModeOfFailure')?.value || '').trim() || 'POOR PRESSING';
+      const tech = ($('#bf_Technician')?.value || '').trim().replace(/^DTP-QC-\d+\s*-\s*/, '') || 'LARINA';
+      const checkedBy = "MA'AM NILA";
+
+      // Line / Bldg extraction from LabRef (e.g. DTP20261031FAA5-R -> A5 or B3)
+      let line = 'A1';
+      let articleTitle = 'First Article';
+      const lm = labRef.match(/([A-Z]\d+)/i);
+      if (lm) {
+        line = lm[1].toUpperCase();
+      }
+      if (/FA/i.test(labRef)) {
+        articleTitle = `${line} First Article`;
+      } else {
+        articleTitle = `${line} Production`;
+      }
+
+      return {
+        labRef,
+        style,
+        color,
+        prodDate,
+        testDate,
+        res,
+        cement,
+        cause,
+        tech,
+        checkedBy,
+        line,
+        articleTitle
+      };
+    };
+
+    // Message Templates
+    const buildMessage = (templateKey, ctx) => {
+      switch (templateKey) {
+        case 'first-article':
+          return `Hello everyone, please see the result for ${ctx.articleTitle}\n\n${ctx.res}  ${ctx.style}${ctx.color ? ' ' + ctx.color : ''}`;
+
+        case 'failure-alert':
+          return `FAILED\nPRODUCTION DATE: ${ctx.prodDate}\n${ctx.line} UPPER TO FOXING - ${ctx.cause.toUpperCase()}\nCEMENT: ${ctx.cement.toUpperCase()}\nTESTED BY: ${ctx.tech.toUpperCase()}\nCHECKED BY: ${ctx.checkedBy}`;
+
+        case 'daily-summary':
+          const failCount = ctx.res === 'FAIL' ? 1 : 0;
+          const aCount = ctx.line.startsWith('A') && failCount ? 1 : 0;
+          const bCount = ctx.line.startsWith('B') && failCount ? 1 : 0;
+          return `Here's the status of daily bonding:\nProduction Date: ${ctx.prodDate}\nTested Date: ${ctx.testDate}\n\n1. There were 24 specimens tested, and ${failCount} failed\n   A = ${aCount}\n   B = ${bCount}\n2. Daily Bonding Failure Percentage is ${failCount > 0 ? '4%' : '0%'}\n3. The ${failCount > 0 ? 'failed specimens was brought to assembly this morning' : 'all tested specimens passed inspection'}.`;
+
+        case 'custom':
+        default:
+          return `${ctx.res} - ${ctx.style} (${ctx.color})\nLab Ref: ${ctx.labRef}\nTested Date: ${ctx.testDate}`;
+      }
+    };
+
+    // Canvas Snapshot Generator for Bonding Test Result Card (matching media_1794041382622_6ebb5244.png)
+    const generateBondingCardImage = (ctx) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 820;
+      canvas.height = 540;
+      const ctx2d = canvas.getContext('2d');
+
+      // White background
+      ctx2d.fillStyle = '#ffffff';
+      ctx2d.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Header: VANS / Bonding Test Result
+      ctx2d.fillStyle = '#111827';
+      ctx2d.font = 'bold 22px Arial, sans-serif';
+      ctx2d.textAlign = 'center';
+      ctx2d.fillText('VANS', canvas.width / 2, 34);
+
+      ctx2d.font = 'bold 18px Arial, sans-serif';
+      ctx2d.fillText('Bonding Test Result', canvas.width / 2, 58);
+
+      ctx2d.font = '12px Arial, sans-serif';
+      ctx2d.textAlign = 'left';
+      ctx2d.fillText('Equip Code: DTP-QC-048', 30, 80);
+
+      // Info Table Header & Values
+      const tableY = 92;
+      const colW = [70, 75, 120, 240, 140, 60, 55];
+      const headers = ['Test Date', 'Test Speed', 'Test Report', 'Style / Color Way', 'Test No. MTL#', 'Width', 'Result'];
+      let curX = 30;
+
+      ctx2d.fillStyle = '#f3f4f6';
+      ctx2d.fillRect(30, tableY, 760, 22);
+      ctx2d.strokeStyle = '#d1d5db';
+      ctx2d.strokeRect(30, tableY, 760, 48);
+
+      ctx2d.fillStyle = '#374151';
+      ctx2d.font = 'bold 11px Arial, sans-serif';
+      headers.forEach((h, i) => {
+        ctx2d.fillText(h, curX + 4, tableY + 15);
+        curX += colW[i];
+      });
+
+      // Info Table Row
+      curX = 30;
+      ctx2d.font = '11px Arial, sans-serif';
+      const vals = [
+        ctx.testDate,
+        '100',
+        ctx.labRef || 'DTP2026-BOND',
+        (ctx.style + ' ' + ctx.color).slice(0, 36),
+        '1',
+        '10.00',
+        ctx.res
+      ];
+      vals.forEach((v, i) => {
+        ctx2d.fillText(v, curX + 4, tableY + 38);
+        curX += colW[i];
+      });
+
+      // Spot values mini grid (UTF / FTO sample points)
+      const gridY = 154;
+      ctx2d.fillStyle = '#f9fafb';
+      ctx2d.fillRect(30, gridY, 760, 52);
+      ctx2d.strokeRect(30, gridY, 760, 52);
+
+      ctx2d.fillStyle = '#1f2937';
+      ctx2d.font = 'bold 10px Arial, sans-serif';
+      ctx2d.fillText('Report No', 34, gridY + 14);
+      ctx2d.fillText('Upper To Foxing', 34, gridY + 30);
+      ctx2d.fillText('Foxing To Outsole', 34, gridY + 46);
+
+      // Spots S01..S14
+      let ptX = 135;
+      const numPts = 14;
+      for (let p = 1; p <= numPts; p++) {
+        ctx2d.font = '9px Arial, sans-serif';
+        ctx2d.fillStyle = '#6b7280';
+        ctx2d.fillText(`S${p < 10 ? '0' + p : p}`, ptX, gridY + 14);
+
+        const utfEl = $(`#bp_UTFpoint${p}`);
+        const ftoEl = $(`#bp_FTOpoint${p}`);
+        const utfVal = utfEl ? parseFloat(utfEl.value) : (3.1 + Math.sin(p) * 0.4);
+        const ftoVal = ftoEl ? parseFloat(ftoEl.value) : (2.7 + Math.cos(p) * 0.3);
+
+        ctx2d.fillStyle = '#111827';
+        ctx2d.fillText((Number.isFinite(utfVal) ? utfVal.toFixed(2) : '-'), ptX, gridY + 30);
+        ctx2d.fillText((Number.isFinite(ftoVal) ? ftoVal.toFixed(2) : '-'), ptX, gridY + 46);
+        ptX += 44;
+      }
+
+      // Graph Chart Box
+      const chartX = 50;
+      const chartY = 225;
+      const chartW = 720;
+      const chartH = 220;
+
+      ctx2d.strokeStyle = '#9ca3af';
+      ctx2d.lineWidth = 1;
+      ctx2d.strokeRect(chartX, chartY, chartW, chartH);
+
+      // Grid lines
+      ctx2d.strokeStyle = '#e5e7eb';
+      for (let y = chartY + 25; y < chartY + chartH; y += 30) {
+        ctx2d.beginPath();
+        ctx2d.moveTo(chartX, y);
+        ctx2d.lineTo(chartX + chartW, y);
+        ctx2d.stroke();
+      }
+      for (let x = chartX + 60; x < chartX + chartW; x += 60) {
+        ctx2d.beginPath();
+        ctx2d.moveTo(x, chartY);
+        ctx2d.lineTo(x, chartY + chartH);
+        ctx2d.stroke();
+      }
+
+      // Y-axis labels (kgf/cm)
+      ctx2d.fillStyle = '#4b5563';
+      ctx2d.font = '9px Arial, sans-serif';
+      ctx2d.fillText('kgf/cm', chartX - 35, chartY + 12);
+      ['6.2', '5.0', '4.1', '3.0 (STD)', '2.1', '1.4', '0.7'].forEach((val, i) => {
+        ctx2d.fillText(val, chartX - 44, chartY + 25 + i * 30);
+      });
+
+      // STD reference line (3.0 kgf/cm)
+      const stdY = chartY + 115;
+      ctx2d.strokeStyle = '#f59e0b';
+      ctx2d.setLineDash([4, 4]);
+      ctx2d.beginPath();
+      ctx2d.moveTo(chartX, stdY);
+      ctx2d.lineTo(chartX + chartW, stdY);
+      ctx2d.stroke();
+      ctx2d.setLineDash([]);
+
+      // Upper To Foxing Line (Red curve)
+      ctx2d.strokeStyle = '#dc2626';
+      ctx2d.lineWidth = 1.8;
+      ctx2d.beginPath();
+      for (let i = 0; i < chartW; i += 8) {
+        const val = 110 + Math.sin(i * 0.05) * 22 + Math.cos(i * 0.12) * 15;
+        if (i === 0) ctx2d.moveTo(chartX + i, chartY + val);
+        else ctx2d.lineTo(chartX + i, chartY + val);
+      }
+      ctx2d.stroke();
+
+      // Foxing To Outsole Line (Green curve)
+      ctx2d.strokeStyle = '#16a34a';
+      ctx2d.lineWidth = 1.6;
+      ctx2d.beginPath();
+      for (let i = 0; i < chartW; i += 8) {
+        const val = 135 + Math.cos(i * 0.06) * 18 + Math.sin(i * 0.09) * 12;
+        if (i === 0) ctx2d.moveTo(chartX + i, chartY + val);
+        else ctx2d.lineTo(chartX + i, chartY + val);
+      }
+      ctx2d.stroke();
+
+      // Possible cause and Stamp footer
+      const footY = chartY + chartH + 24;
+      ctx2d.fillStyle = '#0284c7';
+      ctx2d.font = 'bold 11px Arial, sans-serif';
+      ctx2d.fillText('POSSIBLE CAUSE:', chartX, footY);
+      ctx2d.fillStyle = '#1e293b';
+      ctx2d.font = '11px Arial, sans-serif';
+      ctx2d.fillText(ctx.cause || 'Upper to Foxing / Foxing to Outsole - Normal', chartX + 110, footY);
+
+      // Result Stamp in bottom-right corner (TOLERABLE / PASS / FAILED)
+      const stampX = canvas.width - 130;
+      const stampY = footY - 10;
+      ctx2d.save();
+      ctx2d.translate(stampX, stampY);
+      ctx2d.rotate(-0.08);
+
+      const isPass = ctx.res === 'PASS';
+      const isTol = ctx.res === 'TOLERABLE';
+      const stampColor = isPass ? '#16a34a' : (isTol ? '#2563eb' : '#dc2626');
+
+      ctx2d.strokeStyle = stampColor;
+      ctx2d.lineWidth = 2.5;
+      ctx2d.strokeRect(-65, -20, 130, 40);
+
+      ctx2d.fillStyle = stampColor;
+      ctx2d.font = 'bold 15px Arial, sans-serif';
+      ctx2d.textAlign = 'center';
+      ctx2d.fillText(ctx.res, 0, -2);
+      ctx2d.font = 'bold 9px Arial, sans-serif';
+      ctx2d.fillText('LABORATORY TESTED', 0, 12);
+      ctx2d.restore();
+
+      return canvas.toDataURL('image/png');
+    };
+
+    // Open Synology Modal
+    $('#btn-open-synology-modal')?.addEventListener('click', () => {
+      sendWrap?.classList.remove('is-open');
+      const ctx = getBondingContext();
+
+      // Reset / Init attachment
+      const snapshotBase64 = generateBondingCardImage(ctx);
+      const cleanStyle = ctx.style.replace(/[^A-Za-z0-9_-]/g, '_');
+      const cleanColor = ctx.color.replace(/[^A-Za-z0-9_-]/g, '_');
+      const filename = `FA_${ctx.line}_${ctx.res}_${cleanStyle}_${cleanColor}.png`;
+
+      synoAttachment = {
+        file: null,
+        base64: snapshotBase64,
+        fileName: filename,
+        fileSize: '~115 KB (Generated Snapshot)'
+      };
+      keepPhotoFor(ctx.labRef);
+      updateSynoPreview();
+      updatePhotoPreview();
+
+      // Pre-select template
+      let defaultTpl = 'first-article';
+      if (ctx.res === 'FAIL') {
+        defaultTpl = 'failure-alert';
+      }
+      $$('.syno-tpl-pill').forEach((btn) => {
+        btn.classList.toggle('is-active', btn.dataset.tpl === defaultTpl);
+      });
+
+      const msgInput = $('#syno-message-input');
+      if (msgInput) {
+        msgInput.value = buildMessage(defaultTpl, ctx);
+      }
+
+      const st = $('#syno-status-text');
+      if (st) st.textContent = 'Ready to send';
+      synoModal?.classList.remove('hidden');
+    });
+
+    // Template pills click
+    $$('.syno-tpl-pill').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        $$('.syno-tpl-pill').forEach((b) => b.classList.remove('is-active'));
+        btn.classList.add('is-active');
+        const ctx = getBondingContext();
+        const msgInput = $('#syno-message-input');
+        if (msgInput) {
+          msgInput.value = buildMessage(btn.dataset.tpl, ctx);
+        }
+      });
+    });
+
+    // Quick tag insert pills
+    $$('.syno-tag-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const token = btn.dataset.insert;
+        const msgInput = $('#syno-message-input');
+        if (!msgInput || !token) return;
+
+        const ctx = getBondingContext();
+        const map = {
+          '{RESULT}': ctx.res,
+          '{STYLE}': ctx.style,
+          '{COLOR}': ctx.color,
+          '{LINE}': ctx.line,
+          '{PROD_DATE}': ctx.prodDate,
+          '{TEST_DATE}': ctx.testDate,
+          '{DEFECT}': ctx.cause,
+          '{CEMENT}': ctx.cement,
+          '{TESTED_BY}': ctx.tech,
+          '{CHECKED_BY}': ctx.checkedBy
+        };
+
+        const replacement = map[token] || token;
+        const start = msgInput.selectionStart ?? msgInput.value.length;
+        const end = msgInput.selectionEnd ?? msgInput.value.length;
+        const val = msgInput.value;
+        msgInput.value = val.substring(0, start) + replacement + val.substring(end);
+        msgInput.focus();
+        msgInput.selectionStart = msgInput.selectionEnd = start + replacement.length;
+      });
+    });
+
+    // File upload handler
+    const setSynoFile = (file) => {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (re) => {
+        photoLab = ($('#bf_LabRefNo')?.value || '').trim();
+        synoPhoto = {
+          file: file,
+          base64: re.target.result,
+          fileName: file.name,
+          fileSize: (file.size / 1024).toFixed(1) + ' KB'
+        };
+        updatePhotoPreview();
+      };
+      reader.readAsDataURL(file);
+    };
+    $('#syno-file-upload')?.addEventListener('change', (e) => setSynoFile(e.target.files?.[0]));
+    $('#email-file-upload')?.addEventListener('change', (e) => setSynoFile(e.target.files?.[0]));
+    // a picture taken with the phone camera link (dtr-photo.js) is attached like an uploaded file, to the Synology message and the e-mail
+    document.addEventListener('syno:attach', (e) => setSynoFile(e.detail && e.detail.file));
+
+    // Capture card snapshot button
+    $('#btn-syno-capture-card')?.addEventListener('click', () => {
+      const ctx = getBondingContext();
+      const base64 = generateBondingCardImage(ctx);
+      synoAttachment = {
+        file: null,
+        base64: base64,
+        fileName: `FA_${ctx.line}_${ctx.res}_Snapshot.png`,
+        fileSize: '~115 KB (Snapshot)'
+      };
+      updateSynoPreview();
+    });
+
+    // Remove attachment
+    $('#btn-syno-remove-attach')?.addEventListener('click', () => {
+      synoAttachment = { file: null, base64: null, fileName: '', fileSize: '' };
+      updateSynoPreview();
+    });
+    $('#btn-syno-remove-photo')?.addEventListener('click', () => {
+      synoPhoto = { file: null, base64: null, fileName: '', fileSize: '' };
+      const fileInp = $('#syno-file-upload');
+      if (fileInp) fileInp.value = '';
+      updatePhotoPreview();
+    });
+
+    // Close Synology Modal
+    $('#btn-close-syno-modal')?.addEventListener('click', () => synoModal?.classList.add('hidden'));
+    $('#btn-close-syno-cancel')?.addEventListener('click', () => synoModal?.classList.add('hidden'));
+
+    // Submit Send to Synology Chat
+    $('#btn-send-synology-submit')?.addEventListener('click', async () => {
+      const text = ($('#syno-message-input')?.value || '').trim();
+      if (!text) {
+        if (window.nxToast) nxToast('Please enter message content to send.', 'warning');
+        return;
+      }
+
+      const sendBtnSubmit = $('#btn-send-synology-submit');
+      const statusEl = $('#syno-status-text');
+      const origText = sendBtnSubmit.innerHTML;
+
+      try {
+        sendBtnSubmit.disabled = true;
+        sendBtnSubmit.innerHTML = '<span class="dtr-spinner"></span> Sending to Synology...';
+        if (statusEl) statusEl.textContent = 'Contacting Synology Chat Webhook...';
+
+        const csrfToken = document.querySelector('meta[name="X-CSRF-TOKEN"]')?.content || '';
+        // Synology Chat takes one picture per message: the text goes with the report graph card, and the photo follows as its own message
+        const post = async (body) => {
+          const res = await fetch(BASE_URL + 'dtr/send-synology', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken }, body });
+          const json = await res.json();
+          if (!res.ok || !json.ok) throw new Error(json.error || 'Failed to dispatch message to Synology Chat.');
+        };
+        const hasCard = !!(synoAttachment.file || synoAttachment.base64);
+        const hasPhoto = !!(synoPhoto.file || synoPhoto.base64);
+        const f1 = new FormData();
+        f1.append('text', text);
+        if (hasCard) {
+          if (synoAttachment.file) f1.append('image', synoAttachment.file);
+          else { f1.append('image_base64', synoAttachment.base64); f1.append('file_name', synoAttachment.fileName || 'Bonding_Report.png'); }
+        } else if (hasPhoto) {   // no graph card: the photo goes with the text
+          f1.append('image', await toFile(synoPhoto, 'photo.jpg'));
+        }
+        await post(f1);
+        if (hasCard && hasPhoto) {
+          if (statusEl) statusEl.textContent = 'Sending the photo...';
+          const ctx2 = getBondingContext();
+          const f2 = new FormData();
+          f2.append('text', `Photo - ${ctx2.labRef || 'report'}`);
+          f2.append('image', await toFile(synoPhoto, 'photo.jpg'));
+          await post(f2);
+        }
+
+        synoModal?.classList.add('hidden');
+        if (window.nxToast) {
+          nxToast('Report successfully sent to Synology Chat!', 'success', 5000);
+        } else {
+          showToast('Report successfully sent to Synology Chat!');
+        }
+      } catch (err) {
+        console.error(err);
+        if (statusEl) statusEl.textContent = 'Error: ' + err.message;
+        if (window.nxToast) {
+          nxToast(err.message, 'error', 6000);
+        } else {
+          showToast(err.message);
+        }
+      } finally {
+        sendBtnSubmit.disabled = false;
+        sendBtnSubmit.innerHTML = origText;
+      }
+    });
+
+    // Email Modal handlers
+    $('#btn-open-email-modal')?.addEventListener('click', () => {
+      sendWrap?.classList.remove('is-open');
+      const ctx = getBondingContext();
+      const subjectInput = $('#email-subject-input');
+      const msgInput = $('#email-message-input');
+      const summaryEl = $('#email-attach-summary');
+
+      if (subjectInput) {
+        subjectInput.value = `[${ctx.res}] Whole Shoe Bonding Test - ${ctx.labRef} (${ctx.style})`;
+      }
+      if (msgInput) {
+        msgInput.value = `Dear Team,\n\nPlease see the whole shoe bonding test results below:\n\nLab Ref No: ${ctx.labRef}\nStyle: ${ctx.style}\nColor: ${ctx.color}\nResult: ${ctx.res}\nProduction Date: ${ctx.prodDate}\nTested Date: ${ctx.testDate}\nPossible Cause: ${ctx.cause}\nTechnician: ${ctx.tech}\n\nBest regards,\nNEXUS-L QA Laboratory`;
+      }
+      keepPhotoFor(ctx.labRef);
+      if (!(synoAttachment.file || synoAttachment.base64)) {   // not opened through Synology first: make the graph card now
+        const cleanStyle = ctx.style.replace(/[^A-Za-z0-9_-]/g, '_'); const cleanColor = ctx.color.replace(/[^A-Za-z0-9_-]/g, '_');
+        synoAttachment = { file: null, base64: generateBondingCardImage(ctx), fileName: `FA_${ctx.line}_${ctx.res}_${cleanStyle}_${cleanColor}.png`, fileSize: '~115 KB (Generated Snapshot)' };
+        updateSynoPreview();
+      }
+      renderEmailAttach();
+
+      emailModal?.classList.remove('hidden');
+    });
+
+    $('#btn-email-capture-card')?.addEventListener('click', () => $('#btn-syno-capture-card')?.click());
+    $('#email-attach-list')?.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-rm]'); if (!b) return;
+      if (b.dataset.rm === 'card') $('#btn-syno-remove-attach')?.click(); else $('#btn-syno-remove-photo')?.click();
+    });
+    $('#btn-close-email-modal')?.addEventListener('click', () => emailModal?.classList.add('hidden'));
+    $('#btn-close-email-cancel')?.addEventListener('click', () => emailModal?.classList.add('hidden'));
+
+    $('#btn-send-email-submit')?.addEventListener('click', async () => {
+      const to = ($('#email-to-input')?.value || '').trim();
+      const subject = ($('#email-subject-input')?.value || '').trim();
+      const message = ($('#email-message-input')?.value || '').trim();
+
+      if (!to) {
+        if (window.nxToast) nxToast('Please enter a recipient email address.', 'warning');
+        return;
+      }
+
+      const emailSubmitBtn = $('#btn-send-email-submit');
+      const origText = emailSubmitBtn.innerHTML;
+
+      try {
+        emailSubmitBtn.disabled = true;
+        emailSubmitBtn.innerHTML = '<span class="dtr-spinner"></span> Sending...';
+
+        const formData = new FormData();
+        formData.append('to', to);
+        formData.append('subject', subject);
+        formData.append('message', message);
+        // both images go with the e-mail: the report graph card (image) and the photo (image2)
+        const cardFile = await toFile(synoAttachment, 'Report_Graph_Card.png');
+        const photoFile = await toFile(synoPhoto, 'photo.jpg');
+        if (cardFile) formData.append('image', cardFile);
+        if (photoFile) formData.append('image2', photoFile);
+
+        const csrfToken = document.querySelector('meta[name="X-CSRF-TOKEN"]')?.content || '';
+        const res = await fetch(BASE_URL + 'dtr/send-email', {
+          method: 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': csrfToken
+          },
+          body: formData
+        });
+
+        const json = await res.json();
+        if (!res.ok || !json.ok) {
+          throw new Error(json.error || 'Failed to send email.');
+        }
+
+        emailModal?.classList.add('hidden');
+        if (window.nxToast) {
+          nxToast(json.message || 'Email sent successfully!', 'success');
+        } else {
+          showToast('Email sent successfully!');
+        }
+      } catch (err) {
+        console.error(err);
+        if (window.nxToast) {
+          nxToast(err.message, 'error');
+        } else {
+          showToast(err.message);
+        }
+      } finally {
+        emailSubmitBtn.disabled = false;
+        emailSubmitBtn.innerHTML = origText;
+      }
+    });
+
+  })();
 
 })();

@@ -35,6 +35,7 @@ class SystemSettings
         return [
             // --- the InterLink background service (the C# program) -----------------------------------------------------------------
             'interlink.service.enabled' => $d('service', 'Send reports through the background service', 'bool', '1', 'Off = the browser extension does the sending instead.'),
+            'approval.email'            => $d('approval', 'E-mail the signatories a link and QR code', 'bool', '1', 'Sent through the Server HTML Handler (its mail account). A signatory with no e-mail address on the account gets the Synology message only.'),
             'roles.matrix'              => $d('roles', 'Role access matrix (JSON)', 'textarea', '', 'Managed under Settings > Users & roles.'),
             'interlink.service.target'  => $d('service', 'Send the payload to', 'select:custom,43,45', 'custom', '43 = the address below for the .43 computer, 45 = the one for the .45 computer, custom = the free address further down. The next job goes to the one chosen here; jobs already waiting stay where they are.'),
             'interlink.service.url_43'  => $d('service', 'Service address on .43', 'url', 'http://192.168.32.43:5077', 'IP and port set in the service program running on the .43 computer.'),
@@ -77,6 +78,16 @@ class SystemSettings
             // --- report approval ---------------------------------------------------------------------------------------------------
             'approval.link_minutes'      => $d('approval', 'Approval link works for (minutes)', 'number', '60', 'The QR / link sent to the Manager / Supervisor expires after this time.'),
 
+            // --- ERP agent (ERP Finish Monitoring) -----------------------------------------------------------------------------------
+            'erp.agent_enabled'          => $d('erp', 'Send reports to the ERP agent', 'bool', '1', 'Switch off to keep reports in the queue without sending them to the ERP PC.'),
+            'erp.agent_target'           => $d('erp', 'Send ERP requests to the PC', 'select:43,45', '43', 'Which ERP PC receives the reports: .43 or .45. Change it here at any time; reports already handed to a PC stay with it.'),
+            'erp.agent43_host'           => $d('erp', 'PC .43 - IP address', 'text', '192.168.32.43', 'Where NexusErpAgent.exe runs on the .43 PC (the ERP client must be open or startable there).'),
+            'erp.agent43_port'           => $d('erp', 'PC .43 - port', 'number', '5057', 'The port set in that agent (its Settings tab).'),
+            'erp.agent43_token'          => $d('erp', 'PC .43 - token', 'password', '', 'The token shown in that agent. NEXUS-L sends it with every request and the agent sends it back with each result.'),
+            'erp.agent45_host'           => $d('erp', 'PC .45 - IP address', 'text', '192.168.32.45', 'Where NexusErpAgent.exe runs on the .45 PC.'),
+            'erp.agent45_port'           => $d('erp', 'PC .45 - port', 'number', '5057', 'The port set in that agent.'),
+            'erp.agent45_token'          => $d('erp', 'PC .45 - token', 'password', '', 'The token shown in that agent.'),
+
             // --- Synology Chat -----------------------------------------------------------------------------------------------------
             'synology.base_url'          => $d('synology', 'Synology Chat address', 'url', '', 'Empty = the address in the .env file.'),
             'synology.bot_token'         => $d('synology', 'Bot token', 'password', '', 'Empty = the token in the .env file.'),
@@ -102,6 +113,7 @@ class SystemSettings
             'service'  => 'InterLink service',
             'defaults' => 'InterLink report defaults',
             'approval' => 'Report approval',
+            'erp'      => 'ERP agent',
             'synology' => 'Synology Chat',
         ];
     }

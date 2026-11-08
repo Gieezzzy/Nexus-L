@@ -1465,8 +1465,9 @@ JS;
         $category = trim((string) ($this->request->getGet('category') ?? ''));
         $limit    = min(1000, max(50, (int) ($this->request->getGet('limit') ?? 400)));
 
+        \App\Libraries\EtrfAppNos::ensureColumns();
         $builder = $db->table('tbl_dtr_unified_labrefs')
-            ->select('id, lab_ref_no, tr_no, form_category, form_slug, interlink_sample_type, material_type, material_code, material_description, supplier, model_style, color, po_lot_no, mtl_no, received_date, tested_date, finished_date, technician, status, overall_result');
+            ->select('id, lab_ref_no, tr_no, form_category, form_slug, interlink_sample_type, material_type, material_code, material_description, supplier, model_style, color, po_lot_no, mtl_no, received_date, tested_date, finished_date, technician, status, overall_result, ' . implode(', ', array_map(static fn ($k) => "etrf_{$k}_app, etrf_{$k}_hist", array_unique(\App\Libraries\EtrfAppNos::KEYS))));
 
         if ($category !== '' && $category !== 'all') {
             $builder->where('form_slug', $category);

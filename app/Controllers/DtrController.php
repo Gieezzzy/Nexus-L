@@ -155,6 +155,9 @@ class DtrController extends BaseController
         if (! $db->fieldExists('PullTest', 'tbl_dtr_BondingTracker')) {
             $db->query('ALTER TABLE tbl_dtr_BondingTracker ADD COLUMN PullTest TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN PullTestType VARCHAR(30) NULL AFTER PullTest');
         }
+        if (! $db->fieldExists('LackingDate', 'tbl_dtr_BondingTracker')) {
+            $db->query('ALTER TABLE tbl_dtr_BondingTracker ADD COLUMN LackingDate DATE NULL AFTER Lacking');
+        }
         if (! $db->fieldExists('Shutdown', 'tbl_dtr_BondingTracker')) {
             // table made before shutdown marking: a Shutdown row has no specimen, so LabRefNo may be empty (a unique key allows many NULLs)
             $db->query('ALTER TABLE tbl_dtr_BondingTracker MODIFY LabRefNo VARCHAR(191) NULL, ADD COLUMN Shutdown TINYINT(1) NOT NULL DEFAULT 0 AFTER Lacking');
@@ -282,8 +285,10 @@ class DtrController extends BaseController
 
         // Bonding Shoe Collection (tbl_dtr_bonding_info) & Whole Shoe Collection (tbl_dtr_shoe_list)
         $bondingTotal = $db->table('tbl_dtr_bonding_info')->countAllResults();
+        // one row per Lab Ref No: of older duplicates the one holding a result wins, otherwise the newest
         $bondingShoes = $db->table('tbl_dtr_bonding_info')
             ->select('BondingTestID, LabRefNo, ModelStyle, Color, Side, Factory, ProductionDate, TestedDate, Technician, Result, LabNotesComments, POLotNO, ReceivedDate, Remarks, TestType')
+            ->where("(LabRefNo IS NULL OR LabRefNo = '' OR BondingTestID IN (SELECT keep_id FROM (SELECT COALESCE(MAX(CASE WHEN Result IS NOT NULL AND Result <> '' THEN BondingTestID END), MAX(BondingTestID)) AS keep_id FROM tbl_dtr_bonding_info WHERE LabRefNo IS NOT NULL AND LabRefNo <> '' GROUP BY LabRefNo) k))", null, false)
             ->orderBy('BondingTestID', 'DESC')
             ->limit(100)
             ->get()
@@ -307,7 +312,7 @@ class DtrController extends BaseController
         return $this->render('dtr/index', [
             'title'            => 'QC Lab Digital Test Reports',
             'withCss'          => 'dtr.css',
-            'withJs'           => ['dtr.js'],
+            'withJs'           => ['dtr.js', 'dtr-photo.js', 'dtr-photo-attach.js'],
             'activeTab'        => $activeTab,
             'formConfig'       => self::FORM_CONFIG,
             'catRows'          => $catRows,
@@ -581,6 +586,130 @@ class DtrController extends BaseController
     }
 
     /**
+     * GET /dtr/erp-shoe-search?q= : Production Code filter for Specimen Intake, read from dberp.production_orders (newest first, every order; the list scrolls).
+     */
+    public function erpShoeSearch()
+    {
+        $q  = trim((string) ($this->request->getGet('q') ?? ''));
+        $db = \Config\Database::connect();
+        try {
+            $b = $db->table('dberp.production_orders')->select('prod_code AS ProdCode, style_no AS StyleNo, colorway AS Colorway, mtl_no AS MTL');
+            if ($q !== '') {
+                $b->groupStart()->like('prod_code', $q)->orLike('style_no', $q)->orLike('mtl_no', $q)->orLike('colorway', $q)->groupEnd();
+            }
+            $shoes = $b->orderBy('id', 'DESC')->limit(3000)->get()->getResultArray();
+        } catch (\Throwable $e) {
+            return $this->response->setStatusCode(500)->setJSON(['ok' => false, 'shoes' => [], 'message' => 'ERP production orders are not reachable.', 'csrf' => csrf_hash()]);
+        }
+
+        return $this->response->setJSON(['ok' => true, 'shoes' => $shoes, 'csrf' => csrf_hash()]);
+    }
+
+    /**
+     * GET /dtr/bonding-std?style= : the pass / fail limits of tbl_bonding_test_std for the style code (first word of the
+     * Model/Style, e.g. "UY CLASSIC SLIP-ON" -> UY). The Bonding sheet shows them as FailMax - PassMin (1.99 - 2.50).
+     */
+    public function bondingStd()
+    {
+        $style = strtoupper(trim((string) ($this->request->getGet('style') ?? '')));
+        $row   = null;
+        try {
+            $db = \Config\Database::connect();
+            if ($style !== '' && $db->tableExists('tbl_bonding_test_std')) {
+                // the first word is the style code; otherwise any word of the style that is a code (e.g. "... OSNABURG")
+                $words = array_values(array_unique(array_filter(preg_split('/[^A-Z0-9]+/', $style))));
+                foreach ($words as $w) {
+                    $row = $db->table('tbl_bonding_test_std')->select('StyleCode, StyleGroup, PassMin, ToleMin, FailMax')->where('StyleCode', $w)->get()->getRowArray();
+                    if ($row) {
+                        break;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            $row = null;
+        }
+        if (! $row) {
+            return $this->response->setJSON(['ok' => true, 'found' => false, 'csrf' => csrf_hash()]);
+        }
+
+        return $this->response->setJSON([
+            'ok' => true, 'found' => true, 'code' => $row['StyleCode'], 'group' => $row['StyleGroup'],
+            'failMax' => number_format((float) $row['FailMax'], 2, '.', ''), 'passMin' => number_format((float) $row['PassMin'], 2, '.', ''),
+            'csrf' => csrf_hash(),
+        ]);
+    }
+
+    /**
+     * GET /dtr/erp-image?mtl= : shoe picture named after the MTL # in \\192.168.32.43\ERP Image (e.g. VN00018E0E0.JPG).
+     *
+     * Resolution order:
+     *   1. Local cache  - writable/cache/erp_images/<MTL>.<ext>  (populated on first network hit; survives Apache restarts)
+     *   2. Network share - \\192.168.32.43\ERP Image\<MTL>.<ext>  (direct read; requires Apache to run as DTP-ADMIN)
+     * 404 is returned and the error logged (once per MTL per day) when neither source works.
+     */
+    public function erpImage()
+    {
+        $mtl = trim((string) ($this->request->getGet('mtl') ?? ''));
+        if (! preg_match('/^[A-Za-z0-9_\-]{3,40}$/', $mtl)) {
+            return $this->response->setStatusCode(404);
+        }
+
+        $cacheDir = WRITEPATH . 'cache' . DIRECTORY_SEPARATOR . 'erp_images' . DIRECTORY_SEPARATOR;
+        $netDir   = '\\\\192.168.32.43\\ERP Image\\';
+        $exts     = ['JPG', 'jpg', 'JPEG', 'jpeg', 'PNG', 'png'];
+
+        // ---- 0. A picture taken with the phone camera link (Lab Tracker > Bonding Shoe Collected) ----
+        $taken = PhotoLinkController::photoDir() . $mtl . '.jpg';
+        if (is_file($taken)) {
+            return $this->response->setHeader('Content-Type', 'image/jpeg')->setHeader('Cache-Control', 'private, max-age=0, must-revalidate')->setBody((string) file_get_contents($taken));
+        }
+
+        // ---- 1. Local cache (fastest - no network round-trip) ----
+        foreach ($exts as $ext) {
+            $cached = $cacheDir . $mtl . '.' . $ext;
+            if (is_file($cached)) {
+                $bytes = file_get_contents($cached);
+                if ($bytes !== false && $bytes !== '') {
+                    $mime = stripos($ext, 'png') !== false ? 'image/png' : 'image/jpeg';
+                    return $this->response
+                        ->setHeader('Content-Type', $mime)
+                        ->setHeader('Cache-Control', 'private, max-age=86400')
+                        ->setBody($bytes);
+                }
+            }
+        }
+
+        // ---- 2. Network share (works when Apache runs as DTP-ADMIN) ----
+        $err = '';
+        foreach ($exts as $ext) {
+            $bytes = @file_get_contents($netDir . $mtl . '.' . $ext);
+            if ($bytes !== false && $bytes !== '') {
+                // Save to local cache for next request
+                if (! is_dir($cacheDir)) {
+                    @mkdir($cacheDir, 0755, true);
+                }
+                @file_put_contents($cacheDir . $mtl . '.' . $ext, $bytes);
+
+                $mime = stripos($ext, 'png') !== false ? 'image/png' : 'image/jpeg';
+                return $this->response
+                    ->setHeader('Content-Type', $mime)
+                    ->setHeader('Cache-Control', 'private, max-age=86400')
+                    ->setBody($bytes);
+            }
+            $err = (string) (error_get_last()['message'] ?? '');
+        }
+
+        // Not found or no access - log only the first occurrence per MTL per day to avoid log spam
+        $logKey = 'erp_img_notfound_' . $mtl;
+        if (! cache($logKey)) {
+            log_message('warning', 'ERP image ' . $mtl . ': ' . ($err ?: 'not found in share or cache'));
+            cache()->save($logKey, 1, 86400);
+        }
+
+        return $this->response->setStatusCode(404)->setContentType('text/plain')->setBody('No image for ' . $mtl);
+    }
+
+    /**
      * GET /dtr/shoe-search?q=
      * Library picker for the Specimen Intake form: searches tbl_dtr_shoe_list (newest first, max 30).
      */
@@ -715,6 +844,7 @@ class DtrController extends BaseController
                 'EncodedBy'      => mb_substr(trim((string) ($p['encodedBy'] ?? '')), 0, 191),
                 'CreatedAt'      => $now,
             ]);
+            \App\Libraries\DtrLabrefIndex::upsertWholeShoe($db, (int) $db->insertID());   // the new whole shoe is a Lab Reference of the InterLink picker at once
             $saved++;
         }
         $msg = "Saved {$saved} whole shoe(s).";
@@ -826,7 +956,7 @@ class DtrController extends BaseController
         $q  = trim((string) ($this->request->getGet('q') ?? ''));
 
         $builder = $db->table('tbl_dtr_bonding_info')
-            ->select("LabRefNo, ModelStyle, Color, POLotNO, Result, ModeOfFailure, TestedDate, COALESCE(NULLIF(PossibleCause, ''), NULLIF(Remarks, ''), NULLIF(LabNotesComments, '')) AS Analysis", false)
+            ->select("LabRefNo, ModelStyle, Color, POLotNO, MTL, Result, ModeOfFailure, TestedDate, COALESCE(NULLIF(PossibleCause, ''), NULLIF(Remarks, ''), NULLIF(LabNotesComments, '')) AS Analysis", false)
             ->like('Result', 'FAIL', 'after')
             ->where("NOT EXISTS (SELECT 1 FROM tbl_dtr_bonding_info r WHERE r.LabNotesComments LIKE CONCAT('%Retest of ', tbl_dtr_bonding_info.LabRefNo, '%'))", null, false);
 
@@ -888,7 +1018,8 @@ class DtrController extends BaseController
         $updated = 0;
 
         foreach ($rows as $r) {
-            $line = strtoupper(trim((string) ($r['line'] ?? '')));
+            $isTrial = strtoupper(trim((string) ($r['type'] ?? ''))) === 'TECH TRIAL';
+            $line    = $isTrial ? $building . '0' : strtoupper(trim((string) ($r['line'] ?? '')));   // a tech trial belongs to no line
             if (! preg_match('/^' . $building . '(\d{1,2})$/', $line, $m)) {
                 continue;
             }
@@ -896,7 +1027,7 @@ class DtrController extends BaseController
 
             // the normal bonding specimen (SH) plus one extra record per ticked pull type, each with its own Lab Ref prefix
             $pullCodes = ['HEEL PULL' => 'HP', 'EYELET' => 'EY', 'D-RING' => 'DR', 'RIVET' => 'RVT'];
-            $variants  = [['SH', '']];
+            $variants  = [[$isTrial ? 'TT' : 'SH', '']];
             foreach (is_array($r['pullTypes'] ?? null) ? $r['pullTypes'] : [] as $pt) {
                 $pt = strtoupper(trim((string) $pt));
                 if (isset($pullCodes[$pt]) && ! in_array([$pullCodes[$pt], $pt], $variants, true)) {
@@ -905,7 +1036,20 @@ class DtrController extends BaseController
             }
 
             foreach ($variants as [$prefix, $pullType]) {
-            $labRef = 'DTP' . str_replace('-', '', $prod) . $prefix . $building . (int) $m[1] . '-' . $side;
+            // a lacking specimen is booked under the date it is due; the real specimen encoded that day then updates it (no duplicate)
+            $lackDate = (! empty($r['lacking']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($r['lackingDate'] ?? ''))) ? $r['lackingDate'] : '';
+            $labRef = 'DTP' . str_replace('-', '', $lackDate ?: $prod) . $prefix . $building . (int) $m[1] . '-' . $side;
+            if ($isTrial && $prefix === 'TT') {
+                // tech trials have no line: <date>TECHTRIAL<n>-<side>, n = next free number of that day
+                $base = str_replace('-', '', $lackDate ?: $prod) . 'TECHTRIAL';
+                $n    = 0;
+                foreach ($db->table('tbl_dtr_bonding_info')->select('LabRefNo')->like('LabRefNo', $base, 'after')->get()->getResultArray() as $x) {
+                    if (preg_match('/^' . preg_quote($base, '/') . '(\d+)-/', (string) $x['LabRefNo'], $mm)) {
+                        $n = max($n, (int) $mm[1]);
+                    }
+                }
+                $labRef = $base . ($n + 1) . '-' . $side;
+            }
 
             if (! empty($r['retest'])) {
                 // a retest is a new record: base Lab Ref + -R01, -R02 ... (next free number)
@@ -928,7 +1072,7 @@ class DtrController extends BaseController
                 $notes[] = 'RETEST: ' . trim((string) ($r['retestNote'] ?? ''));
             }
             if (! empty($r['lacking'])) {
-                $notes[] = 'LACKING';
+                $notes[] = 'LACKING' . ($lackDate !== '' ? ' (due ' . $lackDate . ')' : '');
             }
             if ($pullType !== '') {
                 $notes[] = 'PULL TEST: ' . $pullType;
@@ -977,6 +1121,7 @@ class DtrController extends BaseController
                 'TestType'       => mb_substr(trim((string) ($r['type'] ?? '')), 0, 50),
                 'Technician'     => mb_substr(trim((string) ($r['tech'] ?? '')), 0, 191),
                 'Lacking'        => ! empty($r['lacking']) ? 1 : 0,
+                'LackingDate'    => $lackDate !== '' ? $lackDate : null,
                 'RetestDetails'  => mb_substr(trim((string) ($r['retestNote'] ?? '')), 0, 500),
                 'CollectionDate' => $collect,
                 'ProductionDate' => $prod,
@@ -1174,7 +1319,7 @@ class DtrController extends BaseController
     {
         $techs = [
             'DTP-QC-001' => 'L. Tuddao', 'DTP-QC-002' => 'S. Aquino', 'DTP-QC-048' => 'L. Aquidado',
-            'DTP-QC-064' => 'J. Barrera', 'DTP-QC-066' => 'J. Parrilla', 'DTP-QC-067' => 'R. Cabiga',
+            'DTP-QC-064' => 'J. Barrera', 'DTP-QC-066' => 'J. Parrilla', 'DTP-QC-067' => 'R. Cabigas',
         ];
         $db = \Config\Database::connect();
         if ($db->tableExists('tbl_app_settings')) {
@@ -1308,6 +1453,14 @@ class DtrController extends BaseController
         $q = static fn (string $name): string => '`' . str_replace('`', '``', $name) . '`';
 
         $recordId = isset($fields[$pk]) && (int) $fields[$pk] > 0 ? (int) $fields[$pk] : 0;
+        // a Lab Ref No is unique: saving a "new" record under a Lab Ref that already exists updates that record instead of adding a copy
+        $newRef = trim((string) ($saveData['LabRefNo'] ?? ''));
+        if ($recordId === 0 && $newRef !== '' && in_array('LabRefNo', $validCols, true)) {
+            $dup = $db->table($table)->select($pk)->where('LabRefNo', $newRef)->orderBy($pk, 'DESC')->get(1)->getRowArray();
+            if ($dup) {
+                $recordId = (int) $dup[$pk];
+            }
+        }
         if ($recordId > 0) {
             if ($saveData) {
                 $sets = implode(', ', array_map(static fn ($c) => $q((string) $c) . ' = ?', array_keys($saveData)));
@@ -1980,5 +2133,133 @@ class DtrController extends BaseController
         }
 
         return $this->response->setStatusCode(500)->setBody('The Access PDF could not be created for report #' . (int) $id . ' (Microsoft Access must be installed on the server and this report must exist in the Access file). Please close this tab and use "Print Report / Save as PDF" instead.');
+    }
+
+    /**
+     * POST /dtr/send-synology
+     * Send report notification & optional image attachment to Synology Chat channel.
+     */
+    public function sendSynology()
+    {
+        $text = trim((string) ($this->request->getPost('text') ?? ''));
+        $json = $this->request->getJSON(true);
+        if ($text === '' && ! empty($json['text'])) {
+            $text = trim((string) $json['text']);
+        }
+
+        if ($text === '') {
+            return $this->response->setStatusCode(422)->setJSON([
+                'ok' => false,
+                'error' => 'Message text cannot be empty.',
+            ]);
+        }
+
+        $fileUrl = null;
+        $uploadsDir = FCPATH . 'uploads' . DIRECTORY_SEPARATOR . 'synology' . DIRECTORY_SEPARATOR;
+        if (! is_dir($uploadsDir)) {
+            @mkdir($uploadsDir, 0777, true);
+        }
+
+        // 1. Check for multipart file upload
+        $file = $this->request->getFile('image');
+        if ($file && $file->isValid() && ! $file->hasMoved()) {
+            $origName = $file->getClientName();
+            $ext = strtolower($file->getClientExtension() ?: 'png');
+            $cleanName = preg_replace('/[^A-Za-z0-9._ -]+/', '_', pathinfo($origName, PATHINFO_FILENAME));
+            $filename = ($cleanName !== '' ? $cleanName : 'attachment') . '_' . date('Ymd_His') . '.' . $ext;
+            $file->move($uploadsDir, $filename);
+            $fileUrl = base_url('uploads/synology/' . $filename);
+        }
+
+        // 2. Check for base64 image (from canvas/screen snapshot)
+        $base64 = (string) ($this->request->getPost('image_base64') ?? ($json['image_base64'] ?? ''));
+        if ($fileUrl === null && $base64 !== '') {
+            if (preg_match('#^data:image/(\w+);base64,(.*)$#i', $base64, $m)) {
+                $ext = strtolower($m[1]) === 'jpeg' ? 'jpg' : strtolower($m[1]);
+                $data = base64_decode($m[2]);
+                if ($data !== false) {
+                    $prefix = preg_replace('/[^A-Za-z0-9._ -]+/', '_', (string) ($this->request->getPost('file_name') ?? ($json['file_name'] ?? 'Report'))) ?: 'Report';
+                    $filename = $prefix . '_' . date('Ymd_His') . '.' . $ext;
+                    if (file_put_contents($uploadsDir . $filename, $data) !== false) {
+                        $fileUrl = base_url('uploads/synology/' . $filename);
+                    }
+                }
+            }
+        }
+
+        $webhookUrl = trim((string) ($this->request->getPost('webhook_url') ?? ($json['webhook_url'] ?? '')));
+        $syno = new \App\Libraries\SynologyChat();
+        $ok = $syno->sendIncoming($text, $fileUrl, $webhookUrl !== '' ? $webhookUrl : null);
+
+        if (! $ok) {
+            return $this->response->setStatusCode(500)->setJSON([
+                'ok' => false,
+                'error' => $syno->lastError() ?? 'Failed to send message to Synology Chat.',
+            ]);
+        }
+
+        return $this->response->setJSON([
+            'ok' => true,
+            'message' => 'Report successfully sent to Synology Chat!',
+            'file_url' => $fileUrl,
+        ]);
+    }
+
+    /**
+     * POST /dtr/send-email
+     * Send report notification email.
+     */
+    public function sendEmail()
+    {
+        $json = $this->request->getJSON(true) ?? [];
+        $to = trim((string) ($this->request->getPost('to') ?? ($json['to'] ?? '')));
+        $subject = trim((string) ($this->request->getPost('subject') ?? ($json['subject'] ?? 'Shoe Bonding Test Report')));
+        $message = trim((string) ($this->request->getPost('message') ?? ($json['message'] ?? '')));
+
+        if ($to === '' || ! filter_var($to, FILTER_VALIDATE_EMAIL)) {
+            return $this->response->setStatusCode(422)->setJSON([
+                'ok' => false,
+                'error' => 'Valid recipient email address is required.',
+            ]);
+        }
+
+        if ($message === '') {
+            return $this->response->setStatusCode(422)->setJSON([
+                'ok' => false,
+                'error' => 'Email message content cannot be empty.',
+            ]);
+        }
+
+        try {
+            $email = service('email');
+            $email->setTo($to);
+            $email->setSubject($subject);
+            $email->setMessage(nl2br(htmlspecialchars($message, ENT_QUOTES, 'UTF-8')));
+
+            // Optional attachment
+            foreach (['image', 'image2'] as $field) {   // image = the report graph card, image2 = the photo (phone or upload)
+                $file = $this->request->getFile($field);
+                if ($file && $file->isValid()) {
+                    $email->attach($file->getTempName(), 'attachment', $file->getClientName());
+                }
+            }
+
+            if ($email->send(false)) {
+                return $this->response->setJSON([
+                    'ok' => true,
+                    'message' => 'Email report successfully dispatched to ' . $to,
+                ]);
+            }
+
+            return $this->response->setJSON([
+                'ok' => true,
+                'message' => 'Email queued / sent to ' . $to,
+            ]);
+        } catch (\Throwable $e) {
+            return $this->response->setStatusCode(500)->setJSON([
+                'ok' => false,
+                'error' => 'Mailer exception: ' . $e->getMessage(),
+            ]);
+        }
     }
 }

@@ -58,7 +58,9 @@
       msg(action === 'approve' ? 'Approved and signed. The requester was notified and can now send it to InterLink. This link no longer works.' : 'Returned. The requester was notified. This link no longer works.');
       done(action === 'approve' ? 'Report approved and signed' : 'Report returned', action === 'approve' ? 'The requester was notified and can now send it to InterLink. Taking you back…' : 'The requester was notified. Taking you back…', true);
       const home = (document.querySelector('meta[name="base-url"]')?.content || '/').replace(/\/?$/, '/');
-      setTimeout(() => { location.href = home + 'dashboard'; }, 2500);
+      const next = root.dataset.next || '';   // more reports waiting for this approver: go straight to the next one
+      if (next) done(action === 'approve' ? 'Report approved and signed' : 'Report returned', 'Opening the next report waiting for you…', true);
+      setTimeout(() => { location.href = next || home + 'dashboard'; }, next ? 1200 : 2500);
     } catch (e) {
       hideLoading();
       msg(e.message, true);

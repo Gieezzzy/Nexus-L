@@ -56,14 +56,6 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
         </div>
         <span class="dtr-kpi-ico dtr-ico-fail">✕</span>
     </div>
-    <div class="card glass dtr-kpi">
-        <div>
-            <small>Master Lookup Records</small>
-            <b>271,627</b>
-            <span class="dtr-kpi-sub">DSR (154k) · Shoe (74k) · Mat (41k) · Std (1k)</span>
-        </div>
-        <span class="dtr-kpi-ico dtr-ico-purple"><svg class="ic" aria-hidden="true"><use href="#i-database"/></svg></span>
-    </div>
 </div>
 
 <!-- Toolbar of the open panel (the sidebar switches panels) -->
@@ -82,8 +74,13 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
     </div>
     <div class="dtr-nav-actions" data-dtr-for="labtracker" <?= $activeTab === 'labtracker' ? '' : 'hidden' ?>></div>
     <div class="dtr-nav-actions dtr-form-actions" data-dtr-for="material"<?= $activeTab === 'material' ? '' : 'hidden' ?>>
-        <button type="button" id="btn-dtr-new" class="dtr-btn dtr-btn-outline">+ New Record</button>
-        <button type="button" id="btn-dtr-load-machine" class="dtr-btn dtr-btn-amber" title="Reads the machine result file (.xlsx / .csv) for this Lab Ref No. The source file is never modified.">
+        <select id="dtr-mat-form-slug" class="dtr-tracker-cat" aria-label="Material test form">
+            <?php foreach ($formConfig as $slug => $cfg): ?>
+                <?php if ($slug === 'bonding' || $slug === 'pull') continue; ?>
+                <option value="<?= esc($slug) ?>"><?= esc($cfg['label']) ?></option>
+            <?php endforeach ?>
+        </select>
+        <button type="button" id="btn-dtr-load-machine" class="dtr-btn dtr-btn-amber" hidden style="display:none" title="Reads the machine result file (.xlsx / .csv) for this Lab Ref No. The source file is never modified.">
             <svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> Load Machine Results
         </button>
         <button type="button" id="btn-dtr-refresh-calc" class="dtr-btn dtr-btn-outline" title="Runs ApplyStandardValuesSmart + Thickness + Directional Averages + 6-Point Colorfastness + EvaluateRatings">
@@ -107,6 +104,29 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
         <button type="button" id="btn-bond-print-preview" class="dtr-btn dtr-btn-purple" title="View, print or save the official report sheet">
             <svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg> Print / Preview Report
         </button>
+        <div class="dtr-send-dropdown-wrap">
+            <button type="button" id="btn-bond-send-report" class="dtr-btn dtr-btn-outline dtr-send-btn" title="Send report via Synology Chat or Email">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                <span>Send report</span>
+                <svg class="dtr-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div class="dtr-send-dropdown-menu" id="dtr-send-menu">
+                <button type="button" class="dtr-send-dropdown-item" id="btn-open-synology-modal">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#0284c7"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    <div>
+                        <strong>Send Synology</strong>
+                        <small>Send to Synology Chat channel with report image</small>
+                    </div>
+                </button>
+                <button type="button" class="dtr-send-dropdown-item" id="btn-open-email-modal">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#ea580c"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                    <div>
+                        <strong>Send Email</strong>
+                        <small>Send formal notification via email</small>
+                    </div>
+                </button>
+            </div>
+        </div>
         <?php if (! empty($dtrIsAdmin)): ?>
         <a id="btn-bond-designer" class="dtr-btn dtr-btn-outline dtr-only-bonding" href="<?= site_url('designer') ?>?tab=diagram" title="Admin only: place the points on the shoe, hide or add fields">
             <svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg> Adjust shoe points / layout (admin)
@@ -156,14 +176,10 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
             <table class="dtr-table" id="dtr-tracker-table">
                 <thead>
                     <tr>
-                        <th>Action</th>
+                        <th></th>
                         <th>LabRefNo</th>
                         <th>TR / ETRF No.</th>
-                        <th>Form Category</th>
-                        <th>Material Type</th>
-                        <th>Material Code</th>
                         <th>Material / Product Description</th>
-                        <th>Supplier / Factory</th>
                         <th>Style / Model No.</th>
                         <th>Color</th>
                         <th>PO / Lot No.</th>
@@ -182,17 +198,13 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                         ?>
                         <tr>
                             <td style="white-space:nowrap">
-                                <button type="button" class="dtr-btn-xs dtr-btn-primary" data-open-record="<?= esc($r['form_slug']) ?>" data-source-id="<?= (int) $r['source_id'] ?>" data-labref="<?= esc($r['lab_ref_no']) ?>">
-                                    Open Form
+                                <button type="button" class="dtr-dl-btn" data-open-record="<?= esc($r['form_slug']) ?>" data-source-id="<?= (int) $r['source_id'] ?>" data-labref="<?= esc($r['lab_ref_no']) ?>" title="Open form" aria-label="Open form">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
                                 </button>
                             </td>
                             <td class="mono"><b><?= esc($r['lab_ref_no']) ?></b></td>
                             <td class="mono"><?= esc($r['tr_no'] ?: '-') ?></td>
-                            <td><span class="dtr-tag"><?= esc($r['form_category']) ?></span></td>
-                            <td><?= esc($r['material_type'] ?: '-') ?></td>
-                            <td class="mono"><?= esc($r['material_code'] ?: '-') ?></td>
                             <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="<?= esc($r['material_description']) ?>"><?= esc($r['material_description'] ?: '-') ?></td>
-                            <td><?= esc($r['supplier'] ?: '-') ?></td>
                             <td class="mono"><?= esc($r['model_style'] ?: '-') ?></td>
                             <td><?= esc($r['color'] ?: '-') ?></td>
                             <td class="mono"><?= esc($r['po_lot_no'] ?: '-') ?></td>
@@ -275,7 +287,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                     <tbody>
                         <?php foreach ($materialsMaster as $mm): ?>
                             <tr>
-                                <td class="mono"><b><?= esc($mm['LabReference'] ?? '') ?></b></td>
+                                <td class="mono"><?php if (! empty($mm['LabReference'])): ?><a href="#" class="dtr-labref-link" data-open-material="<?= esc($mm['LabReference'], 'attr') ?>" title="Open in Material Tests"><b><?= esc($mm['LabReference']) ?></b></a><?php endif ?></td>
                                 <td><?= esc($mm['MaterialType'] ?? '') ?></td>
                                 <td class="mono"><?= esc($mm['MaterialCode'] ?? '') ?></td>
                                 <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?= esc($mm['MaterialName'] ?? '') ?></td>
@@ -303,11 +315,8 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                             <th>Colorway</th>
                             <th>MTL #</th>
                             <th>Line</th>
-                            <th>Test Type</th>
-                            <th>Collection Date</th>
                             <th>Prod. Date</th>
                             <th>Tested Date</th>
-                            <th>Technician</th>
                             <th>Result</th>
                             <th>Status</th>
                             <th>Encoder</th>
@@ -323,11 +332,8 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                                 <td><?= esc($b['Color'] ?? '') ?></td>
                                 <td class="mono"><?= preg_match('/MTL ([^;]+)/', (string) ($b['LabNotesComments'] ?? ''), $mm) ? esc(trim($mm[1])) : '' ?></td>
                                 <td><?= preg_match('/^DTP\d{8}[A-Z]{2}([A-Z])(\d+)/i', (string) ($b['LabRefNo'] ?? ''), $lm) ? esc('Bldg ' . strtoupper($lm[1]) . ' / ' . strtoupper($lm[1]) . (int) $lm[2]) : '' ?></td>
-                                <td><?= esc((string) ($b['TestType'] ?? '')) ?></td>
-                                <td><?= esc(substr((string) ($b['ReceivedDate'] ?? ''), 0, 10)) ?></td>
                                 <td><?= esc(substr((string) ($b['ProductionDate'] ?? ''), 0, 10)) ?></td>
                                 <td><?= esc(substr((string) ($b['TestedDate'] ?? ''), 0, 10)) ?></td>
-                                <td><?= esc($b['Technician'] ?? '') ?></td>
                                 <td><?= $bRes !== '' ? '<span class="badge ' . $bCls . '">' . esc($bRes) . '</span>' : '-' ?></td>
                                 <td><?= $bRes !== '' ? '<span class="badge b-ok">Tested</span>' : '<span class="badge b-warn">Pending</span>' ?></td>
                                 <td><?= preg_match('/Encoded by ([^;]+)/', (string) ($b['LabNotesComments'] ?? ''), $em) ? esc(trim($em[1])) : '' ?></td>
@@ -386,26 +392,10 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
 <section id="dtr-panel-material" class="dtr-panel <?= $activeTab === 'material' ? '' : 'hidden' ?>">
     <!-- Form Selector & Toolbar -->
     <div class="card glass dtr-section-card">
-        <div class="dtr-form-toolbar">
-            <div class="dtr-form-pickers">
-                <div class="dtr-field">
-                    <label>1. Select Material Test Form (10 report types)</label>
-                    <select id="dtr-mat-form-slug" class="dtr-select-lg">
-                        <?php foreach ($formConfig as $slug => $cfg): ?>
-                            <?php if ($slug === 'bonding' || $slug === 'pull') continue; ?>
-                            <option value="<?= esc($slug) ?>"><?= esc($cfg['label']) ?></option>
-                        <?php endforeach ?>
-                    </select>
-                </div>
-                <div class="dtr-field">
-                    <label>2. Load Existing LabRefNo Record from NEXUS-L</label>
-                    <select id="dtr-mat-record-select" class="dtr-select-lg"></select>
-                </div>
-            </div>
-        </div>
+        <select id="dtr-mat-record-select" hidden style="display:none"></select>
 
         <!-- Overall Rating Stamp Banner -->
-        <div class="dtr-stamp-banner" id="dtr-mat-banner">
+        <div class="dtr-stamp-banner" id="dtr-mat-banner" hidden style="display:none">
             <div>
                 <span class="dtr-eyebrow" id="dtr-active-form-label">Fabric Test Report (FBU / FBL)</span>
                 <h3 id="dtr-active-labref-title">Loading record...</h3>
@@ -415,6 +405,229 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                 <div class="dtr-stamp dtr-stamp-pass" id="dtr-stamp-badge">PASS</div>
             </div>
         </div>
+
+        <?php
+        // ===== Leather Test Results (Form # Lab VF 006): the printed VF layout, one row per VF test method. data-col = column of tbl_dtr_leather_results.
+        $lfAttr = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES);
+        $lfIn   = static fn (string $col, string $cls = ''): string => '<input type="text" inputmode="decimal" autocomplete="off" class="vf-res-inp lf-in ' . $cls . '" data-col="' . htmlspecialchars($col, ENT_QUOTES) . '">';
+        $lfOut  = static fn (string $col, string $cls = ''): string => '<input type="text" readonly tabindex="-1" class="vf-res-inp bold lf-out ' . $cls . '" data-col="' . htmlspecialchars($col, ENT_QUOTES) . '">';
+        $lfRate = static fn (string $col): string => '<input type="text" readonly tabindex="-1" class="vf-res-inp bold lf-out dtr-rate-inp" data-col="' . htmlspecialchars($col, ENT_QUOTES) . '">';
+        $lfStd  = static fn (string $col): string => '<input type="text" inputmode="decimal" autocomplete="off" class="vf-res-inp lf-in lf-std" data-col="' . htmlspecialchars($col, ENT_QUOTES) . '">';
+        $lfFib  = ['Wool' => '羊毛', 'Acrylic' => '腈纶', 'Polyester' => '涤纶', 'Nylon' => '锦纶', 'Cotton' => '棉', 'Acetate' => '醋酸纤维'];
+        // line: ['lab' => label, 'in' => [cols], 'fib' => prefix of the six fiber columns, 'mm' => [max, min cols], 'ave' => col, 'std' => col, 'rate' => col]; no keys = a printed row left blank
+        $lfRowsLeather = [
+            ['Gauge', '规格', 'VF-A03<br>(2014/04)', 'mm', true, [['in' => ['Thickness1', 'Thickness2', 'Thickness3', 'Thickness4', 'Thickness5', 'Thickness6'], 'mm' => ['TMax', 'TMin'], 'ave' => 'TAve', 'std' => 'T_S', 'rate' => 'TRating']]],
+            ['Weight', '重量', 'VF-A02<br>(2018/11)', 'g/m²', true, [['in' => ['Weight1', 'Weight2', 'Weight3'], 'ave' => 'WAve', 'std' => 'Weight_S', 'rate' => 'WRating']]],
+            ['Softness', '柔软度', 'VF-A06<br>(2014/08)', 'mm', false, [[]]],
+            ['Tensile', '抗拉', 'VF-B01<br>(2022/11)', 'kgf/cm', true, [
+                ['lab' => 'L=', 'in' => ['TensileL1', 'TensileL2', 'TensileL3'], 'ave' => 'TensileLAve', 'std' => 'Tensile_L', 'rate' => 'TensileLRating'],
+                ['lab' => 'W=', 'in' => ['TensileW1', 'TensileW2', 'TensileW3'], 'ave' => 'TensileWAve', 'std' => 'Tensile_W', 'rate' => 'TensileWRating']]],
+            ['Elongation', '延伸', 'VF-B01<br>(2022/11)', '%', true, [
+                ['lab' => 'L=', 'in' => ['ElongationL1', 'ElongationL2', 'ElongationL3'], 'ave' => 'ElongationLAve', 'std' => 'Elongation_L', 'rate' => 'ElongationLRating'],
+                ['lab' => 'W=', 'in' => ['ElongationW1', 'ElongationW2', 'ElongationW3'], 'ave' => 'ElongationWAve', 'std' => 'Elongation_W', 'rate' => 'ElongationWRating']]],
+            ['Trouser Tear', '裤形撕裂', 'VF-B07<br>(2022/11)', 'kgf', true, [
+                ['lab' => 'L=', 'in' => ['Trouser TearL1', 'Trouser TearL2', 'Trouser TearL3'], 'ave' => 'TrouserTearLAve', 'std' => 'TrouserTear_L', 'rate' => 'TrouserTearLRating'],
+                ['lab' => 'W=', 'in' => ['Trouser TearW1', 'Trouser TearW2', 'Trouser TearW3'], 'ave' => 'TrouserTearWAve', 'std' => 'TrouserTear_W', 'rate' => 'TrouserTearWRating']]],
+            ['Baumann Tear', 'Baumann 撕裂', 'VF-B09<br>(2019/05)', 'kgf', true, [
+                ['lab' => 'L=', 'in' => ['BaumannTearL1', 'BaumannTearL2', 'BaumannTearL3'], 'ave' => 'BaumannTearLAve', 'std' => 'BaumannTearL_S', 'rate' => 'BaumannTearL_Rating'],
+                ['lab' => 'W=', 'in' => ['BaumannTearW1', 'BaumannTearW2', 'BaumannTearW3'], 'ave' => 'BaumannTearWAve', 'std' => 'BaumannTearW_S', 'rate' => 'BaumannTearW_Rating']]],
+            ['Bally Flex', '耐挠', 'VF-D01<br>(2019/06)', 'cycles', true, [
+                ['lab' => 'Dry 干: L1 / L2', 'in' => ['BallyDryL1', 'BallyDryL2'], 'std' => 'BallyDryL_S', 'rate' => 'BallyDryL_R'],
+                ['lab' => 'Dry 干: W1 / W2', 'in' => ['BallyDryW1', 'BallyDryW2'], 'std' => 'BallyDryW_S', 'rate' => 'BallyDryW_R'],
+                ['lab' => 'Wet 湿: L1 / L2', 'in' => ['BallyWetL1', 'BallyWetL2'], 'std' => 'BallyWetL_S', 'rate' => 'BallyWetL_R'],
+                ['lab' => 'Wet 湿: W1 / W2', 'in' => ['BallyWetW1', 'BallyWetW2'], 'std' => 'BallyWetW_S', 'rate' => 'BallyWetW_R'],
+                ['lab' => 'After hydrolysis: L1 / L2', 'in' => ['BallyAHL1', 'BallyAHL2'], 'std' => 'BallyAHL_S', 'rate' => 'BallyAHL_R'],
+                ['lab' => 'After hydrolysis: W1 / W2', 'in' => ['BallyAHW1', 'BallyAHW2'], 'std' => 'BallyAHW_S', 'rate' => 'BallyAHW_R'],
+                ['lab' => 'Freezing L1 / L2'], ['lab' => 'Freezing W1 / W2']]],
+            ['Martindale Abrasion', '耐磨', 'VF-C04<br>(2024/12)', 'cycles', true, [
+                ['lab' => 'Dry 干=', 'in' => ['MartindaleD1', 'MartindaleD2'], 'std' => 'MartindaleD1_S', 'rate' => 'MartindaleD1Rating'],
+                ['lab' => 'Wet 湿=', 'in' => ['MartindaleW1', 'MartindaleW2'], 'std' => 'MartindaleW1_S', 'rate' => 'MartindaleW1Rating']]],
+            ['Taber Abrasion H-22/1000g', '', 'VF-C05<br>(2024/12)', 'cycles', true, [['in' => ['TaberAbrasion1', 'TaberAbrasion2'], 'std' => 'Taber_S', 'rate' => 'TaberRating']]],
+            ['Mullen Burst', '爆破', 'VF-B02<br>(2019/05)', 'kgf/cm²', true, [['in' => ['MullenBurst1', 'MullenBurst2', 'MullenBurst3'], 'ave' => 'MullenBurstAve', 'std' => 'MullenBurst', 'rate' => 'MullenBurstRating']]],
+            ['Colorfastness to Perspiration<br>(Top Side/Finished Surface Only)', '耐汗渍测试(正面)', 'VF-E16<br>(2018/11)', 'AATCC', true, [['fib' => 'CtP', 'std' => 'CTP', 'rate' => 'CTPRating']]],
+            ['Colorfastness to Perspiration<br>Back side', '耐汗渍测试(反面)', 'VF-E16<br>(2018/11)', 'AATCC', true, [['fib' => 'CtPB', 'std' => 'CtPB_S', 'rate' => 'CtPB_Rating']]],
+            ['Colorfastness to Water<br>(Top Side/Finished Surface Only)', '耐水测试(正面)', 'VF-E01<br>(2008/05)', 'AATCC', true, [['fib' => 'CtW', 'std' => 'CTW', 'rate' => 'CTWRating']]],
+            ['Colorfastness to Water<br>Back side', '耐水测试(反面)', 'VF-E01<br>(2008/05)', 'AATCC', true, [['fib' => 'CtWBackSide', 'std' => 'CtWB_S', 'rate' => 'CtWB_Rating']]],
+            ['UV light (24hrs, 50°C)', '紫外光', 'VF-E03<br>(2019/05)', 'AATCC', true, [['in' => ['UV1', 'UV2'], 'std' => 'UV_S', 'rate' => 'UVRating']]],
+            ['Colorfastness to Crocking', '摩擦褪色', 'VF-E02<br>(2024/08)', 'AATCC', true, [
+                ['lab' => 'Dry 干=', 'in' => ['CtCDry'], 'std' => 'CtCDry_S', 'rate' => 'CTCDRYRating'],
+                ['lab' => 'Wet 湿=', 'in' => ['CtCWet'], 'std' => 'CtCWet_S', 'rate' => 'CTCWETRating']]],
+            ['Abrasion Crocking', '摩擦', 'VF-E02<br>(2024/08)', 'AATCC', true, [
+                ['lab' => 'Dry 干=', 'in' => ['CADry'], 'rate' => 'AbrasionCrockingDRY_Rating'],
+                ['lab' => 'Wet 湿=', 'in' => ['CAWet'], 'rate' => 'AbrasionCrockingWET_Rating']]],
+            ['Ink adhesion on Substrate<br>3M Scotch tape #600', '', 'VF-F05<br>(2014/07)', '', true, [
+                ['lab' => 'Dry 干=', 'in' => ['IAoSDry'], 'rate' => 'InkAdhesionOSDRY_Rating'],
+                ['lab' => 'Wet 湿=', 'in' => ['IAoSWet'], 'rate' => 'InkAdhesionOSWET_Rating']]],
+            ['PVC Migration', '', 'VF-E06<br>(2014/07)', 'AATCC', false, [['in' => ['PVC_1', 'PVC_2'], 'std' => 'PVC_S', 'rate' => 'PVC_Rating']]],
+            ['Reaction with solvents', '溶剂反应', 'VF-I03<br>(2012/08)', '', false, [['lab' => 'Acetone 丙酮:'], ['lab' => 'Ethyl Acetate 乙酸乙酯:'], ['lab' => 'MEK 丁酮:']]],
+            ['Wicking', '吸湿', 'VF-E14<br>(2014/07)', 'mm', false, [[]]],
+            ['Maeser Test', 'Maeser 防水测试', 'VF-E11<br>(2018/11)', 'cycles', false, [[]]],
+            ['Peeling Strength', '剥离强度', 'VF-F03<br>(2024/12)', 'kgf/cm', false, [[]]],
+            ['Glow in the dark', '', 'VF-E28<br>(2024/08)', '', false, [['lab' => 'D65 / CWF'], ['lab' => 'After Washing D65 / CWF']]],
+            ['Heat Aging (72hrs, 70°C)', '热老化', 'VF-E04<br>(2022/09)', '', true, [['in' => ['HeatAging1', 'HeatAging2'], 'std' => 'HeatAging_S', 'rate' => 'HeatAgingRating']]],
+            ['Hydrolysis (7Days, 60°C, 95%RH)', '水解', 'VF-E19<br>(2024/12)', '', true, [['in' => ['Hydrolysis1', 'Hydrolysis2'], 'std' => 'Hydrolysis_S', 'rate' => 'HydrolysisRating']]],
+        ];
+        // ===== Fabric Test Results (Form # Lab VF 005): same printed layout, columns of tbl_dtr_fabric_results (no Bally columns exist, so those printed lines stay blank)
+        $lfRowsFabric = [
+            ['Gauge', '规格', 'VF-A03<br>(2014/04)', 'mm', true, [['in' => ['Thickness1', 'Thickness2', 'Thickness3', 'Thickness4', 'Thickness5', 'Thickness6'], 'mm' => ['TMax', 'TMin'], 'ave' => 'TAve', 'std' => 'T_S', 'rate' => 'TRating']]],
+            ['Weight', '重量', 'VF-A02<br>(2018/11)', 'g/m²', true, [['in' => ['Weight1', 'Weight2', 'Weight3'], 'ave' => 'WAve', 'std' => 'Weight_S', 'rate' => 'WRating']]],
+            ['Yarn Count', '经纬密度', 'VF-A07<br>(2008/05)', '# of yarns', true, [
+                ['lab' => 'Warp :', 'in' => ['YCWarp1', 'YCWarp2'], 'ave' => 'YCWaAve', 'rate' => 'YCWaRating'],
+                ['lab' => 'Welf :', 'in' => ['YCWelf1', 'YCWelf2'], 'ave' => 'YCWeAve', 'rate' => 'YCWeRating']]],
+            ['Tensile', '抗拉', 'VF-B01<br>(2022/11)', 'kgf/cm', true, [
+                ['lab' => 'L=', 'in' => ['TensileL1', 'TensileL2', 'TensileL3'], 'ave' => 'TensileLAve', 'std' => 'Tensile_L', 'rate' => 'TensileLRating'],
+                ['lab' => 'W=', 'in' => ['TensileW1', 'TensileW2', 'TensileW3'], 'ave' => 'TensileWAve', 'std' => 'Tensile_W', 'rate' => 'TensileWRating']]],
+            ['Elongation', '延伸', 'VF-B01<br>(2022/11)', '%', true, [
+                ['lab' => 'L=', 'in' => ['ElongationL1', 'ElongationL2', 'ElongationL3'], 'ave' => 'ElongationLAve', 'std' => 'Elongation_L', 'rate' => 'ElongationLRating'],
+                ['lab' => 'W=', 'in' => ['ElongationW1', 'ElongationW2', 'ElongationW3'], 'ave' => 'ElongationWAve', 'std' => 'Elongation_W', 'rate' => 'ElongationWRating']]],
+            ['Trouser Tear', '裤形撕裂', 'VF-B07<br>(2022/11)', 'kgf', true, [
+                ['lab' => 'L=', 'in' => ['Trouser TearL1', 'Trouser TearL2', 'Trouser TearL3'], 'ave' => 'TrouserTearLAve', 'std' => 'TrouserTear_L', 'rate' => 'TrouserTearLRating'],
+                ['lab' => 'W=', 'in' => ['Trouser TearW1', 'Trouser TearW2', 'Trouser TearW3'], 'ave' => 'TrouserTearWAve', 'std' => 'TrouserTear_W', 'rate' => 'TrouserTearWRating']]],
+            ['Stitch Tear', '车缝撕裂', 'VF-B08<br>(2019/05)', 'kgf/cm', true, [
+                ['lab' => 'L=', 'in' => ['StitchTearL1', 'StitchTearL2', 'StitchTearL3'], 'ave' => 'StitchTearLAve', 'std' => 'StitchTear_L', 'rate' => 'StitchTearLRating'],
+                ['lab' => 'W=', 'in' => ['StitchTearW1', 'StitchTearW2', 'StitchTearW3'], 'ave' => 'StitchTearWAve', 'std' => 'StitchTear_W', 'rate' => 'StitchTearWRating']]],
+            ['Bally Flex', '耐挠', 'VF-D01<br>(2019/06)', 'cycles', false, [
+                ['lab' => 'Dry 干: L1 / L2'], ['lab' => 'Dry 干: W1 / W2'], ['lab' => 'Wet 湿: L1 / L2'], ['lab' => 'Wet 湿: W1 / W2'],
+                ['lab' => 'After hydrolysis 水解: L1 / L2'], ['lab' => 'After hydrolysis 水解: W1 / W2']]],
+            ['Martindale Abrasion', '耐磨', 'VF-C04<br>(2024/12)', 'cycles', true, [
+                ['lab' => 'Dry 干=Fabric:', 'in' => ['MartindaleD1'], 'std' => 'MartindaleD1_S', 'rate' => 'MartindaleD1Rating'],
+                ['lab' => 'Dry 干=Ink:', 'in' => ['MartindaleD2'], 'std' => 'MartindaleD2_S', 'rate' => 'MartindaleD2Rating'],
+                ['lab' => 'Wet 湿=Fabric:', 'in' => ['MartindaleW1'], 'std' => 'MartindaleW1_S', 'rate' => 'MartindaleW1Rating'],
+                ['lab' => 'Wet 湿=Ink:', 'in' => ['MartindaleW2'], 'std' => 'MartindaleW2_S', 'rate' => 'MartindaleW2Rating']]],
+            ['Taber Abrasion CS-17, 500g', '', 'VF-C05<br>(2024/12)', 'cycles', true, [['in' => ['TaberAbrasion1', 'TaberAbrasion2'], 'std' => 'Taber_S', 'rate' => 'TaberRating']]],
+            ['Mullen Burst', '爆破', 'VF-B02<br>(2019/05)', 'kgf/cm²', true, [['in' => ['MullenBurst1', 'MullenBurst2', 'MullenBurst3'], 'ave' => 'MullenBurstAve', 'std' => 'MullenBurst', 'rate' => 'MullenBurstRating']]],
+            ['Colorfastness to Perspiration<br>(Top Side/Finished Surface Only)', '耐汗渍测试(正面)', 'VF-E16<br>(2018/11)', 'AATCC', true, [['fib' => 'CtP', 'std' => 'CTP', 'rate' => 'CTPRating']]],
+            ['Colorfastness to Perspiration<br>Back side', '耐汗渍测试(反面)', 'VF-E16<br>(2018/11)', 'AATCC', true, [['fib' => 'CtPB', 'std' => 'CtPB_S', 'rate' => 'CtPB_Rating']]],
+            ['Colorfastness to Water<br>(Top Side/Finished Surface Only)', '耐水测试(正面)', 'VF-E01<br>(2008/05)', 'AATCC', true, [['fib' => 'CtW', 'std' => 'CTW', 'rate' => 'CTWRating']]],
+            ['Colorfastness to Water<br>Back side', '耐水测试(反面)', 'VF-E01<br>(2008/05)', 'AATCC', true, [['fib' => 'CtWBackSide', 'std' => 'CtWB_S', 'rate' => 'CtWB_Rating']]],
+            ['UV light (24hrs, 50°C)', '紫外光', 'VF-E03<br>(2019/05)', 'AATCC', true, [['in' => ['UV1', 'UV2'], 'std' => 'UV_S', 'rate' => 'UVRating']]],
+            ['Colorfastness to Crocking', '摩擦褪色', 'VF-E02<br>(2024/08)', 'AATCC', true, [
+                ['lab' => 'Dry 干=', 'in' => ['CtCDry'], 'std' => 'CtCDry_S', 'rate' => 'CTCDRYRating'],
+                ['lab' => 'Wet 湿=', 'in' => ['CtCWet'], 'std' => 'CtCWet_S', 'rate' => 'CTCWETRating']]],
+            ['Abrasion Crocking', '摩擦', 'VF-E02<br>(2024/08)', 'AATCC', true, [
+                ['lab' => 'Dry 干=', 'in' => ['CADry'], 'rate' => 'AbrasionCrockingDRY_Rating'],
+                ['lab' => 'Wet 湿=', 'in' => ['CAWet'], 'rate' => 'AbrasionCrockingWET_Rating']]],
+            ['Ink adhesion on Substrate<br>3M Scotch tape #600', '', 'VF-F05<br>(2014/07)', '', true, [
+                ['lab' => 'Dry 干=', 'in' => ['IAoSDry'], 'rate' => 'InkAdhesionOSDRY_Rating'],
+                ['lab' => 'Wet 湿=', 'in' => ['IAoSWet'], 'rate' => 'InkAdhesionOSWET_Rating']]],
+            ['Reaction with solvents', '溶剂反应', 'VF-I03<br>(2012/08)', '', false, [['lab' => 'Acetone 丙酮:'], ['lab' => 'Ethyl Acetate 乙酸乙酯:'], ['lab' => 'MEK 丁酮:']]],
+            ['Peeling Strength', '剥离强度', 'VF-F03<br>(2024/12)', 'kgf/cm', false, [[]]],
+            ['Wicking', '吸湿', 'VF-E14<br>(2014/07)', 'mm', false, [[]]],
+            ['Maeser Test', 'Maeser 防水测试', 'VF-E11<br>(2018/11)', 'cycles', false, [[]]],
+            ['Glow in the dark', '', 'VF-E28<br>(2024/08)', '', false, [['lab' => 'D65 / CWF'], ['lab' => 'After Washing D65 / CWF']]],
+            ['Heat Aging (72hrs, 70°C)', '热老化', 'VF-E04<br>(2022/09)', '', true, [['in' => ['HeatAging1', 'HeatAging2'], 'std' => 'HeatAging_S', 'rate' => 'HeatAgingRating']]],
+            ['Hydrolysis (7Days, 60°C, 95%RH)', '水解', 'VF-E19<br>(2024/12)', '', true, [['in' => ['Hydrolysis1', 'Hydrolysis2'], 'std' => 'Hydrolysis_S', 'rate' => 'HydrolysisRating']]],
+        ];
+        $lfSheets = [
+            'leather' => ['Leather Test Results', '皮料测试结果', 'Lab VF 006', $lfRowsLeather],
+            'fabric'  => ['Fabric Test Results', '布料测试结果', 'Lab VF 005', $lfRowsFabric],
+        ] + (include APPPATH . 'Views/dtr/lf_sheets_more.php');   // webbing, foxing/heel, hardware, label, sockliner/foam, rubber, box, insole
+        ?>
+        <?php foreach ($lfSheets as $lfSlug => $lfSheet):
+            [$lfTitleEn, $lfTitleCn, $lfFormNo, $lfRows] = $lfSheet;
+            $lfOpt  = $lfSheet[4] ?? [];
+            $lfH    = static fn (string $col): string => $lfOpt['hdr'][$col] ?? $col;   // header column names differ in some tables
+            $lfFibs = $lfOpt['fibers'] ?? array_map(static fn ($cn) => $cn, $lfFib);
+            foreach ($lfFibs as $fk => $fv) { $lfFibs[$fk] = is_array($fv) ? $fv : [$fk, $fv]; }
+        ?>
+        <div id="dtr-sheet-<?= $lfSlug ?>" class="vf-sheet lf-sheet" hidden>
+            <div class="vf-tpl-head">
+                <img class="vf-tpl-logo" src="<?= base_url('assets/images/vf-logo.webp') ?>" alt="VF">
+                <div class="vf-tpl-title">
+                    <div class="vf-tpl-title-en"><?= $lfTitleEn ?></div>
+                    <div class="vf-tpl-title-cn"><?= $lfTitleCn ?></div>
+                </div>
+                <img class="vf-tpl-satra" src="<?= base_url('assets/images/satra-accredited.png') ?>" alt="SATRA Accredited Laboratory">
+            </div>
+
+            <div class="vf-tpl-ids">
+                <div class="vf-tpl-box vf-tpl-formno">Form # : <?= $lfFormNo ?></div>
+                <div class="vf-tpl-box"><label>ETRF.No:</label></div>
+                <div class="vf-tpl-box"><label>Lab Ref.No:</label><input type="text" class="mono bold lf-in" data-col="LabRefNo"></div>
+            </div>
+
+            <div class="vf-tpl-body">
+                <div class="vf-tpl-col">
+                    <div class="vf-tpl-line"><label>Supplier/Factory (厂商):</label><input type="text" class="lf-in" data-col="Supplier/Factory"></div>
+                    <div class="vf-tpl-line"><label>Supplier's country (国家):</label><input type="text" class="lf-in" data-col="Supplier's Country"></div>
+                    <div class="vf-tpl-line"><label>Material Description (材料):</label><input type="text" class="lf-in" data-col="Material Description"></div>
+                    <div class="vf-tpl-line"><label>Color (颜色):</label><input type="text" class="lf-in" data-col="Color"></div>
+                    <div class="vf-tpl-line"><label>Model No./Style (型体):</label><input type="text" class="lf-in" data-col="Model No/Style"></div>
+                    <div class="vf-tpl-line"><label>P.O/Lot No (订单号):</label><input type="text" class="mono lf-in" data-col="<?= $lfH('PO/Lot No') ?>"></div>
+                    <div class="vf-tpl-line"><label>Quantity (数量):</label><input type="text" class="lf-in" data-col="Quantity"></div>
+                    <div class="vf-tpl-line"><label>Send by (提供方):</label><input type="text" class="lf-in" data-col="<?= $lfH('Send by') ?>"></div>
+                </div>
+                <div class="vf-tpl-col">
+                    <div class="vf-tpl-radios" role="radiogroup" aria-label="Test Type">
+                        <?php foreach (['Prod. Material' => 'Prod. Material 量产材料', 'Prod. Re-test' => 'Prod. Re-test 量产重测', 'New/Development' => 'New/Development 开发段新材料', 'Sales Sample' => 'Sales Sample 销售样品'] as $v => $t): ?>
+                            <label><input type="radio" name="lf_ms_radio_<?= $lfSlug ?>" class="lf-in" data-col="MaterialSource" value="<?= $lfAttr($v) ?>"> <?= $lfAttr($t) ?></label>
+                        <?php endforeach ?>
+                    </div>
+                    <div class="vf-tpl-line"><label>Received Date 收到日期:</label><input type="text" class="lf-in" data-col="<?= $lfH('Received Date') ?>"></div>
+                    <div class="vf-tpl-line"><label>Tested Date 测试时间:</label><input type="text" class="lf-in" data-col="<?= $lfH('Tested Date') ?>"></div>
+                    <div class="vf-tpl-line"><label>Finished Date 完成时间:</label><input type="text" class="lf-in" data-col="<?= $lfH('Finished Date') ?>"></div>
+                    <div class="vf-tpl-line"><label>Technician 技术人员:</label><input type="text" class="lf-in" data-col="Technician" list="dtr-tech-list" autocomplete="off"></div>
+                    <div class="vf-tpl-line pf-result"><label>* Overall Result:</label><input type="text" readonly tabindex="-1" class="bold mono dtr-rate-inp lf-out" data-col="Remarks"></div>
+                </div>
+            </div>
+
+            <div class="pf-wrap">
+            <table class="vf-res lf-res">
+                <thead>
+                    <tr>
+                        <th class="lf-c-item">Test Items<br><span class="cn">测试项目</span></th>
+                        <th class="lf-c-m">VF Test<br>Method<br><span class="cn">测试方法</span></th>
+                        <th class="lf-c-u">Units<br><span class="cn">单位</span></th>
+                        <th class="lf-c-r">Test Results<br><span class="cn">测试结果</span></th>
+                        <th class="lf-c-n">Max/Min<br><span class="cn">最大/小值</span></th>
+                        <th class="lf-c-n">Average<br><span class="cn">平均值</span></th>
+                        <th class="lf-c-n">Standard<br><span class="cn">标准</span></th>
+                        <th class="lf-c-n">Tolerance<br><span class="cn">容许度</span></th>
+                        <th class="lf-c-n">Rating<br><span class="cn">等级</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($lfRows as [$item, $cn, $method, $unit, $hl, $lines]): ?>
+                    <?php foreach ($lines as $li => $ln): ?>
+                        <tr>
+                            <?php if ($li === 0): $rs = count($lines); ?>
+                                <td rowspan="<?= $rs ?>" class="vf-res-part-cell lf-item<?= $hl ? ' lf-hl' : '' ?>"><?= $item ?><?= $cn !== '' ? '<br><span class="cn">' . $cn . '</span>' : '' ?></td>
+                                <td rowspan="<?= $rs ?>" class="vf-res-c"><?= $method ?></td>
+                                <td rowspan="<?= $rs ?>" class="vf-res-c"><?= $unit ?></td>
+                            <?php endif ?>
+                            <td class="lf-cell">
+                                <?php if (! empty($ln['fib'])): ?>
+                                    <div class="lf-fibers">
+                                        <?php foreach ($lfFibs as $fn => [$fen, $fcn]): ?>
+                                            <label class="lf-fib"><span><?= $fen ?><br><?= $fcn ?></span><?= $lfIn($ln['fib'] . $fn) ?></label>
+                                        <?php endforeach ?>
+                                    </div>
+                                <?php else: ?>
+                                    <?php if (! empty($ln['lab'])): ?><span class="lf-lab"><?= $ln['lab'] ?></span><?php endif ?>
+                                    <?php foreach ($ln['in'] ?? [] as $col): ?><?= $lfIn($col) ?><?php endforeach ?>
+                                <?php endif ?>
+                            </td>
+                            <td class="lf-mm"><?php foreach ($ln['mm'] ?? [] as $col): ?><?= $lfOut($col) ?><?php endforeach ?></td>
+                            <td><?= isset($ln['ave']) ? str_replace('<input ', '<input data-from="' . $lfAttr(implode('|', $ln['in'] ?? [])) . '" ', $lfOut($ln['ave'])) : '' ?></td>
+                            <td><?= isset($ln['std']) ? $lfStd($ln['std']) : '' ?></td>
+                            <td></td>
+                            <td><?= isset($ln['rate']) ? $lfRate($ln['rate']) : '' ?></td>
+                        </tr>
+                    <?php endforeach ?>
+                <?php endforeach ?>
+                </tbody>
+            </table>
+            </div>
+
+            <div class="pf-foot">
+                <div class="pf-comments"><label>Comments 备注 :</label><textarea rows="2" class="lf-in" data-col="Comments"></textarea></div>
+                <div class="pf-sign">
+                    <div class="vf-tpl-line"><label>Reviewed by 检查:</label><input type="text" class="lf-in" data-col="AuthorizedBy"></div>
+                    <div class="vf-tpl-line"><label>Approved by 核准:</label><input type="text" class="lf-in" data-col="Acknowledged by"></div>
+                </div>
+            </div>
+        </div>
+        <?php endforeach ?>
 
         <form id="dtr-material-form" onsubmit="return false;">
             <input type="hidden" name="ID" id="mf_ID" value="">
@@ -1145,9 +1358,10 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                     });
 
                     var std = document.getElementById('bf_STD');
+                    var stdRange = '';   // "FailMax - PassMin" of the style code (tbl_bonding_test_std), e.g. 1.99 - 2.50
                     function showStd() {
                         var n = parseFloat(std && std.value);
-                        var txt = isNaN(n) ? '' : n.toFixed(2);
+                        var txt = stdRange || (isNaN(n) ? '' : n.toFixed(2));
                         document.querySelectorAll('.vf-std-disp').forEach(function (b) { b.textContent = txt; });
                     }
                     if (std) {
@@ -1159,6 +1373,36 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                         });
                         std.addEventListener('change', showStd);
                         showStd();
+                    }
+
+                    // the style code of Model/Style decides the STD shown (UY CLASSIC SLIP-ON -> UY -> 1.99 - 2.50)
+                    var styleEl = document.getElementById('bf_ModelStyle');
+                    var lastStyle = null, stdTimer = null;
+                    function loadStyleStd() {
+                        var s = String((styleEl && Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').get.call(styleEl)) || '').trim();
+                        if (s === lastStyle) return;
+                        lastStyle = s;
+                        clearTimeout(stdTimer);
+                        if (s === '') { stdRange = ''; showStd(); return; }
+                        stdTimer = setTimeout(function () {
+                            var meta = document.querySelector('meta[name="base-url"]');
+                            var base = meta ? meta.content.replace(/\/+$/, '') + '/' : location.origin + '/';
+                            fetch(base + 'dtr/bonding-std?style=' + encodeURIComponent(s), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                                .then(function (r) { return r.json(); })
+                                .then(function (j) { stdRange = (j && j.found) ? (j.failMax + ' - ' + j.passMin) : ''; showStd(); })
+                                .catch(function () { stdRange = ''; showStd(); });
+                        }, 150);
+                    }
+                    if (styleEl) {
+                        var vd = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+                        Object.defineProperty(styleEl, 'value', {
+                            configurable: true,
+                            get: function () { return vd.get.call(this); },
+                            set: function (v) { vd.set.call(this, v); loadStyleStd(); }
+                        });
+                        styleEl.addEventListener('input', loadStyleStd);
+                        styleEl.addEventListener('change', loadStyleStd);
+                        loadStyleStd();
                     }
                 })();
                 </script>
@@ -1673,11 +1917,11 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
             </div>
         </div>
         <div class="dtr-modal-body dtr-intake-body">
-            <table class="dtr-table dtr-intake-table">
+            <table class="dtr-table dtr-intake-table" id="dtr-intake-table">
                 <thead>
                     <tr>
-                        <th>Active</th><th>Line</th><th>Side</th><th>Lab Ref No</th><th>Production Code</th><th>Style</th><th>Colorway</th><th>MTL #</th>
-                        <th>Shoe Master</th><th>Technician</th><th>Test Type</th><th>Pull Type</th><th>Lacking</th><th>Retest Details</th>
+                        <th>Active</th><th>Line</th><th>Side</th><th>Lab Ref No</th><th>Test Type</th><th>Production Code</th><th>Style</th><th>Colorway</th><th>MTL #</th>
+                        <th>Image</th><th>Pull Type</th><th>Lacking</th><th>Remarks</th>
                     </tr>
                 </thead>
                 <tbody id="dtr-intake-tbody"></tbody>
@@ -2114,6 +2358,154 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
     </div>
 </div>
 
+<!-- =======================================================================
+     SYNOLOGY SEND REPORT MODAL
+     ======================================================================= -->
+<div id="dtr-synology-modal-backdrop" class="dtr-modal-backdrop hidden" style="z-index:10050">
+    <div id="dtr-synology-modal" class="syno-modal-dialog">
+        <div class="syno-modal-head">
+            <h3 class="syno-modal-title">Synology Send Report</h3>
+            <button type="button" id="btn-close-syno-modal" class="syno-modal-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="syno-modal-body">
+            <div class="syno-channel-bar">
+                <div>
+                    <span class="syno-live-dot"></span>
+                    <span>Target Channel: <strong>Shoe Bonding Lab Alerts</strong> (192.168.32.130)</span>
+                </div>
+                <span class="syno-badge">Incoming Webhook</span>
+            </div>
+
+            <div class="syno-templates-wrap">
+                <span class="syno-section-lbl">Message Template:</span>
+                <div class="syno-tpl-pills">
+                    <button type="button" class="syno-tpl-pill is-active" data-tpl="first-article">First Article / Result Notice</button>
+                    <button type="button" class="syno-tpl-pill" data-tpl="failure-alert">Failure Notice (Defect &amp; Cement)</button>
+                    <button type="button" class="syno-tpl-pill" data-tpl="daily-summary">Daily Bonding Summary</button>
+                    <button type="button" class="syno-tpl-pill" data-tpl="custom">Custom Message</button>
+                </div>
+            </div>
+
+            <div class="syno-templates-wrap">
+                <span class="syno-section-lbl">Insert Quick Details:</span>
+                <div class="syno-tags-wrap">
+                    <button type="button" class="syno-tag-btn" data-insert="{RESULT}">+ Result</button>
+                    <button type="button" class="syno-tag-btn" data-insert="{STYLE}">+ Style</button>
+                    <button type="button" class="syno-tag-btn" data-insert="{COLOR}">+ Color</button>
+                    <button type="button" class="syno-tag-btn" data-insert="{LINE}">+ Line / Bldg</button>
+                    <button type="button" class="syno-tag-btn" data-insert="{PROD_DATE}">+ Prod Date</button>
+                    <button type="button" class="syno-tag-btn" data-insert="{TEST_DATE}">+ Test Date</button>
+                    <button type="button" class="syno-tag-btn" data-insert="{DEFECT}">+ Defect / Cause</button>
+                    <button type="button" class="syno-tag-btn" data-insert="{CEMENT}">+ Cement</button>
+                    <button type="button" class="syno-tag-btn" data-insert="{TESTED_BY}">+ Tested By</button>
+                    <button type="button" class="syno-tag-btn" data-insert="{CHECKED_BY}">+ Checked By</button>
+                </div>
+            </div>
+
+            <div>
+                <label for="syno-message-input" class="syno-section-lbl" style="display:block;margin-bottom:6px">Message Content:</label>
+                <textarea id="syno-message-input" rows="8" class="syno-textarea" placeholder="Enter report message to send to Synology Chat..."></textarea>
+            </div>
+
+            <div class="syno-attach-zone">
+                <div class="syno-attach-controls">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <label class="syno-attach-label" for="syno-file-upload">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                            <span>Attach Image File</span>
+                        </label>
+                        <input type="file" id="syno-file-upload" accept="image/*" style="display:none">
+                        <button type="button" id="btn-syno-capture-card" class="dtr-btn dtr-btn-outline dtr-btn-sm" title="Generate snapshot image of the current bonding report sheet / graph">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                            <span>Snapshot Report Graph Card</span>
+                        </button>
+                    </div>
+                    <small class="muted">The report graph card and a photo are two separate images: both are sent. PNG, JPG or WebP.</small>
+                </div>
+
+                <div id="syno-preview-wrap" class="syno-preview-card hidden">
+                    <img id="syno-preview-img" class="syno-preview-thumb" tabindex="0" role="button" title="Click to enlarge" src="" alt="Report graph card preview: click to enlarge">
+                    <div class="syno-preview-meta">
+                        <span class="syno-preview-kind">Image 1: report graph card</span>
+                        <span id="syno-preview-name" class="syno-preview-name">attachment.png</span>
+                        <span id="syno-preview-size" class="syno-preview-size">0 KB</span>
+                        <button type="button" id="btn-syno-remove-attach" class="syno-remove-attach">&times; Remove this image</button>
+                    </div>
+                </div>
+                <div id="syno-photo-wrap" class="syno-preview-card hidden">
+                    <img id="syno-photo-img" class="syno-preview-thumb" tabindex="0" role="button" title="Click to enlarge" src="" alt="Photo preview: click to enlarge">
+                    <div class="syno-preview-meta">
+                        <span class="syno-preview-kind">Image 2: photo (phone or upload)</span>
+                        <span id="syno-photo-name" class="syno-preview-name">photo.jpg</span>
+                        <span id="syno-photo-size" class="syno-preview-size">0 KB</span>
+                        <button type="button" id="btn-syno-remove-photo" class="syno-remove-attach">&times; Remove this image</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="syno-modal-footer">
+            <span id="syno-status-text" class="syno-status">Ready to send</span>
+            <button type="button" id="btn-close-syno-cancel" class="dtr-btn dtr-btn-outline">Cancel</button>
+            <button type="button" id="btn-send-synology-submit" class="dtr-btn dtr-btn-primary" style="background:#0284c7;border-color:#0284c7">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                <span>Send to Synology Chat</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- =======================================================================
+     EMAIL SEND REPORT MODAL
+     ======================================================================= -->
+<div id="dtr-email-modal-backdrop" class="dtr-modal-backdrop hidden" style="z-index:10050">
+    <div id="dtr-email-modal" class="syno-modal-dialog">
+        <div class="syno-modal-head">
+            <h3 class="syno-modal-title">Send Report Email</h3>
+            <button type="button" id="btn-close-email-modal" class="syno-modal-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="syno-modal-body">
+            <div>
+                <label for="email-to-input" class="syno-section-lbl" style="display:block;margin-bottom:6px">Recipient Email (To):</label>
+                <input type="email" id="email-to-input" class="dtr-input" placeholder="e.g. supervisor@dtshoes.com, qa@dtshoes.com" style="width:100%">
+            </div>
+            <div>
+                <label for="email-subject-input" class="syno-section-lbl" style="display:block;margin-bottom:6px">Subject:</label>
+                <input type="text" id="email-subject-input" class="dtr-input" placeholder="Shoe Bonding Test Report Notification" style="width:100%">
+            </div>
+            <div>
+                <label for="email-message-input" class="syno-section-lbl" style="display:block;margin-bottom:6px">Message Content:</label>
+                <textarea id="email-message-input" rows="7" class="syno-textarea" placeholder="Enter email message body..."></textarea>
+            </div>
+            <div class="syno-attach-zone">
+                <div class="syno-attach-controls">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <label class="syno-attach-label" for="email-file-upload">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                            <span>Attach Image File</span>
+                        </label>
+                        <input type="file" id="email-file-upload" accept="image/*" style="display:none">
+                        <button type="button" id="btn-email-capture-card" class="dtr-btn dtr-btn-outline dtr-btn-sm" title="Generate snapshot image of the current bonding report sheet / graph">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                            <span>Snapshot Report Graph Card</span>
+                        </button>
+                    </div>
+                    <small class="muted">A photo you already took or uploaded for this report is kept here too, and the other way round.</small>
+                </div>
+                <div id="email-attach-list" class="email-attach-list"></div>
+            </div>
+            <div id="email-attach-summary" class="muted sm"></div>
+        </div>
+        <div class="syno-modal-footer">
+            <span id="email-status-text" class="syno-status">Ready</span>
+            <button type="button" id="btn-close-email-cancel" class="dtr-btn dtr-btn-outline">Cancel</button>
+            <button type="button" id="btn-send-email-submit" class="dtr-btn dtr-btn-primary" style="background:#ea580c;border-color:#ea580c">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                <span>Send Email</span>
+            </button>
+        </div>
+    </div>
+</div>
+
 
 <!-- Toast Notification -->
 <div id="dtr-toast" class="dtr-toast hidden"></div>
@@ -2124,5 +2516,5 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
     <option value="DTP-QC-001 - L. Tuddao"></option>
     <option value="DTP-QC-064 - J. Barrera"></option>
     <option value="DTP-QC-066 - J. Parrilla"></option>
-    <option value="DTP-QC-067 - R. Cabiga"></option>
+    <option value="DTP-QC-067 - R. Cabigas"></option>
 </datalist>

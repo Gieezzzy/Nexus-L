@@ -15,6 +15,9 @@ class DtrLabrefIndex
     public static function overall(string $slug, array $row): string
     {
         $raw = strtoupper(trim((string) ($slug === 'bonding' ? ($row['Result'] ?? '') : ($row['Remarks'] ?? $row['Result'] ?? ''))));
+        if ($slug === 'bonding' && $raw === '') {
+            return '';   // collected but not tested yet: no result, so not shown as a Pass
+        }
 
         return match ($raw) {
             'FAIL', 'FAILED' => 'Fail',
@@ -65,7 +68,7 @@ class DtrLabrefIndex
             'tested_date'           => self::date($g(['Tested Date', 'TestedDate'])),
             'finished_date'         => self::date($g(['Finished Date', 'FinishedDate'])),
             'technician'            => $g(['Technician']),
-            'status'                => $g(['Status']) ?: 'Complete',
+            'status'                => $g(['Status']) ?: ($slug === 'bonding' && self::overall($slug, $row) === '' ? 'Pending' : 'Complete'),
             'overall_result'        => self::overall($slug, $row),
             'thickness_ave'         => $g(['TAve', 'Hardness_Ave']),
             'weight_ave'            => $g(['WAve', 'SG_Ave']),
@@ -82,6 +85,55 @@ class DtrLabrefIndex
         $t   = $db->table('tbl_dtr_unified_labrefs');
         $has = $t->where('source_table', $data['source_table'])->where('source_id', $recordId)->get()->getRowArray();
         $has ? $db->table('tbl_dtr_unified_labrefs')->where('id', $has['id'])->update($data) : $db->table('tbl_dtr_unified_labrefs')->insert($data);
+    }
+
+    /**
+     * Whole Shoe: the lab reference of a whole shoe collection (tbl_dtr_wholeshoe_intake, with the style / colorway / MTL # of its production
+     * code) as an index row, form_slug 'wholeshoe'. Its status and result come from the tests of that shoe (tbl_dtr_wholeshoetracker).
+     * Adds the row, or refreshes it when it exists.
+     */
+    public static function upsertWholeShoe($db, int $intakeId): void
+    {
+        if (! $db->tableExists('tbl_dtr_wholeshoe_intake')) {
+            return;
+        }
+        $r = $db->table('tbl_dtr_wholeshoe_intake i')->select('i.*, s.StyleNo, s.Colorway, s.MTL')->join('tbl_dtr_shoe_list s', 's.ProdCode = i.ProdCode', 'left')->where('i.IntakeID', $intakeId)->get()->getRowArray();
+        $lab = trim((string) ($r['LabRefNo'] ?? ''));
+        if (! $r || $lab === '') {
+            return;
+        }
+        $kids = $db->tableExists('tbl_dtr_wholeshoetracker')
+            ? $db->query('SELECT Status, FinalResult FROM tbl_dtr_wholeshoetracker WHERE WholeshoeLabRefNo = ? OR WholeshoeLabRefNo LIKE ?', [$lab, $db->escapeLikeString($lab) . '-%'])->getResultArray() : [];
+        $done = $kids !== [] && count(array_filter($kids, static fn ($k) => stripos((string) $k['Status'], 'COMPLETE') === 0)) === count($kids);
+        $fail = array_filter($kids, static fn ($k) => stripos((string) $k['FinalResult'], 'F') === 0) !== [];
+        $style = trim((string) $r['StyleNo']);
+        $date  = static fn ($v) => $v ? date('d M Y', strtotime((string) $v)) : '';
+        $data  = [
+            'lab_ref_no' => $lab, 'tr_no' => '', 'form_category' => 'Whole Shoe', 'form_slug' => 'wholeshoe', 'interlink_sample_type' => 'Finished Product',
+            'source_table' => 'tbl_dtr_wholeshoe_intake', 'source_id' => $intakeId,
+            'material_type' => (string) $r['TestTypes'], 'material_code' => '', 'material_description' => trim($style . ' ' . (string) $r['Colorway']),
+            'supplier' => '', 'model_style' => $style, 'color' => (string) $r['Colorway'], 'po_lot_no' => (string) $r['ProdCode'], 'mtl_no' => (string) $r['MTL'],
+            'received_date' => $date($r['CollectionDate']), 'tested_date' => '', 'finished_date' => '', 'technician' => (string) ($r['EncodedBy'] ?? ''),
+            'status' => $done ? 'Complete' : 'Pending', 'overall_result' => $fail ? 'Fail' : ($done ? 'Pass' : ''),
+        ];
+        $has = $db->table('tbl_dtr_unified_labrefs')->where('source_table', 'tbl_dtr_wholeshoe_intake')->where('source_id', $intakeId)->get()->getRowArray();
+        $has ? $db->table('tbl_dtr_unified_labrefs')->where('id', $has['id'])->update($data) : $db->table('tbl_dtr_unified_labrefs')->insert($data);
+    }
+
+    /** Whole shoe collections that have no index row yet (the others are refreshed). Returns how many were added. */
+    public static function addMissingWholeShoe($db, bool $dry = false): int
+    {
+        if (! $db->tableExists('tbl_dtr_wholeshoe_intake')) {
+            return 0;
+        }
+        $n = 0;
+        foreach ($db->query("SELECT i.IntakeID, (SELECT COUNT(*) FROM tbl_dtr_unified_labrefs u WHERE u.source_table = 'tbl_dtr_wholeshoe_intake' AND u.source_id = i.IntakeID) AS has
+                FROM tbl_dtr_wholeshoe_intake i WHERE i.LabRefNo IS NOT NULL AND i.LabRefNo <> ''")->getResultArray() as $r) {
+            $n += (int) $r['has'] === 0 ? 1 : 0;
+            $dry || self::upsertWholeShoe($db, (int) $r['IntakeID']);
+        }
+
+        return $n;
     }
 
     /** Index rows for reports that have none yet (records that arrived from Access). Returns how many were added. */
@@ -104,6 +156,6 @@ class DtrLabrefIndex
             }
         }
 
-        return $n;
+        return $n + self::addMissingWholeShoe($db, $dry);
     }
 }

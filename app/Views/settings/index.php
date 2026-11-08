@@ -50,6 +50,7 @@ $field = static function (array $r): string {
         <a href="#st-transfer">Transfer</a>
         <a href="#st-defaults">Report defaults</a>
         <a href="#st-approval">Approval</a>
+        <a href="#st-erp">ERP agent</a>
         <a href="#st-synology">Synology Chat</a>
     </nav>
     <div class="st-empty" id="st-empty" hidden>No setting matches that search.</div>
@@ -200,6 +201,14 @@ $field = static function (array $r): string {
         <h3><?= esc($categories['approval']) ?></h3>
         <?php foreach ($byCat['approval'] ?? [] as $r) echo $field($r); ?>
         <div class="st-actions"><button type="button" class="nx-btn nx-primary" data-save="st-approval">Save</button><span class="st-msg"></span></div>
+    </div>
+
+    <!-- ERP agent -->
+    <div class="card glass" id="st-erp">
+        <h3><?= esc($categories['erp']) ?></h3>
+        <p class="muted sm">ERP Finish Monitoring sends each report to a small program on the ERP PC (NexusErpAgent.exe). It enters the reports in the ERP one at a time, oldest first, in the background.</p>
+        <?php foreach ($byCat['erp'] ?? [] as $r) echo $field($r); ?>
+        <div class="st-actions"><button type="button" class="nx-btn nx-primary" data-save="st-erp">Save</button><button type="button" class="nx-btn" id="st-erp-test">Check the ERP PC</button><span class="st-msg" id="st-erp-msg"></span></div>
     </div>
 
     <!-- Synology -->

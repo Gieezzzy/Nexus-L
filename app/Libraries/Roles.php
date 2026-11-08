@@ -54,7 +54,7 @@ class Roles
 
     /** the first URL segment of a page => its module (a segment that is not here is not restricted) */
     public const SEGMENTS = [
-        'dashboard' => 'dashboard', 'inbox' => 'inbox', 'interlink' => 'interlink', 'dtr' => 'dtr', 'materials' => 'materials', 'material-testing' => 'materials',
+        'dashboard' => 'dashboard', 'inbox' => 'inbox', 'interlink' => 'interlink', 'lab-monitoring' => 'interlink', 'dtr' => 'dtr', 'materials' => 'materials', 'material-testing' => 'materials',
         'wholeshoe' => 'wholeshoe', 'whole-shoe-test' => 'wholeshoe', 'bonding' => 'bonding', 'test-summary' => 'testsummary', 'tests-summary' => 'testsummary', 'test-results' => 'testsummary',
         'analytics' => 'analytics', 'labdocs' => 'labdocs', 'thirdparty' => 'thirdparty', 'approval' => 'approvals', 'help' => 'help', 'designer' => 'designer', 'brain' => 'brain', 'settings' => 'settings',
     ];
