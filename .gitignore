@@ -162,3 +162,6 @@ public/assets/labdocs/
 _backup_*/
 _updates/
 ai-service/rasa/.rasa/
+
+# Lexus voice engine and its cache (about 150 MB, not source)
+/writable/tts/

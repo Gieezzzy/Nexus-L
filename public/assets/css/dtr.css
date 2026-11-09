@@ -448,7 +448,7 @@
   color: #0f172a;
 }
 
-/* VF-F01 "paper sheet" bonding form â€” visually mirrors PRODUCTION bonding template.xlsx */
+/* VF-F01 "paper sheet" bonding form — visually mirrors PRODUCTION bonding template.xlsx */
 .vf-sheet {
   background: #fff;
   border: 1.5px solid #111;
@@ -2756,3 +2756,279 @@
 .syno-lb-x:hover { background: rgba(255,255,255,.26); }
 .syno-lb-x:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .syno-preview-thumb { transition: none; } }
+
+/* a field the report cannot be saved without (Mode of Failure on a Fail / Tolerable result) */
+.dtr-need { outline: 2px solid #ef4444 !important; outline-offset: 1px; background: #fef2f2 !important; }
+
+/* Bonding list: report picture thumbnail before the Lab Ref No; click opens the editor */
+.bs-thumb-wrap{display:inline-block;width:34px;height:26px;vertical-align:middle;margin-right:4px;border:1px solid #cbd5e1;border-radius:4px;background:#fff;overflow:hidden;position:relative}
+.bs-thumb{width:100%;height:100%;object-fit:cover;object-position:top;cursor:zoom-in;display:block}
+.bs-thumb:hover{outline:2px solid #2563eb}
+.bs-thumb-ph{display:none;position:absolute;inset:0;background:#f1f5f9}
+.bs-thumb-wrap.none .bs-thumb{display:none}
+.bs-thumb-wrap.none .bs-thumb-ph{display:block}
+.bimg-dialog{position:fixed;inset:12px;background:#fff;border-radius:10px;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.45);overflow:hidden}
+.bimg-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 12px;background:#0f172a;color:#fff}
+.bimg-bar .bimg-sep{width:1px;height:26px;background:#334155}
+.bimg-tool,.bimg-btn{background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:5px;padding:6px 10px;font-size:12px;cursor:pointer}
+.bimg-tool.active{background:#2563eb;border-color:#2563eb;color:#fff}
+.bimg-stamp{background:#fff;border:2px solid transparent;border-radius:6px;padding:2px;cursor:pointer;height:38px}
+.bimg-stamp:hover{border-color:#2563eb}
+.bimg-stamp img{height:100%;width:auto;display:block}
+.bimg-size{font-size:12px;display:flex;align-items:center;gap:6px}
+.bimg-bar #bimg-msg{margin-left:auto;color:#cbd5e1}
+.bimg-stage{flex:1;overflow:auto;background:#475569;display:flex;align-items:flex-start;padding:10px}
+#bimg-canvas{display:block;max-width:none;background:#fff;touch-action:none;cursor:crosshair}
+.bimg-wrap{position:relative;display:block;flex:none;margin:0 auto;line-height:0}
+#bimg-text{position:absolute;box-sizing:border-box;padding:0 4px;border:2px solid #2563eb;background:#fff;color:#000;font:400 14px 'Segoe UI','Segoe UI Variable',Calibri,Arial,sans-serif;text-align:center;outline:none;z-index:3}
+#bimg-text.hidden{display:none}
+
+.bimg-zoom{display:inline-flex;align-items:center;gap:4px}
+.bimg-zoom b{min-width:46px;text-align:center;font-size:12px}
+
+/* Lab Tracker lists: search box beside the action button; result chips */
+.dtr-card-head{display:flex;align-items:center;gap:10px}
+.dtr-card-head .dtr-list-search{margin-left:auto;width:340px;max-width:60%;padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;background:#fff}
+.dtr-card-head .dtr-list-search:focus{outline:2px solid #93c5fd;border-color:#2563eb}
+.res-chip{font-weight:700;letter-spacing:.02em}
+.badge.res-fail{background:#dc2626 !important;color:#fff !important}
+.badge.res-pass{background:#16a34a !important;color:#fff !important}
+.badge.res-tol{background:#2563eb !important;color:#fff !important}
+.dtr-bshoe-table tr[hidden], .dtr-wlist-table tr[hidden], .dtr-table tr[hidden]{display:none}
+
+/* Collection lists: entries are plain; only the header is bold. The row colour shows the result */
+.dtr-bshoe-table td, .dtr-bshoe-table td b, .dtr-wlist-table td, .dtr-wlist-table td b{font-weight:400 !important}
+.dtr-bshoe-table thead th, .dtr-wlist-table thead th{font-weight:700 !important}
+.dtr-bshoe-table tr.row-fail td, .dtr-wlist-table tr.row-fail td{background:#fee2e2 !important}
+.dtr-bshoe-table tr.row-pass td, .dtr-wlist-table tr.row-pass td{background:#dcfce7 !important}
+.dtr-bshoe-table tr.row-tol td, .dtr-wlist-table tr.row-tol td{background:#dbeafe !important}
+/* Whole Shoe list: compact spacing */
+.dtr-wlist-table{table-layout:auto;width:100%}
+.dtr-wlist-table th, .dtr-wlist-table td{padding:4px 6px !important;font-size:12px;line-height:1.25;white-space:nowrap;width:auto !important}
+.dtr-wlist-table td:nth-child(3), .dtr-wlist-table td:nth-child(4){white-space:normal}
+/* Whole Shoe report: result pulled from the whole shoe tracker beside "Result?? :" */
+.wsf-pr{display:inline-block;padding:1px 10px;margin-left:6px;border-radius:3px;font-weight:700;font-size:12px;background:#e2e8f0;color:#334155}
+.wsf-pr.res-fail{background:#dc2626;color:#fff}
+.wsf-pr.res-pass{background:#16a34a;color:#fff}
+.wsf-pr.res-tol{background:#2563eb;color:#fff}
+.wsf-ps{font-size:11px;color:#64748b;margin-left:4px;font-weight:400}
+
+.wsf-lr input{flex:1;min-width:0;border:0;border-bottom:1px dotted #94a3b8;background:transparent;font:inherit;font-weight:700;color:#1d4ed8;padding:2px;outline:none;cursor:default}
+.wsf-lr input::placeholder{color:#94a3b8;font-weight:400}
+
+/* Specimen Intake: TRIAL hides Production Code + Colorway (MTL # is typed and looked up); SAMPLE keeps only Line / Side / Lab Ref / Test Type / Lacking / Remarks */
+.dtr-intake-table.ik-m-trial th:nth-child(6),.dtr-intake-table.ik-m-trial td:nth-child(6),.dtr-intake-table.ik-m-trial th:nth-child(8),.dtr-intake-table.ik-m-trial td:nth-child(8){display:none}
+.dtr-intake-table.ik-m-sample th:nth-child(n+7):nth-child(-n+11),.dtr-intake-table.ik-m-sample td:nth-child(n+7):nth-child(-n+11){display:none}
+.dtr-intake-table tr.ik-strip .dtr-side-toggle,.dtr-intake-table tr.ik-strip .ik-linesel{visibility:hidden}
+.dtr-intake-table select.ik-sub{margin-top:4px;font-size:11.5px}
+.ik-subwrap{display:flex;align-items:center;gap:4px;margin-top:5px;padding-left:6px;border-left:2px solid #cbd5e1}
+.ik-subarrow{color:#94a3b8;font-size:14px;line-height:1}
+.ik-subbtn{flex:1;padding:4px 6px;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:4px;font-size:11.5px;font-weight:600;cursor:pointer}
+.ik-subbtn.active{background:#1d4ed8;border-color:#1d4ed8;color:#fff}
+.dtr-intake-table.ik-nolack th:nth-child(12),.dtr-intake-table.ik-nolack td:nth-child(12){display:none}
+/* SAMPLE: Active column hidden, the Line column becomes "Sample Test" (Bonding / Strip / Osna / Rivet) */
+.dtr-intake-table.ik-m-sample th:nth-child(6){width:30% !important}
+.dtr-intake-table.ik-m-sample input.ik-code{display:none}
+.dtr-intake-table .ik-subwrap{margin-top:0;padding-left:0;border-left:0}
+.dtr-intake-table .ik-subbtn{padding:6px 4px}
+
+/* Specimen Intake form: every header, entry and pulled value is centred */
+#dtr-intake-table th,#dtr-intake-table td{text-align:center !important;vertical-align:middle}
+#dtr-intake-table input[type=text],#dtr-intake-table select,#dtr-intake-table textarea{text-align:center;text-align-last:center}
+#dtr-intake-table td.ik-labref{text-align:center !important}
+#dtr-intake-table td.ik-pulls{text-align:left !important}
+#dtr-intake-table .ik-subwrap,#dtr-intake-table .dtr-side-toggle{justify-content:center}
+#dtr-intake-table td.ik-imgcell,#dtr-intake-table .ik-lackshow{text-align:center}
+.dtr-intake-table.ik-m-fa th:nth-child(1),.dtr-intake-table.ik-m-fa td:nth-child(1){display:none}
+
+/* Retest picker: compact rows */
+#dtr-retest-backdrop .dtr-modal-dialog{max-width:1000px !important}
+#dtr-retest-backdrop .dtr-table{table-layout:auto;font-size:12px}
+#dtr-retest-backdrop .dtr-table th{padding:6px 8px;font-size:10.5px;white-space:nowrap}
+#dtr-retest-backdrop .dtr-table td{padding:4px 8px !important;line-height:1.25;vertical-align:middle}
+#dtr-retest-backdrop .dtr-table td:first-child,#dtr-retest-backdrop .dtr-table td:nth-child(7){white-space:nowrap}
+#dtr-retest-backdrop .dtr-table td:nth-child(6){max-width:260px !important;font-size:11.5px}
+#dtr-retest-backdrop .dtr-table .badge{padding:1px 6px;font-size:10.5px}
+#dtr-retest-backdrop .dtr-table .dtr-btn{padding:3px 10px;font-size:11.5px;min-height:0}
+#dtr-retest-backdrop .dtr-modal-body>div:first-child{padding:8px 12px !important}
+#dtr-retest-backdrop #dtr-retest-search{padding:6px 10px !important}
+
+/* Retest picker: wider dialog instead of smaller text */
+#dtr-retest-backdrop .dtr-modal-dialog{max-width:1500px !important;width:96vw !important}
+#dtr-retest-backdrop .dtr-table{font-size:13px}
+#dtr-retest-backdrop .dtr-table th{font-size:11px}
+#dtr-retest-backdrop .dtr-table td:nth-child(2),#dtr-retest-backdrop .dtr-table td:nth-child(3){white-space:nowrap}
+#dtr-retest-backdrop .dtr-table td:nth-child(6){max-width:420px !important;font-size:13px}
+#dtr-retest-backdrop .dtr-table .badge{font-size:11.5px}
+#dtr-retest-backdrop .dtr-table .dtr-btn{font-size:12.5px}
+
+/* light column dividers in every table */
+.dtr-table th,.dtr-table td{border-right:1px solid #e6ebf1}
+.dtr-table th:last-child,.dtr-table td:last-child{border-right:0}
+.dtr-table th{border-right-color:#d9e0e8}
+
+/* the four Lab Tracker lists stretch to the bottom of the window */
+.dtr-table-wrap.dtr-fill-wrap{max-height:calc(100vh - 400px) !important;min-height:260px}
+.dtr-table-wrap.dtr-fill-wrap{height:calc(100vh - 400px)}
+
+/* Whole Shoe Result Evaluation Modal Button Styles */
+.wst-choice-btn {
+  width: 100%;
+  padding: 10px 14px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  text-align: left;
+  font-size: 13.5px;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-weight: 500;
+}
+.wst-choice-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+.wst-choice-btn.active {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  color: #1d4ed8;
+  font-weight: 700;
+  box-shadow: 0 0 0 1px #3b82f6;
+}
+.wst-outcome-btn {
+  transition: all 0.15s ease;
+  opacity: 0.75;
+}
+.wst-outcome-btn:hover {
+  opacity: 1;
+}
+.wst-outcome-btn.active {
+  opacity: 1;
+  box-shadow: 0 0 0 2px currentColor;
+  transform: scale(1.01);
+}
+
+/* Whole Shoe Status Badges & Donut Ring */
+.wst-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.wst-status-running {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+.wst-status-paused {
+  background: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+.wst-status-pending {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+.wst-status-completed {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+.wst-status-fail {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+.wst-status-tolerable {
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #ffedd5;
+}
+.wst-status-stopped {
+  background: #f8fafc;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+}
+
+.wst-progress-circle-wrap {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+.wst-progress-circle-svg {
+  width: 28px;
+  height: 28px;
+  transform: rotate(-90deg);
+}
+.wst-progress-circle-bg {
+  stroke: #e2e8f0;
+  stroke-width: 3.5;
+  fill: none;
+}
+.wst-progress-circle-bar {
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  fill: none;
+  transition: stroke-dashoffset 0.4s ease, stroke 0.3s ease;
+}
+.wst-progress-circle-pct {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8.5px;
+  font-weight: 700;
+  color: #475569;
+}
+
+/* Hover tooltip for Whole Shoe progress circle */
+.wst-progress-circle-wrap {
+  position: relative;
+  cursor: pointer;
+}
+.wst-circle-tooltip {
+  visibility: hidden;
+  opacity: 0;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  background: #0f172a;
+  color: #ffffff;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.25);
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 1000;
+}
+.wst-circle-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 5px;
+  border-style: solid;
+  border-color: #0f172a transparent transparent transparent;
+}
+.wst-progress-circle-wrap:hover .wst-circle-tooltip {
+  visibility: visible;
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}

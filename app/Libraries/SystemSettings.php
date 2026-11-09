@@ -88,6 +88,10 @@ class SystemSettings
             'erp.agent45_port'           => $d('erp', 'PC .45 - port', 'number', '5057', 'The port set in that agent.'),
             'erp.agent45_token'          => $d('erp', 'PC .45 - token', 'password', '', 'The token shown in that agent.'),
 
+            'erp.extract_host'           => $d('erp', 'Extract agent - IP address', 'text', '192.168.32.43', 'The PC where ERP_Extract_Agent runs (the ERP client open there). Control it at Settings > ERP Extract (address /settings/erp-extract).'),
+            'erp.extract_port'           => $d('erp', 'Extract agent - port', 'number', '5058', 'listen_port in the agent_config.json of that PC.'),
+            'erp.extract_token'          => $d('erp', 'Extract agent - token', 'password', '', 'token in the agent_config.json of that PC (run: ERP_Extract_Agent.exe --token).'),
+
             // --- Synology Chat -----------------------------------------------------------------------------------------------------
             'synology.base_url'          => $d('synology', 'Synology Chat address', 'url', '', 'Empty = the address in the .env file.'),
             'synology.bot_token'         => $d('synology', 'Bot token', 'password', '', 'Empty = the token in the .env file.'),
@@ -103,6 +107,8 @@ class SystemSettings
             'ai.fallback_message'        => $d('ai', 'Safe Abstain Message', 'textarea', 'Checking system status... I cannot verify this action against current system documentation with full confidence. Escalating directly to an administrator.', 'Exact text displayed to users when confidence drops below threshold.'),
             'ai.seeded_problems_v1'      => $d('ai', 'Problems Auto-Seeded Flag', 'text', '0', 'Internal flag indicating whether the 200 QC Lab problem solutions have been seeded.'),
             'ai.trainer_token'           => $d('ai', 'Brain Trainer app token', 'password', '', 'The token typed into the Brain Trainer Windows app (X-Trainer-Token). Empty = the app is refused.'),
+            'notify.token'               => $d('ai', 'Notifier app token', 'password', '', 'The token typed into the NEXUS-L Notifier Windows app (X-Notifier-Token). Empty = the app is refused.'),
+            'insights.aliases'           => $d('ai', 'Supplier spelling merges (Quality Insights)', 'textarea', '', 'One per line: WRONG SPELLING=RIGHT NAME. For example NNAPAO=NANPAO. Suppliers written both ways are counted as one in the scorecard.'),
             'ai.git_synced_v201'         => $d('ai', 'Git Auto-Sync Flag', 'text', '0', 'Internal flag indicating whether Phase 201 has been pushed to git.'),
         ];
     }

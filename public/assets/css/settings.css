@@ -178,3 +178,6 @@
 /* the report-defaults fields sit in a wrapper: it takes the whole card width and splits into two columns itself */
 .st > .card > .st-grid, .st > .card > .st-grid-2 { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 22px; row-gap: 2px; }
 @media (max-width: 700px) { .st > .card > .st-grid, .st > .card > .st-grid-2 { grid-template-columns: minmax(0, 1fr); } }
+
+#su-root .su-mnote { margin-left: 10px; font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+#su-root .su-mnote.ok { color: #15803d; } #su-root .su-mnote.err { color: #b45309; }

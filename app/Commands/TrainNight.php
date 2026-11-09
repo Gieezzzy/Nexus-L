@@ -373,7 +373,7 @@ class TrainNight extends BaseCommand
                 }
                 $e = 1 / (1 + exp(-$z)) - 1;
                 foreach ($keys as $k) {
-                    $w[$kb][$k] = max(-$this->wmax, min(self::WMAX, ($w[$kb][$k] ?? 0.0) - $this->eta * $e));
+                    $w[$kb][$k] = max(-$this->wmax, min($this->wmax, ($w[$kb][$k] ?? 0.0) - $this->eta * $e));
                     $touched[$kb][$k] = ($touched[$kb][$k] ?? 0) + 1;
                 }
             }

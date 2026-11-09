@@ -23,6 +23,9 @@ class MaterialTestModel extends Model
         'samplecountwet',
         'samplecounthydro',
         'target_cycles',
+        'timer_duration_sec',
+        'timer_started_at',
+        'timer_elapsed_sec',
         'current_cycles',
         'recorded_cycles',
         'status',
@@ -33,12 +36,14 @@ class MaterialTestModel extends Model
         'humidity',
         'remarks',
         'recorded_remarks',
+        'findings_json',
+        'overall_outcome',
     ];
 
     protected $validationRules = [
         'category'     => 'required|in_list[hydrolysis,heat-aging,washing,uv-light,flexing,deeptest,deep-test,bally-flex,ross-flex,martindale-abrasion,lace-abrasion,taber-abrasion,crocking]',
         'labreference' => 'required|min_length[5]|max_length[64]|is_unique[tbl_material_tests.labreference,id,{id}]',
-        'status'       => 'permit_empty|in_list[PENDING,RUNNING,COMPLETED,STOPPED]',
+        'status'       => 'permit_empty|in_list[PENDING,RUNNING,PAUSED,COMPLETED,STOPPED]',
     ];
 
     protected $validationMessages = [

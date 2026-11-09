@@ -13,7 +13,7 @@
     <link rel="icon" type="image/png" href="<?= base_url('favicon.png') ?>">
     <link rel="apple-touch-icon" href="<?= base_url('favicon.png') ?>">
     <link rel="stylesheet" href="<?= nx_asset('css/dash.css') ?>">
-    <?php if (! empty($withCss)): ?><link rel="stylesheet" href="<?= nx_asset('css/' . $withCss) ?>"><?php endif ?>
+    <?php foreach (array_filter((array) ($withCss ?? [])) as $cssFile): ?><link rel="stylesheet" href="<?= nx_asset('css/' . $cssFile) ?>"><?php endforeach ?>
     <?php $pg = explode('/', trim((string) uri_string(), '/'))[0] ?? ''; $pg = in_array($pg, ['interlink', 'help', 'designer', 'brain', 'labdocs', 'lab-monitoring'], true) ? $pg : ''; ?>
     <?php if ($pg !== ''): ?><link rel="stylesheet" href="<?= nx_asset('css/polish.css') ?>"><?php endif ?>
 </head>

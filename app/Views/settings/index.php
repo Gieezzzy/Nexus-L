@@ -79,7 +79,7 @@ $field = static function (array $r): string {
         <h4 class="su-h4">Access of each role</h4>
         <p class="muted sm">Select a cell to change it: <span class="su-pill l0">None</span> hides the menu entry and refuses the page, <span class="su-pill l1">View</span> can open and read, <span class="su-pill l2">Edit</span> can also add and change. The Admin column and the Admin-only pages cannot be changed.</p>
         <div class="su-mxwrap"><table class="su-mx" id="su-matrix"></table></div>
-        <div class="st-actions"><button type="button" class="nx-btn nx-primary" id="su-msave">Save the access</button> <button type="button" class="nx-btn" id="su-mreset">Back to defaults</button></div>
+        <div class="st-actions"><button type="button" class="nx-btn nx-primary" id="su-msave">Save the access</button> <button type="button" class="nx-btn" id="su-mreset">Back to defaults</button> <span class="su-mnote" id="su-mnote" role="status" aria-live="polite"></span></div>
 
         <dialog id="su-dlg" class="su-dlg">
             <form method="dialog" id="su-form" autocomplete="off">
@@ -109,7 +109,7 @@ $field = static function (array $r): string {
     <div class="card glass" id="st-ai">
         <h3><?= esc($categories['ai'] ?? 'AI Assistant & Bot Engine') ?> <small class="muted">(LangGraph, Rasa NLU, Mem0 &amp; Phoenix stack)</small></h3>
         <p class="muted sm">Configure operating mode (Shadow vs. Live), local Python service address, shared API key, confidence thresholds, and safe fallback messaging.</p>
-        <?php foreach ($byCat['ai'] ?? [] as $r) { if ($r['key'] === 'ai.trainer_token') { continue; } echo $field($r); } ?>
+        <?php foreach ($byCat['ai'] ?? [] as $r) { if (in_array($r['key'], ['ai.trainer_token', 'notify.token'], true)) { continue; } echo $field($r); } ?>
         <div class="st-row" id="st-trainer">
             <span class="st-label">Brain Trainer app token</span>
             <div>
@@ -121,6 +121,19 @@ $field = static function (array $r): string {
                 </div>
                 <small class="muted">Type this token into the NEXUS-L Brain Trainer Windows app (with this site's address). Generating a new one signs the app out until the new token is entered. Saved at once; no need to press Save.</small>
                 <span class="st-msg" id="st-trainer-msg"></span>
+            </div>
+        </div>
+        <div class="st-row" id="st-notifier">
+            <span class="st-label">Notifier app token</span>
+            <div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                    <input type="text" id="st-notify-token" readonly placeholder="no token yet" style="flex:1;min-width:260px;font-family:Consolas,monospace" autocomplete="off">
+                    <button type="button" class="nx-btn" id="st-notify-show">Show</button>
+                    <button type="button" class="nx-btn nx-primary" id="st-notify-gen">Generate new token</button>
+                    <button type="button" class="nx-btn" id="st-notify-copy">Copy</button>
+                </div>
+                <small class="muted">Type this token into the NEXUS-L Notifier Windows app (with this site's address). Generating a new one signs the Notifier app out until the new token is entered. Saved at once; no need to press Save.</small>
+                <span class="st-msg" id="st-notify-msg"></span>
             </div>
         </div>
         <div class="st-actions">

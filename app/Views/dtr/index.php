@@ -1,6 +1,25 @@
 <?php
 $dtrIsAdmin = strcasecmp((string) (service('auth')->user()['role'] ?? ''), 'admin') === 0;
 $bondingShoes = $bondingShoes ?? [];
+// Row colour of a list by its result: FAIL(ED) red, PASS green, TOLERABLE blue; no result / pending = no colour
+$rowTint = static function (string $res): string {
+    $r = strtoupper(trim($res));
+    if ($r === '') {
+        return '';
+    }
+
+    return (str_starts_with($r, 'FAIL') || $r === 'ERROR') ? 'row-fail' : (str_starts_with($r, 'TOL') ? 'row-tol' : (str_starts_with($r, 'PASS') ? 'row-pass' : ''));
+};
+// Result chip: FAIL(ED) = red, PASS = green, TOLERABLE = blue; nothing / pending stays plain
+$resChip = static function (string $res, string $none = '-'): string {
+    $r = strtoupper(trim($res));
+    if ($r === '') {
+        return $none;
+    }
+    $cls = (str_starts_with($r, 'FAIL') || $r === 'ERROR') ? 'res-fail' : (str_starts_with($r, 'TOL') ? 'res-tol' : (str_starts_with($r, 'PASS') ? 'res-pass' : ''));
+
+    return $cls === '' ? esc($r) : '<span class="badge res-chip ' . $cls . '">' . esc($r) . '</span>';
+};
 $wholeShoes = $wholeShoes ?? [];
 $bondingTotal = $bondingTotal ?? 0;
 $shoeTotal = $shoeTotal ?? 0;
@@ -212,7 +231,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                             <td><?= esc($r['tested_date'] ?: $r['received_date'] ?: '-') ?></td>
                             <td><?= esc($r['technician'] ?: '-') ?></td>
                             <td><?= esc($r['status'] ?: 'Complete') ?></td>
-                            <td><span class="badge <?= $badgeCls ?>"><?= esc($resUpper) ?></span></td>
+                            <td><?= $resChip($resUpper) ?></td>
                         </tr>
                     <?php endforeach ?>
                 </tbody>
@@ -240,9 +259,10 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
     <div>
         <div class="card glass dtr-section-card dtr-subpanel <?= $subTab === 'containers' ? '' : 'hidden' ?>" data-subpanel="containers">
             <div class="dtr-card-head">
-                <button type="button" class="dtr-btn dtr-btn-primary" style="margin-left:auto" data-add-record="containers">+ Material Receive</button>
+                <input type="search" class="dtr-list-search" placeholder="Search container no., date, encoder, remarks..." aria-label="Search the list">
+                <button type="button" class="dtr-btn dtr-btn-primary" data-add-record="containers">+ Material Receive</button>
             </div>
-            <div class="dtr-table-wrap" style="max-height:290px">
+            <div class="dtr-table-wrap dtr-fill-wrap" style="max-height:290px">
                 <table class="dtr-table">
                     <thead>
                         <tr>
@@ -271,7 +291,10 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
         </div>
 
         <div class="card glass dtr-section-card dtr-subpanel <?= $subTab === 'materials' ? '' : 'hidden' ?>" data-subpanel="materials">
-            <div class="dtr-table-wrap" style="max-height:290px">
+            <div class="dtr-card-head">
+                <input type="search" class="dtr-list-search" placeholder="Search Lab Reference, material, code, supplier..." aria-label="Search the list">
+            </div>
+            <div class="dtr-table-wrap dtr-fill-wrap" style="max-height:290px">
                 <table class="dtr-table">
                     <thead>
                         <tr>
@@ -293,7 +316,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                                 <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?= esc($mm['MaterialName'] ?? '') ?></td>
                                 <td><?= esc($mm['Supplier'] ?? '') ?></td>
                                 <td><?= esc($mm['TestingStatus'] ?? '') ?></td>
-                                <td><span class="badge b-ok"><?= esc($mm['FinalStatus'] ?? 'Done') ?></span></td>
+                                <td><?php $fs = (string) ($mm['FinalStatus'] ?? 'Done'); $fc = $resChip($fs); ?><?= str_contains($fc, 'res-chip') ? $fc : '<span class="badge b-ok">' . esc($fs) . '</span>' ?></td>
                             </tr>
                         <?php endforeach ?>
                     </tbody>
@@ -303,9 +326,10 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
 
         <div class="card glass dtr-section-card dtr-subpanel <?= $subTab === 'bonding' ? '' : 'hidden' ?>" data-subpanel="bonding">
             <div class="dtr-card-head">
-                <button type="button" class="dtr-btn dtr-btn-primary" style="margin-left:auto" data-add-record="bonding">+ Bonding Shoe Collected</button>
+                <input type="search" class="dtr-list-search" placeholder="Search Lab Ref, Prod. Code, Style, Colorway, MTL..." aria-label="Search the list">
+                <button type="button" class="dtr-btn dtr-btn-primary" data-add-record="bonding">+ Bonding Shoe Collected</button>
             </div>
-            <div class="dtr-table-wrap dtr-bshoe-wrap" style="max-height:420px">
+            <div class="dtr-table-wrap dtr-fill-wrap dtr-bshoe-wrap" style="max-height:420px">
                 <table class="dtr-table dtr-bshoe-table">
                     <thead>
                         <tr>
@@ -319,24 +343,24 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                             <th>Tested Date</th>
                             <th>Result</th>
                             <th>Status</th>
-                            <th>Encoder</th>
+                            <th>Technician</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($bondingShoes as $b): ?>
-                            <?php $bRes = strtoupper((string) ($b['Result'] ?? '')); $bCls = $bRes === 'FAIL' ? 'b-err' : ($bRes === 'TOLERABLE' ? 'b-warn' : 'b-ok'); ?>
-                            <tr>
-                                <td class="mono"><button type="button" class="dtr-dl-btn" data-dl-labref="<?= esc($b['LabRefNo'] ?? '', 'attr') ?>" title="Download Bonding Test-VF report" aria-label="Download report"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 11v6"/><path d="m9 14 3 3 3-3"/></svg></button> <a href="#" class="dtr-labref-link" data-open-bonding="<?= (int) ($b['BondingTestID'] ?? 0) ?>" title="Open in Shoe Bonding (U60)"><b><?= esc($b['LabRefNo'] ?? '') ?></b></a></td>
+                            <?php $bRes = strtoupper(trim((string) ($b['Result'] ?? ''))); ?>
+                            <tr class="<?= $rowTint($bRes) ?>">
+                                <td class="mono"><span class="bs-thumb-wrap" title="Open the report picture (circle / highlight / stamp)"><img class="bs-thumb" src="<?= esc(site_url('dtr/bonding-image') . '?lab_ref=' . rawurlencode((string) ($b['LabRefNo'] ?? '')), 'attr') ?>" data-lab-ref="<?= esc($b['LabRefNo'] ?? '', 'attr') ?>" alt="" loading="lazy" onerror="this.parentNode.classList.add('none')"><i class="bs-thumb-ph"></i></span> <a href="#" class="dtr-labref-link" data-open-bonding="<?= (int) ($b['BondingTestID'] ?? 0) ?>" title="Open in Shoe Bonding (U60)"><b><?= esc($b['LabRefNo'] ?? '') ?></b></a></td>
                                 <td class="mono"><b><?= esc($b['POLotNO'] ?? '') ?></b></td>
                                 <td><?= esc($b['ModelStyle'] ?? '') ?></td>
                                 <td><?= esc($b['Color'] ?? '') ?></td>
-                                <td class="mono"><?= preg_match('/MTL ([^;]+)/', (string) ($b['LabNotesComments'] ?? ''), $mm) ? esc(trim($mm[1])) : '' ?></td>
-                                <td><?= preg_match('/^DTP\d{8}[A-Z]{2}([A-Z])(\d+)/i', (string) ($b['LabRefNo'] ?? ''), $lm) ? esc('Bldg ' . strtoupper($lm[1]) . ' / ' . strtoupper($lm[1]) . (int) $lm[2]) : '' ?></td>
+                                <td class="mono"><?= trim((string) ($b['MTL'] ?? '')) !== '' ? esc(trim((string) $b['MTL'])) : (preg_match('/MTL ([^;]+)/', (string) ($b['LabNotesComments'] ?? ''), $mm) ? esc(trim($mm[1])) : '') ?></td>
+                                <td><?= preg_match('/^DTP\d{8}[A-Z]{2}([A-Z])(\d+)/i', (string) ($b['LabRefNo'] ?? ''), $lm) ? esc(strtoupper($lm[1]) . (int) $lm[2]) : '' ?></td>
                                 <td><?= esc(substr((string) ($b['ProductionDate'] ?? ''), 0, 10)) ?></td>
                                 <td><?= esc(substr((string) ($b['TestedDate'] ?? ''), 0, 10)) ?></td>
-                                <td><?= $bRes !== '' ? '<span class="badge ' . $bCls . '">' . esc($bRes) . '</span>' : '-' ?></td>
+                                <td><?= $bRes !== '' ? esc($bRes) : '-' ?></td>
                                 <td><?= $bRes !== '' ? '<span class="badge b-ok">Tested</span>' : '<span class="badge b-warn">Pending</span>' ?></td>
-                                <td><?= preg_match('/Encoded by ([^;]+)/', (string) ($b['LabNotesComments'] ?? ''), $em) ? esc(trim($em[1])) : '' ?></td>
+                                <td><?= esc(trim((string) ($b['Technician'] ?? ''))) ?></td>
                             </tr>
                         <?php endforeach ?>
                     </tbody>
@@ -346,37 +370,43 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
 
         <div class="card glass dtr-section-card dtr-subpanel <?= $subTab === 'shoes' ? '' : 'hidden' ?>" data-subpanel="shoes">
             <div class="dtr-card-head">
-                <button type="button" class="dtr-btn dtr-btn-primary" style="margin-left:auto" data-add-record="shoes">+ Whole Shoe Collected</button>
+                <input type="search" class="dtr-list-search" placeholder="Search Lab Ref, Prod. Code, Style, Colorway, MTL..." aria-label="Search the list">
+                <button type="button" class="dtr-btn dtr-btn-primary" data-add-record="shoes">+ Whole Shoe Collected</button>
             </div>
-            <div class="dtr-table-wrap" style="max-height:420px">
+            <div class="dtr-table-wrap dtr-fill-wrap" style="max-height:420px">
                 <table class="dtr-table dtr-wlist-table">
                     <thead>
                         <tr>
-                            <th>Test Type LabRefNo</th>
+                            <th>LabRefNo</th>
                             <th>Prod. Code</th>
                             <th>Style No.</th>
                             <th>Colorway</th>
                             <th>MTL #</th>
                             <th>Line</th>
                             <th>Test Type</th>
-                            <th>Collection Date</th>
                             <th>Prod. Date</th>
-                            <th>Encoded By</th>
+                            <th>Tested Date</th>
+                            <th>Result</th>
+                            <th>Status</th>
+                            <th>Technician</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($wholeShoes as $s): ?>
-                            <tr>
+                            <?php $wRes = strtoupper(trim((string) ($s['FinalResult'] ?? ''))); $wStat = trim((string) ($s['Status'] ?? '')); ?>
+                            <tr class="<?= $rowTint($wRes) ?>">
                                 <td class="mono"><?php if (! empty($s['LabRefNo'])): ?><?php if (! empty($s['WholeshoeLabRefNo'])): ?><button type="button" class="dtr-dl-btn" data-dl-labref="<?= esc($s['WholeshoeLabRefNo'], 'attr') ?>" data-dl-route="dtr/wholeshoe-report-pdf" data-dl-suffix="Whole-Footwear-Test-Results" title="Download Whole Footwear Test Results" aria-label="Download report"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 11v6"/><path d="m9 14 3 3 3-3"/></svg></button> <?php endif ?><a href="#" class="dtr-labref-link" data-open-wholeshoe="<?= esc($s['LabRefNo'], 'attr') ?>" title="Open in Whole Shoe"><b><?= esc($s['LabRefNo']) ?></b></a><?php endif ?></td>
                                 <td class="mono"><b><?= esc($s['ProdCode'] ?? '') ?></b></td>
                                 <td><?= esc($s['StyleNo'] ?? '') ?></td>
                                 <td><?= esc($s['Colorway'] ?? '') ?></td>
                                 <td class="mono"><?= esc($s['MTL'] ?? '') ?></td>
-                                <td><?= esc(trim(($s['Building'] ?? '') !== '' && ($s['Building'] ?? null) !== null ? 'Bldg ' . $s['Building'] . ' / ' . ($s['LineNo'] ?? '') : '')) ?></td>
+                                <td><?= esc(trim((string) ($s['LineNo'] ?? '')) !== '' ? trim((string) $s['LineNo']) : (trim((string) ($s['Building'] ?? '')) !== '' ? (string) $s['Building'] : '')) ?></td>
                                 <td><?= esc($s['TestTypes'] ?? '') ?></td>
-                                <td><?= esc(substr((string) ($s['CollectionDate'] ?? ''), 0, 10)) ?></td>
                                 <td><?= esc(substr((string) ($s['IntakeProductionDate'] ?? ''), 0, 10)) ?></td>
-                                <td><?= esc($s['EncodedBy'] ?? '') ?></td>
+                                <td><?= esc(substr((string) (($s['TimeCompleted'] ?? '') ?: ($s['TimeStarted'] ?? '')), 0, 10)) ?></td>
+                                <td><?= $wRes !== '' ? esc($wRes) : '-' ?></td>
+                                <td><?= $wRes !== '' ? 'Tested' : ($wStat !== '' ? esc($wStat) : 'Pending') ?></td>
+                                <td><?= esc(trim((string) ($s['Technician'] ?? ''))) ?></td>
                             </tr>
                         <?php endforeach ?>
                     </tbody>
@@ -1196,7 +1226,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                             </select>
                         </div>
                         <div class="vf-sheet-cell"><label>* Overall Result</label><input type="text" name="Result" id="bf_Result" class="bold mono dtr-rate-inp" readonly></div>
-                        <div class="vf-sheet-cell"><label>Mode of Failure(s) <span class="cn">失败的方式</span></label><input type="text" name="ModeOfFailure" id="bf_ModeOfFailure"></div>
+                        <div class="vf-sheet-cell"><label>Mode of Failure(s) <span class="cn">失败的方式</span> <small style="font-weight:400;color:#b45309" title="A Fail or Tolerable result cannot be saved without it">(needed for Fail / Tolerable)</small></label><input type="text" name="ModeOfFailure" id="bf_ModeOfFailure"></div>
                         <div class="vf-sheet-cell"><label>Possible Cause(s) <span class="cn">可能的原因</span></label><input type="text" name="PossibleCause" id="bf_PossibleCause"></div>
                     </div>
                     <script>
@@ -1602,10 +1632,10 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                 <div class="wsf-title"><h2>Whole Footwear Test Results</h2><h3>整鞋测试报告</h3></div>
                 <img src="<?= base_url('assets/images/satra-accredited.png') ?>" class="wsf-satra" alt="SATRA Accredited Laboratory">
             </div>
-            <table class="wsf-t wsf-ref"><tr><td class="wsf-frm">Form # : Lab VF 002</td><td class="wsf-rf"><div>ETRF. No :</div><div class="wsf-lr">Lab Ref. No : <select id="ws-labref" aria-label="Lab Ref No"><option value="">Loading...</option></select></div></td></tr></table>
+            <table class="wsf-t wsf-ref"><tr><td class="wsf-frm">Form # : Lab VF 002</td><td class="wsf-rf"><div>ETRF. No :</div><div class="wsf-lr">Lab Ref. No : <input type="text" id="ws-labref" readonly tabindex="-1" aria-label="Lab Ref No" placeholder="Open a Lab Ref from the Lab Tracker"></div></td></tr></table>
             <table class="wsf-t wsf-info">
                 <tr><td>Supplier/Factory(厂商) :</td><td><b>DATIAN SUBIC SHOES INC.</b></td><td>O Prod.Material (量产材料)</td><td>O Prod.Re-test量产重测</td></tr>
-                <tr><td>Supplier's country(国家):</td><td><b>Philippines</b></td><td>O New/Development 开发段新材料</td><td>O Trial Test 试用测试</td></tr>
+                <tr><td>Supplier's country(国家):</td><td><b>Philippines</b></td><td>O New/Development 开发段新材料</td><td>O Trial Test 试测测试</td></tr>
                 <tr><td>Material Description(材料):</td><td></td><td colspan="2">o Tech 1 &nbsp;&nbsp;&nbsp; Tech 2 &nbsp;&nbsp;&nbsp; Tech 3 &nbsp;&nbsp;&nbsp; Tech 4</td></tr>
                 <tr><td>Model No./Style(型体):</td><td><input type="text" id="ws-style" readonly></td><td colspan="2">O Sales Sample (销售样品)</td></tr>
                 <tr><td>Color (颜色):</td><td><input type="text" id="ws-color" readonly></td><td>Received Date(收到日) :</td><td><input type="text" id="ws-received" readonly></td></tr>
@@ -1649,6 +1679,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
             <button type="button" class="wst-cat-tab" data-wst-cat="washing">Washing</button>
             <button type="button" class="wst-cat-tab" data-wst-cat="uv-light">UV Light</button>
             <button type="button" class="wst-cat-tab" data-wst-cat="flexing">Flexing</button>
+            <button type="button" class="wst-cat-tab" data-wst-cat="deeptest">Deep Test</button>
         </div>
     </div>
 
@@ -1704,7 +1735,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                             <th>TEST DATE</th>
                             <th>SPECIFICATION / MATERIAL</th>
                             <th>MACHINE / TECHNICIAN</th>
-                            <th>CYCLE PROGRESS</th>
+                            <th>TIME / STATUS</th>
                             <th>STATUS</th>
                             <th style="text-align:right">ACTION</th>
                         </tr>
@@ -1883,6 +1914,41 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
 <!-- =======================================================================
      SPECIMEN INTAKE MODAL (+ Shoe Collected: Building A / Building B)
      ======================================================================= -->
+<!-- Bonding report picture editor: circle / highlight the failed spots, attach a PASS / FAILED / TOLERABLE stamp -->
+<div id="bimg-backdrop" class="dtr-modal-backdrop hidden">
+    <div class="bimg-dialog">
+        <div class="bimg-bar">
+            <b id="bimg-title">Report</b>
+            <span class="bimg-sep"></span>
+            <button type="button" class="bimg-tool active" data-tool="circle" title="Drag to draw a circle around a failed spot">&#9711; Circle</button>
+            <button type="button" class="bimg-tool" data-tool="mark" title="Drag to highlight an area">&#9608; Highlight</button>
+            <button type="button" class="bimg-tool" data-tool="text" title="Drag a box, then type: a white box with your value written over the old one">T Text box</button>
+            <button type="button" class="bimg-tool" data-tool="move" title="Select and move or resize anything (drag the blue corner to resize)">&#10021; Move</button>
+            <span class="bimg-sep"></span>
+            <span class="bimg-zoom" title="Zoom (Ctrl + mouse wheel also works)">
+                <button type="button" class="bimg-btn" id="bimg-zout" aria-label="Zoom out">&minus;</button>
+                <b id="bimg-zlbl">100%</b>
+                <button type="button" class="bimg-btn" id="bimg-zin" aria-label="Zoom in">+</button>
+                <button type="button" class="bimg-btn" id="bimg-fit">Fit</button>
+                <button type="button" class="bimg-btn" id="bimg-z100">100%</button>
+            </span>
+            <span class="bimg-sep"></span>
+            <button type="button" class="bimg-stamp" data-stamp="PASS"><img src="<?= base_url('assets/images/stamps/pass.png') ?>" alt="PASS"></button>
+            <button type="button" class="bimg-stamp" data-stamp="FAILED"><img src="<?= base_url('assets/images/stamps/failed.png') ?>" alt="FAILED"></button>
+            <button type="button" class="bimg-stamp" data-stamp="TOLERABLE"><img src="<?= base_url('assets/images/stamps/tolerable.png') ?>" alt="TOLERABLE"></button>
+            <label class="bimg-size" title="Size of the selected stamp">Size <input type="range" id="bimg-size" min="8" max="70" value="28"></label>
+            <button type="button" class="bimg-btn" id="bimg-del" title="Delete the selected item (Delete key)">Delete</button>
+            <button type="button" class="bimg-btn" id="bimg-undo">Undo</button>
+            <button type="button" class="bimg-btn" id="bimg-orig" title="Throw away the unsaved edits and reload the saved report">Reload</button>
+            <span class="bimg-sep"></span>
+            <span id="bimg-msg" class="muted sm"></span>
+            <button type="button" class="dtr-btn dtr-btn-outline" id="bimg-close">Close</button>
+            <button type="button" class="dtr-btn dtr-btn-primary" id="bimg-save" title="Save as the new report; the report in place becomes the next old version (_1, _2 ...)">Save</button>
+        </div>
+        <div class="bimg-stage"><div class="bimg-wrap"><canvas id="bimg-canvas"></canvas><input type="text" id="bimg-text" class="hidden" autocomplete="off"></div></div>
+    </div>
+</div>
+
 <div id="dtr-intake-backdrop" class="dtr-modal-backdrop hidden">
     <div class="dtr-modal-dialog dtr-intake-dialog">
         <div class="dtr-modal-header dtr-intake-head">

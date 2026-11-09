@@ -86,6 +86,7 @@ class TestCatalog
         $ballyDry = [5000, 10000, 15000, 20000, 25000, 35000, 45000, 55000, 65000, 75000, 85000, 95000, 100000];
         $ballyWet = [5000, 10000, 15000, 20000];
         $ballyHydro = $step(5000, 50000, 5000);
+        $flexingDry = [5000, 10000, 15000, 25000, 35000, 45000, 55000, 65000, 75000, 85000, 95000, 105000, 115000, 125000];
 
         return [
             'hydrolysis' => [
@@ -153,18 +154,18 @@ class TestCatalog
 
             'flexing' => [
                 'Standard Whole Shoe Flexing' => ['code' => 'WSF', 'groups' => [
-                    'dry'   => self::group($ballyDry, 4),
-                    'wet'   => self::group($ballyWet, 4),
-                    'hydro' => self::group($ballyHydro, 4),
+                    'dry'   => self::group($flexingDry, 1),
+                    'wet'   => self::group($flexingDry, 1),
+                    'hydro' => self::group($flexingDry, 1),
                 ]],
                 'Fabric/Leather Upper' => ['code' => 'LEU', 'groups' => [
-                    'dry'   => self::group($ballyDry, 4),
-                    'wet'   => self::group($ballyWet, 4),
-                    'hydro' => self::group($ballyHydro, 4),
+                    'dry'   => self::group($flexingDry, 1),
+                    'wet'   => self::group($flexingDry, 1),
+                    'hydro' => self::group($flexingDry, 1),
                 ]],
                 'Heavy Duty Flexing (150K)' => ['code' => 'WSF', 'groups' => [
-                    'dry'   => self::group([10000, 25000, 50000, 75000, 100000, 125000, 150000], 4),
-                    'wet'   => self::group([10000, 25000, 50000], 4),
+                    'dry'   => self::group($flexingDry, 1),
+                    'wet'   => self::group($flexingDry, 1),
                 ]],
             ],
 

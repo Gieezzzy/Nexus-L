@@ -44,6 +44,8 @@
     weekView: document.getElementById('cal-week-view'),
     monthGrid: document.getElementById('cal-month-grid'),
     weekGrid: document.getElementById('cal-week-grid'),
+    dayView: document.getElementById('cal-day-view'),
+    dayGrid: document.getElementById('cal-day-grid'),
     searchInput: document.getElementById('cal-search'),
     domainChips: document.querySelectorAll('#cal-domain-filter .cal-chip'),
     statusChips: document.querySelectorAll('#cal-status-filter .cal-chip'),
@@ -113,6 +115,10 @@
 
   // Range calculation
   function getActiveRange() {
+    if (state.view === 'day') {
+      const d = formatYmd(state.currentDate);
+      return { start: d, end: d, day: new Date(state.currentDate) };
+    }
     if (state.view === 'month') {
       const y = state.currentDate.getFullYear();
       const m = state.currentDate.getMonth();
@@ -155,7 +161,10 @@
   // Update period header title
   function updateTitle() {
     const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    if (state.view === 'month') {
+    if (state.view === 'day') {
+      dom.titleLabel.textContent = state.currentDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+      dom.subText.textContent = 'Every test of the day, by kind: Bonding, Material and Whole Shoe';
+    } else if (state.view === 'month') {
       const m = months[state.currentDate.getMonth()];
       const y = state.currentDate.getFullYear();
       dom.titleLabel.textContent = m + ', ' + y;
@@ -190,11 +199,17 @@
     return data;
   }
 
+  function drawView(data) {
+    if (state.view === 'month') renderMonthGrid(data);
+    else if (state.view === 'day') renderDayBoard(data);
+    else renderWeekGrid(data);
+  }
+
   function paint(data) {
     state.eventsCache = data;
     kpiBox && kpiBox.classList.remove('is-loading');
     renderKPIs(data.kpis);
-    if (state.view === 'month') renderMonthGrid(data); else renderWeekGrid(data);
+    drawView(data);
   }
 
   const kpiBox = document.getElementById('cal-kpis');
@@ -202,7 +217,14 @@
   function skeleton() {
     if (kpiBox) kpiBox.classList.add('is-loading');
     const r = getActiveRange();
-    if (state.view === 'month') {
+    if (state.view === 'day') {
+      let h = '';
+      for (let i = 0; i < 3; i++) {
+        h += '<div class="cal-week-col"><div class="cal-week-col-head"><span class="nx-shimmer cal-skel-bar" style="width:55%"></span></div><div class="cal-week-cards-stack">'
+          + '<div class="cal-skel-card"><span class="nx-shimmer cal-skel-bar"></span><span class="nx-shimmer cal-skel-bar short"></span></div>'.repeat(4) + '</div></div>';
+      }
+      dom.dayGrid.innerHTML = h;
+    } else if (state.view === 'month') {
       const n = Math.round((parseYmd(r.end) - parseYmd(r.start)) / 86400000) + 1;
       let h = '';
       for (let i = 0; i < n; i++) {
@@ -225,7 +247,7 @@
       const keep = new Date(state.currentDate);
       [-1, 1].forEach((dir) => {
         const d = new Date(keep);
-        if (state.view === 'month') { d.setDate(1); d.setMonth(d.getMonth() + dir); } else { d.setDate(d.getDate() + 7 * dir); }
+        if (state.view === 'month') { d.setDate(1); d.setMonth(d.getMonth() + dir); } else if (state.view === 'day') { d.setDate(d.getDate() + dir); } else { d.setDate(d.getDate() + 7 * dir); }
         const saved = state.currentDate; state.currentDate = d;
         const r = getActiveRange(); state.currentDate = saved;
         if (!evCache.has(rangeKey(r))) {
@@ -258,7 +280,7 @@
       if (err && err.name === 'AbortError') return;
       console.warn('Calendar events failed:', err);
       if (!hit && seq === evSeq) {
-        const box = state.view === 'month' ? dom.monthGrid : dom.weekGrid;
+        const box = state.view === 'month' ? dom.monthGrid : (state.view === 'day' ? dom.dayGrid : dom.weekGrid);
         box.innerHTML = '<div class="cal-empty-day" style="grid-column:1/-1;padding:40px"><p>Could not load the calendar. <button type="button" class="cal-retry" id="cal-retry">Try again</button></p></div>';
         const b = document.getElementById('cal-retry'); if (b) b.addEventListener('click', () => loadEvents(true));
         if (kpiBox) kpiBox.classList.remove('is-loading');
@@ -548,6 +570,56 @@
   }
 
   // =========================================================================
+  // DAY BOARD: one day, one column per kind of test, the problems first
+  // =========================================================================
+  function renderDayBoard(data) {
+    const d = formatYmd(state.currentDate);
+    const day = (data.days || {})[d] || { total: 0, ongoing: 0, pending: 0, completed: 0, passed: 0, failed: 0, tolerable: 0 };
+    const rank = { FAIL: 0, TOLERABLE: 1 };
+    const items = (data.week_items || []).filter(i => i.date_key === d).filter(item => {
+      if (state.domainFilter !== 'all' && item.domain !== state.domainFilter) return false;
+      if (state.statusFilter !== 'all' && item.status !== state.statusFilter) return false;
+      if (state.searchQuery) {
+        const q = state.searchQuery.toLowerCase();
+        return [item.lab_ref, item.style, item.technician, item.test_type].some(x => x && String(x).toLowerCase().includes(q));
+      }
+      return true;
+    }).sort((a, b) => {
+      const ra = a.result in rank ? rank[a.result] : (a.status === 'ongoing' ? 2 : a.status === 'pending' ? 3 : 4);
+      const rb = b.result in rank ? rank[b.result] : (b.status === 'ongoing' ? 2 : b.status === 'pending' ? 3 : 4);
+      return ra - rb || String(a.lab_ref).localeCompare(String(b.lab_ref));
+    });
+
+    const cols = [['bonding', 'Bonding (U60)'], ['material', 'Material tests'], ['wholeshoe', 'Whole Shoe']];
+    const strip = '<div class="cal-day-strip">'
+      + `<span><b>${day.total}</b> tests</span><span class="ok"><b>${day.passed}</b> passed</span><span class="warn"><b>${day.tolerable}</b> tolerable</span><span class="bad"><b>${day.failed}</b> failed</span>`
+      + `<span><b>${day.ongoing}</b> ongoing</span><span><b>${day.pending}</b> waiting</span><span><b>${day.completed}</b> completed</span>`
+      + `<button type="button" class="cal-btn-glass" id="cal-day-open">Open the full list</button></div>`;
+
+    const html = cols.map(([dom_, label]) => {
+      const list = items.filter(i => i.domain === dom_);
+      const cards = list.length ? list.map(item => {
+        const initials = getInitials(item.technician);
+        const statusClass = item.status === 'ongoing' ? 'badge-ongoing' : item.status === 'pending' ? 'badge-pending' : 'badge-completed';
+        const statusLabel = item.status === 'ongoing' ? 'Ongoing' : item.status === 'pending' ? 'Waiting' : 'Completed';
+        const res = (item.result || '').toUpperCase();
+        const pill = res === 'PASS' ? '<span class="cal-result-pill res-pass">PASS</span>' : res === 'FAIL' ? '<span class="cal-result-pill res-fail">FAIL</span>' : res === 'TOLERABLE' ? '<span class="cal-result-pill res-tol">TOLERABLE</span>' : '';
+        return `<div class="cal-test-card card-${escapeHtml(item.domain)} ${item.status === 'ongoing' ? 'is-ongoing' : ''}">
+          <div class="cal-tcard-top"><span class="cal-tcard-time">${escapeHtml(item.time_slot || '')}</span><div class="cal-tcard-avatars"><span class="cal-tech-avatar" title="Technician: ${escapeHtml(item.technician || '')}">${escapeHtml(initials)}</span></div></div>
+          <div class="cal-tcard-title">${escapeHtml(item.lab_ref || item.test_type)}</div>
+          <div class="cal-tcard-meta"><span>${escapeHtml(item.style || item.test_type)}</span></div>
+          <div class="cal-tcard-footer"><span class="cal-status-badge ${statusClass}">${statusLabel}</span>${pill}</div></div>`;
+      }).join('') : '<div class="cal-empty-day"><span>Nothing for this kind of test</span></div>';
+      return `<div class="cal-week-col"><div class="cal-week-col-head"><div class="cal-week-day-title"><span class="cal-week-day-name" style="font-weight:700">${label}</span></div><div class="cal-week-sub-bar"><span class="cal-week-task-count">${list.length} ${list.length === 1 ? 'test' : 'tests'}</span></div></div><div class="cal-week-cards-stack">${cards}</div></div>`;
+    }).join('');
+
+    dom.dayGrid.innerHTML = strip + '<div class="cal-day-cols">' + html + '</div>';
+    const open = document.getElementById('cal-day-open');
+    if (open) open.addEventListener('click', () => openDrawer(d, day));
+    dom.dayGrid.querySelectorAll('.cal-test-card').forEach(c => c.addEventListener('click', () => openDrawer(d, day)));
+  }
+
+  // =========================================================================
   // DRILLDOWN SLIDE-OVER DRAWER
   // =========================================================================
   const dayCache = new Map();   // date -> { data, t }
@@ -812,6 +884,8 @@
     dom.btnPrev.addEventListener('click', () => {
       if (state.view === 'month') {
         state.currentDate.setDate(1); state.currentDate.setMonth(state.currentDate.getMonth() - 1);
+      } else if (state.view === 'day') {
+        state.currentDate.setDate(state.currentDate.getDate() - 1);
       } else {
         state.currentDate.setDate(state.currentDate.getDate() - 7);
       }
@@ -822,6 +896,8 @@
     dom.btnNext.addEventListener('click', () => {
       if (state.view === 'month') {
         state.currentDate.setDate(1); state.currentDate.setMonth(state.currentDate.getMonth() + 1);
+      } else if (state.view === 'day') {
+        state.currentDate.setDate(state.currentDate.getDate() + 1);
       } else {
         state.currentDate.setDate(state.currentDate.getDate() + 7);
       }
@@ -851,13 +927,9 @@
           b.classList.toggle('active', isActive);
           b.setAttribute('aria-checked', isActive ? 'true' : 'false');
         });
-        if (v === 'month') {
-          dom.monthView.classList.remove('hidden');
-          dom.weekView.classList.add('hidden');
-        } else {
-          dom.monthView.classList.add('hidden');
-          dom.weekView.classList.remove('hidden');
-        }
+        dom.monthView.classList.toggle('hidden', v !== 'month');
+        dom.weekView.classList.toggle('hidden', v !== 'week');
+        dom.dayView.classList.toggle('hidden', v !== 'day');
         loadEvents();
       });
     });
@@ -869,8 +941,7 @@
         chip.classList.add('active');
         state.domainFilter = chip.dataset.domain;
         if (state.eventsCache) {
-          if (state.view === 'month') renderMonthGrid(state.eventsCache);
-          else renderWeekGrid(state.eventsCache);
+          drawView(state.eventsCache);
         }
       });
     });
@@ -882,8 +953,7 @@
         chip.classList.add('active');
         state.statusFilter = chip.dataset.status;
         if (state.eventsCache) {
-          if (state.view === 'month') renderMonthGrid(state.eventsCache);
-          else renderWeekGrid(state.eventsCache);
+          drawView(state.eventsCache);
         }
       });
     });
@@ -895,8 +965,7 @@
       searchDebounce = setTimeout(() => {
         state.searchQuery = e.target.value.trim();
         if (state.eventsCache) {
-          if (state.view === 'month') renderMonthGrid(state.eventsCache);
-          else renderWeekGrid(state.eventsCache);
+          drawView(state.eventsCache);
         }
       }, 150);
     });

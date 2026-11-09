@@ -15,6 +15,8 @@
       return j;
     }));
   const note = (text, ok = true) => { const e = $('#su-note'); e.textContent = text; e.className = 'su-note ' + (ok ? 'ok' : 'err'); };
+  // the access grid is far below the top note: its own message sits beside the Save button
+  const mnote = (text, ok = true) => { const e = $('#su-mnote'); if (!e) return note(text, ok); e.textContent = text; e.className = 'su-mnote ' + (ok ? 'ok' : 'err'); };
   const COLOR = { Admin: '#b91c1c', Manager: '#1d4ed8', Supervisor: '#0f766e', Encoding: '#b45309', Materials: '#15803d', Bonding: '#9a3412', Technician: '#475569' };
   const hue = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
   const initials = (n) => String(n).split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
@@ -114,13 +116,18 @@
   const loadM = async () => { try { M = await call('settings/roles/matrix'); draw(); } catch (e) { note(e.message, false); } };
   $('#su-matrix').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-r]'); if (!b) return;
-    const r = b.dataset.r; const m = b.dataset.m; M.matrix[r][m] = ((M.matrix[r][m] || 0) + 1) % 3; draw();
+    const r = b.dataset.r; const m = b.dataset.m; M.matrix[r][m] = ((M.matrix[r][m] || 0) + 1) % 3; draw(); mnote('Not saved yet: press Save the access.', false);
     const nb = $(`button[data-r="${r}"][data-m="${m}"]`); if (nb) nb.focus();
   });
-  $('#su-msave').addEventListener('click', async () => { try { const j = await call('settings/roles/matrix', { matrix: M.matrix }); M.matrix = j.matrix; draw(); note(j.message); } catch (e) { note(e.message, false); } });
+  $('#su-msave').addEventListener('click', async () => {
+    const btn = $('#su-msave'); btn.disabled = true; mnote('Saving...');
+    try { const j = await call('settings/roles/matrix', { matrix: M.matrix }); M.matrix = j.matrix; draw(); mnote('Saved. ' + j.message); }
+    catch (e) { mnote('Not saved: ' + e.message + ' (reload the page and try again)', false); }
+    finally { btn.disabled = false; }
+  });
   $('#su-mreset').addEventListener('click', async () => {
     if (!confirm('Put every role back to the default access?')) return;
-    try { const j = await call('settings/roles/matrix', { reset: true }); M.matrix = j.matrix; draw(); note(j.message); } catch (e) { note(e.message, false); }
+    try { const j = await call('settings/roles/matrix', { reset: true }); M.matrix = j.matrix; draw(); mnote(j.message); } catch (e) { mnote(e.message, false); }
   });
 
   load(); loadM();

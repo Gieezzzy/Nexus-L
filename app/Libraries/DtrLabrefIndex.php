@@ -19,6 +19,10 @@ class DtrLabrefIndex
             return '';   // collected but not tested yet: no result, so not shown as a Pass
         }
 
+        if ($raw === '' && strtoupper(trim((string) ($row['Status'] ?? ''))) === 'PENDING') {
+            return '';   // collected, not tested yet: no result
+        }
+
         return match ($raw) {
             'FAIL', 'FAILED' => 'Fail',
             'TOLERABLE'      => 'Tolerable',

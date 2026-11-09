@@ -31,6 +31,39 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
 
+  const formatCountdown = (totalSec) => {
+    const s = Math.max(0, Math.floor(totalSec || 0));
+    const d = Math.floor(s / 86400);
+    const h = Math.floor((s % 86400) / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    const pad = (n) => String(n).padStart(2, '0');
+    if (d > 0) {
+      return `${d}d ${pad(h)}:${pad(m)}:${pad(sec)}`;
+    }
+    return `${pad(h)}:${pad(m)}:${pad(sec)}`;
+  };
+
+  const buildProgressCircle = (pct, color, size = 26, tooltipText = '') => {
+    const r = (size / 2) - 3;
+    const circ = 2 * Math.PI * r;
+    const clamped = Math.max(0, Math.min(100, Math.round(pct)));
+    const offset = circ - (clamped / 100) * circ;
+    return `
+      <div class="wst-progress-circle-wrap" style="width:${size}px;height:${size}px">
+        <svg class="wst-progress-circle-svg" viewBox="0 0 ${size} ${size}" style="width:${size}px;height:${size}px">
+          <circle class="wst-progress-circle-bg" cx="${size/2}" cy="${size/2}" r="${r}"></circle>
+          <circle class="wst-progress-circle-bar" cx="${size/2}" cy="${size/2}" r="${r}"
+            stroke="${color}"
+            stroke-dasharray="${circ.toFixed(2)}"
+            stroke-dashoffset="${offset.toFixed(2)}"></circle>
+        </svg>
+        <span class="wst-progress-circle-pct" style="font-size:${size <= 28 ? '8px' : '10px'}">${clamped}%</span>
+        ${tooltipText ? `<div class="wst-circle-tooltip mono">${tooltipText}</div>` : ''}
+      </div>
+    `;
+  };
+
   const apiFetch = async (path, opts = {}) => {
     const headers = Object.assign(
       {
@@ -80,6 +113,163 @@
     to_date: '',
   };
 
+  // Sound chime helper
+  const playFinishChime = () => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+      const playTone = (freq, start, duration) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(0.25, start + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + duration);
+      };
+      playTone(523.25, now, 0.15); // C5
+      playTone(659.25, now + 0.12, 0.15); // E5
+      playTone(783.99, now + 0.24, 0.35); // G5
+    } catch (_) {}
+  };
+
+  // Prompts technician with notification banner/modal when a test completes
+  const promptTestFinished = (testId, testLabel, labRef) => {
+    playFinishChime();
+    showToast(`🔔 Test Finished: ${testLabel || 'Test'} (${labRef || ''}) is complete! Please input findings.`, 'success');
+
+    // Also trigger Browser Notification API if permitted
+    try {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        new Notification('Whole Shoe Test Finished!', {
+          body: `${testLabel || 'Whole Shoe Test'} (${labRef || ''}) has completed its duration. Click to input findings.`,
+          icon: '/favicon.ico'
+        });
+      } else if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+    } catch (_) {}
+
+    // Check if prompt dialog already exists, or create an interactive prompt modal
+    let promptEl = $('#wst-finish-prompt-toast');
+    if (!promptEl) {
+      promptEl = document.createElement('div');
+      promptEl.id = 'wst-finish-prompt-toast';
+      promptEl.style.cssText = 'position:fixed;top:28px;right:28px;z-index:99999;background:#ffffff;border:2px solid #10b981;border-radius:12px;box-shadow:0 12px 32px rgba(16,185,129,0.3);padding:18px 22px;max-width:400px;display:flex;flex-direction:column;gap:10px;animation:slideInRight 0.35s cubic-bezier(0.16,1,0.3,1);font-family:inherit;';
+      document.body.appendChild(promptEl);
+    }
+
+    promptEl.innerHTML = `
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <div style="width:38px;height:38px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#10b981">
+          <svg style="width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+        </div>
+        <div style="flex:1">
+          <div style="font-weight:700;color:#0f172a;font-size:15px;line-height:1.2">Test Timer Finished!</div>
+          <div style="font-size:13px;color:#475569;margin-top:4px">
+            <b>${esc(testLabel || 'Test')}</b> (${esc(labRef || '')}) has completed its required duration.
+          </div>
+        </div>
+        <button type="button" id="btn-close-finish-prompt" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:18px;line-height:1">&times;</button>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px">
+        <button type="button" id="btn-dismiss-finish-prompt" class="dtr-btn-xs dtr-btn-outline" style="border-radius:6px">Later</button>
+        <button type="button" id="btn-action-finish-prompt" class="dtr-btn-xs dtr-btn-primary" style="background:#10b981;border-color:#10b981;border-radius:6px;font-weight:700;color:#fff">
+          Input Findings Now &rarr;
+        </button>
+      </div>
+    `;
+
+    const closePrompt = () => {
+      promptEl.style.opacity = '0';
+      promptEl.style.transform = 'translateY(-10px)';
+      promptEl.style.transition = 'all 0.3s ease';
+      setTimeout(() => promptEl.remove(), 350);
+    };
+
+    promptEl.querySelector('#btn-close-finish-prompt')?.addEventListener('click', closePrompt);
+    promptEl.querySelector('#btn-dismiss-finish-prompt')?.addEventListener('click', closePrompt);
+    promptEl.querySelector('#btn-action-finish-prompt')?.addEventListener('click', () => {
+      closePrompt();
+      if (testId) {
+        openWstMonitorModal(testId).then(() => {
+          setTimeout(() => {
+            if (activeRecordForEval) {
+              const cat = activeRecordForEval.category || currentWstCategory;
+              if (cat === 'flexing') {
+                openFlexEvaluationModal(activeRecordForEval, null);
+              } else {
+                openEvaluationModal(activeRecordForEval);
+              }
+            }
+          }, 350);
+        });
+      }
+    });
+  };
+
+  // Real-time table countdown ticker for active running tests
+  let wstTableTickerInterval = null;
+  const startTableTicker = () => {
+    if (wstTableTickerInterval) {
+      clearInterval(wstTableTickerInterval);
+      wstTableTickerInterval = null;
+    }
+    wstTableTickerInterval = setInterval(() => {
+      const activeRows = $$('.wst-row[data-timer-running="true"]');
+      if (!activeRows.length) return;
+
+      activeRows.forEach((row) => {
+        let remaining = parseInt(row.dataset.timerRemaining || '0', 10);
+        let duration = parseInt(row.dataset.timerDuration || '0', 10);
+        let elapsed = parseInt(row.dataset.timerElapsed || '0', 10);
+
+        if (remaining > 0) {
+          remaining--;
+          elapsed++;
+          row.dataset.timerRemaining = remaining;
+          row.dataset.timerElapsed = elapsed;
+
+          const tipEl = row.querySelector('.wst-circle-tooltip');
+          if (tipEl) {
+            tipEl.innerHTML = `<span style="color:#60a5fa">${formatCountdown(remaining)} left</span>`;
+          }
+
+          const pct = duration > 0 ? Math.min(100, Math.round((elapsed / duration) * 100)) : 0;
+          const pctEl = row.querySelector('.wst-progress-circle-pct');
+          if (pctEl) {
+            pctEl.textContent = `${pct}%`;
+          }
+
+          const barEl = row.querySelector('.wst-progress-circle-bar');
+          if (barEl) {
+            const size = 28;
+            const r = (size / 2) - 3;
+            const circ = 2 * Math.PI * r;
+            const offset = circ - (pct / 100) * circ;
+            barEl.style.strokeDashoffset = offset.toFixed(2);
+          }
+
+          if (remaining <= 0) {
+            row.dataset.timerRunning = 'false';
+            const tipEl = row.querySelector('.wst-circle-tooltip');
+            if (tipEl) {
+              tipEl.innerHTML = '<span style="color:#34d399">Finished</span>';
+            }
+            const barEl = row.querySelector('.wst-progress-circle-bar');
+            if (barEl) barEl.setAttribute('stroke', '#10b981');
+          }
+        }
+      });
+    }, 1000);
+  };
+
   // Fetch list of records from dbnexus
   const loadWstRecords = async () => {
     const tbody = $('#wst-list-tbody');
@@ -124,49 +314,129 @@
       $('#wst-kpi-pending') && ($('#wst-kpi-pending').textContent = (res.kpis?.pending ?? pendCount).toLocaleString());
 
       if (cntBadge) cntBadge.textContent = `Showing ${res.records.length} record(s)`;
+      const thProg = $('#wst-th-progress');
+      if (thProg) {
+        thProg.textContent = (currentWstCategory === 'flexing') ? 'CYCLES / PROGRESS' : 'TIME / STATUS';
+      }
       tbody.innerHTML = res.records.map((r, i) => {
-        const isRun = r.is_running == 1 || r.status === 'RUNNING';
-        const isDone = r.status === 'COMPLETED';
-        let pillClass = isRun ? 'dtr-pill-blue' : (isDone ? 'dtr-pill-pass' : 'dtr-pill-warn');
-        let statusLabel = esc(r.status || 'PENDING');
+        const cat = r.category || currentWstCategory;
+        const catCfg = TIMED_CATEGORIES[cat] || { label: 'Whole Shoe', nominal: 'Standard', durationSec: 86400 };
+        const timer = r.timer || {};
+        const isTimerRunning = Boolean(timer.is_running);
+        const isTimerDone = Boolean(timer.is_finished);
+        const isTimerPaused = Boolean(timer.is_paused) || r.status === 'PAUSED';
 
-        if (r.outcome === 'PASS') {
-          pillClass = 'dtr-pill-pass';
+        const isRun = isTimerRunning || r.status === 'RUNNING';
+        const isDone = r.status === 'COMPLETED' || isTimerDone;
+
+        // Accurate Status Label & Distinct Color Pill Class
+        let pillClass = 'wst-status-pending';
+        let statusLabel = 'PENDING';
+
+        if (r.outcome === 'FAIL') {
+          pillClass = 'wst-status-fail';
+          statusLabel = 'FAIL';
+        } else if (r.outcome === 'TOLERABLE') {
+          pillClass = 'wst-status-tolerable';
+          statusLabel = 'TOLERABLE';
+        } else if (r.outcome === 'PASS') {
+          pillClass = 'wst-status-completed';
           statusLabel = 'PASS';
-        } else if (r.outcome === 'FAIL') {
-          pillClass = 'dtr-pill-fail';
-          statusLabel = 'FAIL / DEFECT';
-        } else if (r.outcome === 'STOPPED') {
-          pillClass = 'dtr-pill-warn';
+        } else if (r.outcome === 'STOPPED' || r.status === 'STOPPED') {
+          pillClass = 'wst-status-stopped';
           statusLabel = 'STOPPED';
         } else if (isDone) {
-          pillClass = 'dtr-pill-pass';
+          pillClass = 'wst-status-completed';
           statusLabel = 'COMPLETED';
         } else if (isRun) {
-          pillClass = 'dtr-pill-blue';
+          pillClass = 'wst-status-running';
           statusLabel = 'RUNNING';
+        } else if (isTimerPaused) {
+          pillClass = 'wst-status-paused';
+          statusLabel = 'PAUSED';
+        } else {
+          pillClass = 'wst-status-pending';
+          statusLabel = 'PENDING';
         }
 
-        const targetCycles = Number(r.target_cycles || 100000);
-        const currCycles = Number(r.current_cycles || 0);
-        const pct = Math.min(100, Math.round((currCycles / targetCycles) * 100));
+        const isFlex = (cat === 'flexing');
+        let progPct = 0;
+        let progText = '';
+        let timerDuration = timer.duration_sec || catCfg.durationSec || 0;
+        let timerElapsed = timer.elapsed_sec || 0;
+        let timerRemaining = Math.max(0, timer.remaining_sec != null ? timer.remaining_sec : (timerDuration - timerElapsed));
 
+        if (isFlex) {
+          const targetC = Number(r.target_cycles) || 125000;
+          const currC = Number(r.current_cycles) || 0;
+          progPct = Math.min(100, Math.round((currC / targetC) * 100));
+
+          if (isDone || r.outcome === 'PASS' || r.outcome === 'PASSED') {
+            progText = `<span style="color:#10b981;font-weight:700">Completed (125k)</span>`;
+          } else if (isRun) {
+            progText = `<span style="color:#2563eb;font-weight:700">${currC.toLocaleString()} / ${(targetC/1000)}k cycles</span>`;
+          } else if (isTimerPaused) {
+            progText = `<span style="color:#d97706;font-weight:700">Paused (${currC.toLocaleString()})</span>`;
+          } else {
+            progText = `<span style="color:#64748b">0 / 125k cycles</span>`;
+          }
+        } else {
+          progPct = timerDuration > 0 ? Math.min(100, Math.round((timerElapsed / timerDuration) * 100)) : (isDone ? 100 : 0);
+
+          if (isDone || isTimerDone) {
+            progText = '<span style="color:#10b981;font-weight:700">Finished</span>';
+          } else if (isRun) {
+            progText = `<span style="color:#2563eb;font-weight:700">${formatCountdown(timerRemaining)} left</span>`;
+          } else if (isTimerPaused) {
+            progText = `<span style="color:#d97706;font-weight:700">Paused (${formatCountdown(timerRemaining)})</span>`;
+          } else {
+            progText = `<span style="color:#64748b">${catCfg.nominal}</span>`;
+          }
+        }
+
+        let circleColor = '#3b82f6'; // running / default blue
+        if (r.outcome === 'FAIL' || r.outcome === 'FAILED') {
+          circleColor = '#ef4444'; // red
+        } else if (isDone || isTimerDone || r.outcome === 'PASS' || r.outcome === 'PASSED') {
+          circleColor = '#10b981'; // green
+        } else if (isTimerPaused) {
+          circleColor = '#f59e0b'; // amber
+        }
+
+        const timerPct = progPct;
+        const timerText = progText;
+
+        const isRealtimeRunning = (!isFlex && isRun && !isDone && !isTimerDone && !isTimerPaused && timerRemaining > 0);
         return `
-          <tr class="clickable-row wst-row" data-id="${r.id}" style="cursor:pointer">
+          <tr class="clickable-row wst-row" data-id="${r.id}"
+              data-timer-running="${isRealtimeRunning ? 'true' : 'false'}"
+              data-timer-remaining="${timerRemaining || 0}"
+              data-timer-elapsed="${timerElapsed || 0}"
+              data-timer-duration="${timerDuration || 0}"
+              style="cursor:pointer">
             <td class="mono">${i + 1}</td>
             <td><b class="mono" style="color:var(--brand,#2563eb);font-size:13.5px">${esc(r.labreference)}</b></td>
             <td>${esc(r.testdate || '—')}</td>
-            <td><span style="font-weight:600">${esc(r.type || 'Standard')}</span></td>
+            <td><span style="font-weight:600">${esc(r.type || catCfg.label)}</span></td>
             <td><span class="mono sm muted">${esc(r.machine_number || 'MC-01')} &bull; ${esc(r.technician || r.operator || 'QC')}</span></td>
             <td>
-              <div style="display:flex;align-items:center;gap:8px">
-                <div style="flex:1;background:rgba(255,255,255,0.06);height:6px;border-radius:3px;overflow:hidden;min-width:70px">
-                  <div style="background:${r.outcome === 'FAIL' ? '#ef4444' : (isDone ? '#22c55e' : '#3b82f6')};width:${pct}%;height:100%"></div>
+              ${isFlex ? `
+                <div style="min-width:130px;max-width:170px">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;font-size:11px">
+                    <span class="mono bold" style="color:#334155">${progText}</span>
+                    <span class="mono bold" style="color:var(--brand,#2563eb);font-size:10.5px">${progPct}%</span>
+                  </div>
+                  <div class="wst-progress-rail" style="height:6px;border-radius:3px;background:#e2e8f0;overflow:hidden">
+                    <div class="wst-progress-fill" style="width:${progPct}%;height:100%;background:${circleColor};transition:width 0.3s ease"></div>
+                  </div>
                 </div>
-                <span class="mono sm" style="white-space:nowrap">${currCycles.toLocaleString()} / ${targetCycles.toLocaleString()}</span>
-              </div>
+              ` : `
+                <div style="display:flex;align-items:center;gap:10px">
+                  ${buildProgressCircle(timerPct, circleColor, 28, timerText)}
+                </div>
+              `}
             </td>
-            <td><span class="dtr-pill ${pillClass}">${statusLabel}</span></td>
+            <td><span class="wst-status-pill ${pillClass}">${statusLabel}</span></td>
             <td style="text-align:right">
               <button type="button" class="dtr-btn-xs dtr-btn-primary wst-open-record-btn" data-id="${r.id}" style="box-shadow:0 1px 4px rgba(37,99,235,0.25)">
                 <svg class="ic" aria-hidden="true" style="margin-right:2px"><use href="#i-grid"/></svg> Open Monitor
@@ -184,6 +454,8 @@
           if (id) openWstMonitorModal(id);
         });
       });
+
+      startTableTicker();
     } catch (err) {
       console.error('loadWstRecords failed:', err);
       tbody.innerHTML = `<tr><td colspan="8" style="color:#ef4444;text-align:center;padding:24px">Failed to load test sessions from dbnexus: ${esc(err.message)}<br><button type="button" class="dtr-btn-xs dtr-btn-outline" id="btn-wst-retry-load" style="margin-top:10px;display:inline-flex;align-items:center;gap:4px"><svg class="ic" aria-hidden="true"><use href="#i-sync"/></svg> Retry</button></td></tr>`;
@@ -263,7 +535,7 @@
     });
 
     loadWstRecords();
-    showToast('Reset all filters');
+    // Filters reset silently
   });
 
   // Switch category tabs
@@ -277,9 +549,13 @@
       const title = tab.textContent.trim().toUpperCase();
       if ($('#wst-modal-title')) $('#wst-modal-title').textContent = `${title} MONITORING`;
       if ($('#wst-new-cat')) $('#wst-new-cat').value = currentWstCategory;
+      const thProg = $('#wst-th-progress');
+      if (thProg) {
+        thProg.textContent = (currentWstCategory === 'flexing') ? 'CYCLES / PROGRESS' : 'TIME / STATUS';
+      }
       refreshNextLabref();
       loadWstRecords();
-      showToast(`Category: ${tab.textContent.trim()}`);
+      // Category tab switched silently
     });
   });
 
@@ -441,13 +717,172 @@
   let currentWstGroups = {};
   let currentWstState = {};
 
+  let currentFlexOutcome = 'PASSED';
+
+  const updateFlexFindingsFormula = () => {
+    const cycle = $('#wst-flex-eval-cycle')?.value || '125000';
+    const latLen = parseFloat($('#wst-flex-lat-len')?.value || '0') || 0;
+    const medLen = parseFloat($('#wst-flex-med-len')?.value || '0') || 0;
+    const latDepth = parseFloat($('#wst-flex-lat-depth')?.value || '0') || 0;
+    const medDepth = parseFloat($('#wst-flex-med-depth')?.value || '0') || 0;
+
+    const preview = $('#wst-flex-findings-preview');
+    if (preview) {
+      preview.value = `45° degrees ${cycle} cycles - (L: ${latLen} mm, M: ${medLen} mm; D:${latDepth} mm, D:${medDepth} mm)`;
+    }
+  };
+
+  const openFlexEvaluationModal = (record, targetCycle = null) => {
+    activeRecordForEval = record;
+    const modal = $('#wst-flex-eval-modal-backdrop');
+    if (!modal) return;
+
+    const cycles = [5000, 10000, 15000, 25000, 35000, 45000, 55000, 65000, 75000, 85000, 95000, 105000, 115000, 125000];
+
+    // Compute recorded cycles to automatically find the next pending checkpoint
+    const recordedMap = currentWstState?.recorded?.['dry'] || currentWstState?.recorded?.['flexing'] || {};
+    const recordedCycles = Object.values(recordedMap).flat().map(Number);
+    const maxRec = recordedCycles.length > 0 ? Math.max(...recordedCycles) : (Number(record.current_cycles) || 0);
+
+    // Auto-iterate to next unrecorded cycle checkpoint
+    let autoNextCycle = cycles[0];
+    for (const c of cycles) {
+      if (!recordedCycles.includes(c) && c > maxRec) {
+        autoNextCycle = c;
+        break;
+      }
+    }
+    // If all completed or none found, fallback to targetCycle or final cycle
+    const effectiveCycle = targetCycle !== null ? targetCycle : autoNextCycle;
+
+    const title = $('#wst-flex-eval-title');
+    if (title) title.textContent = `Whole Shoe Flexing Test Result (${record.labreference || ''})`;
+
+    if ($('#wst-flex-eval-cycle')) {
+      $('#wst-flex-eval-cycle').value = String(effectiveCycle);
+    }
+    if ($('#wst-flex-eval-cycle-display')) {
+      $('#wst-flex-eval-cycle-display').textContent = `${Number(effectiveCycle).toLocaleString()} Cycles`;
+    }
+    const autoBadge = $('#wst-flex-auto-badge');
+    if (autoBadge) {
+      const isAuto = (effectiveCycle === autoNextCycle);
+      autoBadge.textContent = isAuto ? 'Active Checkpoint (Auto-Detected)' : 'Checkpoint Observation';
+      autoBadge.className = `dtr-pill ${isAuto ? 'dtr-pill-blue' : 'dtr-pill-warn'}`;
+    }
+
+    // Populate existing findings if already saved
+    const fJson = record.findings_json || {};
+    if ($('#wst-flex-lat-len')) $('#wst-flex-lat-len').value = fJson.lat_len ?? 0;
+    if ($('#wst-flex-med-len')) $('#wst-flex-med-len').value = fJson.med_len ?? 0;
+    if ($('#wst-flex-lat-depth')) $('#wst-flex-lat-depth').value = fJson.lat_depth ?? 0;
+    if ($('#wst-flex-med-depth')) $('#wst-flex-med-depth').value = fJson.med_depth ?? 0;
+
+    const rawOutcome = (record.overall_outcome || fJson.outcome || 'PASSED').toUpperCase();
+    currentFlexOutcome = (rawOutcome === 'PASS' || rawOutcome === 'PASSED' || rawOutcome === 'RUNNING') ? 'PASSED' : ((rawOutcome === 'FAIL' || rawOutcome === 'FAILED') ? 'FAILED' : 'PENDING');
+    $('.wst-flex-result-btn').forEach((btn) => {
+      const match = btn.dataset.flexResult.toUpperCase() === currentFlexOutcome;
+      btn.classList.toggle('active', match);
+      btn.style.background = match ? (currentFlexOutcome === 'PASSED' ? '#2563eb' : (currentFlexOutcome === 'FAILED' ? '#ef4444' : '#64748b')) : '#ffffff';
+      btn.style.color = match ? '#ffffff' : '#475569';
+      btn.style.borderColor = match ? (currentFlexOutcome === 'PASSED' ? '#2563eb' : (currentFlexOutcome === 'FAILED' ? '#ef4444' : '#64748b')) : '#cbd5e1';
+    });
+
+    updateFlexFindingsFormula();
+    modal.classList.remove('hidden');
+  };
+
+  const closeFlexEvaluationModal = () => {
+    $('#wst-flex-eval-modal-backdrop')?.classList.add('hidden');
+  };
+
+  const renderFlexingCycleTable = (record, groups, state) => {
+    const flexContainer = $('#wst-flex-container');
+    const tableWrap = $('#wst-flex-cycle-table');
+    if (!flexContainer || !tableWrap) return;
+
+    const cycles = [5000, 10000, 15000, 25000, 35000, 45000, 55000, 65000, 75000, 85000, 95000, 105000, 115000, 125000];
+    const recordedMap = state?.recorded?.['dry'] || state?.recorded?.['flexing'] || {};
+    const recordedCycles = Object.values(recordedMap).flat().map(Number);
+    const maxRec = recordedCycles.length > 0 ? Math.max(...recordedCycles) : (Number(record.current_cycles) || 0);
+
+    const targetCycles = 125000;
+    const pct = Math.min(100, Math.round((maxRec / targetCycles) * 100));
+
+    if ($('#wst-flex-curr-cycles')) $('#wst-flex-curr-cycles').textContent = maxRec.toLocaleString();
+    if ($('#wst-flex-target-cycles')) $('#wst-flex-target-cycles').textContent = targetCycles.toLocaleString();
+    if ($('#wst-flex-pct-label')) $('#wst-flex-pct-label').textContent = `${pct}%`;
+    if ($('#wst-flex-progress-bar')) $('#wst-flex-progress-bar').style.width = `${pct}%`;
+
+    const statePill = $('#wst-flex-state-pill');
+    if (statePill) {
+      if (record.status === 'COMPLETED' || record.overall_outcome === 'PASS' || record.overall_outcome === 'PASSED') {
+        statePill.className = 'wst-status-pill wst-status-completed';
+        statePill.textContent = 'COMPLETED';
+      } else if (record.status === 'RUNNING' || record.is_running == 1) {
+        statePill.className = 'wst-status-pill wst-status-running';
+        statePill.textContent = 'RUNNING';
+      } else if (record.status === 'PAUSED') {
+        statePill.className = 'wst-status-pill wst-status-paused';
+        statePill.textContent = 'PAUSED';
+      } else {
+        statePill.className = 'wst-status-pill wst-status-pending';
+        statePill.textContent = 'PENDING';
+      }
+    }
+
+    // Find next unrecorded cycle
+    let nextUnrecorded = cycles[0];
+    for (const c of cycles) {
+      if (!recordedCycles.includes(c)) {
+        nextUnrecorded = c;
+        break;
+      }
+    }
+
+    let thead = `<tr><th style="min-width:120px;padding:8px 12px;background:#f8fafc">SPECIMEN</th>`;
+    cycles.forEach((c) => {
+      const isTarget = (c === nextUnrecorded && record.status !== 'COMPLETED');
+      thead += `<th style="padding:8px 10px;text-align:center;background:${isTarget ? '#eff6ff' : '#f8fafc'};color:${isTarget ? '#1d4ed8' : '#475569'};font-size:11.5px;font-weight:700;border-top:${isTarget ? '2px solid #3b82f6' : 'none'}">${(c/1000)}k</th>`;
+    });
+    thead += `</tr>`;
+
+    let tbody = `<tr><td class="mono bold" style="padding:10px 12px;font-size:12.5px;color:#0f172a">1-Whole Shoe</td>`;
+    cycles.forEach((c) => {
+      const isRecorded = recordedCycles.includes(c) || (maxRec >= c);
+      const isTarget = (c === nextUnrecorded && record.status !== 'COMPLETED');
+
+      let bg = '#ffffff';
+      let icon = '';
+      let cursor = 'pointer';
+      let title = `Log findings for ${c.toLocaleString()} cycles`;
+
+      if (isRecorded) {
+        bg = '#ecfdf5';
+        icon = '<span style="color:#059669;font-weight:800;font-size:12px">&#10003;</span>';
+        title = `Recorded at ${c.toLocaleString()} cycles`;
+      } else if (isTarget) {
+        bg = '#eff6ff';
+        icon = '<span style="color:#2563eb;font-weight:700;font-size:10px">&#9679;</span>';
+      }
+
+      tbody += `<td class="wst-flex-cell" data-cycle="${c}" title="${title}" style="text-align:center;padding:10px 4px;background:${bg};border:1px solid #e2e8f0;cursor:${cursor}">${icon}</td>`;
+    });
+    tbody += `</tr>`;
+
+    tableWrap.innerHTML = `<thead>${thead}</thead><tbody>${tbody}</tbody>`;
+
+    tableWrap.querySelectorAll('.wst-flex-cell').forEach((cell) => {
+      cell.addEventListener('click', () => {
+        const c = parseInt(cell.dataset.cycle, 10);
+        openFlexEvaluationModal(record, c);
+      });
+    });
+  };
+
   // Live monitor modal renderer
   const openWstMonitorModal = async (testId) => {
     currentWstTestId = testId;
-    const tableWrap = $('.wst-monitoring-container .dtr-table-wrap');
-    if (tableWrap) {
-      tableWrap.innerHTML = '<div style="text-align:center;padding:24px;color:#64748b"><svg class="ic animate-spin" aria-hidden="true" style="margin-right:6px"><use href="#i-sync"/></svg> Loading checkpoint matrix...</div>';
-    }
     $('#wst-monitor-modal-backdrop')?.classList.remove('hidden');
 
     try {
@@ -485,63 +920,146 @@
       const badge = $('#wst-modal-status-badge');
       const badgeText = $('#wst-modal-status-text');
       const pulseDot = $('#wst-modal-pulse-dot');
+      const isTimerPausedModal = Boolean(res.timer?.is_paused) || r.status === 'PAUSED';
       if (badge) {
-        const statusStr = isDone ? 'COMPLETED' : (isRun ? 'RUNNING' : (r.status || 'PENDING'));
+        let statusStr = isDone ? 'COMPLETED' : (isRun ? 'RUNNING' : (isTimerPausedModal ? 'PAUSED' : (r.status || 'PENDING')));
         if (badgeText) badgeText.textContent = statusStr;
         else badge.textContent = statusStr;
-        badge.className = `dtr-pill ${isRun ? 'dtr-pill-pass' : (isDone ? 'dtr-pill-blue' : 'dtr-pill-warn')}`;
+        
+        let bClass = 'wst-status-pending';
+        if (r.overall_outcome === 'FAIL') bClass = 'wst-status-fail';
+        else if (isDone) bClass = 'wst-status-completed';
+        else if (isRun) bClass = 'wst-status-running';
+        else if (isTimerPausedModal) bClass = 'wst-status-paused';
+
+        badge.className = `wst-status-pill ${bClass}`;
       }
       if (pulseDot) {
-        pulseDot.className = `wst-pulse-dot ${isRun ? 'wst-pulse-dot-green' : (isDone ? 'wst-pulse-dot-blue' : 'wst-pulse-dot-amber')}`;
+        pulseDot.className = `wst-pulse-dot ${isRun ? 'wst-pulse-dot-green' : (isDone ? 'wst-pulse-dot-blue' : (isTimerPausedModal ? 'wst-pulse-dot-amber' : ''))}`;
       }
 
-      // State-Aware Action Rail: Toggle RUN vs Active indicator vs Disabled on Complete
+      // State-Aware Action Rail: Run / Pause / Stop / Input Findings
       const startBtn = $('#btn-wst-modal-start');
+      const pauseBtn = $('#btn-wst-modal-pause');
       const runningBar = $('#wst-running-indicator-bar');
-      const findingsBtn = $('#btn-wst-modal-findings');
-      const stopSampleBtn = $('#btn-wst-modal-stop-sample');
       const stopTestBtn = $('#btn-wst-modal-stop');
+      const evalBtn = $('#btn-wst-open-eval-modal');
 
-      if (isRun && !isDone) {
+      const isFlexCategory = (r.category === 'flexing');
+      const isTimerRunning = Boolean(res.timer?.is_running) || (r.status === 'RUNNING');
+      const isTimerPaused = Boolean(res.timer?.is_paused) || (r.status === 'PAUSED');
+      const isTimerDone = Boolean(res.timer?.is_finished);
+
+      if (isDone || isTimerDone) {
+        startBtn?.classList.remove('hidden');
+        runningBar?.classList.add('hidden');
+        if (startBtn) {
+          startBtn.disabled = true;
+          startBtn.style.opacity = '0.45';
+          startBtn.style.cursor = 'not-allowed';
+          startBtn.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> RUN / START';
+        }
+        pauseBtn?.classList.add('hidden');
+        if (stopTestBtn) {
+          stopTestBtn.disabled = true;
+          stopTestBtn.style.opacity = '0.45';
+          stopTestBtn.style.cursor = 'not-allowed';
+        }
+        evalBtn?.classList.remove('hidden');
+      } else if (isTimerPaused) {
+        startBtn?.classList.remove('hidden');
+        runningBar?.classList.add('hidden');
+        if (startBtn) {
+          startBtn.disabled = false;
+          startBtn.style.opacity = '1';
+          startBtn.style.cursor = 'pointer';
+          startBtn.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> RESUME / START';
+        }
+        pauseBtn?.classList.add('hidden');
+        if (stopTestBtn) {
+          stopTestBtn.disabled = false;
+          stopTestBtn.style.opacity = '1';
+          stopTestBtn.style.cursor = 'pointer';
+        }
+        evalBtn?.classList.remove('hidden');
+      } else if (isTimerRunning) {
         startBtn?.classList.add('hidden');
-        runningBar?.classList.remove('hidden');
+        if (isFlexCategory) {
+          pauseBtn?.classList.add('hidden');
+          runningBar?.classList.remove('hidden');
+          evalBtn?.classList.remove('hidden');
+        } else {
+          runningBar?.classList.add('hidden');
+          pauseBtn?.classList.remove('hidden');
+          if (pauseBtn) {
+            pauseBtn.innerHTML = '<svg class="ic" aria-hidden="true" style="width:15px;height:15px;margin-right:4px"><rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/></svg> PAUSE TIMER';
+          }
+          evalBtn?.classList.add('hidden');
+        }
+        if (stopTestBtn) {
+          stopTestBtn.disabled = false;
+          stopTestBtn.style.opacity = '1';
+          stopTestBtn.style.cursor = 'pointer';
+        }
       } else {
         startBtn?.classList.remove('hidden');
         runningBar?.classList.add('hidden');
         if (startBtn) {
-          startBtn.disabled = isDone;
-          startBtn.style.opacity = isDone ? '0.45' : '1';
-          startBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
+          startBtn.disabled = false;
+          startBtn.style.opacity = '1';
+          startBtn.style.cursor = 'pointer';
+          startBtn.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> RUN / START';
+        }
+        pauseBtn?.classList.add('hidden');
+        if (stopTestBtn) {
+          stopTestBtn.disabled = false;
+          stopTestBtn.style.opacity = '1';
+          stopTestBtn.style.cursor = 'pointer';
+        }
+        if (isFlexCategory) {
+          evalBtn?.classList.remove('hidden');
+        } else {
+          evalBtn?.classList.add('hidden');
         }
       }
 
-      // When test is completed (all samples finished or stop test triggered)
-      if (findingsBtn) {
-        findingsBtn.disabled = isDone;
-        findingsBtn.style.opacity = isDone ? '0.45' : '1';
-        findingsBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
-      }
-      if (stopSampleBtn) {
-        stopSampleBtn.disabled = isDone;
-        stopSampleBtn.style.opacity = isDone ? '0.45' : '1';
-        stopSampleBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
-      }
-      if (stopTestBtn) {
-        stopTestBtn.disabled = isDone;
-        stopTestBtn.style.opacity = isDone ? '0.45' : '1';
-        stopTestBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
+      activeRecordForEval = r;
+
+      const timerContainer = $('#wst-timer-container');
+      const flexContainer = $('#wst-flex-container');
+
+      if (isFlexCategory) {
+        timerContainer?.classList.add('hidden');
+        flexContainer?.classList.remove('hidden');
+        pauseBtn?.classList.add('hidden'); // No timer pause for cyclic flexing
+        if (evalBtn) {
+          evalBtn.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-check"/></svg> Input Flexing Result';
+        }
+        renderFlexingCycleTable(r, res.groups, res.state);
+      } else {
+        timerContainer?.classList.remove('hidden');
+        flexContainer?.classList.add('hidden');
+        if (evalBtn) {
+          evalBtn.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-check"/></svg> Input Findings &amp; Status';
+        }
+        if (res.timer) {
+          startCountdownTicker(res.timer, r);
+        }
       }
 
-      renderMonitoringTable(res.groups, res.state);
-      showToast(`Loaded monitor: ${r.labreference}`);
+      // Monitor opened silently
     } catch (err) {
       showToast(`Error opening monitor: ${err.message}`, 'error');
     }
   };
 
   const closeWstMonitorModal = () => {
+    if (wstTimerInterval) {
+      clearInterval(wstTimerInterval);
+      wstTimerInterval = null;
+    }
     $('#wst-monitor-modal-backdrop')?.classList.add('hidden');
-    loadWstRecords(currentWstCategory);
+    loadWstRecords();
   };
 
   $('#btn-wst-open-modal-monitor')?.addEventListener('click', () => {
@@ -922,8 +1440,11 @@
     try {
       const res = await apiFetch(`wst/start/${currentWstTestId}`, { method: 'POST' });
       if (res.success) {
-        openWstMonitorModal(currentWstTestId);
-        showToast('Started test session.', 'success');
+        showToast('Test session started successfully.', 'success');
+        await openWstMonitorModal(currentWstTestId);
+        loadWstRecords(currentWstCategory);
+      } else {
+        showToast(res.message || 'Could not start test.', 'error');
       }
     } catch (err) {
       showToast(`Error: ${err.message}`, 'error');
@@ -954,8 +1475,15 @@
       const res = await apiFetch(`wst/stop/${currentWstTestId}`, { method: 'POST' });
       if (res.success) {
         closeStopTestModal();
-        openWstMonitorModal(currentWstTestId);
-        showToast(res.message || 'Entire test session stopped and marked COMPLETED.', 'success');
+        await openWstMonitorModal(currentWstTestId);
+        showToast(res.message || 'Test stopped. Please input your findings and final status.', 'info');
+        if (activeRecordForEval) {
+          if (activeRecordForEval.category === 'flexing') {
+            openFlexEvaluationModal(activeRecordForEval, null);
+          } else {
+            openEvaluationModal(activeRecordForEval);
+          }
+        }
       } else {
         showToast(res.message || 'Failed to stop test session.', 'error');
       }
@@ -976,9 +1504,9 @@
     const date = $('#wst-new-date')?.value || new Date().toISOString().slice(0, 10);
     const labreference = $('#wst-new-labref')?.value.trim();
     const machine = $('#wst-new-machine')?.value.trim() || 'MC-FLEX-01';
-    const dry = $('#wst-check-dry')?.checked ? parseInt($('#wst-count-dry')?.value || '0', 10) : 0;
-    const wet = $('#wst-check-wet')?.checked ? parseInt($('#wst-count-wet')?.value || '0', 10) : 0;
-    const hydro = $('#wst-check-hydro')?.checked ? parseInt($('#wst-count-hydro')?.value || '0', 10) : 0;
+    const dry = 1;
+    const wet = 0;
+    const hydro = 0;
 
     try {
       const res = await apiFetch('wst/create', {
@@ -1011,7 +1539,7 @@
 
   $('#btn-wst-refresh-queue')?.addEventListener('click', () => {
     loadWstRecords(currentWstCategory);
-    showToast('Refreshed test queue.');
+    // Queue refreshed silently
   });
 
   // Print summary button inside modal
@@ -1084,7 +1612,7 @@
             stopTestBtn.style.cursor = isDone ? 'not-allowed' : 'pointer';
           }
 
-          renderMonitoringTable(currentWstGroups, currentWstState);
+          if (currentWstCategory === 'flexing') { if (activeRecordForEval) renderFlexingCycleTable(activeRecordForEval, currentWstGroups, currentWstState); } else { renderMonitoringTable(currentWstGroups, currentWstState); }
         }
       } catch (_) {}
     }, 8000);
@@ -1092,5 +1620,405 @@
   startWstLivePolling();
 
   // Trigger initial list load on page load
+  
+  // =========================================================================
+  // WHOLE SHOE TEST: INCUBATION TIMERS & FINDINGS EVALUATION
+  // Hydrolysis: 7 Days | Heat Aging: 3 Days | UV Light: 1 Day | Washing: 1 Hr | Dip Test: 1 Min
+  // =========================================================================
+  const TIMED_CATEGORIES = {
+    'hydrolysis': { label: 'Hydrolysis', duration: 7 * 86400, nominal: '7 Days' },
+    'heat-aging': { label: 'Heat Aging', duration: 3 * 86400, nominal: '3 Days' },
+    'uv-light':   { label: 'UV Light', duration: 1 * 86400, nominal: '1 Day (24 Hrs)' },
+    'washing':    { label: 'Washing', duration: 1 * 3600, nominal: '1 Hour' },
+    'deeptest':   { label: 'Dip Test', duration: 60, nominal: '1 Minute' },
+    'deep-test':  { label: 'Dip Test', duration: 60, nominal: '1 Minute' },
+  };
+
+  const isTimedCategory = (cat) => !!TIMED_CATEGORIES[cat];
+
+
+  let wstTimerInterval = null;
+
+  const startCountdownTicker = (initialTimer, record) => {
+    if (wstTimerInterval) {
+      clearInterval(wstTimerInterval);
+      wstTimerInterval = null;
+    }
+
+    const timerBox = $('#wst-timer-container');
+    const clock = $('#wst-countdown-clock');
+    const subtext = $('#wst-countdown-subtext');
+    const statePill = $('#wst-timer-state-pill');
+    const pBar = $('#wst-timer-progress-bar');
+    const pLabel = $('#wst-timer-pct-label');
+    const elLabel = $('#wst-timer-elapsed-label');
+    const finishedAlert = $('#wst-timer-finished-alert');
+    const pausedAlert = $('#wst-timer-paused-alert');
+    const typeBadge = $('#wst-timer-type-badge');
+    const nominalDuration = $('#wst-timer-nominal-duration');
+    const pauseBtn = $('#btn-wst-modal-pause');
+    const startBtn = $('#btn-wst-modal-start');
+    const evalBtn = $('#btn-wst-open-eval-modal');
+
+    const cat = record.category || currentWstCategory;
+    const isTimed = isTimedCategory(cat);
+
+    if (!timerBox) return;
+
+    if (!isTimed) {
+      timerBox.classList.add('hidden');
+      pauseBtn?.classList.add('hidden');
+      return;
+    }
+
+    timerBox.classList.remove('hidden');
+    const catCfg = TIMED_CATEGORIES[cat];
+    if (typeBadge) typeBadge.textContent = `${catCfg.label.toUpperCase()} TIMER`;
+    if (nominalDuration) nominalDuration.textContent = `Nominal Duration: ${catCfg.nominal}`;
+
+    const duration = Number(initialTimer.duration_sec || catCfg.duration);
+    let elapsed = Number(initialTimer.elapsed_sec || 0);
+    let isRunning = !!initialTimer.is_running;
+    let isFinished = !!initialTimer.is_finished || (record.status === 'COMPLETED');
+    let isPaused = !!initialTimer.is_paused;
+
+    const renderTick = () => {
+      const remaining = Math.max(0, duration - elapsed);
+      const pct = duration > 0 ? Math.min(100, Math.round((elapsed / duration) * 100)) : 0;
+
+      if (clock) clock.textContent = formatCountdown(remaining);
+      if (pBar) pBar.style.width = `${pct}%`;
+      if (pLabel) pLabel.textContent = `${pct}%`;
+      if (elLabel) elLabel.textContent = `Elapsed: ${formatCountdown(elapsed)}`;
+
+      if (isFinished || remaining <= 0) {
+        if (statePill) {
+          statePill.textContent = 'FINISHED';
+          statePill.style.background = '#dcfce7';
+          statePill.style.color = '#15803d';
+        }
+        if (subtext) subtext.textContent = 'Required test duration elapsed. Ready for evaluation.';
+        finishedAlert?.classList.remove('hidden');
+        pausedAlert?.classList.add('hidden');
+        pauseBtn?.classList.add('hidden');
+        evalBtn?.classList.remove('hidden');
+        if (startBtn) {
+          startBtn.classList.remove('hidden');
+          startBtn.disabled = true;
+          startBtn.style.opacity = '0.5';
+          startBtn.style.cursor = 'not-allowed';
+        }
+        if (wstTimerInterval) {
+          clearInterval(wstTimerInterval);
+          wstTimerInterval = null;
+        }
+      } else if (isPaused) {
+        if (statePill) {
+          statePill.textContent = 'PAUSED';
+          statePill.style.background = '#fef3c7';
+          statePill.style.color = '#b45309';
+        }
+        if (subtext) subtext.textContent = 'Timer paused. Press RESUME / START to continue testing, or input findings.';
+        finishedAlert?.classList.add('hidden');
+        pausedAlert?.classList.remove('hidden');
+        pauseBtn?.classList.add('hidden');
+        evalBtn?.classList.remove('hidden');
+        if (startBtn) {
+          startBtn.classList.remove('hidden');
+          startBtn.disabled = false;
+          startBtn.style.opacity = '1';
+          startBtn.style.cursor = 'pointer';
+          startBtn.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> RESUME / START';
+        }
+      } else if (isRunning) {
+        if (statePill) {
+          statePill.textContent = 'RUNNING';
+          statePill.style.background = '#dbeafe';
+          statePill.style.color = '#1d4ed8';
+        }
+        if (subtext) subtext.textContent = `Timer active · Test incubation running (${catCfg.nominal})`;
+        finishedAlert?.classList.add('hidden');
+        pausedAlert?.classList.add('hidden');
+        pauseBtn?.classList.remove('hidden');
+        if (pauseBtn) pauseBtn.innerHTML = '<svg class="ic" aria-hidden="true" style="width:15px;height:15px;margin-right:4px"><rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/></svg> PAUSE TIMER';
+        evalBtn?.classList.add('hidden');
+      } else {
+        if (statePill) {
+          statePill.textContent = 'PENDING START';
+          statePill.style.background = '#e2e8f0';
+          statePill.style.color = '#475569';
+        }
+        if (subtext) subtext.textContent = `Press RUN / START to begin test timer (${catCfg.nominal})`;
+        finishedAlert?.classList.add('hidden');
+        pausedAlert?.classList.add('hidden');
+        pauseBtn?.classList.add('hidden');
+        evalBtn?.classList.add('hidden');
+      }
+    };
+
+    renderTick();
+
+    if (isRunning && !isFinished && duration > elapsed) {
+      wstTimerInterval = setInterval(() => {
+        elapsed++;
+        renderTick();
+        if (elapsed >= duration) {
+          isFinished = true;
+          isRunning = false;
+          renderTick();
+          showToast(`Test duration for ${catCfg.label} has completed! Please record findings.`, 'success');
+        }
+      }, 1000);
+    }
+  };
+
+  // Evaluation Modal Handlers
+  let currentEvalOutcome = 'PASS';
+  let activeRecordForEval = null;
+
+  const openEvaluationModal = (record) => {
+    activeRecordForEval = record;
+    const modal = $('#wst-eval-modal-backdrop');
+    if (!modal) return;
+
+    const titleEl = $('#wst-eval-title');
+    const cat = record.category || currentWstCategory;
+    const catName = TIMED_CATEGORIES[cat]?.label || 'Whole Shoe';
+    if (titleEl) titleEl.textContent = `${catName.toUpperCase()} FINDINGS & EVALUATION (${record.labreference || ''})`;
+
+    const endTimeInput = $('#wst-eval-end-time');
+    if (endTimeInput) {
+      const now = new Date();
+      endTimeInput.value = now.toLocaleString('en-US', {
+        month: '2-digit', day: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+      });
+    }
+
+    // Reset default selections
+    $$('.wst-choice-btn').forEach((btn) => {
+      const isDefault = btn.dataset.val.toLowerCase().startsWith('no ');
+      btn.classList.toggle('active', isDefault);
+      btn.style.background = isDefault ? '#2563eb' : '#ffffff';
+      btn.style.color = isDefault ? '#ffffff' : '#1e293b';
+      btn.style.borderColor = isDefault ? '#2563eb' : '#cbd5e1';
+    });
+
+    // Reset outcome buttons
+    currentEvalOutcome = (record.overall_outcome || 'PASS').toUpperCase();
+    $$('.wst-outcome-btn').forEach((btn) => {
+      const match = btn.dataset.outcome === currentEvalOutcome;
+      btn.classList.toggle('active', match);
+    });
+
+    const otherInp = $('#wst-eval-other-findings');
+    if (otherInp) otherInp.value = record.remarks || '';
+
+    modal.classList.remove('hidden');
+  };
+
+  const closeEvaluationModal = () => {
+    $('#wst-eval-modal-backdrop')?.classList.add('hidden');
+  };
+
+  // Choice buttons selection behavior (single-select per group)
+  $$('.wst-choice-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const parent = btn.closest('.wst-btn-pill-group');
+      if (parent) {
+        parent.querySelectorAll('.wst-choice-btn').forEach((b) => {
+          b.classList.remove('active');
+          b.style.background = '#ffffff';
+          b.style.color = '#1e293b';
+          b.style.borderColor = '#cbd5e1';
+        });
+      }
+      btn.classList.add('active');
+      btn.style.background = '#2563eb';
+      btn.style.color = '#ffffff';
+      btn.style.borderColor = '#2563eb';
+    });
+  });
+
+  // Outcome buttons selection
+  $$('.wst-outcome-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      $$('.wst-outcome-btn').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentEvalOutcome = btn.dataset.outcome;
+    });
+  });
+
+  // Wire up Evaluation Modal buttons
+  $('#btn-wst-close-eval-modal')?.addEventListener('click', closeEvaluationModal);
+  $('#btn-wst-cancel-eval-modal')?.addEventListener('click', closeEvaluationModal);
+  $('#btn-wst-open-eval-modal')?.addEventListener('click', () => {
+    if (currentWstTestId && activeRecordForEval) {
+      if (activeRecordForEval.category === 'flexing') {
+        openFlexEvaluationModal(activeRecordForEval, null);
+      } else {
+        openEvaluationModal(activeRecordForEval);
+      }
+    }
+  });
+  $('#btn-wst-trigger-evaluation')?.addEventListener('click', () => {
+    if (currentWstTestId && activeRecordForEval) {
+      openEvaluationModal(activeRecordForEval);
+    }
+  });
+  $('#btn-wst-trigger-evaluation-paused')?.addEventListener('click', () => {
+    if (currentWstTestId && activeRecordForEval) {
+      openEvaluationModal(activeRecordForEval);
+    }
+  });
+
+  // Save Evaluation & Complete
+  $('#btn-wst-save-eval')?.addEventListener('click', async () => {
+    if (!currentWstTestId) return;
+    const saveBtn = $('#btn-wst-save-eval');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<svg class="ic animate-spin" aria-hidden="true" style="margin-right:6px"><use href="#i-sync"/></svg> Saving...';
+    }
+
+    const payload = {
+      outcome: currentEvalOutcome,
+      delamination: $('.wst-btn-pill-group[data-eval-field="delamination"] .wst-choice-btn.active')?.dataset.val || 'No delamination',
+      bleeding: $('.wst-btn-pill-group[data-eval-field="bleeding"] .wst-choice-btn.active')?.dataset.val || 'No bleeding',
+      color_change: $('.wst-btn-pill-group[data-eval-field="color_change"] .wst-choice-btn.active')?.dataset.val || 'No color change',
+      outsole_warping: $('.wst-btn-pill-group[data-eval-field="outsole_warping"] .wst-choice-btn.active')?.dataset.val || 'No Outsole warping',
+      blooming: $('.wst-btn-pill-group[data-eval-field="blooming"] .wst-choice-btn.active')?.dataset.val || 'No blooming',
+      other_findings: $('#wst-eval-other-findings')?.value.trim() || '',
+    };
+
+    try {
+      const res = await apiFetch(`wst/save-eval/${currentWstTestId}`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+
+      if (res.success) {
+        showToast(res.message || 'Evaluation saved successfully!', 'success');
+        closeEvaluationModal();
+        openWstMonitorModal(currentWstTestId);
+        loadWstRecords();
+      } else {
+        showToast(res.message || 'Failed to save evaluation', 'error');
+      }
+    } catch (err) {
+      showToast(`Error: ${err.message}`, 'error');
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-check"/></svg> Save Evaluation & Complete';
+      }
+    }
+  });
+
+  // Pause Timer Button Handler
+  $('#btn-wst-modal-pause')?.addEventListener('click', async () => {
+    if (!currentWstTestId) return;
+    try {
+      const res = await apiFetch(`wst/pause/${currentWstTestId}`, { method: 'POST' });
+      if (res.success) {
+        showToast('Timer paused successfully.', 'info');
+        await openWstMonitorModal(currentWstTestId);
+        loadWstRecords(currentWstCategory);
+      } else {
+        showToast(res.message || 'Failed to pause timer.', 'error');
+      }
+    } catch (err) {
+      showToast(`Error: ${err.message}`, 'error');
+    }
+  });
+
+
+  // Flexing Modal Event Handlers
+  $('#btn-wst-close-flex-eval')?.addEventListener('click', closeFlexEvaluationModal);
+  $('#btn-wst-cancel-flex-eval')?.addEventListener('click', closeFlexEvaluationModal);
+
+  ['#wst-flex-lat-len', '#wst-flex-med-len', '#wst-flex-lat-depth', '#wst-flex-med-depth', '#wst-flex-eval-cycle'].forEach((sel) => {
+    $(sel)?.addEventListener('input', updateFlexFindingsFormula);
+    $(sel)?.addEventListener('change', updateFlexFindingsFormula);
+  });
+
+  $$('.wst-flex-result-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      $$('.wst-flex-result-btn').forEach((b) => {
+        b.classList.remove('active');
+        b.style.background = '#ffffff';
+        b.style.color = '#475569';
+        b.style.borderColor = '#cbd5e1';
+      });
+      btn.classList.add('active');
+      currentFlexOutcome = btn.dataset.flexResult.toUpperCase();
+      const c = currentFlexOutcome === 'PASSED' ? '#2563eb' : (currentFlexOutcome === 'FAILED' ? '#ef4444' : '#64748b');
+      btn.style.background = c;
+      btn.style.color = '#ffffff';
+      btn.style.borderColor = c;
+    });
+  });
+
+  $('#btn-wst-save-flex-eval')?.addEventListener('click', async () => {
+    if (!currentWstTestId) return;
+    const saveBtn = $('#btn-wst-save-flex-eval');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<svg class="ic animate-spin" aria-hidden="true" style="margin-right:6px"><use href="#i-sync"/></svg> Saving...';
+    }
+
+    const cycle = parseInt($('#wst-flex-eval-cycle')?.value || '125000', 10);
+    const latLen = parseFloat($('#wst-flex-lat-len')?.value || '0') || 0;
+    const medLen = parseFloat($('#wst-flex-med-len')?.value || '0') || 0;
+    const latDepth = parseFloat($('#wst-flex-lat-depth')?.value || '0') || 0;
+    const medDepth = parseFloat($('#wst-flex-med-depth')?.value || '0') || 0;
+    const findings = $('#wst-flex-findings-preview')?.value.trim() || `45° degrees ${cycle} cycles - (L: ${latLen} mm, M: ${medLen} mm; D:${latDepth} mm, D:${medDepth} mm)`;
+    const outcome = currentFlexOutcome === 'PASSED' ? 'PASS' : (currentFlexOutcome === 'FAILED' ? 'FAIL' : 'PENDING');
+
+    try {
+      // 1. Record the checkpoint in tbl_material_test_results
+      await apiFetch(`wst/log-findings/${currentWstTestId}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          cycle,
+          group: 'dry',
+          findings,
+          pass: (outcome === 'PASS'),
+          samples: [1],
+        }),
+      });
+
+      // 2. Save evaluation outcome and findings JSON
+      const res = await apiFetch(`wst/save-eval/${currentWstTestId}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          outcome,
+          cycle,
+          lat_len: latLen,
+          med_len: medLen,
+          lat_depth: latDepth,
+          med_depth: medDepth,
+          findings,
+        }),
+      });
+
+      if (res.success) {
+        showToast(res.message || 'Saved flexing inspection checkpoint!', 'success');
+        closeFlexEvaluationModal();
+        openWstMonitorModal(currentWstTestId);
+        loadWstRecords();
+      } else {
+        showToast(res.message || 'Failed to save flexing evaluation', 'error');
+      }
+    } catch (err) {
+      showToast(`Error: ${err.message}`, 'error');
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-check"/></svg> Save Flexing Result';
+      }
+    }
+  });
+
   loadWstRecords(currentWstCategory);
 })();

@@ -157,7 +157,7 @@
   };
 
   // Lab Tracker sub-tabs (containers / materials / bonding shoes / whole shoes)
-  $$('.dtr-subtab').forEach((btn) => {
+  $$('.dtr-subtab[data-subtab]').forEach((btn) => {
     btn.addEventListener('click', () => {
       $$('.dtr-subtab').forEach((b) => b.classList.toggle('active', b === btn));
       $$('.dtr-subpanel').forEach((p) => p.classList.toggle('hidden', p.dataset.subpanel !== btn.dataset.subtab));
@@ -172,15 +172,20 @@
 
   // A row for one line. The "+" beside the line number adds another row for that same line (extra = true, with a remove button).
   // o.type = preset Test Type; o.pick = the line is chosen from a list (First Case); o.noLine = no line and no Active toggle (Tech Trial)
+  // Test Types: TRIAL and INTERNAL TESTING have no line; SAMPLE, FIRST ARTICLE and RETEST load one row with a chosen line; DAILY loads every line
+  const IK_TYPES = ['DAILY', 'TECH TRIAL', 'SAMPLE', 'INTERNAL TESTING', 'FIRST ARTICLE', 'RETEST'];
+  const ikNoLine = (t) => t === 'TECH TRIAL' || t === 'INTERNAL TESTING' || t === 'SAMPLE';
+  const ikPick = (t) => t === 'FIRST ARTICLE' || t === 'RETEST';
   const intakeRowHtml = (line, extra, rightSide, o = {}) => {
     const type = o.type || 'DAILY';
     const b = String(line).charAt(0);
     const lineCount = b === 'B' ? 14 : 12;
     const lineOpts = Array.from({ length: lineCount }, (_, i) => `<option value="${b}${i + 1}"${`${b}${i + 1}` === line ? ' selected' : ''}>${b}${i + 1}</option>`).join('');
+    // SAMPLE has no line: its column holds the Sample Test selection (Bonding / Strip / Osna / Rivet)
     const lineCell = o.noLine
       ? '<td class="ik-linecell"><span class="muted sm">-</span></td>'
       : `<td class="ik-linecell">${o.pick ? `<select class="ik-linesel" aria-label="Line">${lineOpts}</select>` : `<b>${line}</b>`} <button type="button" class="ik-addrow" title="Add another row for ${line}" aria-label="Add another row for ${line}">+</button>${extra ? '<button type="button" class="ik-delrow" title="Remove this row" aria-label="Remove this row">&times;</button>' : ''}</td>`;
-    const typeOpts = ['DAILY', 'TECH TRIAL', 'FIRST CASE', 'RETEST'].map((t) => `<option${t === type ? ' selected' : ''}>${t}</option>`).join('');
+    const typeOpts = IK_TYPES.map((t) => `<option${t === type ? ' selected' : ''}>${t}</option>`).join('');
     return `
         <tr data-line="${line}"${extra ? ' data-extra="1"' : ''}>
           <td>${o.noLine ? '' : '<label class="dtr-switch"><input type="checkbox" class="ik-active" checked><span></span></label>'}</td>
@@ -188,10 +193,10 @@
           <td><div class="dtr-side-toggle"><button type="button" data-side="L" class="${rightSide ? '' : 'active'}">L</button><button type="button" data-side="R" class="${rightSide ? 'active' : ''}">R</button></div></td>
           <td class="ik-labref mono"><span class="ik-lr"></span>${o.noLine ? `<button type="button" class="ik-addrow" title="Add another tech trial row" aria-label="Add another tech trial row">+</button>${extra ? '<button type="button" class="ik-delrow" title="Remove this row" aria-label="Remove this row">&times;</button>' : ''}` : ''}</td>
           <td><select class="ik-type">${typeOpts}</select></td>
-          <td><input type="text" class="ik-code" placeholder="Type to filter" autocomplete="off"></td>
+          <td><input type="text" class="ik-code" placeholder="Type to filter" autocomplete="off">${type === 'SAMPLE' ? `<select class="ik-sub" aria-label="Sample test">${[['SH', 'Bonding'], ['STRIP', 'Strip Test'], ['RIVET', 'Rivets'], ['OSNA', 'Osnaburg']].map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>` : ''}</td>
           <td><input type="text" class="ik-style" placeholder="Style" readonly tabindex="-1"></td>
           <td><input type="text" class="ik-color" placeholder="Colorway" readonly tabindex="-1"></td>
-          <td><input type="text" class="ik-mtl" placeholder="MTL #" readonly tabindex="-1"></td>
+          <td>${type === 'TECH TRIAL' ? '<input type="text" class="ik-mtl" placeholder="Type MTL #" autocomplete="off">' : '<input type="text" class="ik-mtl" placeholder="MTL #" readonly tabindex="-1">'}</td>
           <td class="ik-imgcell"><img class="ik-img" alt="" hidden></td>
           <td class="ik-pulls"><label><input type="checkbox" class="ik-pt" value="HEEL PULL"> Heel Pull</label><label><input type="checkbox" class="ik-pt" value="EYELET"> Eyelet</label><label><input type="checkbox" class="ik-pt" value="D-RING"> D-Ring</label><label><input type="checkbox" class="ik-pt" value="RIVET"> Rivet</label></td>
           <td style="text-align:center"><input type="checkbox" class="ik-lacking" aria-label="Lacking"><input type="date" class="ik-lackdate" tabindex="-1" aria-label="Lacking date" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none"><div class="ik-lackshow"></div></td>
@@ -204,9 +209,18 @@
     let html = '';
     const lineCount = b === 'B' ? 14 : 12;
     const mode = intake.mode || 'DAILY';
-    $('#dtr-intake-table')?.classList.toggle('ik-trial', mode === 'TECH TRIAL');   // Active and Line columns are hidden for a tech trial
-    if (mode === 'TECH TRIAL') html = intakeRowHtml(`${b}0`, false, false, { type: mode, noLine: true });          // one row, no line, no Active toggle
-    else if (mode === 'FIRST CASE') html = intakeRowHtml(`${b}1`, false, false, { type: mode, pick: true });       // one row, the line is chosen
+    $('#dtr-intake-table')?.classList.toggle('ik-trial', ikNoLine(mode));   // Active and Line columns are hidden when there is no line
+    const codeTh = $('#dtr-intake-table thead th:nth-child(6)');
+    if (codeTh) codeTh.textContent = mode === 'SAMPLE' ? 'Sample Test' : 'Production Code';   // SAMPLE: that column (after Test Type) holds the sample test selection
+    // TECH TRIAL / SAMPLE / INTERNAL TESTING are not tied to a building: the Building toggle is hidden
+    const bField = $('#dtr-intake-building')?.closest('.dtr-intake-field');
+    if (bField) bField.style.display = ['TECH TRIAL', 'SAMPLE', 'INTERNAL TESTING'].includes(mode) ? 'none' : '';
+    $('#dtr-intake-table')?.classList.toggle('ik-m-fa', mode === 'FIRST ARTICLE');  // FIRST ARTICLE: no Active column
+    $('#dtr-intake-table')?.classList.toggle('ik-nolack', mode !== 'DAILY');     // Lacking is for DAILY only
+    $('#dtr-intake-table')?.classList.toggle('ik-m-trial', mode === 'TECH TRIAL');    // TECH TRIAL: no Production Code / Colorway
+    $('#dtr-intake-table')?.classList.toggle('ik-m-sample', mode === 'SAMPLE');   // SAMPLE: no Production Code / Style / Colorway / MTL / Image / Pull Type
+    if (ikNoLine(mode)) html = intakeRowHtml(`${b}0`, false, false, { type: mode, noLine: true });          // one row, no line, no Active toggle
+    else if (ikPick(mode)) html = intakeRowHtml(`${b}1`, false, false, { type: mode, pick: true });       // one row, the line is chosen
     else for (let i = 1; i <= lineCount; i++) html += intakeRowHtml(`${b}${i}`, false, i % 2 === 0, { type: mode });   // DAILY / RETEST: every line
     intakeEl.tbody.innerHTML = html;
     const label = $('#dtr-intake-batch-label');
@@ -215,17 +229,31 @@
   };  // Lab Ref No = DTP + production date (YYYYMMDD) + SH + building + line number + -side (same rule the server uses on save)
   const refreshIntakeLabRefs = () => {
     const prodDate = $('#dtr-intake-production')?.value || '';
-    let trialNo = 0;   // tech trial rows are numbered 1, 2, 3 ... in the order shown (the server confirms the free number on save)
+    const seen = {};   // running number (-#) per Lab Ref base in the order shown (the server confirms the free number on save)
     $$('#dtr-intake-tbody tr').forEach((tr) => {
       // a lacking specimen is booked under the date it is due, so the real specimen collected that day updates it instead of duplicating it
       const lackDate = tr.querySelector('.ik-lacking').checked ? tr.querySelector('.ik-lackdate').value : '';
       const d = (lackDate || prodDate).replace(/-/g, '');
       const side = tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L';
-      const isRetest = tr.querySelector('.ik-type').value === 'RETEST' || tr.querySelector('.ik-retest-note').value.trim() !== '';
-      const isTrial = tr.querySelector('.ik-type').value === 'TECH TRIAL';
-      // tech trial has no line: <date>TECHTRIAL<n>-<side> (the server picks the next free n)
-      if (isTrial) trialNo++;
-      tr.querySelector('.ik-lr').textContent = d ? (isTrial ? `${d}TECHTRIAL${trialNo}-${side}` : `DTP${d}SH${tr.dataset.line}-${side}${isRetest ? '-R01' : ''}`) : '';   // retest: -R01, -R02... (the server picks the next free number)
+      const type = tr.querySelector('.ik-type').value;
+      const isRetest = type === 'RETEST' || tr.querySelector('.ik-retest-note').value.trim() !== '';
+      // Lab Ref formats (the server confirms the free numbers on save):
+      //   DAILY             DTP<date>SH<line>-<side>-<#>
+      //   TRIAL             DTP<date>TRIALSH-<side>-<#>          (no line)
+      //   SAMPLE            DTP<date>SAMPLESH<line>-<side>-<#>
+      //   INTERNAL TESTING  DTP<date>ITSH-<side>-<#>             (no line)
+      //   FIRST ARTICLE     DTP<date>FASH<line>-<side>-<#>
+      //   RETEST            DTP<date>SH<line>-<side>-R01         (R02, R03 ... for the next retests of the same batch)
+      const pre = { 'TECH TRIAL': 'TRIALSH', 'SAMPLE': 'SAMPLESH', 'INTERNAL TESTING': 'ITSH', 'FIRST ARTICLE': 'FASH' }[type] || 'SH';
+      // SAMPLE has a sample test: Bonding (SH) or Strip / Osna / Rivet (DTP<date>STRIP|OSNA|RIVET-<#>, no line, no side)
+      const subV = type === 'SAMPLE' ? (tr.querySelector('.ik-sub')?.value || 'SH') : 'SH';
+      const isStrip = subV !== 'SH';
+      tr.classList.toggle('ik-strip', isStrip);
+      const key = isStrip ? `DTP${d}${subV}` : `DTP${d}${pre}${ikNoLine(type) ? '' : tr.dataset.line}`;   // the number runs per line, whatever the side
+      let ref;
+      if (isRetest) ref = (tr.dataset.retestOf ? tr.dataset.retestOf.replace(/(-R\d+|-\d+)$/, '') : `DTP${d}SH${tr.dataset.line}-${side}`) + '-R01';
+      else { seen[key] = (seen[key] || 0) + 1; ref = isStrip ? `${key}-${seen[key]}` : `${key}-${side}-${seen[key]}`; }
+      tr.querySelector('.ik-lr').textContent = d ? ref : '';
     });
   };
 
@@ -257,8 +285,8 @@
   intakeEl.tbody?.addEventListener('change', (e) => {
     if (!e.target.classList.contains('ik-type')) return;
     const v = e.target.value;
-    const reduced = intake.mode === 'TECH TRIAL' || intake.mode === 'FIRST CASE';
-    if (v === 'TECH TRIAL' || v === 'FIRST CASE' || (reduced && (v === 'DAILY' || v === 'RETEST'))) {
+    const reduced = intake.mode !== 'DAILY';
+    if (v !== 'DAILY' || reduced) {
       intake.mode = v;
       renderIntakeRows();
       if (v === 'RETEST') {
@@ -374,9 +402,29 @@
       const list = panel.querySelector('.lib-list');
       try {
         const res = await apiFetch(`dtr/erp-shoe-search?q=${encodeURIComponent(input.value.trim())}`);
-        const shoes = (res && res.shoes) || [];
-        if (!shoes.length) { list.innerHTML = '<div class="lib-empty">No production code found.</div>'; return; }
-        list.innerHTML = shoes.map((s, i) => `<div class="lib-item" data-i="${i}"><b>${escHtml(s.ProdCode || '')}</b><span>${escHtml(s.StyleNo || '')}</span><span>${escHtml(s.Colorway || '')} ${s.MTL ? '- ' + escHtml(s.MTL) : ''}</span></div>`).join('');
+        let shoes = (res && res.shoes) || [];
+        const byMtl = input.classList.contains('ik-mtl');
+        if (byMtl) {   // MTL # picker: one entry per MTL #, newest order first
+          const seenMtl = new Set();
+          shoes = shoes.filter((s) => { const k = String(s.MTL || '').trim().toUpperCase(); if (!k || seenMtl.has(k)) return false; seenMtl.add(k); return true; });
+        }
+        if (!shoes.length) { list.innerHTML = `<div class="lib-empty">${byMtl ? 'No MTL # found in the production orders.' : 'No production code found.'}</div>`; return; }
+        if (byMtl) {
+          // an MTL # typed in full is taken straight from the production order
+          const exact = shoes.filter((s) => String(s.MTL || '').toLowerCase() === input.value.trim().toLowerCase());
+          if (exact.length) {
+            const s = exact[0];
+            tr.querySelector('.ik-code').value = s.ProdCode || '';
+            tr.querySelector('.ik-style').value = s.StyleNo || '';
+            tr.querySelector('.ik-color').value = s.Colorway || '';
+            setIntakeImage(tr);
+            closeLibrary();
+            return;
+          }
+        }
+        list.innerHTML = byMtl
+          ? shoes.map((s, i) => `<div class="lib-item" data-i="${i}"><b>${escHtml(s.MTL || '')}</b><span>${escHtml(s.StyleNo || '')}</span><span>${escHtml(s.Colorway || '')}</span></div>`).join('')
+          : shoes.map((s, i) => `<div class="lib-item" data-i="${i}"><b>${escHtml(s.ProdCode || '')}</b><span>${escHtml(s.StyleNo || '')}</span><span>${escHtml(s.Colorway || '')} ${s.MTL ? '- ' + escHtml(s.MTL) : ''}</span></div>`).join('');
         list.onclick = (ev) => {
           const item = ev.target.closest('.lib-item');
           if (!item) return;
@@ -397,6 +445,14 @@
     }, 250);
   };
   intakeEl.tbody?.addEventListener('input', (e) => {
+    if (e.target.classList.contains('ik-mtl') && !e.target.readOnly) {
+      // TRIAL: the MTL # is typed; it looks the production order up in dberp.production_orders and fills Style (and the hidden code / colorway)
+      const tr = e.target.closest('tr');
+      ['.ik-code', '.ik-style', '.ik-color'].forEach((s) => { tr.querySelector(s).value = ''; });
+      setIntakeImage(tr);
+      if (e.target.value.trim()) suggestProdCode(tr, e.target);
+      return;
+    }
     if (!e.target.classList.contains('ik-code')) return;
     const tr = e.target.closest('tr');
     // style / colorway / MTL / image come only from the picked production code: editing or clearing the code resets them
@@ -405,7 +461,7 @@
     suggestProdCode(tr, e.target);
   });
   intakeEl.tbody?.addEventListener('focusin', (e) => {
-    if (e.target.classList.contains('ik-code') && !libPanel) suggestProdCode(e.target.closest('tr'), e.target);
+    if ((e.target.classList.contains('ik-code') || (e.target.classList.contains('ik-mtl') && !e.target.readOnly)) && !libPanel) suggestProdCode(e.target.closest('tr'), e.target);
   });
   intakeEl.tbody?.addEventListener('change', (e) => {
     if (e.target.classList.contains('ik-mtl')) setIntakeImage(e.target.closest('tr'));
@@ -413,6 +469,13 @@
   intakeEl.tbody?.addEventListener('click', async (e) => {
     const tr = e.target.closest('tr');
     if (!tr) return;
+    const subBtn = e.target.closest('.ik-subbtn');
+    if (subBtn) {   // child of SAMPLE: Bonding or Strip Test
+      tr.querySelectorAll('.ik-subbtn').forEach((x) => x.classList.toggle('active', x === subBtn));
+      tr.querySelector('.ik-sub').value = subBtn.dataset.sub;
+      refreshIntakeLabRefs();
+      return;
+    }
     const sideBtn = e.target.closest('.dtr-side-toggle button');
     if (sideBtn) {
       tr.querySelectorAll('.dtr-side-toggle button').forEach((x) => x.classList.toggle('active', x === sideBtn));
@@ -424,9 +487,16 @@
       while (last.nextElementSibling && last.nextElementSibling.dataset.line === last.dataset.line) last = last.nextElementSibling;
       const lastSide = last.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L';
       // First Case: the new row keeps the Test Type and gets its own line dropdown, preset to the same line
-      const firstCase = intake.mode === 'FIRST CASE';
-      last.insertAdjacentHTML('afterend', intakeRowHtml(last.dataset.line, true, lastSide === 'L', { type: firstCase ? 'FIRST CASE' : (intake.mode === 'TECH TRIAL' ? 'TECH TRIAL' : 'DAILY'), pick: firstCase, noLine: intake.mode === 'TECH TRIAL' }));
+      const firstCase = ikPick(intake.mode);
+      last.insertAdjacentHTML('afterend', intakeRowHtml(last.dataset.line, true, lastSide === 'L', { type: intake.mode, pick: firstCase, noLine: ikNoLine(intake.mode) }));
       refreshIntakeLabRefs();
+      if (intake.mode === 'RETEST') {   // every retest row loads a previously saved failed record
+        retestRow = last.nextElementSibling;
+        retestEl.search.value = '';
+        retestEl.back.classList.remove('hidden');
+        loadRetestList();
+        return;
+      }
       last.nextElementSibling.querySelector('.ik-code')?.focus();
       return;
     }
@@ -441,7 +511,10 @@
   let retestRow = null;
   const closeRetest = () => {
     retestEl.back?.classList.add('hidden');
-    if (retestRow && !retestRow.querySelector('.ik-retest-note').value.trim()) retestRow.querySelector('.ik-type').value = 'DAILY';
+    if (retestRow && !retestRow.querySelector('.ik-retest-note').value.trim()) {
+      if (retestRow.dataset.extra && intake.mode === 'RETEST') retestRow.remove();   // an added retest row that was not picked is dropped
+      else retestRow.querySelector('.ik-type').value = 'DAILY';
+    }
     retestRow = null;
   };
   const loadRetestList = async () => {
@@ -473,8 +546,12 @@
         setIntakeImage(retestRow);   // the shoe picture follows the MTL # of the failed specimen
         const why = [r.ModeOfFailure, r.Analysis].filter(Boolean).join(' - ');
         retestRow.querySelector('.ik-retest-note').value = `Retest of ${r.LabRefNo}\nFailed: ${why || 'no analysis recorded'}`;
+        retestRow.dataset.retestOf = r.LabRefNo;   // the new Lab Ref is this failed one + -R01, -R02 ...
         const sideBtn = retestRow.querySelector(`.dtr-side-toggle button[data-side="${/-R$/.test(r.LabRefNo) ? 'R' : 'L'}"]`);
         sideBtn?.click();
+        // the loaded data is locked: only the + button of the row stays usable
+        retestRow.classList.add('ik-locked');
+        retestRow.querySelectorAll('input:not(.ik-addrow), select, textarea, .dtr-side-toggle button').forEach((el) => { el.disabled = true; });
         retestEl.back.classList.add('hidden');
         retestRow = null;
       };
@@ -489,7 +566,7 @@
 
   intakeEl.tbody?.addEventListener('change', (e) => {
     const tr = e.target.closest('tr');
-    if (!tr) return;
+    if (!tr || !tr.isConnected) return;   // the batch was just re-rendered by the Test Type change: this row is gone
     if (e.target.classList.contains('ik-active')) tr.classList.toggle('inactive', !e.target.checked);
     if (e.target.classList.contains('ik-tech')) e.target.value = withMachineNo(e.target.value);
     if (e.target.classList.contains('ik-lacking')) {
@@ -503,7 +580,8 @@
       tr.querySelector('.ik-lackshow').textContent = tr.querySelector('.ik-lacking').checked ? tr.querySelector('.ik-lackdate').value.slice(5) : '';
       refreshIntakeLabRefs();
     }
-    if (e.target.classList.contains('ik-type') || e.target.classList.contains('ik-retest-note')) refreshIntakeLabRefs();
+    if (e.target.classList.contains('ik-type') && e.target.value !== 'RETEST') delete tr.dataset.retestOf;
+    if (e.target.classList.contains('ik-type') || e.target.classList.contains('ik-retest-note') || e.target.classList.contains('ik-sub')) refreshIntakeLabRefs();
     if (e.target.classList.contains('ik-type') && e.target.value === 'RETEST') {
       retestRow = tr;
       retestEl.search.value = '';
@@ -515,6 +593,8 @@
   $('#btn-intake-save')?.addEventListener('click', async () => {
     const rows = [];
     const shutdowns = [];
+    const trialSeen = new Set();
+    let trialIssue = '';
     $$('#dtr-intake-tbody tr').forEach((tr) => {
       const act = tr.querySelector('.ik-active');
       if (act && !act.checked) { if (!tr.dataset.extra) shutdowns.push(tr.dataset.line); return; }   // main row toggled off = line shutdown (an extra row only skips itself)
@@ -530,12 +610,21 @@
         tech: '',
         type: tr.querySelector('.ik-type').value,
         retestNote: tr.querySelector('.ik-retest-note').value.trim().replace(/\s*\n\s*/g, ' | '),
+        retestOf: tr.dataset.retestOf || '',
+        sub: tr.querySelector('.ik-sub')?.value || '',
         lacking: tr.querySelector('.ik-lacking').checked,
         lackingDate: tr.querySelector('.ik-lacking').checked ? tr.querySelector('.ik-lackdate').value : '',
       };
       row.retest = row.type === 'RETEST' || row.retestNote !== '';
-      if (row.code || row.style || row.color || row.mtl) rows.push(row);
+      if (row.type === 'TECH TRIAL' && row.mtl && !row.style) { trialIssue = `MTL # ${row.mtl} was not found in the production orders. Pick it from the list.`; return; }
+      if (row.type === 'TECH TRIAL') {
+        // a trial is checked first: the same MTL # / Style on the same side must not be entered twice in this batch
+        const k = `${row.side}|${(row.mtl || row.style).toUpperCase()}`;
+        if (row.mtl || row.style) { if (trialSeen.has(k)) { trialIssue = `Trial ${row.mtl || row.style} (${row.side}) is entered twice.`; return; } trialSeen.add(k); }
+      }
+      if (row.code || row.style || row.color || row.mtl || row.type === 'SAMPLE') rows.push(row);
     });
+    if (trialIssue) { intakeEl.msg.textContent = trialIssue; return; }
     if (!rows.length && !shutdowns.length) { intakeEl.msg.textContent = 'Fill in at least one active line before saving.'; return; }
     try {
       const res = await apiFetch('dtr/intake-save', {
@@ -597,14 +686,25 @@
     refreshWholeShoeLabRefs();
   };
   // Every ticked test type gets its own Test Type Lab Ref No (the Whole Shoe Lab Ref No DTP + date + WH + line is made by the server and not shown): = DTP + date + test code + building + line + -L / -R side (e.g. DTP20261103AGA4-L)
-  const WS_CODES = { 'Heat Aging': 'AG', Hydrolysis: 'HY', Washing: 'WS', UV: 'UV', Flexing: 'FX', 'Dip Test': 'DT' };
+  // Formats: DTP<date><code><line>-<side>-<#>  (UV: DTP<date>UV<line>-<#>, no side). The server confirms the free numbers on save.
+  const WS_CODES = { 'Heat Aging': 'HA', Hydrolysis: 'HY', Washing: 'WG', UV: 'UV', Flexing: 'FX', 'Dip Test': 'DT' };
   const refreshWholeShoeLabRefs = () => {
     const d = ($('#dtr-wshoe-production')?.value || '').replace(/-/g, '');
+    const seen = {};   // running number per code + line, whatever the side
     $$('#dtr-wshoe-tbody tr').forEach((tr) => {
       const tcell = tr.querySelector('.ik-tlabref');
       if (!d) { tcell.textContent = ''; return; }
       const side = tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L';
-      tcell.innerHTML = [...tr.querySelectorAll('.ik-tests input:checked')].map((c) => `<div class="ik-child">DTP${d}${WS_CODES[c.value] || ''}${tr.dataset.line}-${side}</div>`).join('');
+      if (!tr.querySelector('.ik-tests input:checked')) {   // no test ticked yet: show the format the Lab Ref will follow
+        tcell.innerHTML = `<div class="ik-child" style="opacity:.55;font-style:italic">DTP${d}&lt;test&gt;${tr.dataset.line}-${side}-#</div>`;
+        return;
+      }
+      tcell.innerHTML = [...tr.querySelectorAll('.ik-tests input:checked')].map((c) => {
+        const code = WS_CODES[c.value] || '';
+        const key = `DTP${d}${code}${tr.dataset.line}`;
+        seen[key] = (seen[key] || 0) + 1;
+        return `<div class="ik-child">${code === 'UV' ? `${key}-${seen[key]}` : `${key}-${side}-${seen[key]}`}</div>`;
+      }).join('');
     });
   };  const openWholeShoe = () => {
     wsBuilding = 'A';
@@ -765,15 +865,26 @@
     let wsSections = [];
     const wsVal = (id) => $(id).value.trim();
 
-    const wsRenderSections = (sections, data) => {
+    // pulled = the tests of the selected Lab Ref from tbl_dtr_WholeshoeTracker (result, status, dates, findings per test type);
+    // a value typed and saved in the report wins, the pulled finding fills the rest
+    const wsRenderSections = (sections, data, pulled = []) => {
       wsSections = sections;
+      const pb = {};
+      pulled.forEach((p) => { pb[p.section] = p; });
+      const chip = (p) => {
+        if (!p) return '';
+        const r = (p.result || '').toUpperCase();
+        const cls = r.startsWith('FAIL') ? 'res-fail' : (r.startsWith('TOL') ? 'res-tol' : (r.startsWith('PASS') ? 'res-pass' : ''));
+        const when = (p.completed || p.started || '').slice(0, 10);
+        return ` <span class="wsf-pr ${cls}">${escHtml(r || p.status || 'PENDING')}</span> <span class="wsf-ps">${escHtml([p.status, p.labRef, when].filter(Boolean).join(' · '))}</span>`;
+      };
       $('#ws-sections').innerHTML = sections.map((s) => `
         <div class="ws-sec" data-sec="${s.id}">
           <div class="wsf-st">${escHtml(s.title)}</div>
           <table class="wsf-t wsf-sc">
-            <tr><td class="wsf-tc"><b>Test conditions测试条件:</b></td><td><b>Result结果 :</b></td></tr>
+            <tr><td class="wsf-tc"><b>Test conditions测试条件:</b></td><td><b>Result结果 :</b>${chip(pb[s.id])}</td></tr>
             <tr><td class="wsf-cd">${s.cond}</td><td class="wsf-rs">${Object.entries(s.fields).map(([k, label]) =>
-              `<div class="wsf-rl"><b>${escHtml(label)} :</b><input type="text" data-k="${k}" value="${escHtml(((data.results || {})[s.id] || {})[k] || '')}"></div>`).join('')}</td></tr>
+              `<div class="wsf-rl"><b>${escHtml(label)} :</b><input type="text" data-k="${k}" value="${escHtml((((data.results || {})[s.id] || {})[k]) || ((pb[s.id] || {}).fields || {})[k] || '')}"></div>`).join('')}</td></tr>
           </table>
         </div>`).join('');
     };
@@ -786,10 +897,15 @@
         const i = j.info; const d = j.data || {};
         $('#ws-style').value = i.style; $('#ws-color').value = i.color; $('#ws-po').value = i.prodCode;
         $('#ws-qty').value = i.qty; $('#ws-received').value = i.received; $('#ws-tests').value = (i.tests || []).join(', ') || 'All';
-        $('#ws-tested').value = d.testedDate || ''; $('#ws-finished').value = d.finishedDate || '';
+        // Tested / Finished dates default to the tracker: first test started, last test completed (only when every test is done)
+        const pulled = j.pulled || [];
+        const starts = pulled.map((p) => (p.started || '').slice(0, 10)).filter(Boolean).sort();
+        const ends = pulled.map((p) => (p.completed || '').slice(0, 10));
+        $('#ws-tested').value = d.testedDate || starts[0] || '';
+        $('#ws-finished').value = d.finishedDate || (ends.length && ends.every(Boolean) ? ends.sort().pop() : '');
         $('#ws-tech').value = d.technician || ''; $('#ws-comments').value = d.comments || '';
         $('#ws-reviewed').value = d.reviewedBy || ''; $('#ws-approved').value = d.approvedBy || '';
-        wsRenderSections(j.sections || [], d);
+        wsRenderSections(j.sections || [], d, pulled);
       } catch (err) { wsMsg.textContent = err.message; }
     };
 
@@ -828,15 +944,12 @@
 
     (async () => {
       try {
+        // the Lab Ref is not editable: it is the one opened from the Lab Tracker lists (or ?labref=); the sheet is blank until then
         const j = await apiFetch('dtr/wholeshoe-labrefs');
-        const rows = j.rows || [];
-        wsRenderSections(j.sections || [], {});   // blank sheet with every test section until a Lab Ref is chosen
-        // no record is loaded by default: an empty choice first, a Lab Ref loads only when picked (or opened from a list)
-        wsSel.innerHTML = '<option value="">' + (rows.length ? '- Select Lab Ref No -' : '- no whole shoe intake yet -') + '</option>'
-          + rows.map((r) => `<option value="${escHtml(r.LabRefNo)}">${escHtml(r.LabRefNo)}</option>`).join('');
+        if (!wsSel.value) wsRenderSections(j.sections || [], {});   // blank sheet with every test section
         const want = new URLSearchParams(location.search).get('labref');
-        if (want && rows.some((r) => r.LabRefNo === want)) { wsSel.value = want; wsLoad(want); }
-      } catch (err) { wsSel.innerHTML = '<option value="">Could not load</option>'; }
+        if (want && !wsSel.value) { wsSel.value = want; wsLoad(want); }
+      } catch (err) { wsMsg.textContent = 'Could not load the report form.'; }
     })();
   }
 
@@ -857,6 +970,260 @@
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     } catch (err) { nxToast('Could not download the report: ' + err.message, 'error', 7000); }
     b.disabled = false;
+  });
+
+  // =========================================================================
+  // Bonding report picture (D:\BACK UP\SystemProcess\BondingImages): thumbnail in the list, click = editor.
+  // Circle / highlight / text box (white box to write a value over the old one) / PASS-FAILED-TOLERABLE stamp; every item can be
+  // moved and resized. Save = new current report <LabRef>.png; the report in place becomes the next old version (_1, _2 ...).
+  // =========================================================================
+  (() => {
+    const back = $('#bimg-backdrop');
+    const cv = $('#bimg-canvas');
+    if (!back || !cv) return;
+    const ctx = cv.getContext('2d');
+    const txt = $('#bimg-text');
+    const REPORT_FONT = '"Segoe UI", "Segoe UI Variable", Calibri, Arial, sans-serif';   // the font the machine report is printed in
+    const STAMPS = { PASS: 'pass.png', FAILED: 'failed.png', TOLERABLE: 'tolerable.png' };
+    const stampImgs = {};
+    let base = null; let labRef = ''; let tool = 'circle'; let objs = []; let sel = -1; let drag = null; let temp = null; let editing = -1;
+    const msg = (t) => { $('#bimg-msg').textContent = t || ''; };
+    const loadImg = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+    const stampImg = async (k) => stampImgs[k] || (stampImgs[k] = await loadImg(BASE_URL + 'assets/images/stamps/' + STAMPS[k]));
+    const lw = () => Math.max(3, cv.width / 260);
+    const hs = () => Math.max(16, cv.width / 60);   // size of the resize handle (canvas pixels)
+
+    const box = (o) => {
+      if (o.t === 'circle') return { l: o.x - o.rx, t: o.y - o.ry, r: o.x + o.rx, b: o.y + o.ry };
+      if (o.t === 'stamp') return { l: o.x - o.w / 2, t: o.y - o.h / 2, r: o.x + o.w / 2, b: o.y + o.h / 2 };
+      return { l: o.x, t: o.y, r: o.x + o.w, b: o.y + o.h };
+    };
+    const fontPx = (o) => {
+      let f = Math.max(12, o.h * 0.62);
+      ctx.save(); ctx.font = `400 ${f}px ${REPORT_FONT}`;
+      const w = ctx.measureText(o.text || '').width;
+      if (w > o.w - 10) f = Math.max(8, f * (o.w - 10) / w);
+      ctx.restore();
+      return f;
+    };
+    const drawObj = (o, selected) => {
+      ctx.save();
+      if (o.t === 'circle') {
+        ctx.strokeStyle = '#dc2626'; ctx.lineWidth = lw();
+        ctx.beginPath(); ctx.ellipse(o.x, o.y, Math.max(1, o.rx), Math.max(1, o.ry), 0, 0, Math.PI * 2); ctx.stroke();
+      } else if (o.t === 'mark') {
+        ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = 'rgba(250, 204, 21, .55)';
+        ctx.fillRect(o.x, o.y, o.w, o.h);
+      } else if (o.t === 'text') {
+        ctx.fillStyle = '#fff'; ctx.fillRect(o.x, o.y, o.w, o.h);
+        if (o.text) {
+          ctx.fillStyle = '#000'; ctx.font = `400 ${fontPx(o)}px ${REPORT_FONT}`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+          ctx.fillText(o.text, o.x + o.w / 2, o.y + o.h / 2 + 1, o.w - 8);
+        }
+      } else if (o.t === 'stamp') {
+        ctx.globalCompositeOperation = 'multiply';   // the white of the stamp picture disappears over the report
+        ctx.drawImage(stampImgs[o.k], o.x - o.w / 2, o.y - o.h / 2, o.w, o.h);
+      }
+      ctx.restore();
+      if (selected) {
+        const b = box(o);
+        ctx.save(); ctx.setLineDash([10, 8]); ctx.strokeStyle = '#2563eb'; ctx.lineWidth = lw() * .6;
+        ctx.strokeRect(b.l, b.t, b.r - b.l, b.b - b.t);
+        ctx.setLineDash([]); ctx.fillStyle = '#2563eb'; ctx.fillRect(b.r - hs() / 2, b.b - hs() / 2, hs(), hs());
+        ctx.restore();
+      }
+    };
+    const redraw = () => {
+      if (!base) return;
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      ctx.drawImage(base, 0, 0);
+      objs.forEach((o, i) => drawObj(o, i === sel));
+      if (temp) drawObj(temp, false);
+    };
+    const pt = (e) => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * cv.width / r.width, y: (e.clientY - r.top) * cv.height / r.height }; };
+    const inHandle = (o, p) => { const b = box(o); return Math.abs(p.x - b.r) <= hs() && Math.abs(p.y - b.b) <= hs(); };
+    const inBody = (o, p) => {
+      if (o.t === 'circle') { const dx = (p.x - o.x) / Math.max(1, o.rx); const dy = (p.y - o.y) / Math.max(1, o.ry); return dx * dx + dy * dy <= 1.2; }
+      const b = box(o); return p.x >= b.l && p.x <= b.r && p.y >= b.t && p.y <= b.b;
+    };
+    const setTool = (t) => { tool = t; $$('.bimg-tool').forEach((b) => b.classList.toggle('active', b.dataset.tool === t)); cv.style.cursor = t === 'move' ? 'move' : 'crosshair'; };
+
+    // zoom: the canvas keeps its pixel size, only its displayed size changes (mouse maths uses the displayed size)
+    const stage = $('.bimg-stage');
+    let scale = 1;
+    const applyScale = () => {
+      if (!base) return;
+      cv.style.width = Math.round(cv.width * scale) + 'px';
+      cv.style.height = Math.round(cv.height * scale) + 'px';
+      $('#bimg-zlbl').textContent = Math.round(scale * 100) + '%';
+    };
+    const fitScale = () => Math.max(0.1, Math.min(1, (stage.clientWidth - 24) / cv.width, (stage.clientHeight - 24) / cv.height));
+    const setScale = (s, cx, cy) => {
+      if (!base) return;
+      stopEdit(true);
+      const old = scale; scale = Math.max(0.15, Math.min(5, s));
+      // keep the point under the cursor (or the stage centre) where it is
+      const r = stage.getBoundingClientRect();
+      const ax = (cx === undefined ? r.left + r.width / 2 : cx) - r.left; const ay = (cy === undefined ? r.top + r.height / 2 : cy) - r.top;
+      const px = (stage.scrollLeft + ax) / old; const py = (stage.scrollTop + ay) / old;
+      applyScale();
+      stage.scrollLeft = px * scale - ax; stage.scrollTop = py * scale - ay;
+    };
+    $('#bimg-zin').addEventListener('click', () => setScale(scale * 1.25));
+    $('#bimg-zout').addEventListener('click', () => setScale(scale / 1.25));
+    $('#bimg-fit').addEventListener('click', () => { setScale(fitScale()); stage.scrollTo(0, 0); });
+    $('#bimg-z100').addEventListener('click', () => setScale(1));
+    stage.addEventListener('wheel', (e) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      setScale(scale * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientX, e.clientY);
+    }, { passive: false });
+
+    // text box editing: an input laid exactly over the box
+    const stopEdit = (keep = true) => {
+      if (editing < 0) return;
+      const o = objs[editing];
+      if (o) { o.text = txt.value; if (!keep || (o.t === 'text' && !o.text.trim())) { objs.splice(editing, 1); sel = -1; } }
+      editing = -1; txt.classList.add('hidden'); redraw();
+    };
+    const startEdit = (i) => {
+      const o = objs[i]; if (!o || o.t !== 'text') return;
+      editing = i; sel = i; redraw();
+      const r = cv.getBoundingClientRect(); const k = r.width / cv.width;
+      txt.style.left = (o.x * k) + 'px'; txt.style.top = (o.y * k) + 'px';
+      txt.style.width = (o.w * k) + 'px'; txt.style.height = (o.h * k) + 'px';
+      txt.style.fontSize = (fontPx(o) * k) + 'px';
+      txt.value = o.text || ''; txt.classList.remove('hidden'); txt.focus(); txt.select();
+    };
+    txt.addEventListener('input', () => { const o = objs[editing]; if (o) o.text = txt.value; });
+    txt.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); stopEdit(true); }
+      if (e.key === 'Escape') { e.stopPropagation(); stopEdit(true); }
+    });
+    txt.addEventListener('blur', () => stopEdit(true));
+
+    const load = async () => {
+      msg('Loading...');
+      try {
+        base = await loadImg(`${BASE_URL}dtr/bonding-image?lab_ref=${encodeURIComponent(labRef)}&t=${Date.now()}`);
+        cv.width = base.naturalWidth; cv.height = base.naturalHeight;
+        objs = []; sel = -1; temp = null; editing = -1; txt.classList.add('hidden'); redraw(); msg('');
+        scale = fitScale(); applyScale(); stage.scrollTo(0, 0);
+      } catch (e) { msg('No report picture found for this Lab Ref.'); base = null; }
+    };
+    const open = (ref) => { labRef = ref; $('#bimg-title').textContent = 'Report - ' + ref; setTool('circle'); back.classList.remove('hidden'); load(); };
+    const close = () => { stopEdit(true); back.classList.add('hidden'); base = null; };
+
+    document.addEventListener('click', (e) => {
+      const t = e.target.closest('.bs-thumb');
+      if (t && t.dataset.labRef) { e.preventDefault(); open(t.dataset.labRef); }
+    });
+    $('#bimg-close').addEventListener('click', close);
+    document.addEventListener('keydown', (e) => {
+      if (back.classList.contains('hidden')) return;
+      if (e.key === 'Escape') close();
+      if ((e.key === 'Delete' || e.key === 'Backspace') && sel >= 0 && editing < 0 && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) { objs.splice(sel, 1); sel = -1; redraw(); }
+    });
+    $$('.bimg-tool').forEach((b) => b.addEventListener('click', () => { stopEdit(true); setTool(b.dataset.tool); }));
+    $$('.bimg-stamp').forEach((b) => b.addEventListener('click', async () => {
+      if (!base) return;
+      stopEdit(true);
+      const k = b.dataset.stamp; const im = await stampImg(k);
+      const w = cv.width * (Number($('#bimg-size').value) / 100);
+      objs.push({ t: 'stamp', k, x: cv.width / 2, y: cv.height / 2, w, h: w * im.naturalHeight / im.naturalWidth });
+      sel = objs.length - 1; setTool('move'); redraw();
+    }));
+    $('#bimg-size').addEventListener('input', (e) => {
+      const o = objs[sel]; if (!o || o.t !== 'stamp') return;
+      const ratio = o.h / o.w; o.w = cv.width * (Number(e.target.value) / 100); o.h = o.w * ratio; redraw();
+    });
+    $('#bimg-del').addEventListener('click', () => { stopEdit(true); if (sel >= 0) { objs.splice(sel, 1); sel = -1; redraw(); } });
+    $('#bimg-undo').addEventListener('click', () => { stopEdit(true); objs.pop(); sel = -1; redraw(); });
+    $('#bimg-orig').addEventListener('click', () => load());
+
+    cv.addEventListener('pointerdown', (e) => {
+      if (!base) return;
+      if (editing >= 0) stopEdit(true);
+      cv.setPointerCapture(e.pointerId);
+      const p = pt(e);
+      // the selected item can always be resized (corner) or moved, whatever the tool
+      if (sel >= 0 && objs[sel] && inHandle(objs[sel], p)) { drag = { mode: 'resize' }; return; }
+      if (sel >= 0 && objs[sel] && inBody(objs[sel], p) && tool !== 'move') { const b = box(objs[sel]); drag = { mode: 'move', dx: p.x - b.l, dy: p.y - b.t }; return; }
+      if (tool === 'move') {
+        sel = -1;
+        for (let i = objs.length - 1; i >= 0; i--) {
+          if (inHandle(objs[i], p) && i === sel) break;
+          if (inBody(objs[i], p)) { sel = i; const b = box(objs[i]); drag = { mode: 'move', dx: p.x - b.l, dy: p.y - b.t }; if (objs[i].t === 'stamp') $('#bimg-size').value = Math.round(objs[i].w / cv.width * 100); break; }
+        }
+        redraw();
+      } else { sel = -1; drag = { mode: 'draw', sx: p.x, sy: p.y }; redraw(); }
+    });
+    cv.addEventListener('pointermove', (e) => {
+      if (!drag || !base) return;
+      const p = pt(e);
+      const o = objs[sel];
+      if (drag.mode === 'move' && o) {
+        const b = box(o); const w = b.r - b.l; const h = b.b - b.t;
+        const nl = p.x - drag.dx; const nt = p.y - drag.dy;
+        if (o.t === 'circle' || o.t === 'stamp') { o.x = nl + w / 2; o.y = nt + h / 2; } else { o.x = nl; o.y = nt; }
+        redraw(); return;
+      }
+      if (drag.mode === 'resize' && o) {
+        const b = box(o);
+        const nw = Math.max(12, p.x - b.l); const nh = Math.max(12, p.y - b.t);
+        if (o.t === 'circle') { o.rx = nw / 2; o.ry = nh / 2; o.x = b.l + o.rx; o.y = b.t + o.ry; }
+        else if (o.t === 'stamp') { const ratio = o.h / o.w; const w = Math.max(24, (p.x - o.x) * 2); o.w = w; o.h = w * ratio; $('#bimg-size').value = Math.max(8, Math.min(70, Math.round(w / cv.width * 100))); }
+        else { o.w = nw; o.h = nh; }
+        redraw(); return;
+      }
+      if (drag.mode === 'draw') {
+        if (tool === 'circle') temp = { t: 'circle', x: (drag.sx + p.x) / 2, y: (drag.sy + p.y) / 2, rx: Math.abs(p.x - drag.sx) / 2, ry: Math.abs(p.y - drag.sy) / 2 };
+        else temp = { t: tool === 'text' ? 'text' : 'mark', text: '', x: Math.min(drag.sx, p.x), y: Math.min(drag.sy, p.y), w: Math.abs(p.x - drag.sx), h: Math.abs(p.y - drag.sy) };
+        redraw();
+      }
+    });
+    const end = () => {
+      let made = false;
+      if (drag && drag.mode === 'draw' && temp && ((temp.t === 'circle' && temp.rx > 4 && temp.ry > 4) || (temp.t !== 'circle' && temp.w > 8 && temp.h > 8))) { objs.push(temp); sel = objs.length - 1; made = true; }
+      temp = null; drag = null; redraw();
+      if (made && objs[sel].t === 'text') startEdit(sel);
+    };
+    cv.addEventListener('pointerup', end);
+    cv.addEventListener('pointercancel', end);
+    cv.addEventListener('dblclick', (e) => {
+      const p = pt(e);
+      for (let i = objs.length - 1; i >= 0; i--) if (objs[i].t === 'text' && inBody(objs[i], p)) { startEdit(i); break; }
+    });
+
+    $('#bimg-save').addEventListener('click', async () => {
+      if (!base) return;
+      stopEdit(true); sel = -1; redraw();
+      msg('Saving...');
+      try {
+        const res = await apiFetch('dtr/bonding-image-save', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lab_ref: labRef, image: cv.toDataURL('image/png') }),
+        });
+        if (res && res.ok) {
+          nxToast(res.message, 'success', 5000);
+          $$('.bs-thumb').filter((i) => i.dataset.labRef === labRef).forEach((i) => { i.parentNode.classList.remove('none'); i.src = `${BASE_URL}dtr/bonding-image?lab_ref=${encodeURIComponent(labRef)}&t=${Date.now()}`; });
+          close();
+        } else msg((res && res.message) || 'Save failed.');
+      } catch (err) { msg('Save failed: ' + err.message); }
+    });
+  })();
+
+  // Search box of a Lab Tracker list (every tab): hides the rows that do not contain all the typed words
+  document.addEventListener('input', (e) => {
+    const box = e.target.closest('.dtr-list-search');
+    if (!box) return;
+    const words = box.value.toLowerCase().split(/\s+/).filter(Boolean);
+    const panel = box.closest('.dtr-subpanel');
+    if (!panel) return;
+    panel.querySelectorAll('tbody tr').forEach((tr) => {
+      const text = tr.textContent.toLowerCase();
+      tr.hidden = words.length > 0 && !words.every((w) => text.includes(w));
+    });
   });
 
   $$('[data-goto-calc]').forEach((btn) => {
@@ -882,7 +1249,8 @@
       }
       tbody.innerHTML = res.rows.map((r) => {
         const resUpper = String(r.overall_result || 'PASS').toUpperCase();
-        const badgeCls = resUpper === 'FAIL' ? 'b-err' : (resUpper === 'TOLERABLE' ? 'b-warn' : 'b-ok');
+        // FAIL(ED) red, PASS green, TOLERABLE blue; any other value stays plain
+        const badgeCls = (resUpper.startsWith('FAIL') || resUpper === 'ERROR') ? 'res-chip res-fail' : (resUpper.startsWith('TOL') ? 'res-chip res-tol' : (resUpper.startsWith('PASS') ? 'res-chip res-pass' : 'b-ok'));
         return `
           <tr>
             <td style="white-space:nowrap">
@@ -958,7 +1326,6 @@
     if (!ref || !sel) return;
     switchTab('wholeshoe');
     markDtrNav('wholeshoe');
-    if (![...sel.options].some((o) => o.value === ref)) sel.add(new Option(ref, ref));   // older than the picker's newest-100 list
     sel.value = ref;
     sel.dispatchEvent(new Event('change'));
   });
@@ -1743,7 +2110,7 @@
       $$('#dtr-bonding-form [name^="cf_"]').forEach((el) => { el.value = (res.customValues || {})[el.name] ?? ''; });
       // Specimen Intake records keep the Production Code in the ETRF box: show it beside PO/Lot No instead
       // PO/Lot No shows "Production Code / MTL #"
-      if ($('#bf_POLotNO') && /^DTP\d{8}[A-Z]{2,}[AB]\d+-[LR](-R\d+)?$/i.test(rec.LabRefNo || '')) {
+      if ($('#bf_POLotNO') && /^DTP\d{8}[A-Z]{2,}[AB]\d+-[LR](-R?\d+)?$/i.test(rec.LabRefNo || '')) {
         const noteMtl = (rec.MTL || '').trim() || ((rec.LabNotesComments || '').match(/MTL ([^;]+)/) || [])[1]?.trim() || '';
         const swapped = !!rec.ETRFNo;   // older intake rows: code in ETRF No, MTL in PO/Lot No
         const code = (swapped ? rec.ETRFNo : (rec.POLotNO || '')).trim();
@@ -1840,6 +2207,12 @@
       if (inp.name) fields[inp.name] = inp.value;
     });
     if (fields.POLotNO) fields.POLotNO = fields.POLotNO.split(' / ')[0].trim();   // the field shows "Production Code / MTL #"; only the code is stored
+    // a Fail / Tolerable result must say how it failed (Quality Insights and the lab alerts read it)
+    if (/^(fail|failed|tolerable)$/i.test(String(fields.Result || '').trim()) && !String(fields.ModeOfFailure || '').trim().replace(/^-$/, '')) {
+      showToast('Write the Mode of Failure(s) first: a ' + String(fields.Result).trim().toUpperCase() + ' result needs it (for example Adhesive failure, Foxing to outsole).', true);
+      const mf = $('#bf_ModeOfFailure'); if (mf) { mf.focus(); mf.classList.add('dtr-need'); setTimeout(() => mf.classList.remove('dtr-need'), 2500); }
+      return;
+    }
     const bondingPoints = {
       UTFMin: $('#bp_UTFMin')?.value || null,
       UTFMax: $('#bp_UTFMax')?.value || null,
@@ -2625,12 +2998,29 @@
       vec.dots[k] = Object.assign({}, dots, nd);
     });
   }
+  // The START marker always sits on spot 1 (UTF ring): the numbering visibly begins at START, even when the layout has no START of its own
+  function startOnSpotOne(vec) {
+    const one = vec && vec.vector && vec.dots && vec.dots.utf && vec.dots.utf[1];
+    if (!one) return;
+    vec.start = Object.assign({ label: 'START' }, vec.start || {}, { x: one.x, y: one.y });
+  }
+  // START marker (red diamond + label) placed just before the value box of spot 1 when the layout has no dot positions
+  function startMarkerHtml(c) {
+    return `<div class="vf-start-mark" style="position:absolute;left:${c.pctLeft}%;top:${c.pctTop}%;transform:translate(0,-95%);display:flex;align-items:center;gap:3px;white-space:nowrap;color:#b91c1c;font:800 9px sans-serif;pointer-events:none"><i style="display:block;width:9px;height:9px;background:#dc2626;transform:rotate(45deg)"></i>START</div>`;
+  }
+  // Left or Right shoe: the -L / -R ending of the Lab Ref No decides (retest -R01 style endings count), else the Side field
+  function bondingIsLeft() {
+    const ref = ($('#bf_LabRefNo')?.value || '').trim().toUpperCase();
+    const m = ref.match(/-(L|R)(?:-(?:R\d+|\d+))?$/);
+    if (m) return m[1] === 'L';
+    return (($('#bf_Side')?.value || 'Left').toLowerCase() === 'left');
+  }
   async function renderFormSketch() {
     const leftEl = $('#vf-diag-left');
     const rightEl = $('#vf-diag-right');
     if (!leftEl || !rightEl) return;
     const seq = ++formSketchSeq;
-    const isLeft = (($('#bf_Side')?.value || 'Left').toLowerCase() === 'left');
+    const isLeft = bondingIsLeft();
     const std = parseFloat($('#bf_STD')?.value || '2.5') || 2.5;
     const IMG = BASE_URL + 'assets/images/bonding_sketches/';
 
@@ -2645,9 +3035,10 @@
     const blank = `<img src="${IMG}blank.png" class="vf-shoe-img" style="left:12%;top:8%;width:76%;height:84%;opacity:.85" alt="Shoe contour">`;
     let active = '';
     const configs = await loadSketchConfigs();
-    // Spot count follows the Age Category (Adult 35 / Children 24 / Kids 16 / Toddler 14)
+    // Spot count follows the readings saved for this Lab Ref (tbl_dtr_bonding_points: highest spot that holds a value);
+    // with no readings yet it follows the Age Category (Adult 35 / Children 24 / Kids 16 / Toddler 14)
     const ageKey = ($('#bf_AgeCategory')?.value || 'ADULT').toUpperCase();
-    const spotCount = AGE_SPOT_LIMITS[ageKey] || 35;
+    const spotCount = highest >= 3 ? Math.min(35, highest) : (AGE_SPOT_LIMITS[ageKey] || 35);
     let numPts = spotCount;
     if (configs && !configs[numPts]) {
       const available = [26, 27, 28, 29, 30, 31, 32, 33, 34];
@@ -2725,6 +3116,7 @@
     }
 
     rotateSpotsToStart(cfg, vec);
+    startOnSpotOne(vec);
 
     const colour = (val) => {
       const v = evaluateSpotVerdict(parseFloat(val), std);
@@ -2746,6 +3138,9 @@
         if (cfg.utf[i]) active += box('vf-point-utf', cfg.utf[i], utfVals[i], 'UTF', i);
         if (cfg.fto[i]) active += box('vf-point-fto', cfg.fto[i], ftoVals[i], 'FTO', i);
       }
+      // START always marks spot 1: on its dot when the layout has dot positions, otherwise right before its value box
+      const vecDot1 = !!(vec && vec.vector && vec.dots && vec.dots.utf && vec.dots.utf[1]);
+      if (!vecDot1 && cfg.utf[1]) active += startMarkerHtml(cfg.utf[1]);
       if (vec) {
         let svg = '<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none">';
         let dots = '';
@@ -2761,7 +3156,7 @@
             dots += `<div style="position:absolute;left:${d.x}%;top:${d.y}%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border-radius:50%;background:${col}"></div>`;
           }));
         }
-        if (vec.start) {
+        if (vec.start && vecDot1) {
           const st = vec.start;
           dots += `<div style="position:absolute;left:${st.x}%;top:${st.y}%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:3px;white-space:nowrap;color:#b91c1c;font:800 9px sans-serif"><i style="display:block;width:9px;height:9px;background:#dc2626;transform:rotate(45deg)"></i>${escHtml(st.label || 'START')}</div>`;
         }
@@ -2773,6 +3168,26 @@
 
     leftEl.innerHTML = isLeft ? active : blank;
     rightEl.innerHTML = !isLeft ? active : blank;
+
+    // centre strips (Filler to Outsole): the loaded side is highlighted and carries the FiTO readings; the other side stays blank lines
+    const lbls = document.querySelectorAll('.vf-diag-lbl');
+    const strips = document.querySelectorAll('.vf-diag-strip');
+    [lbls, strips].forEach((list) => list.forEach((el, k) => el.classList.toggle('is-active', k === (isLeft ? 0 : 1))));
+    const fitoColour = (val) => {
+      const v = evaluateSpotVerdict(parseFloat(val), FITO_STD);
+      if (!v) return 'color:#94a3b8';
+      return v === 'FAIL' ? 'color:#dc2626;font-weight:800' : (v === 'TOLERABLE' ? 'color:#d97706;font-weight:800' : 'color:#1d4ed8;font-weight:800');
+    };
+    let fitoHtml = ''; let anyFito = false;
+    for (let i = 1; i <= 13; i++) {
+      const raw = $('#bp_FiTO' + i)?.value || '';
+      const n = parseFloat(raw);
+      const has = Number.isFinite(n) && n > 0;
+      if (has) anyFito = true;
+      fitoHtml += `<div class="vf-center-item" style="${fitoColour(raw)}">${has ? n.toFixed(2) : '&nbsp;'}</div>`;
+    }
+    const lines = '<i class="vf-diag-line"></i>'.repeat(6);
+    strips.forEach((el, k) => { el.innerHTML = (k === (isLeft ? 0 : 1) && anyFito) ? fitoHtml : lines; });
   }
   const openBondingPrintPreview = async () => {
     const bondingTestId = parseInt($('#bf_BondingTestID')?.value || activeBondingPoints?.BondingTestID || 0) || 0;
@@ -2780,8 +3195,8 @@
     const etrf = $('#bf_ETRFNo')?.value || '-';
     const shoeName = $('#bf_ModelStyle')?.value || '-';
     const color = $('#bf_Color')?.value || '-';
-    const side = $('#bf_Side')?.value || 'Left';
-    const isLeft = side.toLowerCase() === 'left';
+    const isLeft = bondingIsLeft();
+    const side = isLeft ? 'Left' : 'Right';
     const age = ($('#bf_AgeCategory')?.value || 'ADULT').toUpperCase();
     const std = parseFloat($('#bf_STD')?.value || '2.5') || 2.5;
     const poLot = $('#bf_POLotNO')?.value || '-';
@@ -2869,6 +3284,7 @@
     }
 
     rotateSpotsToStart(cfg, layoutVec);
+    startOnSpotOne(layoutVec);
 
     // Spot Color logic
     // blue = pass, amber = tolerable, red = fail (same rules as the result)
@@ -2919,6 +3335,9 @@
           `;
         }
       }
+      // START always marks spot 1: on its dot with a vector layout, otherwise right before its value box
+      const vecDot1 = !!(layoutVec && layoutVec.vector && layoutVec.dots && layoutVec.dots.utf && layoutVec.dots.utf[1]);
+      if (!vecDot1 && cfg.utf[1]) activeShoePointsHtml += startMarkerHtml(cfg.utf[1]);
       if (layoutVec) {
         let svg = '<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none">';
         let dots = '';
@@ -2934,7 +3353,7 @@
             dots += `<div style="position:absolute;left:${d.x}%;top:${d.y}%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border-radius:50%;background:${col}"></div>`;
           }));
         }
-        if (layoutVec.start) {
+        if (layoutVec.start && vecDot1) {
           const st = layoutVec.start;
           dots += `<div style="position:absolute;left:${st.x}%;top:${st.y}%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:3px;white-space:nowrap;color:#b91c1c;font:800 9px sans-serif"><i style="display:block;width:9px;height:9px;background:#dc2626;transform:rotate(45deg)"></i>${escHtml(st.label || 'START')}</div>`;
         }
@@ -3426,6 +3845,22 @@
       }, 900);
       return;
     }
+    // ?open=wholeshoe&labref=<Lab Ref No> (from Calendar Monitoring): the Whole Shoe report page with that Lab Ref chosen (the picker reads ?labref itself)
+    if (slug === 'wholeshoe' && !id) {
+      const want = String(q.get('labref') || ref || '').trim();
+      setTimeout(async () => {
+        switchTab('wholeshoe');
+        if (typeof markDtrNav === 'function') markDtrNav('wholeshoe');
+        if (!want) return;
+        const sel = $('#ws-labref');
+        for (let i = 0; i < 40 && sel && sel.options.length < 2 && !/Could not|no whole shoe/i.test(sel.textContent); i++) await new Promise((r) => setTimeout(r, 150));   // the picker is filled by its own request
+        if (!sel) return;
+        if (![...sel.options].some((o) => o.value === want)) sel.add(new Option(want, want));   // older / not in the picker's newest-100 list
+        sel.value = want;
+        sel.dispatchEvent(new Event('change'));
+      }, 500);
+      return;
+    }
     if (!slug || !/^[a-z]+$/.test(slug) || !/^\d+$/.test(id || '')) return;
     setTimeout(async () => {
       await bondingReady; // the blank form must not overwrite the linked report
@@ -3538,10 +3973,10 @@
         return `
           <tr class="clickable-row wst-row" data-id="${r.id}" style="cursor:pointer">
             <td class="mono">${i + 1}</td>
-            <td><b class="mono" style="color:var(--brand,#2563eb);font-size:13.5px">${esc(r.labreference)}</b></td>
-            <td>${esc(r.testdate || '—')}</td>
-            <td><span style="font-weight:600">${esc(r.type || 'Standard')}</span></td>
-            <td><span class="mono sm muted">${esc(r.machine_number || 'MC-01')} &bull; ${esc(r.technician || r.operator || 'QC')}</span></td>
+            <td><b class="mono" style="color:var(--brand,#2563eb);font-size:13.5px">${escHtml(r.labreference)}</b></td>
+            <td>${escHtml(r.testdate || '—')}</td>
+            <td><span style="font-weight:600">${escHtml(r.type || 'Standard')}</span></td>
+            <td><span class="mono sm muted">${escHtml(r.machine_number || 'MC-01')} &bull; ${escHtml(r.technician || r.operator || 'QC')}</span></td>
             <td>
               <div style="display:flex;align-items:center;gap:8px">
                 <div style="flex:1;background:rgba(255,255,255,0.06);height:6px;border-radius:3px;overflow:hidden;min-width:70px">
@@ -3550,7 +3985,7 @@
                 <span class="mono sm" style="white-space:nowrap">${currCycles.toLocaleString()} / ${targetCycles.toLocaleString()}</span>
               </div>
             </td>
-            <td><span class="dtr-pill ${pillClass}">${esc(r.status || 'PENDING')}</span></td>
+            <td><span class="dtr-pill ${pillClass}">${escHtml(r.status || 'PENDING')}</span></td>
             <td style="text-align:right">
               <button type="button" class="dtr-btn-xs dtr-btn-primary wst-open-record-btn" data-id="${r.id}" style="box-shadow:0 1px 4px rgba(37,99,235,0.25)">
                 <svg class="ic" aria-hidden="true" style="margin-right:2px"><use href="#i-grid"/></svg> Open Monitor
@@ -3570,7 +4005,7 @@
       });
     } catch (err) {
       console.error('loadWstRecords failed:', err);
-      tbody.innerHTML = `<tr><td colspan="8" style="color:#ef4444;text-align:center;padding:24px">Failed to load test sessions from dbnexus: ${esc(err.message)}<br><button type="button" class="dtr-btn-xs dtr-btn-outline" id="btn-wst-retry-load" style="margin-top:10px;display:inline-flex;align-items:center;gap:4px"><svg class="ic" aria-hidden="true"><use href="#i-sync"/></svg> Retry</button></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" style="color:#ef4444;text-align:center;padding:24px">Failed to load test sessions from dbnexus: ${escHtml(err.message)}<br><button type="button" class="dtr-btn-xs dtr-btn-outline" id="btn-wst-retry-load" style="margin-top:10px;display:inline-flex;align-items:center;gap:4px"><svg class="ic" aria-hidden="true"><use href="#i-sync"/></svg> Retry</button></td></tr>`;
       $('#btn-wst-retry-load')?.addEventListener('click', () => loadWstRecords(category, q));
     }
   };

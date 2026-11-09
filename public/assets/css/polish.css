@@ -62,13 +62,7 @@ body[data-pg] .il-modal-close { width: 36px; height: 36px; border-radius: 9px; b
 body[data-pg] .il-modal-close:hover { background: #e2e8f0; }
 body[data-pg] .il-modal-eyebrow { font-size: 12.5px; font-weight: 700; color: var(--pl-brand-d); text-transform: none; letter-spacing: 0; }
 
-/* Help: the guide tiles */
-body[data-pg="help"] .grid { gap: 14px; }
-body[data-pg="help"] .tile { background: #fff; border: 1px solid var(--pl-line); border-radius: 12px; padding: 16px 18px; box-shadow: none; }
-body[data-pg="help"] .tile h3, body[data-pg="help"] .tile b { font-size: 15.5px; }
-body[data-pg="help"] details { background: #fff; border: 1px solid var(--pl-line); border-radius: 10px; padding: 2px 14px; margin: 8px 0; }
-body[data-pg="help"] details[open] { border-color: #bcd0f5; background: #fbfdff; }
-body[data-pg="help"] summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 600; }
+/* Help has its own sheet (help.css). The old tile / details rules lived here and also hit the sidebar's collapsible groups, so they are gone. */
 
 /* Brain cards and panes */
 body[data-pg="brain"] :is(.br-card, .br-pane) { background: #fff; border: 1px solid var(--pl-line); border-radius: 12px; }

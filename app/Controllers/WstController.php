@@ -24,6 +24,19 @@ class WstController extends BaseController
         'deep-test',
     ];
 
+    public static function mapTrackerTestTypeToCategory(string $type, string $code = ''): string
+    {
+        $t = strtolower(trim($type));
+        $c = strtoupper(trim($code));
+        if (str_contains($t, 'hydro') || $c === 'HY') return 'hydrolysis';
+        if (str_contains($t, 'heat') || str_contains($t, 'aging') || $c === 'AG') return 'heat-aging';
+        if (str_contains($t, 'wash') || $c === 'WS') return 'washing';
+        if (str_contains($t, 'uv') || $c === 'UV') return 'uv-light';
+        if (str_contains($t, 'flex') || $c === 'FX') return 'flexing';
+        if (str_contains($t, 'deep') || str_contains($t, 'dip') || $c === 'DT') return 'deeptest';
+        return 'flexing';
+    }
+
     public const MATERIAL_CATEGORIES = [
         'martindale-abrasion',
         'taber-abrasion',
@@ -261,8 +274,78 @@ class WstController extends BaseController
             ->setBody($csv);
     }
 
+    private function syncFromTracker(): void
+    {
+        try {
+            $db = \Config\Database::connect('default');
+            if (! $db->tableExists('tbl_dtr_wholeshoetracker') || ! $db->tableExists('tbl_material_tests')) {
+                return;
+            }
+
+            $trackers = $db->table('tbl_dtr_wholeshoetracker')->orderBy('TrackerID', 'ASC')->get()->getResultArray();
+            if (empty($trackers)) {
+                return;
+            }
+
+            $model = new MaterialTestModel();
+            foreach ($trackers as $r) {
+                $labref = trim((string) ($r['LabRefNo'] ?? ''));
+                if ($labref === '') {
+                    continue;
+                }
+
+                $existing = $model->where('labreference', $labref)->first();
+                if ($existing) {
+                    continue;
+                }
+
+                $category = self::mapTrackerTestTypeToCategory((string) ($r['TestType'] ?? ''), (string) ($r['TestCode'] ?? ''));
+                $spec = trim((string) ($r['Style'] ?? 'Standard'));
+                if (! empty($r['Colorway'])) {
+                    $spec .= ' - ' . trim((string) $r['Colorway']);
+                }
+                $operator = trim((string) ($r['EncodedBy'] ?? 'QC Specialist'));
+                $testdate = ! empty($r['CollectionDate']) ? $r['CollectionDate'] : (! empty($r['ProductionDate']) ? $r['ProductionDate'] : date('Y-m-d'));
+                $target = match ($category) {
+                    'hydrolysis', 'heat-aging' => 168,
+                    'uv-light' => 24,
+                    'washing' => 10,
+                    'flexing' => 125000,
+                    'deeptest' => 50000,
+                    default => 125000,
+                };
+                $createdAt = ! empty($r['CreatedAt']) ? $r['CreatedAt'] : date('Y-m-d H:i:s');
+
+                $model->insert([
+                    'category'         => $category,
+                    'labreference'     => $labref,
+                    'testdate'         => $testdate,
+                    'type'             => $spec,
+                    'machine_number'   => 'MC-01',
+                    'samplecountdry'   => 1,
+                    'samplecountwet'   => 0,
+                    'samplecounthydro' => 0,
+                    'target_cycles'    => $target,
+                    'current_cycles'   => 0,
+                    'status'           => 'PENDING',
+                    'is_running'       => 0,
+                    'operator'         => $operator,
+                    'technician'       => $operator,
+                    'temperature'      => 23.00,
+                    'humidity'         => 50.00,
+                    'remarks'          => '',
+                    'created_at'       => $createdAt,
+                    'updated_at'       => $createdAt,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            // Silently ignore or catch without global function dependency
+        }
+    }
+
     private function fetchSummaryRecords(array $filters): array
     {
+        $this->syncFromTracker();
         $suite    = ! empty($filters['suite']) ? strtolower(trim((string) $filters['suite'])) : 'all';
         $category = ! empty($filters['category']) ? strtolower(trim((string) $filters['category'])) : 'all';
         $status   = ! empty($filters['status']) ? strtoupper(trim((string) $filters['status'])) : 'ALL';
@@ -313,12 +396,28 @@ class WstController extends BaseController
         $allRows = $builder->orderBy('id', 'DESC')->limit(300)->get()->getResultArray();
 
         $testIds = array_column($allRows, 'id');
+        $labRefs = array_filter(array_column($allRows, 'labreference'));
         $resultsByTestId = [];
         if (! empty($testIds)) {
             $resultsModel = new MaterialTestResultModel();
             $results = $resultsModel->whereIn('test_id', $testIds)->findAll();
             foreach ($results as $res) {
                 $resultsByTestId[$res['test_id']][] = $res;
+            }
+        }
+
+        $unifiedByLabRef = [];
+        if (! empty($labRefs)) {
+            $db = \Config\Database::connect('default');
+            if ($db->tableExists('tbl_dtr_unified_labrefs')) {
+                $uRows = $db->table('tbl_dtr_unified_labrefs')
+                    ->select('lab_ref_no, status, overall_result')
+                    ->whereIn('lab_ref_no', $labRefs)
+                    ->get()
+                    ->getResultArray();
+                foreach ($uRows as $ur) {
+                    $unifiedByLabRef[strtoupper(trim((string) $ur['lab_ref_no']))] = $ur;
+                }
             }
         }
 
@@ -348,9 +447,23 @@ class WstController extends BaseController
                 $kpi['material']++;
             }
 
+            $labRefKey = strtoupper(trim((string) ($row['labreference'] ?? '')));
+            $unified = $unifiedByLabRef[$labRefKey] ?? null;
+
             $st     = strtoupper(trim((string) ($row['status'] ?? 'PENDING')));
+            $timer  = self::computeTimerState($row);
             $isRun  = ((int) ($row['is_running'] ?? 0) === 1) || $st === 'RUNNING';
-            $isDone = in_array($st, ['COMPLETED', 'COMPLETE'], true);
+            $isDone = in_array($st, ['COMPLETED', 'COMPLETE'], true) || ($unified && stripos((string) $unified['status'], 'Complete') === 0);
+
+            if ($isDone && ! in_array($st, ['COMPLETED', 'COMPLETE'], true)) {
+                $st = 'COMPLETED';
+            } elseif (! $isRun && ! $isDone && ($st === 'PAUSED' || ! empty($timer['is_paused']))) {
+                $st = 'PAUSED';
+            }
+
+            if ($st === 'PAUSED') {
+                $isRun = false;
+            }
 
             if ($isRun) {
                 $kpi['running']++;
@@ -382,7 +495,24 @@ class WstController extends BaseController
                 }
             }
 
-            if ($hasFail) {
+            if ($unified && strcasecmp((string) $unified['overall_result'], 'Fail') === 0) {
+                $hasFail = true;
+            }
+
+            if ($st === 'PAUSED') {
+                $rowOutcome = 'PAUSED';
+            } elseif (! empty($row['overall_outcome'])) {
+                $rowOutcome = strtoupper(trim((string) $row['overall_outcome']));
+                if ($rowOutcome === 'FAIL') {
+                    $kpi['fail']++;
+                    $hasFail = true;
+                } elseif ($rowOutcome === 'STOPPED') {
+                    $kpi['stopped']++;
+                    $hasStopped = true;
+                } elseif (in_array($rowOutcome, ['PASS', 'TOLERABLE', 'PASSED'], true)) {
+                    $kpi['pass']++;
+                }
+            } elseif ($hasFail) {
                 $rowOutcome = 'FAIL';
                 $kpi['fail']++;
             } elseif ($hasStopped) {
@@ -464,7 +594,7 @@ class WstController extends BaseController
                 'recorded_remarks' => $concatRecordedRemarks,
                 'unit'             => $unit,
                 'progress_pct'     => $progressPct,
-                'status'           => $row['status'] ?? 'PENDING',
+                'status'           => $st,
                 'is_running'       => (int) ($row['is_running'] ?? 0),
                 'outcome'          => $rowOutcome,
                 'has_fail'         => $hasFail,
@@ -477,6 +607,8 @@ class WstController extends BaseController
                 'remarks'          => $row['remarks'] ?? '',
                 'created_at'       => $row['created_at'] ?? '',
                 'updated_at'       => $row['updated_at'] ?? '',
+                'timer'            => $timer,
+                'findings_json'    => ! empty($row['findings_json']) ? json_decode((string) $row['findings_json'], true) : null,
             ];
         }
 
@@ -584,12 +716,16 @@ class WstController extends BaseController
             }
         }
 
+        $timerState = self::computeTimerState($record);
+
         return $this->response->setJSON([
             'success'     => true,
             'record'      => $record,
             'groups'      => $groups,
             'state'       => $state,
-            'isCompleted' => in_array(strtoupper(trim((string) $record['status'])), ['COMPLETED', 'COMPLETE', 'STOPPED'], true),
+            'timer'       => $timerState,
+            'findings'    => ! empty($record['findings_json']) ? json_decode((string) $record['findings_json'], true) : null,
+            'isCompleted' => in_array(strtoupper(trim((string) $record['status'])), ['COMPLETED', 'COMPLETE', 'STOPPED'], true) || $timerState['is_finished'],
         ]);
     }
 
@@ -625,7 +761,11 @@ class WstController extends BaseController
      */
     public function create(): ResponseInterface
     {
-        $payload = $this->request->getJSON(true) ?? $this->request->getPost();
+        $raw = method_exists($this->request, 'getJSON') ? $this->request->getJSON(true) : null;
+        if (! $raw && method_exists($this->request, 'getBody')) {
+            $raw = json_decode((string) $this->request->getBody(), true);
+        }
+        $payload = is_array($raw) ? $raw : (method_exists($this->request, 'getPost') ? $this->request->getPost() : []);
 
         $category = trim((string) ($payload['category'] ?? 'bally-flex'));
         $this->resolveCategory($category);
@@ -717,6 +857,85 @@ class WstController extends BaseController
     /**
      * POST /wst/start/{id}
      */
+    public static function getDefaultTimerDuration(string $category): ?int
+    {
+        return match ($category) {
+            'hydrolysis' => 7 * 86400,     // 7 days
+            'heat-aging' => 3 * 86400,     // 3 days
+            'uv-light'   => 1 * 86400,     // 1 day (24 hrs)
+            'washing'    => 1 * 3600,      // 1 hr
+            'deeptest', 'deep-test' => 60, // 1 min (Dip Test)
+            default      => null,          // Flexing or standard cyclic tests
+        };
+    }
+
+    public static function computeTimerState(array $record): array
+    {
+        $duration = isset($record['timer_duration_sec']) && $record['timer_duration_sec'] !== null
+            ? (int) $record['timer_duration_sec']
+            : self::getDefaultTimerDuration($record['category'] ?? '');
+
+        if ($duration === null) {
+            return [
+                'has_timer'     => false,
+                'duration_sec'  => 0,
+                'elapsed_sec'   => 0,
+                'remaining_sec' => 0,
+                'is_finished'   => false,
+                'is_running'    => false,
+                'is_paused'     => false,
+            ];
+        }
+
+        $elapsed = (int) ($record['timer_elapsed_sec'] ?? 0);
+        $isRunning = ((int) ($record['is_running'] ?? 0) === 1);
+        $status = strtoupper(trim((string) ($record['status'] ?? 'PENDING')));
+
+        if ($isRunning && ! empty($record['timer_started_at'])) {
+            $startedTime = strtotime($record['timer_started_at']);
+            if ($startedTime > 0) {
+                $diff = time() - $startedTime;
+                if ($diff > 0) {
+                    $elapsed += $diff;
+                }
+            }
+        }
+
+        $remaining = max(0, $duration - $elapsed);
+        $isFinished = ($duration > 0 && $remaining === 0) || in_array($status, ['COMPLETED', 'COMPLETE'], true);
+        $isPaused = (! $isRunning && $elapsed > 0 && ! $isFinished && $status !== 'STOPPED');
+
+        return [
+            'has_timer'     => true,
+            'duration_sec'  => $duration,
+            'elapsed_sec'   => $elapsed,
+            'remaining_sec' => $remaining,
+            'is_finished'   => $isFinished,
+            'is_running'    => $isRunning && ! $isFinished,
+            'is_paused'     => $isPaused,
+        ];
+    }
+
+    /**
+     * Helper to synchronize Whole Shoe test execution state back to tbl_dtr_wholeshoetracker.
+     */
+    private function syncToWholeshoeTracker(?string $labRef, array $fields): void
+    {
+        if (empty($labRef)) {
+            return;
+        }
+        try {
+            $db = \Config\Database::connect('default');
+            if ($db->tableExists('tbl_dtr_wholeshoetracker')) {
+                $db->table('tbl_dtr_wholeshoetracker')
+                    ->where('LabRefNo', $labRef)
+                    ->update($fields);
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'Failed syncing to tbl_dtr_wholeshoetracker: ' . $e->getMessage());
+        }
+    }
+
     public function start(int $id): ResponseInterface
     {
         $model  = new MaterialTestModel();
@@ -726,13 +945,318 @@ class WstController extends BaseController
             return $this->response->setStatusCode(404)->setJSON(['success' => false, 'message' => 'Record not found']);
         }
 
-        $model->update($id, [
-            'status'     => 'RUNNING',
-            'is_running' => 1,
-            'updated_at' => date('Y-m-d H:i:s'),
+        $category = $record['category'] ?? '';
+        $duration = isset($record['timer_duration_sec']) && $record['timer_duration_sec'] !== null
+            ? (int) $record['timer_duration_sec']
+            : self::getDefaultTimerDuration($category);
+
+        $now = date('Y-m-d H:i:s');
+        $updateData = [
+            'status'          => 'RUNNING',
+            'is_running'      => 1,
+            'overall_outcome' => 'RUNNING',
+            'updated_at'      => $now,
+        ];
+
+        if ($duration !== null) {
+            $updateData['timer_duration_sec'] = $duration;
+            $updateData['timer_started_at']   = $now;
+        }
+
+        $model->update($id, $updateData);
+
+        $this->syncToWholeshoeTracker($record['labreference'] ?? '', [
+            'Status'      => 'RUNNING',
+            'TimeStarted' => $now,
         ]);
 
-        return $this->response->setJSON(['success' => true, 'message' => 'Test session started.']);
+        $fresh = $model->find($id);
+        $timerState = self::computeTimerState($fresh);
+
+        return $this->response->setJSON([
+            'success'     => true,
+            'message'     => 'Test session started.',
+            'timer'       => $timerState,
+        ]);
+    }
+
+    /**
+     * POST /wst/pause/{id}
+     * Pauses the timer and accumulates active elapsed seconds.
+     */
+    public function pause(int $id): ResponseInterface
+    {
+        $model  = new MaterialTestModel();
+        $record = $model->find($id);
+
+        if (! $record) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'message' => 'Record not found']);
+        }
+
+        $timer = self::computeTimerState($record);
+        $now   = date('Y-m-d H:i:s');
+
+        $model->update($id, [
+            'status'            => 'PAUSED',
+            'is_running'        => 0,
+            'overall_outcome'   => 'PAUSED',
+            'timer_elapsed_sec' => $timer['elapsed_sec'],
+            'timer_started_at'  => null,
+            'updated_at'        => $now,
+        ]);
+
+        $this->syncToWholeshoeTracker($record['labreference'] ?? '', [
+            'Status' => 'PAUSED',
+        ]);
+
+        $fresh = $model->find($id);
+        return $this->response->setJSON([
+            'success' => true,
+            'message' => 'Test timer paused.',
+            'timer'   => self::computeTimerState($fresh),
+        ]);
+    }
+
+    /**
+     * POST /wst/save-eval/{id}
+     * Saves inspection findings (delamination, bleeding, color, warp, blooming, other)
+     * and final test status (PASS, FAIL, TOLERABLE).
+     */
+    public function saveEvaluation(int $id): ResponseInterface
+    {
+        $model  = new MaterialTestModel();
+        $record = $model->find($id);
+
+        if (! $record) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'message' => 'Record not found']);
+        }
+
+        $raw = method_exists($this->request, 'getJSON') ? $this->request->getJSON(true) : null;
+        if (! $raw && method_exists($this->request, 'getBody')) {
+            $raw = json_decode((string) $this->request->getBody(), true);
+        }
+        $payload = is_array($raw) ? $raw : (method_exists($this->request, 'getPost') ? $this->request->getPost() : []);
+        $outcome = strtoupper(trim((string) ($payload['outcome'] ?? 'PASS')));
+        if (! in_array($outcome, ['PASS', 'FAIL', 'TOLERABLE', 'STOPPED'], true)) {
+            $outcome = 'PASS';
+        }
+
+        // Support both Whole Shoe timer inspection evaluation AND flexing inspection evaluation
+        $isFlexing = ($record['category'] ?? '') === 'flexing';
+
+        if ($isFlexing) {
+            $latLen = (float) ($payload['lat_len'] ?? 0);
+            $medLen = (float) ($payload['med_len'] ?? 0);
+            $latDep = (float) ($payload['lat_depth'] ?? 0);
+            $medDep = (float) ($payload['med_depth'] ?? 0);
+            $cycleVal = (int) ($payload['cycle'] ?? ($record['current_cycles'] ?? 125000));
+            $defaultFindings = "45° degrees {$cycleVal} cycles - (L: {$latLen} mm, M: {$medLen} mm; D:{$latDep} mm, D:{$medDep} mm)";
+            $findingsText = ! empty($payload['findings']) ? trim((string) $payload['findings']) : $defaultFindings;
+
+            $findings = [
+                'type'             => 'flexing',
+                'lat_len'          => $latLen,
+                'med_len'          => $medLen,
+                'lat_depth'        => $latDep,
+                'med_depth'        => $medDep,
+                'cycle'            => $cycleVal,
+                'findings'         => $findingsText,
+                'outcome'          => $outcome,
+                'completed_at'     => date('Y-m-d H:i:s'),
+            ];
+            $remarksText = $findingsText;
+        } else {
+            $findings = [
+                'type'            => 'incubation',
+                'delamination'    => trim((string) ($payload['delamination'] ?? 'No delamination')),
+                'bleeding'        => trim((string) ($payload['bleeding'] ?? 'No bleeding')),
+                'color_change'    => trim((string) ($payload['color_change'] ?? 'No color change')),
+                'outsole_warping' => trim((string) ($payload['outsole_warping'] ?? 'No Outsole warping')),
+                'blooming'        => trim((string) ($payload['blooming'] ?? 'No blooming')),
+                'other_findings'  => trim((string) ($payload['other_findings'] ?? '')),
+                'outcome'         => $outcome,
+                'completed_at'    => date('Y-m-d H:i:s'),
+            ];
+            // Build human-readable findings summary for report & tracker table (e.g. No delamination, No bleeding, etc.)
+                        $findingParts = [];
+                        foreach (['delamination', 'bleeding', 'color_change', 'outsole_warping', 'blooming'] as $fKey) {
+                            if (! empty($findings[$fKey])) {
+                                $findingParts[] = $findings[$fKey];
+                            }
+                        }
+                        if (! empty($findings['other_findings'])) {
+                            $findingParts[] = $findings['other_findings'];
+                        }
+                        $remarksText = ! empty($findingParts)
+                            ? implode(', ', $findingParts)
+                            : 'No delamination, No bleeding, No color change, No Outsole warping, No blooming';
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $tech = $this->getCurrentTechnician();
+
+        $duration = isset($record['timer_duration_sec']) && $record['timer_duration_sec'] !== null
+            ? (int) $record['timer_duration_sec']
+            : self::getDefaultTimerDuration($record['category'] ?? '');
+
+        // Determine completion and running state
+        if ($isFlexing) {
+            $wasAlreadyStopped = ($record['status'] ?? '') === 'COMPLETED' || ($record['status'] ?? '') === 'STOPPED';
+            $isComplete = ($cycleVal >= 125000) || ($outcome === 'FAIL') || $wasAlreadyStopped;
+            $status = $isComplete ? 'COMPLETED' : ($outcome === 'STOPPED' ? 'STOPPED' : (((int) ($record['is_running'] ?? 0) === 1) ? 'RUNNING' : 'RUNNING'));
+            $isRunning = $isComplete ? 0 : 1;
+            $overallOutcome = $isComplete ? $outcome : 'RUNNING';
+            $newCycles = max((int) ($record['current_cycles'] ?? 0), $cycleVal);
+        } else {
+            $isComplete = true;
+            $status = 'COMPLETED';
+            $isRunning = 0;
+            $overallOutcome = $outcome;
+            $newCycles = (int) ($record['current_cycles'] ?? 0);
+        }
+
+        $updateData = [
+            'status'            => $status,
+            'is_running'        => $isRunning,
+            'overall_outcome'   => $overallOutcome,
+            'findings_json'     => json_encode($findings),
+            'remarks'           => $remarksText,
+            'technician'        => $tech['technician'],
+            'operator'          => $tech['operator'],
+            'updated_at'        => $now,
+        ];
+
+        if ($isFlexing) {
+            $updateData['current_cycles'] = $newCycles;
+        } else {
+            $updateData['timer_elapsed_sec'] = $duration ?? (int) ($record['timer_elapsed_sec'] ?? 0);
+            $updateData['timer_started_at']  = null;
+        }
+
+        $model->update($id, $updateData);
+
+        $trackerSync = [
+            'Status'      => $status,
+            'FinalResult' => $overallOutcome,
+            'Findings'    => $remarksText ?? ($payload['other_findings'] ?? ''),
+        ];
+        if ($isComplete) {
+            $trackerSync['TimeCompleted'] = $now;
+        }
+        $this->syncToWholeshoeTracker($record['labreference'] ?? '', $trackerSync);
+
+        return $this->response->setJSON([
+            'success'     => true,
+            'message'     => $isFlexing && ! $isComplete
+                ? "Checkpoint for " . number_format($cycleVal) . " cycles saved. Advanced to next checkpoint."
+                : "Test results saved successfully as {$outcome}.",
+            'outcome'     => $overallOutcome,
+            'status'      => $status,
+            'is_complete' => $isComplete,
+            'findings'    => $findings,
+        ]);
+    }
+
+    /**
+     * POST /wst/daily-checkin/{id}
+     * Records a daily inspection checkpoint for multi-day incubation tests (Hydrolysis, Heat Aging, etc.)
+     * without setting or displaying final PASS/FAIL/TOLERABLE outcome ratings.
+     */
+    public function dailyCheckin(int $id): ResponseInterface
+    {
+        $raw = method_exists($this->request, 'getJSON') ? $this->request->getJSON(true) : null;
+        if (! $raw && method_exists($this->request, 'getBody')) {
+            $raw = json_decode((string) $this->request->getBody(), true);
+        }
+        $payload = is_array($raw) ? $raw : (method_exists($this->request, 'getPost') ? $this->request->getPost() : []);
+
+        $model  = new MaterialTestModel();
+        $record = $model->find($id);
+
+        if (! $record) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'message' => 'Record not found']);
+        }
+
+        $day          = trim((string) ($payload['day'] ?? 'Day 1'));
+        $observations = trim((string) ($payload['observations'] ?? ''));
+        $checkedBy    = trim((string) ($payload['checked_by'] ?? ''));
+        $actionTaken  = trim((string) ($payload['action_taken'] ?? ''));
+
+        if ($checkedBy === '') {
+            $tech = $this->getCurrentTechnician();
+            $checkedBy = $tech['technician'] ?: 'QC Specialist';
+        }
+
+        $now = date('Y-m-d H:i:s');
+
+        // Existing findings_json
+        $existingFindings = [];
+        if (! empty($record['findings_json'])) {
+            $decoded = json_decode((string) $record['findings_json'], true);
+            if (is_array($decoded)) {
+                $existingFindings = $decoded;
+            }
+        }
+
+        $dailyCheckins = $existingFindings['daily_checkins'] ?? [];
+        if (! is_array($dailyCheckins)) {
+            $dailyCheckins = [];
+        }
+
+        // Check if an entry for this day already exists; if so, update it, else append
+        $updatedExisting = false;
+        foreach ($dailyCheckins as &$entry) {
+            if (isset($entry['day']) && strcasecmp($entry['day'], $day) === 0) {
+                $entry['observations'] = $observations;
+                $entry['checked_by']   = $checkedBy;
+                $entry['action_taken'] = $actionTaken;
+                $entry['updated_at']   = $now;
+                $updatedExisting = true;
+                break;
+            }
+        }
+        unset($entry);
+
+        if (! $updatedExisting) {
+            $dailyCheckins[] = [
+                'day'          => $day,
+                'observations' => $observations,
+                'checked_by'   => $checkedBy,
+                'action_taken' => $actionTaken,
+                'logged_at'    => $now,
+            ];
+        }
+
+        $existingFindings['daily_checkins'] = $dailyCheckins;
+
+        // Build human-readable remarks summary from all daily checkins
+        $summaryParts = [];
+        foreach ($dailyCheckins as $dc) {
+            $obs = trim((string) ($dc['observations'] ?? ''));
+            if ($obs !== '') {
+                $summaryParts[] = "{$dc['day']}: {$obs} (Checked by: {$dc['checked_by']})";
+            }
+        }
+        $remarksSummary = ! empty($summaryParts) ? implode(' | ', $summaryParts) : $record['remarks'];
+
+        // Save to tbl_material_tests - KEEP test RUNNING, do NOT alter status to COMPLETED or set overall_outcome
+        $model->update($id, [
+            'findings_json' => json_encode($existingFindings),
+            'remarks'       => $remarksSummary,
+            'technician'    => $checkedBy,
+            'updated_at'    => $now,
+        ]);
+
+        // Sync observations to tbl_dtr_wholeshoetracker without closing or failing the test
+        $this->syncToWholeshoeTracker($record['labreference'] ?? '', [
+            'Findings'   => $remarksSummary,
+        ]);
+
+        return $this->response->setJSON([
+            'success'        => true,
+            'message'        => "Daily check-in for {$day} saved successfully.",
+            'daily_checkins' => $dailyCheckins,
+        ]);
     }
 
     /**
@@ -814,7 +1338,11 @@ class WstController extends BaseController
             return $this->response->setStatusCode(404)->setJSON(['success' => false, 'message' => 'Record not found']);
         }
 
-        $payload = $this->request->getJSON(true) ?? $this->request->getPost();
+        $raw = method_exists($this->request, 'getJSON') ? $this->request->getJSON(true) : null;
+        if (! $raw && method_exists($this->request, 'getBody')) {
+            $raw = json_decode((string) $this->request->getBody(), true);
+        }
+        $payload = is_array($raw) ? $raw : (method_exists($this->request, 'getPost') ? $this->request->getPost() : []);
         $samples = is_array($payload['samples'] ?? null) ? $payload['samples'] : [];
 
         if (empty($samples)) {
@@ -905,14 +1433,18 @@ class WstController extends BaseController
         $state    = $this->loadState($id, $record['labreference'], $groups);
         $allDone  = $this->isAllSamplesFinished($groups, $state);
 
+        $timerState = self::computeTimerState($record);
+
         return $this->response->setJSON([
             'success'        => true,
             'status'         => $record['status'] ?? 'PENDING',
             'is_running'     => (int) ($record['is_running'] ?? 0),
-            'completed'      => $allDone || in_array(strtoupper(trim((string) $record['status'])), ['COMPLETED', 'COMPLETE', 'STOPPED'], true),
+            'completed'      => $allDone || in_array(strtoupper(trim((string) $record['status'])), ['COMPLETED', 'COMPLETE', 'STOPPED'], true) || $timerState['is_finished'],
             'recorded'       => $state['recorded'],
             'stopped'        => $state['stopped'],
             'current_cycles' => (int) ($record['current_cycles'] ?? 0),
+            'timer'          => $timerState,
+            'findings'       => ! empty($record['findings_json']) ? json_decode((string) $record['findings_json'], true) : null,
         ]);
     }
 
@@ -921,7 +1453,11 @@ class WstController extends BaseController
      */
     public function logFindings(int $id): ResponseInterface
     {
-        $payload = $this->request->getJSON(true) ?? $this->request->getPost();
+        $raw = method_exists($this->request, 'getJSON') ? $this->request->getJSON(true) : null;
+        if (! $raw && method_exists($this->request, 'getBody')) {
+            $raw = json_decode((string) $this->request->getBody(), true);
+        }
+        $payload = is_array($raw) ? $raw : (method_exists($this->request, 'getPost') ? $this->request->getPost() : []);
 
         $model  = new MaterialTestModel();
         $record = $model->find($id);
@@ -964,7 +1500,7 @@ class WstController extends BaseController
 
             $categoryCycles = TestCatalog::cycles($category, $record['type'] ?? '', $group);
             if (empty($categoryCycles)) {
-                $categoryCycles = [5000, 10000, 15000, 20000, 25000, 35000, 45000, 55000, 65000, 75000, 85000, 95000, 100000];
+                $categoryCycles = [5000, 10000, 15000, 25000, 35000, 45000, 55000, 65000, 75000, 85000, 95000, 105000, 115000, 125000];
             }
             $targetCycles = array_filter($categoryCycles, static fn($c) => (int) $c <= $cycle);
 
@@ -1164,7 +1700,7 @@ class WstController extends BaseController
 
             $cycles = TestCatalog::cycles($category, $record['type'] ?? '', $key);
             if (empty($cycles)) {
-                $cycles = [5000, 10000, 15000, 20000, 25000, 35000, 45000, 55000, 65000, 75000, 85000, 95000, 100000];
+                $cycles = [5000, 10000, 15000, 25000, 35000, 45000, 55000, 65000, 75000, 85000, 95000, 105000, 115000, 125000];
             }
 
             $defaultBatch = TestCatalog::defaultCount($category, $record['type'] ?? '', $key);

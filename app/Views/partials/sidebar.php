@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Sidebar navigation. Add items to $menu; 'roles' restricts visibility.
  */
@@ -8,11 +8,12 @@ $can = static fn (string $mod, int $lvl = 1): bool => \App\Libraries\Roles::can(
 $menu = [
     ['label' => 'Dashboard', 'url' => url_to('dashboard'), 'match' => ['', 'dashboard'], 'icon' => 'M3 12l9-9 9 9M5 10v10h5v-6h4v6h5V10'],
     ['label' => 'Inbox', 'url' => url_to('inbox'), 'match' => ['inbox'], 'icon' => 'M21 12a8 8 0 01-11.6 7.1L3 21l1.9-5.4A8 8 0 1121 12z', 'badge' => true],
+    ['label' => 'Calendar Monitoring', 'url' => site_url('calendar-monitoring'), 'match' => ['calendar-monitoring', 'calendar'], 'icon' => 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z'],
+    ['label' => 'Quality Insights', 'url' => site_url('quality-insights'), 'match' => ['quality-insights'], 'icon' => 'M3 3v18h18M7 14l3-3 3 3 5-6M18 8h-3v3'],
     ['label' => 'InterLink', 'url' => url_to('interlink'), 'match' => ['interlink'], 'icon' => 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15', 'children' => [
         ['label' => 'VF eTRF', 'url' => site_url('interlink/etrf'), 'etrf' => true],
         ['label' => 'Report Submission', 'url' => url_to('interlink'), 'etrf' => false],
     ]],
-    ['label' => 'QC Lab Reports (DTR)', 'url' => url_to('dtr'), 'match' => ['dtr'], 'icon' => 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4'],
     ['label' => 'Analytics', 'url' => url_to('analytics'), 'match' => ['analytics'], 'icon' => 'M3 3v18h18M7 15l4-4 3 3 5-6', 'children' => [
         'bonding'   => 'Shoe Bonding',
         'wholeshoe' => 'Whole Shoe',
@@ -24,6 +25,14 @@ $menu = [
     ['label' => 'Account Profile', 'url' => site_url('account'), 'match' => ['account'], 'icon' => 'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z'],
     ['label' => 'Report Designer', 'url' => site_url('designer'), 'match' => ['designer'], 'roles' => ['admin'], 'icon' => 'M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z'],
 ];
+// the flow: what you work with first (home, messages, the lab's picture, submissions), then the groups of tests / reports / documents, then the tools at the bottom
+$byLabel = [];
+foreach ($menu as $m) {
+    $byLabel[$m['label']] = $m;
+}
+$order = static fn (array $labels): array => array_values(array_filter(array_map(static fn ($l) => $byLabel[$l] ?? null, $labels)));
+$menuTop    = $order(['Dashboard', 'Inbox', 'Calendar Monitoring', 'Quality Insights', 'Analytics', 'InterLink']);
+$menuBottom = $order(['Help', 'Report Designer', 'Brain', 'Settings', 'Account Profile']);
 $segment = service('uri')->getSegment(1);
 $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
 ?>
@@ -34,9 +43,10 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
     </div>
 
     <nav class="nav">
-        <?php foreach ($menu as $item): ?>
+        <?php $drawMenu = function (array $items) use ($myRole, $can, $segment): void { ?>
+        <?php foreach ($items as $item): ?>
             <?php if (isset($item['roles']) && ! \App\Libraries\Roles::isAdmin($myRole)) continue; ?>
-            <?php $modOf = ['Dashboard' => 'dashboard', 'Inbox' => 'inbox', 'QC Lab Reports (DTR)' => 'dtr', 'Analytics' => 'analytics', 'Help' => 'help'][$item['label']] ?? ''; if ($item['label'] === 'InterLink' ? (! $can('interlink') && ! $can('etrf')) : ($modOf !== '' && ! $can($modOf))) continue; ?>
+            <?php $modOf = ['Dashboard' => 'dashboard', 'Inbox' => 'inbox', 'QC Lab Reports (DTR)' => 'dtr', 'Analytics' => 'analytics', 'Help' => 'help', 'Calendar Monitoring' => 'calendar', 'Quality Insights' => 'insights'][$item['label']] ?? ''; if ($item['label'] === 'InterLink' ? (! $can('interlink') && ! $can('etrf')) : ($modOf !== '' && ! $can($modOf))) continue; ?>
             <?php if (! empty($item['children'])): ?>
                 <?php $grpOpen = in_array((string) $segment, $item['match'], true); $grpTab = (string) (service('request')->getGet('tab') ?? 'bonding'); $seg2 = (string) (service('uri')->getSegments()[1] ?? ''); ?>
                 <div class="nav-group" data-nav-group="<?= esc(strtolower($item['label']), 'attr') ?>">
@@ -63,6 +73,7 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
                 <?php if (! empty($item['badge'])): ?><span class="nav-badge hidden" id="<?= esc($item['badgeId'] ?? 'nav-unread') ?>"></span><?php endif ?>
             </a>
         <?php endforeach ?>
+        <?php }; $drawMenu($menuTop); ?>
 
         <!-- Section for Monitoring & Physical Tests -->
         <?php
@@ -87,20 +98,25 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
             </a><?php endif ?>
         </details>
 
-        <!-- Lab Monitoring: ERP Finish Monitoring (more tabs later) -->
-        <?php $monOpen = (string) $segment === 'lab-monitoring'; ?>
-        <?php if ($can('interlink')): ?>
+        <!-- Lab Monitoring: Warehouse 3D Tracker & ERP Finish (Calendar Monitoring is in the main list above) -->
+        <?php $monOpen = in_array((string) $segment, ['lab-monitoring', 'warehouse-tracker', 'warehouse'], true); ?>
         <details class="side-group side-group-collapsible" data-grp="labmon"<?= $monOpen ? ' open data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
             <summary class="side-group-h" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer;list-style:none">
                 <span>Lab Monitoring</span>
                 <svg class="side-group-c" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:14px;height:14px;transition:transform .15s ease-out" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
             </summary>
-            <a href="<?= site_url('lab-monitoring/erp-finish') ?>" class="nav-link <?= $monOpen ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
+            <a href="<?= site_url('warehouse-tracker') ?>" class="nav-link <?= in_array((string) $segment, ['warehouse-tracker', 'warehouse'], true) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
+                <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                Warehouse 3D Tracker
+            </a>
+
+            <?php if ($can('erpfinish')): ?>
+            <a href="<?= site_url('lab-monitoring/erp-finish') ?>" class="nav-link <?= $segment === 'lab-monitoring' ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
                 <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 ERP Finish Monitoring
             </a>
+            <?php endif ?>
         </details>
-        <?php endif ?>
 
 
         <!-- Sub-navigation for QC Lab Digital Test Reports (#Digital Test Report) -->
@@ -410,6 +426,10 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
           renderAll();
         })();
         </script>
+        <!-- tools: Help, Report Designer, Brain, Settings, Account -->
+        <div class="side-tools" style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
+            <?php $drawMenu($menuBottom); ?>
+        </div>
     </nav>
 
     <div class="side-foot">
