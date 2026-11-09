@@ -206,6 +206,9 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('dtr/bonding-access-pdf', 'DtrController::bondingAccessPdf');
     $routes->post('dtr/send-synology', 'DtrController::sendSynology');
     $routes->post('dtr/send-email', 'DtrController::sendEmail');
+    $routes->get('dtr/prodcode-summary', 'DtrController::prodCodeSummary');
+    $routes->post('dtr/delete-entry', 'DtrController::deleteEntry');
+    $routes->get('dtr/kpis', 'DtrController::kpis');
 
     // Laboratory Documents: the registers of the "#" folders of the Lab Documents share
     $routes->get('labdocs', 'LabDocsController::index', ['as' => 'labdocs']);

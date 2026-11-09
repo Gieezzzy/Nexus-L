@@ -156,6 +156,68 @@
     }
   };
 
+  // Date filter (calendar button beside InterLink Sync): Today / Previous day / This week / This month / a picked day.
+  // It re-counts the KPI cards (dtr/kpis) and narrows the Bonding and Whole Shoe lists by their Prod. Date.
+  (function () {
+    const btn = $('#dtr-date-btn');
+    const pop = $('#dtr-date-pop');
+    if (!btn || !pop) return;
+    const kp = { total: $('#dtr-kpi-total'), pass: $('#dtr-kpi-pass'), tol: $('#dtr-kpi-tol'), fail: $('#dtr-kpi-fail'), shut: $('#dtr-kpi-shut'), sub: $('#dtr-kpi-shut-sub') };
+    const orig = { total: kp.total?.textContent, pass: kp.pass?.textContent, tol: kp.tol?.textContent, fail: kp.fail?.textContent, shut: kp.shut?.textContent, sub: kp.sub?.innerHTML };
+    const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const fmt = (n) => Number(n).toLocaleString('en-US');
+    const rangeOf = (key, day) => {
+      const t = new Date(); t.setHours(0, 0, 0, 0);
+      const add = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+      if (key === 'today') return { from: ymd(t), to: ymd(t), label: 'Today' };
+      if (key === 'yesterday') return { from: ymd(add(t, -1)), to: ymd(add(t, -1)), label: 'Previous day' };
+      if (key === 'week') { const mon = add(t, -((t.getDay() + 6) % 7)); return { from: ymd(mon), to: ymd(add(mon, 6)), label: 'This week' }; }
+      if (key === 'month') return { from: ymd(new Date(t.getFullYear(), t.getMonth(), 1)), to: ymd(new Date(t.getFullYear(), t.getMonth() + 1, 0)), label: 'This month' };
+      if (key === 'day' && day) return { from: day, to: day, label: day };
+      return null;
+    };
+    // the two shoe lists: rows outside the range are hidden by their Prod. Date column
+    const filterLists = (rg) => {
+      $$('.dtr-bshoe-table, .dtr-wlist-table').forEach((tbl) => {
+        const col = [...tbl.querySelectorAll('thead th')].findIndex((th) => /prod\.?\s*date/i.test(th.textContent));
+        tbl.querySelectorAll('tbody tr').forEach((tr) => {
+          const d = (tr.children[col]?.textContent || '').trim().slice(0, 10);
+          const out = rg && col >= 0 && (!d || d < rg.from || d > rg.to);
+          if (out) tr.setAttribute('data-dfhide', ''); else tr.removeAttribute('data-dfhide');
+        });
+      });
+    };
+    const apply = async (key, day) => {
+      const rg = rangeOf(key, day);
+      $('#dtr-date-label').textContent = rg ? rg.label : 'All dates';
+      btn.classList.toggle('on', !!rg);
+      pop.querySelectorAll('button[data-range]').forEach((b) => b.classList.toggle('on', (b.dataset.range === key) || (!rg && b.dataset.range === 'all')));
+      pop.hidden = true; btn.setAttribute('aria-expanded', 'false');
+      filterLists(rg);
+      if (!rg) {
+        if (kp.total) kp.total.textContent = orig.total; if (kp.pass) kp.pass.textContent = orig.pass; if (kp.tol) kp.tol.textContent = orig.tol;
+        if (kp.fail) kp.fail.textContent = orig.fail; if (kp.shut) kp.shut.textContent = orig.shut; if (kp.sub) kp.sub.innerHTML = orig.sub;
+        return;
+      }
+      try {
+        const r = await apiFetch(`dtr/kpis?from=${rg.from}&to=${rg.to}`);
+        if (!r || !r.ok) return;
+        kp.total.textContent = fmt(r.total); kp.pass.textContent = fmt(r.pass); kp.tol.textContent = fmt(r.tol); kp.fail.textContent = fmt(r.fail); kp.shut.textContent = fmt(r.shut);
+        if (kp.sub) kp.sub.textContent = `lines marked SHUTDOWN · ${rg.label}`;
+      } catch (e) { /* keep the numbers shown */ }
+    };
+    btn.addEventListener('click', (e) => { e.stopPropagation(); pop.hidden = !pop.hidden; btn.setAttribute('aria-expanded', String(!pop.hidden)); });
+    pop.addEventListener('click', (e) => { const b = e.target.closest('button[data-range]'); if (b) apply(b.dataset.range === 'all' ? '' : b.dataset.range); });
+    $('#dtr-date-input')?.addEventListener('change', (e) => { if (e.target.value) apply('day', e.target.value); });
+    document.addEventListener('click', (e) => { if (!pop.hidden && !e.target.closest('.dtr-datefilter')) { pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); } });
+    pop.querySelector('[data-range=all]')?.classList.add('on');
+  })();
+
+  // After a save the page reloads straight onto the list that was saved into (its sub-tab opens) and the success box is shown over it
+  const afterSave = (msg, sub) => {
+    try { sessionStorage.setItem('dtr_after_save', JSON.stringify({ msg, sub })); } catch (e) { /* storage blocked: the list just reloads */ }
+    location.reload();
+  };
   // Lab Tracker sub-tabs (containers / materials / bonding shoes / whole shoes)
   $$('.dtr-subtab[data-subtab]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -163,6 +225,15 @@
       $$('.dtr-subpanel').forEach((p) => p.classList.toggle('hidden', p.dataset.subpanel !== btn.dataset.subtab));
     });
   });
+
+  try {
+    const as = JSON.parse(sessionStorage.getItem('dtr_after_save') || 'null');
+    if (as) {
+      sessionStorage.removeItem('dtr_after_save');
+      document.querySelector(`.dtr-subtab[data-subtab="${as.sub}"]`)?.click();
+      setTimeout(() => successBox(as.msg), 150);
+    }
+  } catch (e) { /* ignore */ }
 
   // =========================================================================
   // Specimen Intake (+ Shoe Collected): Building A (12 lines) / Building B (14 lines)
@@ -199,7 +270,7 @@
           <td>${type === 'TECH TRIAL' ? '<input type="text" class="ik-mtl" placeholder="Type MTL #" autocomplete="off">' : '<input type="text" class="ik-mtl" placeholder="MTL #" readonly tabindex="-1">'}</td>
           <td class="ik-imgcell"><img class="ik-img" alt="" hidden></td>
           <td class="ik-pulls"><label><input type="checkbox" class="ik-pt" value="HEEL PULL"> Heel Pull</label><label><input type="checkbox" class="ik-pt" value="EYELET"> Eyelet</label><label><input type="checkbox" class="ik-pt" value="D-RING"> D-Ring</label><label><input type="checkbox" class="ik-pt" value="RIVET"> Rivet</label></td>
-          <td style="text-align:center"><input type="checkbox" class="ik-lacking" aria-label="Lacking"><input type="date" class="ik-lackdate" tabindex="-1" aria-label="Lacking date" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none"><div class="ik-lackshow"></div></td>
+          <td class="ik-lackcell" style="text-align:center"><input type="checkbox" class="ik-lacking" aria-label="Lacking (1 = lacking, 0 = not)"${type === 'LACKING' ? ' checked' : ''}><input type="date" class="ik-lackdate" tabindex="-1" aria-label="Lacking date" value="${type === 'LACKING' ? ($('#dtr-intake-production')?.value || '') : ''}" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none"><div class="ik-lackshow">${type === 'LACKING' ? ($('#dtr-intake-production')?.value || '').slice(5) : ''}</div></td>
           <td><textarea class="ik-retest-note" rows="2" placeholder="Remarks"></textarea></td>
         </tr>`;
   };
@@ -231,12 +302,11 @@
     const prodDate = $('#dtr-intake-production')?.value || '';
     const seen = {};   // running number (-#) per Lab Ref base in the order shown (the server confirms the free number on save)
     $$('#dtr-intake-tbody tr').forEach((tr) => {
-      // a lacking specimen is booked under the date it is due, so the real specimen collected that day updates it instead of duplicating it
-      const lackDate = tr.querySelector('.ik-lacking').checked ? tr.querySelector('.ik-lackdate').value : '';
-      const d = (lackDate || prodDate).replace(/-/g, '');
+      // every Lab Ref carries the Production Date selected at the top of the form
+      const d = prodDate.replace(/-/g, '');
       const side = tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L';
       const type = tr.querySelector('.ik-type').value;
-      const isRetest = type === 'RETEST' || tr.querySelector('.ik-retest-note').value.trim() !== '';
+      const isRetest = type === 'RETEST';
       // Lab Ref formats (the server confirms the free numbers on save):
       //   DAILY             DTP<date>SH<line>-<side>-<#>
       //   TRIAL             DTP<date>TRIALSH-<side>-<#>          (no line)
@@ -575,6 +645,9 @@
         if (!di.value) di.value = $('#dtr-intake-production')?.value || '';
         try { di.showPicker(); } catch (_) { /* older browsers: the default date stays */ }
       } else di.value = '';
+      // Lacking ticked: the whole row is locked (greyed) and recorded as lacking, like a shutdown; only the Lacking box stays usable
+      tr.classList.toggle('lacked', e.target.checked);
+      tr.querySelectorAll('input:not(.ik-lacking):not(.ik-lackdate), select, textarea, .dtr-side-toggle button, .ik-addrow').forEach((el) => { el.disabled = e.target.checked; });
     }
     if (e.target.classList.contains('ik-lacking') || e.target.classList.contains('ik-lackdate')) {
       tr.querySelector('.ik-lackshow').textContent = tr.querySelector('.ik-lacking').checked ? tr.querySelector('.ik-lackdate').value.slice(5) : '';
@@ -593,11 +666,28 @@
   $('#btn-intake-save')?.addEventListener('click', async () => {
     const rows = [];
     const shutdowns = [];
+    const lackings = [];
     const trialSeen = new Set();
     let trialIssue = '';
     $$('#dtr-intake-tbody tr').forEach((tr) => {
       const act = tr.querySelector('.ik-active');
       if (act && !act.checked) { if (!tr.dataset.extra) shutdowns.push(tr.dataset.line); return; }   // main row toggled off = line shutdown (an extra row only skips itself)
+      if (tr.querySelector('.ik-lacking').checked) {   // lacking line: recorded like a shutdown (no specimen, no Lab Ref)
+        lackings.push({
+          line: tr.dataset.line,
+          side: tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L',
+          date: tr.querySelector('.ik-lackdate').value || $('#dtr-intake-production').value,
+          type: tr.querySelector('.ik-type').value,
+          code: tr.querySelector('.ik-code').value.trim(),
+          style: tr.querySelector('.ik-style').value.trim(),
+          color: tr.querySelector('.ik-color').value.trim(),
+          mtl: tr.querySelector('.ik-mtl').value.trim(),
+          pullTypes: [...tr.querySelectorAll('.ik-pt:checked')].map((c) => c.value),
+          remarks: tr.querySelector('.ik-retest-note').value.trim().replace(/\s*\n\s*/g, ' | '),
+          labRef: tr.querySelector('.ik-lr').textContent.trim(),
+        });
+        return;
+      }
       const row = {
         line: tr.dataset.line,
         side: tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L',
@@ -615,7 +705,7 @@
         lacking: tr.querySelector('.ik-lacking').checked,
         lackingDate: tr.querySelector('.ik-lacking').checked ? tr.querySelector('.ik-lackdate').value : '',
       };
-      row.retest = row.type === 'RETEST' || row.retestNote !== '';
+      row.retest = row.type === 'RETEST';   // a remark on any other test type is only a remark, it does not turn the row into a retest
       if (row.type === 'TECH TRIAL' && row.mtl && !row.style) { trialIssue = `MTL # ${row.mtl} was not found in the production orders. Pick it from the list.`; return; }
       if (row.type === 'TECH TRIAL') {
         // a trial is checked first: the same MTL # / Style on the same side must not be entered twice in this batch
@@ -625,7 +715,9 @@
       if (row.code || row.style || row.color || row.mtl || row.type === 'SAMPLE') rows.push(row);
     });
     if (trialIssue) { intakeEl.msg.textContent = trialIssue; return; }
-    if (!rows.length && !shutdowns.length) { intakeEl.msg.textContent = 'Fill in at least one active line before saving.'; return; }
+    if (!rows.length && !shutdowns.length && !lackings.length) { intakeEl.msg.textContent = 'Fill in at least one active line before saving.'; return; }
+    const sb = savingBox('Saving batch...');
+    closeIntake();   // the window closes at once; a message box confirms the save
     try {
       const res = await apiFetch('dtr/intake-save', {
         method: 'POST',
@@ -637,18 +729,85 @@
           encodedBy: $('#dtr-intake-encoder').value.trim(),
           rows,
           shutdowns,
+          lackings,
         }),
       });
       if (res && res.ok) {
-        showToast(`✓ ${res.message}`);
-        closeIntake();
-        setTimeout(() => location.reload(), 700);   // the new lines show in the collection list
+        afterSave(res.message, 'bonding');
       } else {
+        sb.fail(); intakeEl.back?.classList.remove('hidden');
         intakeEl.msg.textContent = (res && res.message) || 'Save failed.';
       }
     } catch (err) {
+      sb.fail(); intakeEl.back?.classList.remove('hidden');
       intakeEl.msg.textContent = 'Save failed: ' + err.message;
     }
+  });
+
+  // Message box shown after a save (and after a delete): stays until OK is pressed, then onClose runs (e.g. reload the list)
+  const successBox = (msg, onClose, title = 'Saved successfully') => {
+    const ov = document.createElement('div');
+    ov.className = 'dtr-msgbox-bd';
+    ov.innerHTML = `<div class="dtr-msgbox" role="alertdialog" aria-modal="true"><div class="dtr-msgbox-ic">&#10003;</div><h3>${escHtml(title)}</h3><p>${escHtml(msg || '')}</p><button type="button" class="dtr-btn dtr-btn-primary">OK</button></div>`;
+    const done = () => { ov.remove(); document.removeEventListener('keydown', onKey); if (onClose) onClose(); };
+    const onKey = (e) => { if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); done(); } };
+    ov.querySelector('button').addEventListener('click', done);
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(ov);
+    ov.querySelector('button').focus();
+  };
+
+  // Save in progress: the form window closes at once and this box waits for the server; .ok() turns it into the success box, .fail() removes it (the window reopens with the error)
+  const savingBox = (text = 'Saving...') => {
+    const ov = document.createElement('div');
+    ov.className = 'dtr-msgbox-bd';
+    ov.innerHTML = `<div class="dtr-msgbox" role="status"><div class="dtr-spin"></div><h3>${escHtml(text)}</h3><p>Please wait.</p></div>`;
+    document.body.appendChild(ov);
+    return { ok: (msg, onClose) => { ov.remove(); successBox(msg, onClose); }, fail: () => ov.remove() };
+  };
+
+  // Delete button of every Lab Tracker list: asks why (required), deletes the entry and writes the audit trail (tbl_dtr_audit_trail)
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.dtr-del-btn');
+    if (!btn) return;
+    e.preventDefault();
+    const ov = document.createElement('div');
+    ov.className = 'dtr-msgbox-bd';
+    ov.innerHTML = `<div class="dtr-msgbox dtr-msgbox-del" role="dialog" aria-modal="true">
+        <div class="dtr-msgbox-ic del">!</div><h3>Delete this entry?</h3>
+        <p class="ref">${escHtml(btn.dataset.ref || '')}</p>
+        <label>Why is this data entry being deleted? <b>(required)</b></label>
+        <textarea rows="3" maxlength="1000" placeholder="Reason for the audit trail..."></textarea>
+        <div class="err" hidden></div>
+        <div class="acts"><button type="button" class="dtr-btn dtr-btn-outline" data-x="cancel">Cancel</button><button type="button" class="dtr-btn dtr-btn-danger" data-x="ok">Delete</button></div>
+      </div>`;
+    document.body.appendChild(ov);
+    const ta = ov.querySelector('textarea');
+    const err = ov.querySelector('.err');
+    ta.focus();
+    ov.querySelector('[data-x=cancel]').addEventListener('click', () => ov.remove());
+    ov.querySelector('[data-x=ok]').addEventListener('click', async () => {
+      const reason = ta.value.trim();
+      if (reason.length < 3) { err.textContent = 'Enter the reason for deleting this entry.'; err.hidden = false; ta.focus(); return; }
+      const ok = ov.querySelector('[data-x=ok]');
+      ok.disabled = true;
+      try {
+        const res = await apiFetch('dtr/delete-entry', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kind: btn.dataset.del, id: Number(btn.dataset.id), reason }),
+        });
+        if (res && res.ok) {
+          ov.remove();
+          btn.closest('tr')?.remove();
+          successBox(res.message, null, 'Entry deleted');
+        } else {
+          err.textContent = (res && res.message) || 'Delete failed.'; err.hidden = false; ok.disabled = false;
+        }
+      } catch (ex) {
+        err.textContent = 'Delete failed: ' + (ex.message || ex); err.hidden = false; ok.disabled = false;
+      }
+    });
   });
 
   // =========================================================================
@@ -666,11 +825,11 @@
         <td class="ik-linecell"><b>${line}</b> <button type="button" class="ik-addrow" title="Add another row for ${line}" aria-label="Add another row for ${line}">+</button>${extra ? '<button type="button" class="ik-delrow" title="Remove this row" aria-label="Remove this row">&times;</button>' : ''}</td>
         <td><div class="dtr-side-toggle"><button type="button" data-side="L" class="${rightSide ? '' : 'active'}">L</button><button type="button" data-side="R" class="${rightSide ? 'active' : ''}">R</button></div></td>
         <td class="ik-tlabref mono"></td>
-        <td><input type="text" class="ik-code" placeholder="Enter code"></td>
-        <td><input type="text" class="ik-style" placeholder="Enter style"></td>
-        <td><input type="text" class="ik-color" placeholder="Enter colorway"></td>
-        <td><input type="text" class="ik-mtl" placeholder="Enter MTL #"></td>
-        <td><button type="button" class="dtr-btn dtr-btn-outline ik-lib">Library</button></td>
+        <td><input type="text" class="ik-code" placeholder="Type to filter" autocomplete="off"></td>
+        <td><input type="text" class="ik-style" placeholder="Style" readonly tabindex="-1"></td>
+        <td><input type="text" class="ik-color" placeholder="Colorway" readonly tabindex="-1"></td>
+        <td><input type="text" class="ik-mtl" placeholder="MTL #" readonly tabindex="-1"></td>
+        <td class="ik-imgcell"><img class="ik-img" alt="" hidden></td>
         <td><input type="number" class="ik-qty" min="1" step="1" value="1"></td>
         <td class="ik-tests">${WS_TESTS.map((t) => `<label class="ik-test"><input type="checkbox" value="${t}"><span>${t}</span></label>`).join('')}</td>
       </tr>`;
@@ -757,6 +916,17 @@
     const lib = e.target.closest('.ik-lib');
     if (lib) openLibrary(lib.closest('tr'), lib);
   });
+  // Production Code box filters the ERP production orders, same as the Specimen Intake; style / colorway / MTL # come from the picked order
+  wsEl.tbody?.addEventListener('input', (e) => {
+    if (!e.target.classList.contains('ik-code')) return;
+    const tr = e.target.closest('tr');
+    ['.ik-style', '.ik-color', '.ik-mtl'].forEach((s) => { tr.querySelector(s).value = ''; });
+    setIntakeImage(tr);
+    suggestProdCode(tr, e.target);
+  });
+  wsEl.tbody?.addEventListener('focusin', (e) => {
+    if (e.target.classList.contains('ik-code') && !libPanel) suggestProdCode(e.target.closest('tr'), e.target);
+  });
   wsEl.tbody?.addEventListener('change', (e) => {
     if (e.target.classList.contains('ik-active')) e.target.closest('tr').classList.toggle('inactive', !e.target.checked);
     if (e.target.closest('.ik-tests')) refreshWholeShoeLabRefs();
@@ -779,6 +949,8 @@
       if (row.code) rows.push(row);
     });
     if (!rows.length) { wsEl.msg.textContent = 'Enter a Production Code on at least one active line.'; return; }
+    const sb = savingBox('Saving batch...');
+    closeWholeShoe();
     try {
       const res = await apiFetch('dtr/wholeshoe-save', {
         method: 'POST',
@@ -792,13 +964,13 @@
         }),
       });
       if (res && res.ok) {
-        showToast(`✓ ${res.message}`);
-        closeWholeShoe();
-        setTimeout(() => location.reload(), 700);
+        afterSave(res.message, 'shoes');
       } else {
+        sb.fail(); wsEl.back?.classList.remove('hidden');
         wsEl.msg.textContent = (res && res.message) || 'Save failed.';
       }
     } catch (err) {
+      sb.fail(); wsEl.back?.classList.remove('hidden');
       wsEl.msg.textContent = 'Save failed: ' + err.message;
     }
   });
@@ -839,6 +1011,8 @@
       qty: v(tr, '.mr-qty'), eta: v(tr, '.mr-eta'),
     })).filter((r) => r.no || r.prod || r.proc);
     if (!rows.length) { mrMsg.textContent = 'Enter a Container No., Prod Code or Processing No. on at least one line.'; return; }
+    const sb = savingBox('Saving...');
+    closeMaterialReceive();
     try {
       const res = await apiFetch('dtr/material-receive-save', {
         method: 'POST',
@@ -846,13 +1020,12 @@
         body: JSON.stringify({ arrivedDate: $('#dtr-mrec-arrived').value, receivedDate: $('#dtr-mrec-date').value, encodedBy: $('#dtr-mrec-encoder').value.trim(), rows }),
       });
       if (res && res.ok) {
-        showToast(`✓ ${res.message}`);
-        closeMaterialReceive();
-        setTimeout(() => location.reload(), 900);
+        afterSave(res.message, 'containers');
       } else {
+        sb.fail(); mrBack.classList.remove('hidden');
         mrMsg.textContent = (res && res.message) || 'Save failed.';
       }
-    } catch (err) { mrMsg.textContent = 'Save failed: ' + err.message; }
+    } catch (err) { sb.fail(); mrBack.classList.remove('hidden'); mrMsg.textContent = 'Save failed: ' + err.message; }
   });
 
   // =========================================================================
@@ -1237,53 +1410,74 @@
   // =========================================================================
   // 2. LAB TRACKER SEARCH & CATEGORY PILLS
   // =========================================================================
+  // Digital Test Report: every report of the lab grouped by Production Code (click a code to list the tests done on it)
+  const resChip = (v) => {
+    const u = String(v || '').toUpperCase();
+    if (!u) return '<span class="muted">-</span>';
+    const cls = (u.startsWith('FAIL') || u === 'ERROR') ? 'res-chip res-fail' : (u.startsWith('TOL') ? 'res-chip res-tol' : 'res-chip res-pass');
+    return `<span class="badge ${cls}">${escHtml(u)}</span>`;
+  };
+  const fmtD = (v) => { if (!v) return '-'; const t = new Date(String(v).slice(0, 10) + 'T00:00:00'); return isNaN(t) ? escHtml(v) : t.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); };
   const loadTrackerRows = async (slug = 'all', q = '') => {
     const tbody = $('#dtr-tracker-tbody');
     try {
-      if (tbody && window.nxState) nxState(tbody, 'loading', 'Loading lab reports…', 12);
-      const res = await apiFetch(`dtr/records?slug=${encodeURIComponent(slug)}&q=${encodeURIComponent(q)}`);
-      if (!tbody || !res.rows) return;
-      if (!res.rows.length) {
-        nxState(tbody, 'empty', 'No lab reports match your search. Clear the filters or try another Lab Ref No.', 12);
+      if (tbody && window.nxState) nxState(tbody, 'loading', 'Loading lab reports…', 9);
+      const res = await apiFetch(`dtr/prodcode-summary?slug=${encodeURIComponent(slug)}&q=${encodeURIComponent(q)}`);
+      if (!tbody || !res.groups) return;
+      if (!res.groups.length) {
+        nxState(tbody, 'empty', 'No lab reports match your search. Clear the filters or try another Production Code.', 9);
         return;
       }
-      tbody.innerHTML = res.rows.map((r) => {
-        const resUpper = String(r.overall_result || 'PASS').toUpperCase();
-        // FAIL(ED) red, PASS green, TOLERABLE blue; any other value stays plain
-        const badgeCls = (resUpper.startsWith('FAIL') || resUpper === 'ERROR') ? 'res-chip res-fail' : (resUpper.startsWith('TOL') ? 'res-chip res-tol' : (resUpper.startsWith('PASS') ? 'res-chip res-pass' : 'b-ok'));
-        return `
-          <tr>
-            <td style="white-space:nowrap">
-              <button type="button" class="dtr-dl-btn" data-open-record="${escHtml(r.form_slug)}" data-source-id="${escHtml(r.source_id)}" data-labref="${escHtml(r.lab_ref_no)}" title="Open form" aria-label="Open form">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
-              </button>
-            </td>
-            <td class="mono"><b>${escHtml(r.lab_ref_no)}</b></td>
-            <td class="mono">${escHtml(r.tr_no || '-')}</td>
-            <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.material_description || '')}">${escHtml(r.material_description || '-')}</td>
-            <td class="mono">${escHtml(r.model_style || '-')}</td>
-            <td>${escHtml(r.color || '-')}</td>
-            <td class="mono">${escHtml(r.po_lot_no || '-')}</td>
-            <td class="mono">${escHtml(r.mtl_no || '-')}</td>
-            <td>${escHtml(r.tested_date || r.received_date || '-')}</td>
-            <td>${escHtml(r.technician || '-')}</td>
-            <td>${escHtml(r.status || 'Complete')}</td>
-            <td><span class="badge ${badgeCls}">${escHtml(resUpper)}</span></td>
+      tbody.innerHTML = res.groups.map((g, i) => `
+          <tr class="pc-row" data-pc="${i}">
+            <td class="mono"><button type="button" class="pc-toggle" aria-expanded="false" aria-label="Show the tests of ${escHtml(g.mtl || g.key)}"><span class="pc-caret">&#9656;</span> <b>${escHtml(g.mtl || g.key)}</b> <span class="pc-count">${g.tests.length}</span></button></td>
+            <td>${escHtml(g.color || '-')}</td>
+            <td class="mono">${escHtml(g.style || '-')}</td>
+            <td>${fmtD(g.prod)}</td>
+            <td>${fmtD(g.tested)}</td>
+            <td>${escHtml(g.status || '-')}</td>
+            <td>${resChip(g.result)}</td>
           </tr>
-        `;
-      }).join('');
+          <tr class="pc-detail" data-pc-detail="${i}" hidden>
+            <td colspan="7">
+              <table class="pc-sub">
+                <thead><tr><th></th><th>Lab Ref No</th><th>Production Code</th><th>ETRF No.</th><th>Test</th><th>Tested Date</th><th>Status</th><th>Result</th></tr></thead>
+                <tbody>${g.tests.map((t) => `
+                  <tr>
+                    <td>${t.slug === 'thirdparty' ? '' : `<button type="button" class="dtr-dl-btn" data-open-record="${escHtml(t.slug)}" data-source-id="${escHtml(t.source_id)}" data-labref="${escHtml(t.labref)}" title="Open form" aria-label="Open form"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></button>`}</td>
+                    <td class="mono"><b>${escHtml(t.labref || '-')}</b></td>
+                    <td class="mono">${escHtml(t.code || g.code || '-')}</td>
+                    <td class="mono">${escHtml(t.etrf || '-')}</td>
+                    <td>${escHtml(t.test || '-')}</td>
+                    <td>${fmtD(t.tested)}</td>
+                    <td>${escHtml(t.status || '-')}</td>
+                    <td>${resChip(t.result)}</td>
+                  </tr>`).join('')}</tbody>
+              </table>
+            </td>
+          </tr>`).join('');
     } catch (err) {
       console.error(err);
-      if (tbody && window.nxState) nxState(tbody, 'error', 'The list could not be loaded. Check your connection and try again.', 12);
+      if (tbody && window.nxState) nxState(tbody, 'error', 'The list could not be loaded. Check your connection and try again.', 9);
     }
   };
-
+  $('#dtr-tracker-tbody')?.addEventListener('click', (e) => {
+    const t = e.target.closest('.pc-toggle');
+    if (!t) return;
+    const row = t.closest('tr');
+    const det = row.nextElementSibling;
+    const open = det.hidden;
+    det.hidden = !open;
+    row.classList.toggle('open', open);
+    t.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
   const runTrackerSearch = () => {
     const slug = $('#dtr-tracker-cat')?.value || 'all';
     const q = $('#dtr-tracker-search')?.value.trim() || '';
     loadTrackerRows(slug, q);
   };
 
+  if ($('#dtr-tracker-tbody')) runTrackerSearch();
   $('#dtr-tracker-cat')?.addEventListener('change', runTrackerSearch);
   $('#dtr-tracker-btn-search')?.addEventListener('click', runTrackerSearch);
 
@@ -3004,10 +3198,57 @@
     if (!one) return;
     vec.start = Object.assign({ label: 'START' }, vec.start || {}, { x: one.x, y: one.y });
   }
+  // Layouts without dot positions: spot 1 is the box at the START arrow (lower right of the sketch, e.g. 5.01 on the 34-point sketch);
+  // the readings carry on from there around the contour (spot 2 follows 1 ...). Returns a rotated copy, the cached config is never changed.
+  function rotateBoxesToArrow(cfg, vec) {
+    if (!cfg || !cfg.utf || (vec && vec.vector)) return cfg;
+    const out = JSON.parse(JSON.stringify(cfg));
+    const ids = Object.keys(out.utf).map(Number).sort((a, b) => a - b);
+    if (ids.length < 3) return out;
+    let best = 0; let bd = Infinity;
+    ids.forEach((i, p) => {
+      const b = out.utf[i];
+      const d = Math.hypot(b.pctLeft - 86.6, b.pctTop - 79.9);
+      if (d < bd) { bd = d; best = p; }
+    });
+    if (best === 0) return out;
+    ['utf', 'fto'].forEach((k) => {
+      const src = out[k] || {};
+      const keys = Object.keys(src).map(Number).sort((a, b) => a - b);
+      if (keys.length !== ids.length) return;
+      const nb = {};
+      keys.forEach((n, p) => { nb[n] = src[keys[(best + p) % keys.length]]; });
+      out[k] = nb;
+    });
+    return out;
+  }
   // START marker (red diamond + label) placed just before the value box of spot 1 when the layout has no dot positions
   function startMarkerHtml(c) {
     return `<div class="vf-start-mark" style="position:absolute;left:${c.pctLeft}%;top:${c.pctTop}%;transform:translate(0,-95%);display:flex;align-items:center;gap:3px;white-space:nowrap;color:#b91c1c;font:800 9px sans-serif;pointer-events:none"><i style="display:block;width:9px;height:9px;background:#dc2626;transform:rotate(45deg)"></i>START</div>`;
   }
+  // Possible Cause(s) legend (a)-(k): tick a cause and its phrase is highlighted; the ticked ones are kept in the Possible Cause field of the form
+  (function () {
+    const inp = $('#bf_PossibleCause');
+    const boxes = $$('.vf-cause-chk');
+    if (!inp || !boxes.length) return;
+    let last = null;
+    const paint = () => boxes.forEach((b) => b.closest('.vf-cause-opt').classList.toggle('on', b.checked));
+    const fromField = () => {
+      last = inp.value;
+      boxes.forEach((b) => { b.checked = inp.value.indexOf(b.value.slice(0, 3)) >= 0; });
+      paint();
+    };
+    boxes.forEach((b) => b.addEventListener('change', () => {
+      inp.value = boxes.filter((x) => x.checked).map((x) => x.value).join('; ');
+      last = inp.value;
+      paint();
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+    }));
+    // the field is filled by code when a record loads (no event): follow it
+    setInterval(() => { if (inp.value !== last) fromField(); }, 400);
+    fromField();
+  })();
+
   // Left or Right shoe: the -L / -R ending of the Lab Ref No decides (retest -R01 style endings count), else the Side field
   function bondingIsLeft() {
     const ref = ($('#bf_LabRefNo')?.value || '').trim().toUpperCase();
@@ -3116,6 +3357,7 @@
     }
 
     rotateSpotsToStart(cfg, vec);
+    cfg = rotateBoxesToArrow(cfg, vec);
     startOnSpotOne(vec);
 
     const colour = (val) => {
@@ -3284,6 +3526,7 @@
     }
 
     rotateSpotsToStart(cfg, layoutVec);
+    cfg = rotateBoxesToArrow(cfg, layoutVec);
     startOnSpotOne(layoutVec);
 
     // Spot Color logic
@@ -3534,13 +3777,13 @@
         <table class="vf-eval-table">
           <thead>
             <tr>
-              <th rowspan="2" style="width:20%">Shoe Part</th>
-              <th rowspan="2" style="width:11%">VF Test<br>Method</th>
-              <th rowspan="2" style="width:8%">STD<br>kgf/cm<br><span style="font-size:8.5px;font-weight:600">(Tolerable)</span></th>
-              <th colspan="2" style="width:16%">Test Result<br>kgf/cm</th>
-              <th colspan="2" style="width:12%">Status</th>
-              <th rowspan="2" style="width:17%">Mode of Failure(s)<br>失败的方式</th>
-              <th rowspan="2" style="width:16%">Possible Cause(s)<br>可能的原因</th>
+              <th rowspan="2" style="width:13%">Shoe Part</th>
+              <th rowspan="2" style="width:9%">VF Test<br>Method</th>
+              <th rowspan="2" style="width:7%">STD<br>kgf/cm<br><span style="font-size:8.5px;font-weight:600">(Tolerable)</span></th>
+              <th colspan="2" style="width:12%">Test Result<br>kgf/cm</th>
+              <th colspan="2" style="width:10%">Status</th>
+              <th rowspan="2" style="width:25%">Mode of Failure(s)<br>失败的方式</th>
+              <th rowspan="2" style="width:24%">Possible Cause(s)<br>可能的原因</th>
             </tr>
             <tr>
               <th style="width:8%">Min</th>
@@ -3565,17 +3808,7 @@
                 <b>SF</b>= Failure of the substrate, including the location of the failure within the substrate
               </td>
               <td rowspan="3" class="text-left vf-cause-cell">
-                (a) Poor Priming 药水不良<br>
-                (b) Poor cementing 胶水不良<br>
-                (c) Over-dried cement<br>
-                (d) Wet primer 湿的药水<br>
-                (e) Wet cement 湿的胶水<br>
-                (f) Poor pressing 压机不良<br>
-                (g) Poor Roughing 打粗不良<br>
-                (h) Upper material - weak 鞋面材料不良<br>
-                (i) EVA-Weak EVA不良<br>
-                (j) Dusty component 粉沫<br>
-                (k) Splitting of foxing tape 围条分层
+                ${[['a', 'Poor Priming 药水不良'], ['b', 'Poor cementing 胶水不良'], ['c', 'Over-dried cement 积胶'], ['d', 'Wet primer 湿的药水'], ['e', 'Wet cement 湿的胶水'], ['f', 'Poor pressing 压机不良'], ['g', 'Poor Roughing 打粗不良'], ['h', 'Upper material - weak 鞋面材料不良'], ['i', 'EVA-Weak EVA不良'], ['j', 'Dusty component 粉沫'], ['k', 'Splitting of foxing tape 围条分层']].map(([l, t]) => (possibleCause.indexOf(`(${l})`) >= 0 ? `<span style="background:#fde68a;font-weight:700">(${l}) ${t}</span>` : `(${l}) ${t}`)).join('<br>')}
               </td>
             </tr>
             <tr>
@@ -3714,6 +3947,17 @@
     probe.remove();
     return Math.max(0.4, Math.round(scale * 1000) / 1000);
   };
+
+  // The preview is a true A4 page (210 x 297 mm, 6 mm margins): whatever report fills it is scaled to fit ONE page, exactly as it prints / downloads
+  const a4Box = $('#dtr-print-sheet-container');
+  if (a4Box) {
+    new MutationObserver(() => {
+      if (!a4Box.innerHTML.trim()) return;
+      const s = fitOnePageScale(a4Box.innerHTML);
+      a4Box.style.width = (198 / 25.4 * 96 / s) + 'px';
+      a4Box.style.zoom = String(s);
+    }).observe(a4Box, { childList: true });
+  }
 
   $('#btn-dtr-print-preview')?.addEventListener('click', openMaterialPrintPreview);
   $('#btn-bond-print-preview')?.addEventListener('click', () => (isPull() ? openPullPrintPreview() : openBondingPrintPreview()));

@@ -449,7 +449,7 @@ class SettingsController extends BaseController
             'title' => 'Shoe Bonding Report', 'message' => "Dear team,\nPlease find the result below.", 'lab_ref' => 'BN-26-0412', 'date' => date('Y-m-d H:i'), 'sender' => 'QC Lab',
             'name' => 'Juan Dela Cruz', 'about' => 'Bonding report BN-26-0412', 'link' => site_url(), 'minutes' => '30',
             'test' => 'Shoe Bonding (U60)', 'result' => 'FAIL', 'details' => 'Peel strength 2.1 N/mm, minimum 3.0 N/mm.',
-            'total' => '42', 'passed' => '38', 'failed' => '2', 'pending' => '2', 'button_text' => 'Open NEXUS-L',
+            'action_required' => 'Re-test the sample and inform the supervisor.', 'total' => '42', 'passed' => '38', 'failed' => '2', 'pending' => '2', 'button_text' => 'Open NEXUS-L',
             'images_html' => '<div style="text-align:center;color:#64748b;padding:18px;border:1px dashed #cbd5e1">[report picture appears here]</div>',
             'qr_img' => '<div style="display:inline-block;width:160px;height:160px;border:1px solid #cbd5e1;line-height:160px;color:#64748b">QR code</div>',
             'rows_html' => '<div style="color:#64748b">[table of the day\'s reports appears here]</div>',

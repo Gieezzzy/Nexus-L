@@ -11,6 +11,8 @@
 - **NEXUS-L:** `MailOutbox::TEMPLATES|render|fill|subjectOf` (designs stored in `writable/email-templates/<slot>.html`; `_html` / `_img` variables are HTML, all others escaped with line breaks kept); Settings > E-mail > **E-mail designs** (list, upload `.html` with script check, preview in a sandboxed iframe, remove) via `SettingsController::mailTemplates|mailTemplateUpload|mailTemplateDelete|mailTemplatePreview`; used by Send Report (`report_sent`), the signatory approval e-mail (`approval_request`) and the test e-mail (`general_notice`); `mail-relay/enqueue` accepts `{template, vars}`. With no design uploaded the built-in layout is used as before.
 - **Outlook Relay:** `TemplateStore` renders a design by name for the local `/api/enqueue` (`{"template":"general_notice","vars":{...}}`). The Relay is now in its own repository: **https://github.com/Gieezzzy/NexusOutlookRelay** (private).
 
+- **Designer update (2026-11-10):** new variables synced in NEXUS-L (`MailOutbox::TEMPLATES`, Send Report / approval / Settings preview): `report_sent` + `result`, `link`; `approval_request` + `date`; `test_alert` + `action_required`.
+
 ---
 ## Phase 207 - Outlook Email Relay: web settings, safe queue, Handler fallback (2026-11-10)
 - **Outlook Relay (`E:\desktop\MaterialTest\NexusOutlookRelay`, `NexusOutlookRelay.exe`, C# .NET Framework 4.8, WinForms tray app v1.1.0):** sends the e-mails of `tbl_email_outbox` through the desktop Outlook (COM), FIFO, with a local HTTP listener (127.0.0.1:5088).

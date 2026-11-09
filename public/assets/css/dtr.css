@@ -3032,3 +3032,100 @@
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+
+/* a lacking line is locked like a shutdown */
+.dtr-intake-table tr.lacked td:not(.ik-lackcell){opacity:.4}
+.dtr-intake-table tr.lacked td.ik-labref{opacity:1;color:#b45309}
+/* Digital Test Report: Production Code groups */
+.dtr-pc-table .pc-row { cursor: pointer; }
+.dtr-pc-table .pc-row > td { padding-top: 9px; padding-bottom: 9px; }
+.dtr-pc-table .pc-row.open { background: #eef4ff; }
+.dtr-pc-table .pc-detail[hidden] { display: none !important; }
+.dtr-pc-table .pc-detail > td { padding: 0 0 8px 34px; background: #f8fafc; }
+.pc-toggle { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font: inherit; }
+.pc-toggle .pc-caret { display: inline-block; width: 12px; transition: transform .15s; color: #64748b; }
+.pc-row.open .pc-caret { transform: rotate(90deg); }
+.pc-toggle .pc-count { background: #e2e8f0; color: #475569; border-radius: 9px; padding: 0 7px; font-size: 11px; font-weight: 600; }
+.pc-sub { width: calc(100% - 14px); border-collapse: collapse; margin: 6px 0; font-size: 12.5px; }
+.pc-sub th { text-align: left; font-size: 11px; color: #64748b; text-transform: uppercase; padding: 5px 10px; border-bottom: 1px solid #e2e8f0; }
+.pc-sub td { padding: 6px 10px; border-bottom: 1px solid #eef2f7; }
+/* Digital Test Report fills the window; the nested test list scrolls with it */
+.dtr-table-wrap.dtr-pc-wrap{max-height:none !important;height:calc(100vh - 385px);min-height:320px}
+.dtr-pc-table{width:100%}
+.dtr-pc-table .pc-sub th{position:static;top:auto;background:transparent;border-right:0}
+.dtr-pc-table .pc-sub td{border-right:0}
+.dtr-pc-table .pc-detail > td{padding-left:28px;padding-right:0}
+.pc-sub{width:100%}
+/* Whole Shoe Intake: same look as the Specimen Intake (centred headers / boxes, grey read-only style / colorway / MTL #, image column) */
+.dtr-wshoe-table th{text-align:center !important}
+.dtr-wshoe-table td{text-align:center;vertical-align:middle}
+.dtr-wshoe-table td.ik-tests,.dtr-wshoe-table td.ik-tlabref{text-align:left}
+.dtr-wshoe-table input[type=text]{text-align:center}
+.dtr-wshoe-table input.ik-style[readonly],.dtr-wshoe-table input.ik-color[readonly],.dtr-wshoe-table input.ik-mtl[readonly]{background:#f1f5f9;color:#334155;cursor:not-allowed}
+.dtr-wshoe-table td.ik-imgcell{text-align:center;padding:2px}
+.dtr-wshoe-table th,.dtr-wshoe-table td{border-right:1px solid #e6ebf1}
+.dtr-wshoe-table th:last-child,.dtr-wshoe-table td:last-child{border-right:0}
+/* Whole Shoe Intake without the Shoe Master column: 11 columns */
+/* Bonding Test Results: Overall Result sits beside the SATRA logo; the Mode of Failure / Possible Cause row is removed */
+#dtr-panel-bonding .vf-tpl-head{grid-template-columns:150px 1fr auto}
+.vf-tpl-right{display:flex;align-items:center;gap:14px;justify-self:end}
+.vf-tpl-result{min-width:150px}
+.vf-tpl-result label{display:block;font-size:11px;font-weight:700;margin-bottom:2px}
+.vf-tpl-result input{width:100%;box-sizing:border-box;text-align:center;padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font-size:14px}
+/* Possible Cause(s): tick a cause to highlight its phrase */
+.vf-cause-opt{display:flex;align-items:flex-start;gap:6px;cursor:pointer;padding:1px 3px;border-radius:3px;line-height:1.3}
+.vf-cause-opt input{margin:2px 0 0;flex:none;width:13px;height:13px;cursor:pointer}
+.vf-cause-opt.on{background:#fde68a;font-weight:700;box-shadow:0 0 0 1px #f59e0b inset}
+.vf-cause-opt:hover{background:#fef3c7}
+.vf-cause-opt.on:hover{background:#fde68a}
+.vf-res-causes p{margin:0 0 6px}
+@media print{.vf-cause-opt input{display:none}.vf-cause-opt.on{background:#fde68a !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+/* Print preview: a real A4 sheet on a grey desk (same for the bonding, pull, whole shoe and material reports) */
+#dtr-print-modal-backdrop .dtr-modal-dialog{width:min(246mm,96vw) !important;max-width:none !important}
+#dtr-print-modal-backdrop .dtr-modal-body{background:#64748b;padding:18px 0}
+.dtr-a4-paper{width:210mm;min-height:297mm;box-sizing:border-box;padding:6mm;margin:0 auto;background:#fff;box-shadow:0 3px 18px rgba(0,0,0,.35)}
+.dtr-a4-paper #dtr-print-sheet-container .dtr-report-sheet,.dtr-a4-paper #dtr-print-sheet-container .vf-report-sheet{box-shadow:none;border:0}
+@media print{.dtr-a4-paper{box-shadow:none;padding:0;width:auto;min-height:0}}
+/* print sheet: the Mode of Failure / Possible Cause text must stay readable after the sheet is scaled to one page */
+.vf-eval-table .vf-mode-cell{font-size:10.5px;line-height:1.3}
+.vf-eval-table .vf-cause-cell{font-size:10.5px;line-height:1.35;white-space:normal}
+/* Bonding list: the Production Code column gets room for the whole code (e.g. VSP26080030-T) */
+.dtr-bshoe-table th:nth-child(2),.dtr-bshoe-table td:nth-child(2){min-width:150px;width:150px !important;white-space:nowrap;padding-left:10px}
+/* message boxes: save confirmation and delete-with-reason */
+.dtr-msgbox-bd{position:fixed;inset:0;z-index:10050;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px}
+.dtr-msgbox{background:#fff;border-radius:12px;width:min(420px,96vw);padding:26px 26px 22px;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.35)}
+.dtr-msgbox-ic{width:54px;height:54px;border-radius:50%;margin:0 auto 10px;background:#dcfce7;color:#16a34a;font-size:30px;font-weight:800;line-height:54px}
+.dtr-msgbox-ic.del{background:#fee2e2;color:#dc2626}
+.dtr-msgbox h3{margin:0 0 6px;font-size:18px}
+.dtr-msgbox p{margin:0 0 16px;color:#475569;font-size:13.5px;line-height:1.45}
+.dtr-msgbox p.ref{font-weight:700;color:#0f172a;margin-bottom:12px;word-break:break-word}
+.dtr-msgbox label{display:block;text-align:left;font-size:12.5px;margin-bottom:4px;color:#334155}
+.dtr-msgbox textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:6px;padding:8px 10px;font:inherit;font-size:13px;resize:vertical}
+.dtr-msgbox .err{color:#dc2626;font-size:12.5px;text-align:left;margin-top:6px}
+.dtr-msgbox .acts{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
+.dtr-btn-danger{background:#dc2626;color:#fff;border:1px solid #dc2626}
+.dtr-btn-danger:hover{background:#b91c1c}
+.dtr-btn-danger:disabled{opacity:.6}
+.dtr-del-btn{width:24px;height:24px;padding:0;border:1px solid transparent;border-radius:5px;background:transparent;color:#94a3b8;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.dtr-del-btn:hover{color:#dc2626;background:#fee2e2;border-color:#fecaca}.dtr-spin{width:44px;height:44px;margin:0 auto 12px;border:4px solid #e2e8f0;border-top-color:#2563eb;border-radius:50%;animation:dtrspin .8s linear infinite}
+@keyframes dtrspin{to{transform:rotate(360deg)}}
+/* fifth KPI: Shutdown Lines */
+.dtr-top-kpis{grid-template-columns:repeat(5,1fr)}
+.dtr-ico-shut{background:rgba(100,116,139,.16);color:#475569}
+.dtr-txt-shut{color:#475569}
+@media (max-width:1280px){.dtr-top-kpis{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:800px){.dtr-top-kpis{grid-template-columns:repeat(2,1fr)}}
+/* date filter (calendar button beside InterLink Sync) */
+.dtr-right-tools{display:flex;align-items:center;gap:8px}
+.dtr-datefilter{position:relative}
+.dtr-date-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 10px}
+.dtr-date-btn #dtr-date-label{font-size:12px}
+.dtr-date-btn.on{border-color:#2563eb;color:#1d4ed8;background:#eff6ff}
+.dtr-date-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:60;min-width:170px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 10px 28px rgba(15,23,42,.18);padding:5px;display:flex;flex-direction:column;gap:1px}
+.dtr-date-pop[hidden]{display:none}
+.dtr-date-pop button{all:unset;cursor:pointer;padding:7px 10px;border-radius:5px;font-size:13px;color:#0f172a}
+.dtr-date-pop button:hover{background:#f1f5f9}
+.dtr-date-pop button.on{background:#dbeafe;color:#1d4ed8;font-weight:700}
+.dtr-date-pick{display:flex;flex-direction:column;gap:3px;padding:7px 10px 5px;border-top:1px solid #e2e8f0;margin-top:3px;font-size:12px;color:#475569}
+.dtr-date-pick input{font:inherit;font-size:12.5px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:5px}
+tr[data-dfhide]{display:none !important}

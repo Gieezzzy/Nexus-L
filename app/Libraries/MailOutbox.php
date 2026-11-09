@@ -149,9 +149,9 @@ class MailOutbox
 
     /** the five formats: key => [title, the variables it knows] */
     public const TEMPLATES = [
-        'report_sent'      => ['Report sent (Send Report)', ['title', 'message', 'lab_ref', 'date', 'sender', 'images_html']],
-        'approval_request' => ['Approval needed (signatory link + QR)', ['name', 'about', 'link', 'minutes', 'qr_img']],
-        'test_alert'       => ['Test alert (fail / out of tolerance)', ['lab_ref', 'test', 'result', 'details', 'link', 'date']],
+        'report_sent'      => ['Report sent (Send Report)', ['title', 'message', 'lab_ref', 'result', 'date', 'sender', 'images_html', 'link']],
+        'approval_request' => ['Approval needed (signatory link + QR)', ['name', 'about', 'link', 'minutes', 'qr_img', 'date']],
+        'test_alert'       => ['Test alert (fail / out of tolerance)', ['lab_ref', 'test', 'result', 'details', 'link', 'date', 'action_required']],
         'daily_summary'    => ['Daily summary', ['date', 'total', 'passed', 'failed', 'pending', 'rows_html', 'link']],
         'general_notice'   => ['General notice / test e-mail', ['title', 'message', 'link', 'button_text', 'date']],
     ];
