@@ -198,3 +198,8 @@
 .ml-pill.failed { background: #fee2e2; color: #991b1b; }
 .ml-pill.queued, .ml-pill.sending { background: #fef9c3; color: #854d0e; }
 .ml-err { font-size: 11px; color: #991b1b; margin-top: 2px; }
+
+.ml-prev { width: min(760px, 94vw); height: 86vh; padding: 0; border: 1px solid rgba(148,163,184,.4); border-radius: 12px; }
+.ml-prev[open] { display: flex; flex-direction: column; }
+.ml-prevhead { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid rgba(148,163,184,.3); }
+.ml-prev iframe { flex: 1; width: 100%; border: 0; background: #fff; }

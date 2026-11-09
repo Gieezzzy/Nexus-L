@@ -2604,6 +2604,13 @@ class DtrController extends BaseController
                 . '</div></div></div></body></html>';
 
             // Queue it in the outbox (tbl_email_outbox): the Outlook Relay (or, when it is offline, the Server HTML Handler) sends it in FIFO order
+            // a design uploaded under Settings > E-mail > E-mail designs ("Report sent") replaces the built-in layout
+            $tplVars = ['title' => $subject, 'message' => $message, 'lab_ref' => (string) ($this->request->getPost('lab_ref') ?? ''), 'date' => date('Y-m-d H:i'),
+                'sender' => (string) ($this->auth->user()['name'] ?? ''), 'images_html' => $imgHtml];
+            $designed = \App\Libraries\MailOutbox::render('report_sent', $tplVars);
+            if ($designed !== null) {
+                $htmlBody = $designed;
+            }
             [$queueId, $queueErr] = \App\Libraries\MailOutbox::enqueue($to, $subject, $htmlBody, [
                 'source'      => 'DTR-Bonding',
                 'attachments' => ! empty($attachments) ? $attachments : null,

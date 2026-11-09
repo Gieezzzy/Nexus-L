@@ -369,9 +369,99 @@ class SettingsController extends BaseController
             return $this->deny();
         }
         $to = trim((string) (($this->request->getJSON(true) ?: [])['to'] ?? ''));
-        [$id, $err] = \App\Libraries\MailOutbox::enqueue($to, 'NEXUS-L test e-mail', '<p>This is a test e-mail from <b>NEXUS-L</b> (Settings &gt; E-mail), sent at ' . date('Y-m-d H:i:s') . '.</p><p>If you can read it, the Outlook Relay chain works.</p>', ['source' => 'NEXUS-L test']);
+        $vars = ['title' => 'NEXUS-L test e-mail', 'message' => 'This is a test e-mail from NEXUS-L (Settings > E-mail), sent at ' . date('Y-m-d H:i:s') . ". If you can read it, the e-mail chain works.", 'link' => site_url(), 'button_text' => 'Open NEXUS-L', 'date' => date('Y-m-d H:i')];
+        $body = \App\Libraries\MailOutbox::render('general_notice', $vars)
+            ?? '<p>This is a test e-mail from <b>NEXUS-L</b> (Settings &gt; E-mail), sent at ' . date('Y-m-d H:i:s') . '.</p><p>If you can read it, the Outlook Relay chain works.</p>';
+        [$id, $err] = \App\Libraries\MailOutbox::enqueue($to, \App\Libraries\MailOutbox::subjectOf('general_notice', $vars, 'NEXUS-L test e-mail'), $body, ['source' => 'NEXUS-L test']);
 
         return $this->json($id ? ['ok' => true, 'id' => $id] : ['ok' => false, 'message' => $err], $id ? 200 : 422);
+    }
+
+    /** GET settings/mail/templates: the five e-mail designs and which ones are uploaded (Admin only) */
+    public function mailTemplates()
+    {
+        if (! $this->isAdmin()) {
+            return $this->deny();
+        }
+        $out = [];
+        foreach (\App\Libraries\MailOutbox::TEMPLATES as $key => [$title, $vars]) {
+            $p = \App\Libraries\MailOutbox::templatePath($key);
+            $has = $p !== null && is_file($p);
+            $out[] = ['key' => $key, 'title' => $title, 'vars' => $vars, 'uploaded' => $has, 'size' => $has ? (int) filesize($p) : 0, 'when' => $has ? date('Y-m-d H:i', (int) filemtime($p)) : ''];
+        }
+
+        return $this->json(['ok' => true, 'templates' => $out]);
+    }
+
+    /** POST settings/mail/template (multipart: slot, file): saves the .html made by the Email Designer app */
+    public function mailTemplateUpload()
+    {
+        if (! $this->isAdmin()) {
+            return $this->deny();
+        }
+        $slot = (string) $this->request->getPost('slot');
+        $path = \App\Libraries\MailOutbox::templatePath($slot);
+        $file = $this->request->getFile('file');
+        if ($path === null) {
+            return $this->json(['ok' => false, 'message' => 'Unknown e-mail format.'], 422);
+        }
+        if (! $file || ! $file->isValid()) {
+            return $this->json(['ok' => false, 'message' => 'Choose the .html file exported from the Email Designer.'], 422);
+        }
+        if ($file->getSize() > 8 * 1024 * 1024) {
+            return $this->json(['ok' => false, 'message' => 'The file is over 8 MB (reduce the pictures).'], 422);
+        }
+        $html = (string) file_get_contents($file->getTempName());
+        if (! preg_match('/<(html|table|body)\b/i', $html)) {
+            return $this->json(['ok' => false, 'message' => 'That does not look like an HTML e-mail.'], 422);
+        }
+        if (preg_match('/<script\b|\son[a-z]+\s*=|javascript:/i', $html)) {
+            return $this->json(['ok' => false, 'message' => 'The design contains a script. Scripts are not allowed in e-mail.'], 422);
+        }
+        file_put_contents($path, $html);
+
+        return $this->json(['ok' => true, 'size' => strlen($html)]);
+    }
+
+    /** POST settings/mail/template/delete {slot}: back to the built-in e-mail */
+    public function mailTemplateDelete()
+    {
+        if (! $this->isAdmin()) {
+            return $this->deny();
+        }
+        $slot = (string) (($this->request->getJSON(true) ?: [])['slot'] ?? '');
+        $path = \App\Libraries\MailOutbox::templatePath($slot);
+        if ($path !== null && is_file($path)) {
+            @unlink($path);
+        }
+
+        return $this->json(['ok' => true]);
+    }
+
+    /** GET settings/mail/template/preview?slot=: the design with sample words, for the iframe on the Settings page */
+    public function mailTemplatePreview()
+    {
+        if (! $this->isAdmin()) {
+            return $this->deny();
+        }
+        $slot = (string) $this->request->getGet('slot');
+        $sample = [
+            'title' => 'Shoe Bonding Report', 'message' => "Dear team,\nPlease find the result below.", 'lab_ref' => 'BN-26-0412', 'date' => date('Y-m-d H:i'), 'sender' => 'QC Lab',
+            'name' => 'Juan Dela Cruz', 'about' => 'Bonding report BN-26-0412', 'link' => site_url(), 'minutes' => '30',
+            'test' => 'Shoe Bonding (U60)', 'result' => 'FAIL', 'details' => 'Peel strength 2.1 N/mm, minimum 3.0 N/mm.',
+            'total' => '42', 'passed' => '38', 'failed' => '2', 'pending' => '2', 'button_text' => 'Open NEXUS-L',
+            'images_html' => '<div style="text-align:center;color:#64748b;padding:18px;border:1px dashed #cbd5e1">[report picture appears here]</div>',
+            'qr_img' => '<div style="display:inline-block;width:160px;height:160px;border:1px solid #cbd5e1;line-height:160px;color:#64748b">QR code</div>',
+            'rows_html' => '<div style="color:#64748b">[table of the day\'s reports appears here]</div>',
+        ];
+        $html = \App\Libraries\MailOutbox::render($slot, $sample);
+        if ($html === null) {
+            return $this->response->setStatusCode(404)->setBody('No design uploaded for this e-mail yet.');
+        }
+
+        return $this->response->setHeader('Content-Type', 'text/html; charset=utf-8')
+            ->setHeader('Content-Security-Policy', "sandbox; default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline'")
+            ->setBody($html);
     }
 
     /** GET settings/relay-token: the saved Outlook Relay app token (Admin only). POST: makes a new one and saves it. */

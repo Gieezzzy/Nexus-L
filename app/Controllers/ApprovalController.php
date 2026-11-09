@@ -375,7 +375,10 @@ class ApprovalController extends BaseController
                     . '<p><img src="' . $qr . '" width="200" height="200" alt="QR code to open the approval page" style="border:1px solid #e5e7eb;border-radius:8px"></p>'
                     . "<p style=\"font-size:13px;color:#4b5563\">The link works once and expires in {$minutes} minutes. Open it on the company Wi-Fi. If it expired, ask the lab to send the report for approval again.</p>"
                     . '<p style="font-size:12px;color:#6b7280">NEXUS-L Laboratory System - this message was sent automatically.</p></div>';
-                \App\Libraries\MailOutbox::enqueue($to, 'NEXUS-L: report approval needed - ' . $about, $html, ['source' => 'NEXUS-L approval']);
+                $vars = ['name' => trim((string) $sr['full_name']), 'about' => $about, 'link' => $link, 'minutes' => (string) $minutes,
+                    'qr_img' => '<img src="' . $qr . '" width="200" height="200" alt="QR code to open the approval page" style="border:1px solid #e5e7eb">'];
+                $designed = \App\Libraries\MailOutbox::render('approval_request', $vars);
+                \App\Libraries\MailOutbox::enqueue($to, $designed !== null ? \App\Libraries\MailOutbox::subjectOf('approval_request', $vars, 'NEXUS-L: report approval needed - ' . $about) : 'NEXUS-L: report approval needed - ' . $about, $designed ?? $html, ['source' => 'NEXUS-L approval']);
             }
         } catch (\Throwable $e) {
             log_message('error', 'Approval e-mail not queued: ' . $e->getMessage());

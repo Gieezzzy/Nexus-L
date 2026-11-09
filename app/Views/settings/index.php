@@ -171,6 +171,10 @@ $field = static function (array $r): string {
             <button type="button" class="nx-btn" id="ml-test">Send test e-mail</button>
             <span class="st-msg" id="st-mail-msg"></span>
         </div>
+        <h4 class="su-h4">E-mail designs</h4>
+        <p class="muted sm">Design the five e-mails in the <b>NEXUS-L Email Designer</b> (Windows program), press <b>Export HTML</b>, then upload the file here. Until one is uploaded, NEXUS-L sends its built-in layout. <b>Report sent</b>, <b>Approval needed</b> and <b>General notice</b> (the test e-mail) are used now; <b>Test alert</b> and <b>Daily summary</b> are ready for the triggers that will use them, and can be sent by API (<code>mail-relay/enqueue</code> with <code>template</code> and <code>vars</code>).</p>
+        <div class="ml-list" id="ml-tpl"><span class="muted sm">Loading...</span></div>
+        <dialog id="ml-prev" class="ml-prev"><div class="ml-prevhead"><b id="ml-prevtitle">Preview</b><button type="button" class="nx-btn" id="ml-prevclose">Close</button></div><iframe id="ml-prevframe" sandbox title="E-mail preview"></iframe></dialog>
         <h4 class="su-h4">Latest e-mails</h4>
         <div class="ml-list" id="ml-list"><span class="muted sm">Loading...</span></div>
     </div>

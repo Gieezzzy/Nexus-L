@@ -114,6 +114,46 @@
           + (m.status === 'failed' || (m.status === 'queued' && m.next_attempt_at) ? '<button type="button" class="nx-btn" data-retry="' + m.id + '">Retry now</button>' : '') + '</td></tr>').join('') + '</tbody></table>' : '<span class="muted sm">No e-mail yet.</span>';
       } catch (e) { mlBox.innerHTML = '<span class="st-bad">' + esc(e.message) + '</span>'; }
     };
+    // ---- the five e-mail designs: upload, preview, remove
+    const tpl = $('#ml-tpl');
+    const loadTpl = async () => {
+      try {
+        const j = await api('settings/mail/templates');
+        tpl.innerHTML = '<table class="ml-tbl"><thead><tr><th>E-mail</th><th>Variables</th><th>Design</th><th></th></tr></thead><tbody>' + (j.templates || []).map((t) =>
+          '<tr><td><b>' + esc(t.title) + '</b></td><td class="muted">' + t.vars.map((v) => '{{' + esc(v) + '}}').join(' ') + '</td><td>' + (t.uploaded ? '<span class="ml-pill sent">uploaded</span> <span class="muted sm">' + esc(t.when) + ' - ' + Math.round(t.size / 1024) + ' KB</span>' : '<span class="ml-pill">built-in layout</span>') + '</td><td style="white-space:nowrap">'
+          + '<label class="nx-btn" style="cursor:pointer">Upload .html<input type="file" accept=".html,.htm,text/html" data-up="' + esc(t.key) + '" hidden></label> '
+          + (t.uploaded ? '<button type="button" class="nx-btn" data-prev="' + esc(t.key) + '" data-title="' + esc(t.title) + '">Preview</button> <button type="button" class="nx-btn" data-rm="' + esc(t.key) + '">Remove</button>' : '') + '</td></tr>').join('') + '</tbody></table><span class="st-msg" id="ml-tpl-msg"></span>';
+      } catch (e) { tpl.innerHTML = '<span class="st-bad">' + esc(e.message) + '</span>'; }
+    };
+    tpl.addEventListener('change', async (e) => {
+      const f = e.target.closest('[data-up]'); if (!f || !f.files.length) return;
+      const msg = $('#ml-tpl-msg');
+      const fd = new FormData(); fd.append('slot', f.dataset.up); fd.append('file', f.files[0]);
+      say(msg, 'Uploading...');
+      try {
+        const root = $('#st-root'); const csrf = document.querySelector('meta[name="X-CSRF-TOKEN"]');
+        const r = await fetch(root.dataset.base.replace(/\/$/, '') + '/settings/mail/template', { method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf ? csrf.content : '' }, body: fd });
+        const j = await r.json().catch(() => ({}));
+        if (j.csrf && csrf) csrf.content = j.csrf;
+        await loadTpl();
+        say($('#ml-tpl-msg'), r.ok && j.ok ? 'Design uploaded.' : (j.message || 'Upload failed (' + r.status + ').'), r.ok && j.ok ? 'ok' : 'bad');
+      } catch (er) { say(msg, er.message, 'bad'); }
+    });
+    tpl.addEventListener('click', async (e) => {
+      const p = e.target.closest('[data-prev]'), rm = e.target.closest('[data-rm]');
+      if (p) {
+        $('#ml-prevtitle').textContent = p.dataset.title;
+        $('#ml-prevframe').src = $('#st-root').dataset.base.replace(/\/$/, '') + '/settings/mail/template/preview?slot=' + encodeURIComponent(p.dataset.prev) + '&t=' + Date.now();
+        $('#ml-prev').showModal();
+      } else if (rm) {
+        if (!confirm('Remove this design? NEXUS-L goes back to its built-in layout for this e-mail.')) return;
+        try { await api('settings/mail/template/delete', { slot: rm.dataset.rm }); } catch (er) { /* shown by the refresh */ }
+        loadTpl();
+      }
+    });
+    $('#ml-prevclose').addEventListener('click', () => { $('#ml-prev').close(); $('#ml-prevframe').src = 'about:blank'; });
+    loadTpl();
+
     list.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-retry]'); if (!b) return;
       b.disabled = true;

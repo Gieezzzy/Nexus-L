@@ -331,6 +331,10 @@ $routes->group('', ['filter' => 'auth:admin'], static function (RouteCollection 
     $routes->get('settings/mail/status', 'SettingsController::mailStatus');
     $routes->post('settings/mail/retry', 'SettingsController::mailRetry');
     $routes->post('settings/mail/test', 'SettingsController::mailTest');
+    $routes->get('settings/mail/templates', 'SettingsController::mailTemplates');
+    $routes->post('settings/mail/template', 'SettingsController::mailTemplateUpload');
+    $routes->post('settings/mail/template/delete', 'SettingsController::mailTemplateDelete');
+    $routes->get('settings/mail/template/preview', 'SettingsController::mailTemplatePreview');
     $routes->get('settings/relay-token', 'SettingsController::relayToken');
     $routes->post('settings/relay-token', 'SettingsController::relayToken');
     $routes->post('settings/ai/seed', 'SettingsController::seedAiKnowledge');

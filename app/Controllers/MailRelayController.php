@@ -218,6 +218,17 @@ class MailRelayController extends BaseController
         }
 
         $j = $this->request->getJSON(true) ?: [];
+        // a design from the Email Designer: {"template": "general_notice", "vars": {"title": "...", "message": "..."}}
+        if (! empty($j['template'])) {
+            $vars = is_array($j['vars'] ?? null) ? $j['vars'] : [];
+            $html = MailOutbox::render((string) $j['template'], $vars);
+            if ($html === null) {
+                return $this->fail('No design is uploaded for the template "' . $j['template'] . '" (Settings > E-mail > E-mail designs).');
+            }
+            $j['body']    = $html;
+            $j['subject'] = trim((string) ($j['subject'] ?? '')) !== '' ? $j['subject'] : MailOutbox::subjectOf((string) $j['template'], $vars, 'NEXUS-L');
+            $j['is_html'] = 1;
+        }
         [$id, $err] = MailOutbox::enqueue(
             (string) ($j['to'] ?? ($j['to_address'] ?? '')),
             (string) ($j['subject'] ?? ''),

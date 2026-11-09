@@ -144,4 +144,88 @@ class MailOutbox
             SystemSettings::set('mail.relay_info', (string) json_encode($info), 'relay');
         }
     }
+
+    // ------------------------------------------------------------------------------------------------ e-mail designs (made in the Email Designer app)
+
+    /** the five formats: key => [title, the variables it knows] */
+    public const TEMPLATES = [
+        'report_sent'      => ['Report sent (Send Report)', ['title', 'message', 'lab_ref', 'date', 'sender', 'images_html']],
+        'approval_request' => ['Approval needed (signatory link + QR)', ['name', 'about', 'link', 'minutes', 'qr_img']],
+        'test_alert'       => ['Test alert (fail / out of tolerance)', ['lab_ref', 'test', 'result', 'details', 'link', 'date']],
+        'daily_summary'    => ['Daily summary', ['date', 'total', 'passed', 'failed', 'pending', 'rows_html', 'link']],
+        'general_notice'   => ['General notice / test e-mail', ['title', 'message', 'link', 'button_text', 'date']],
+    ];
+
+    public static function templateDir(): string
+    {
+        $d = WRITEPATH . 'email-templates';
+        if (! is_dir($d)) {
+            @mkdir($d, 0775, true);
+        }
+
+        return $d;
+    }
+
+    public static function templatePath(string $slot): ?string
+    {
+        return isset(self::TEMPLATES[$slot]) ? self::templateDir() . DIRECTORY_SEPARATOR . $slot . '.html' : null;
+    }
+
+    public static function hasTemplate(string $slot): bool
+    {
+        $p = self::templatePath($slot);
+
+        return $p !== null && is_file($p);
+    }
+
+    /**
+     * The HTML of a design with its {{variables}} filled in, or null when no design was uploaded for that slot.
+     * A variable ending in _html or _img is HTML (trusted, built by NEXUS-L); every other one is plain text: escaped, line breaks kept.
+     *
+     * @param array<string,scalar|null> $vars
+     */
+    public static function render(string $slot, array $vars): ?string
+    {
+        $p = self::templatePath($slot);
+        if ($p === null || ! is_file($p)) {
+            return null;
+        }
+        $html = (string) file_get_contents($p);
+
+        return self::fill($html, $vars);
+    }
+
+    /** @param array<string,scalar|null> $vars */
+    public static function fill(string $html, array $vars): string
+    {
+        return (string) preg_replace_callback('/\{\{([a-z0-9_]+)\}\}/i', static function (array $m) use ($vars): string {
+            $k = strtolower($m[1]);
+            if (! array_key_exists($k, $vars) || $vars[$k] === null) {
+                return '';
+            }
+            $v = (string) $vars[$k];
+            if (str_ends_with($k, '_html') || str_ends_with($k, '_img')) {
+                return $v;
+            }
+
+            return nl2br(htmlspecialchars($v, ENT_QUOTES, 'UTF-8'), false);
+        }, $html);
+    }
+
+    /** the subject written in the design's <title> ({{variables}} filled in), or the fallback */
+    public static function subjectOf(string $slot, array $vars, string $fallback): string
+    {
+        $p = self::templatePath($slot);
+        if ($p === null || ! is_file($p)) {
+            return $fallback;
+        }
+        if (preg_match('/<title>(.*?)<\/title>/is', (string) file_get_contents($p), $m)) {
+            $t = trim(html_entity_decode(strip_tags(self::fill($m[1], array_map(static fn ($v) => is_string($v) ? $v : $v, $vars))), ENT_QUOTES, 'UTF-8'));
+            if ($t !== '') {
+                return $t;
+            }
+        }
+
+        return $fallback;
+    }
 }
