@@ -58,24 +58,6 @@
     });
   }
 
-  // ---- Notifier app token: show / generate / copy -------------------------------------------------------------------------------
-  const nk = $('#st-notify-token');
-  if (nk) {
-    const nmsg = $('#st-notify-msg');
-    $('#st-notify-show').addEventListener('click', async () => {
-      try { const j = await api('settings/notifier-token'); nk.value = j.token || ''; say(nmsg, j.token ? '' : 'No token yet - press Generate.', j.token ? '' : 'bad'); } catch (e) { say(nmsg, e.message, 'bad'); }
-    });
-    $('#st-notify-gen').addEventListener('click', async () => {
-      if (nk.dataset.had !== '0' && !confirm('Generate a new token? The Notifier app stops working until the new token is typed into it.')) return;
-      try { const j = await api('settings/notifier-token', {}); nk.value = j.token; nk.dataset.had = '1'; say(nmsg, 'New token generated and saved. Copy it into the app.', 'ok'); } catch (e) { say(nmsg, e.message, 'bad'); }
-    });
-    $('#st-notify-copy').addEventListener('click', async () => {
-      if (!nk.value) { say(nmsg, 'Press Show or Generate first.', 'bad'); return; }
-      try { await navigator.clipboard.writeText(nk.value); } catch (e) { nk.select(); document.execCommand('copy'); }
-      say(nmsg, 'Copied.', 'ok');
-    });
-  }
-
   // ---- AI Assistant & Bot Engine test ------------------------------------------------------------------------------------------
   $('#st-ai-test')?.addEventListener('click', async () => {
     const msg = $('#st-ai-msg');

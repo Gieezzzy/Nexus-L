@@ -187,12 +187,103 @@
     if (document.querySelector('meta[name="base-url"]') && !/\/login\b/.test(location.pathname)) { tick(); setInterval(tick, 20000); }
   })();
 
-  // ---- InterLink background service: the toast for a finished submission, wherever the user is in NEXUS-L ----
+  // ---- InterLink background service: unique Application No. toast + chat notification wherever the user is in NEXUS-L ----
   (() => {
     const base = (document.querySelector('meta[name="base-url"]')?.content || '').replace(/\/?$/, '/');
     if (!base || /\/login\b/.test(location.pathname)) return;
     let cursor = '';
     let fastUntil = 0;                       // after a send: look every 3 s for a few minutes
+
+    const playAppNoChime = () => {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        [523.25, 659.25, 783.99, 1046.5].forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          const t0 = ctx.currentTime + idx * 0.09;
+          osc.frequency.setValueAtTime(freq, t0);
+          gain.gain.setValueAtTime(0.16, t0);
+          gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.28);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(t0);
+          osc.stop(t0 + 0.29);
+        });
+      } catch (_) {}
+    };
+
+    const showInterlinkAppToast = (ev) => {
+      playAppNoChime();
+      const escHtml = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      const appNo = String(ev.application_no || '').trim();
+      const tpl = String(ev.template || 'VF eTRF').trim();
+      const labRef = String(ev.lab_ref_no || '').trim();
+      const chatUrl = base + 'inbox?chat=' + encodeURIComponent(ev.chat_key || 'n:interlink_etrf');
+
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+          const n = new Notification(`InterLink Application No: ${appNo}`, {
+            body: `THANK YOU! For your online job submission\nTemplate: ${tpl}${labRef ? `\nLabRef: ${labRef}` : ''}`,
+            tag: 'nxl-il-app-' + appNo,
+          });
+          n.onclick = () => { window.focus(); location.href = chatUrl; };
+        } catch (_) {}
+      }
+
+      let host = document.getElementById('nx-il-app-toast-host');
+      if (!host) {
+        host = document.createElement('div');
+        host.id = 'nx-il-app-toast-host';
+        host.style.cssText = 'position:fixed;top:18px;right:18px;z-index:10050;display:flex;flex-direction:column;gap:10px;max-width:min(420px,calc(100vw - 28px));pointer-events:none';
+        document.body.appendChild(host);
+      }
+
+      const card = document.createElement('div');
+      card.style.cssText = 'pointer-events:auto;background:#ffffff;border:2px solid #eab308;border-radius:14px;box-shadow:0 16px 38px rgba(15,23,42,.24);overflow:hidden;font-family:system-ui,-apple-system,sans-serif;color:#0f172a;animation:nxIlToastIn .22s ease-out';
+      card.innerHTML = `
+        <div style="background:linear-gradient(135deg,#facc15 0%,#eab308 100%);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid #ca8a04">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:#0f172a;color:#facc15;font-weight:800;font-size:13px">✓</span>
+            <div>
+              <div style="font-weight:900;font-size:13.5px;letter-spacing:.03em;color:#0f172a">THANK YOU! INTERLINK SUBMITTED</div>
+              <div style="font-size:11px;font-weight:600;color:#1e293b">For your online job submission · NormalForm [10000]</div>
+            </div>
+          </div>
+          <button type="button" data-il-close style="border:none;background:rgba(15,23,42,.12);color:#0f172a;width:26px;height:26px;border-radius:7px;cursor:pointer;font-size:16px;font-weight:700;line-height:1">&times;</button>
+        </div>
+        <div style="padding:12px 14px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b">Generated Application No.</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px;padding:8px 11px;background:#fefce8;border:1.5px dashed #eab308;border-radius:9px">
+            <code style="font-size:19px;font-weight:900;color:#0f172a;letter-spacing:.04em">${escHtml(appNo)}</code>
+            <button type="button" data-il-copy style="border:1px solid #ca8a04;background:#facc15;color:#0f172a;font-weight:700;font-size:11.5px;padding:4px 10px;border-radius:6px;cursor:pointer">Copy App No.</button>
+          </div>
+          <div style="margin-top:8px;font-size:12.5px;color:#334155;line-height:1.45">
+            <div><b>Template:</b> ${escHtml(tpl)}</div>
+            ${labRef ? `<div><b>Lab Reference:</b> <code>${escHtml(labRef)}</code></div>` : ''}
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;padding-top:9px;border-top:1px solid #e2e8f0">
+            <a href="${escHtml(chatUrl)}" style="text-decoration:none;background:#1d4ed8;color:#fff;font-weight:700;font-size:12px;padding:6px 12px;border-radius:7px;display:inline-flex;align-items:center;gap:5px">💬 Open InterLink Chat</a>
+            <span style="font-size:11px;color:#64748b">Saved to Chat &amp; DTR</span>
+          </div>
+        </div>
+      `;
+      host.appendChild(card);
+
+      const close = () => { card.style.opacity = '0'; card.style.transition = 'opacity .2s'; setTimeout(() => card.remove(), 220); };
+      card.querySelector('[data-il-close]')?.addEventListener('click', close);
+      const copyBtn = card.querySelector('[data-il-copy]');
+      copyBtn?.addEventListener('click', () => {
+        if (navigator.clipboard) navigator.clipboard.writeText(appNo).catch(() => {});
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = 'Copy App No.'; }, 2000);
+      });
+      setTimeout(close, 28000);
+    };
+    window.nxInterlinkAppToast = showInterlinkAppToast;
+
     const tick = () => {
       if (document.hidden) return;
       fetch(base + 'interlink/service/feed' + (cursor ? '?after=' + encodeURIComponent(cursor) : ''), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
@@ -200,7 +291,11 @@
         .then((j) => {
           if (!j || !j.ok) return;
           (j.events || []).forEach((ev) => {
-            if (window.nxToast) window.nxToast(ev.text, ev.kind === 'success' ? 'success' : (ev.kind === 'info' ? 'info' : 'error'), ev.kind === 'info' ? 6000 : 12000);
+            if (ev.kind === 'success' && (ev.type === 'etrf_submitted' || /^A\d{7,12}$/i.test(String(ev.application_no || '')))) {
+              showInterlinkAppToast(ev);
+            } else if (window.nxToast) {
+              window.nxToast(ev.text, ev.kind === 'success' ? 'success' : (ev.kind === 'info' ? 'info' : 'error'), ev.kind === 'info' ? 6000 : 12000);
+            }
             window.dispatchEvent(new CustomEvent('nxl:interlink-service', { detail: ev }));
           });
           cursor = j.cursor;

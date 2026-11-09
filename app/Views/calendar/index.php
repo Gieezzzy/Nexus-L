@@ -55,10 +55,6 @@ $u = service('auth')->user();
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                     <span>Week</span>
                 </button>
-                <button type="button" class="cal-toggle-btn" data-view="day" role="radio" aria-checked="false">
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="5" width="16" height="15" rx="2"/><line x1="4" y1="10" x2="20" y2="10"/><line x1="9" y1="3" x2="9" y2="7"/><line x1="15" y1="3" x2="15" y2="7"/></svg>
-                    <span>Day</span>
-                </button>
             </div>
             <button type="button" class="cal-btn-glass" id="cal-refresh" title="Reload live events">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7"/></svg>
@@ -192,11 +188,6 @@ $u = service('auth')->user();
                 <!-- 7 Day Columns (Monday to Sunday) populated dynamically by calendar-monitoring.js -->
             </div>
         </div>
-    </div>
-
-    <!-- MAIN VIEW 3: DAY BOARD (one day, one column per kind of test) -->
-    <div class="cal-view-container hidden" id="cal-day-view">
-        <div class="cal-day-board" id="cal-day-grid" aria-label="Day view"></div>
     </div>
 
     <!-- Liquid Glass Drilldown Slide-Over Drawer (On click of date or card) -->

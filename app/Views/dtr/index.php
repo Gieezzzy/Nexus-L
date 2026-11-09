@@ -1196,7 +1196,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                             </select>
                         </div>
                         <div class="vf-sheet-cell"><label>* Overall Result</label><input type="text" name="Result" id="bf_Result" class="bold mono dtr-rate-inp" readonly></div>
-                        <div class="vf-sheet-cell"><label>Mode of Failure(s) <span class="cn">失败的方式</span> <small style="font-weight:400;color:#b45309" title="A Fail or Tolerable result cannot be saved without it">(needed for Fail / Tolerable)</small></label><input type="text" name="ModeOfFailure" id="bf_ModeOfFailure"></div>
+                        <div class="vf-sheet-cell"><label>Mode of Failure(s) <span class="cn">失败的方式</span></label><input type="text" name="ModeOfFailure" id="bf_ModeOfFailure"></div>
                         <div class="vf-sheet-cell"><label>Possible Cause(s) <span class="cn">可能的原因</span></label><input type="text" name="PossibleCause" id="bf_PossibleCause"></div>
                     </div>
                     <script>

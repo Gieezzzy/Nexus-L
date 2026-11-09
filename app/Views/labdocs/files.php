@@ -5,8 +5,18 @@
 /** @var array $crumbs */
 /** @var string $q */
 /** @var string $base */
-$kind = ['pdf' => 'PDF', 'jpg' => 'Picture', 'jpeg' => 'Picture', 'png' => 'Picture', 'gif' => 'Picture', 'xlsx' => 'Excel', 'xls' => 'Excel', 'doc' => 'Word', 'docx' => 'Word', 'zip' => 'Zip'];
-$hue  = ['pdf' => 4, 'jpg' => 164, 'jpeg' => 164, 'png' => 164, 'gif' => 164, 'xlsx' => 132, 'xls' => 132, 'doc' => 212, 'docx' => 212, 'zip' => 42];
+$kind = [
+    'pdf' => 'PDF', 'jpg' => 'Picture', 'jpeg' => 'Picture', 'png' => 'Picture', 'gif' => 'Picture', 'webp' => 'Picture', 'bmp' => 'Picture', 'svg' => 'Picture',
+    'xlsx' => 'Excel', 'xls' => 'Excel', 'xlsm' => 'Excel', 'csv' => 'CSV', 'txt' => 'Text',
+    'doc' => 'Word', 'docx' => 'Word', 'ppt' => 'PowerPoint', 'pptx' => 'PowerPoint',
+    'htm' => 'HTML', 'html' => 'HTML', 'zip' => 'Zip', 'rar' => 'Archive'
+];
+$hue  = [
+    'pdf' => 4, 'jpg' => 164, 'jpeg' => 164, 'png' => 164, 'gif' => 164, 'webp' => 164, 'bmp' => 164, 'svg' => 164,
+    'xlsx' => 132, 'xls' => 132, 'xlsm' => 132, 'csv' => 142, 'txt' => 200,
+    'doc' => 212, 'docx' => 212, 'ppt' => 24, 'pptx' => 24,
+    'htm' => 180, 'html' => 180, 'zip' => 42, 'rar' => 42
+];
 $size = static function (int $b): string {
     return $b >= 1048576 ? round($b / 1048576, 1) . ' MB' : max(1, (int) round($b / 1024)) . ' KB';
 };
@@ -57,7 +67,7 @@ $size = static function (int $b): string {
             $isPic = in_array($f['ext'], ['pdf', 'jpg', 'jpeg', 'png', 'gif'], true);
             ?>
             <article class="vm-card fl-card" data-id="<?= (int) $f['id'] ?>" data-name="<?= esc($f['name'], 'attr') ?>"<?= $fi >= $PAGE ? ' hidden' : '' ?> style="--h:<?= $hue[$f['ext']] ?? 215 ?>"<?php if ($f['thumb']): ?> data-prev="<?= esc($f['thumb'], 'attr') ?>"<?php endif ?>>
-                <a class="vm-main fl-main" href="<?= esc($f['url'], 'attr') ?>"<?= $f['open'] ? '' : ' download' ?> aria-label="Open <?= esc($f['name'], 'attr') ?>">
+                <a class="vm-main fl-main" href="<?= esc($f['url'], 'attr') ?>" aria-label="Open <?= esc($f['name'], 'attr') ?>">
                     <?php if ($f['thumb']): ?><span class="fl-thumb"><img src="<?= esc($f['thumb'], 'attr') ?>" alt="" loading="lazy"></span>
                     <?php else: ?><span class="fl-thumb fl-none"><b><?= esc($k) ?></b></span><?php endif ?>
                     <span class="vm-name fl-name"><?= esc($f['name']) ?></span>

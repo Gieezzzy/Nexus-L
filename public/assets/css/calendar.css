@@ -1257,15 +1257,3 @@ button.cal-dstat-item.is-active .dstat-num, button.cal-dstat-item.is-active .dst
 @media (prefers-reduced-motion: reduce) {
   .cal-skel-cell .nx-shimmer, .cal-skel-card .nx-shimmer, .cal-skel-dcard .nx-shimmer, .cal-week-col .nx-shimmer, .cal-skel-grid .nx-shimmer, .cal-kpis.is-loading .cal-kpi-val { animation: none; }
 }
-
-
-/* ---- Day view ---- */
-.cal-day-board { display: flex; flex-direction: column; gap: 12px; }
-.cal-day-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 10px 16px; border-radius: 12px; background: rgba(255, 255, 255, .8); border: 1px solid rgba(226, 232, 240, .9); font-size: 13px; color: #475569; }
-.cal-day-strip b { font-size: 17px; color: #0f172a; margin-right: 3px; }
-.cal-day-strip .ok b { color: #059669; } .cal-day-strip .warn b { color: #d97706; } .cal-day-strip .bad b { color: #dc2626; }
-.cal-day-strip .cal-btn-glass { margin-left: auto; }
-.cal-day-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
-.cal-day-cols .cal-week-col { min-width: 0; }
-.cal-day-cols .cal-week-cards-stack { max-height: 62vh; overflow-y: auto; }
-@media (max-width: 900px) { .cal-day-cols { grid-template-columns: 1fr; } }

@@ -156,3 +156,9 @@ tools/interlink-service/appsettings.Local.json
 /writable/git_push*
 tools/interlink-service/installer/output/
 /writable/bot-exports/
+
+# generated lab document images, local backups and caches
+public/assets/labdocs/
+_backup_*/
+_updates/
+ai-service/rasa/.rasa/

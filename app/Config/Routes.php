@@ -45,17 +45,6 @@ $routes->get('brain-trainer/bench', 'BrainTrainerController::bench');
 $routes->post('brain-trainer/start', 'BrainTrainerController::start');
 $routes->post('brain-trainer/stop', 'BrainTrainerController::stop');
 $routes->post('brain-trainer/resume', 'BrainTrainerController::resume');
-// NEXUS-L Notifier Windows app (token in X-Notifier-Token); the ack link needs no sign-in
-$routes->get('notifier/ping', 'NotifierController::ping');
-$routes->get('notifier/directory', 'NotifierController::directory');
-$routes->get('notifier/rules', 'NotifierController::rules');
-$routes->post('notifier/rule', 'NotifierController::ruleSave');
-$routes->post('notifier/rule/delete', 'NotifierController::ruleDelete');
-$routes->get('notifier/events', 'NotifierController::events');
-$routes->post('notifier/send', 'NotifierController::send');
-$routes->get('notifier/unacked', 'NotifierController::unacked');
-$routes->get('notifier/log', 'NotifierController::log');
-$routes->get('notifier/ack/(:segment)', 'NotifierController::ack/$1');
 $routes->post('photo/(:segment)/claim', 'PhotoLinkController::claim/$1');
 $routes->post('photo/(:segment)/release', 'PhotoLinkController::release/$1');
 
@@ -220,21 +209,6 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('labdocs/(:segment)', 'LabDocsController::show/$1');
     $routes->post('labdocs/(:segment)/save', 'LabDocsController::save/$1');
 
-    // Calendar Monitoring Suite (Aggregated Bonding, Material, Whole Shoe Calendar)
-    // Quality Insights (line map, failure modes, supplier scorecard)
-    $routes->get('quality-insights', 'QualityInsightsController::index', ['as' => 'quality-insights']);
-    $routes->get('quality-insights/line-map', 'QualityInsightsController::lineMap');
-    $routes->get('quality-insights/line-details', 'QualityInsightsController::lineDetails');
-    $routes->get('quality-insights/failures', 'QualityInsightsController::failures');
-    $routes->get('quality-insights/failure-details', 'QualityInsightsController::failureDetails');
-    $routes->get('quality-insights/suppliers', 'QualityInsightsController::suppliers');
-    $routes->get('quality-insights/supplier-details', 'QualityInsightsController::supplierDetails');
-    $routes->get('calendar-monitoring', 'CalendarMonitoringController::index', ['as' => 'calendar-monitoring']);
-    $routes->get('calendar', 'CalendarMonitoringController::index');
-    $routes->get('calendar-monitoring/events', 'CalendarMonitoringController::events');
-    $routes->get('calendar-monitoring/day-details', 'CalendarMonitoringController::dayDetails');
-    $routes->get('calendar-monitoring/quick-stats', 'CalendarMonitoringController::quickStats');
-
     // Material Testing & Cyclic Monitoring Suite (Marc)
     $routes->get('materials', 'MaterialsController::index', ['as' => 'materials']);
     $routes->get('material-testing', 'MaterialsController::index');
@@ -288,10 +262,6 @@ $routes->group('', ['filter' => 'auth:admin'], static function (RouteCollection 
     $routes->post('settings/roles/matrix', 'SettingsController::matrixSave');
     $routes->post('settings/service/test', 'SettingsController::testService');
     $routes->post('settings/ai/test', 'SettingsController::testAi');
-    $routes->get('settings/trainer-token', 'SettingsController::trainerToken');
-    $routes->post('settings/trainer-token', 'SettingsController::trainerToken');
-    $routes->get('settings/notifier-token', 'SettingsController::notifierToken');
-    $routes->post('settings/notifier-token', 'SettingsController::notifierToken');
     $routes->post('settings/ai/seed', 'SettingsController::seedAiKnowledge');
     $routes->post('settings/git/sync', 'SettingsController::gitSync');
     $routes->post('settings/db/test', 'SettingsController::dbTest');
@@ -299,6 +269,8 @@ $routes->group('', ['filter' => 'auth:admin'], static function (RouteCollection 
     $routes->post('settings/transfer/start', 'SettingsController::transferStart');
     $routes->get('settings/transfer/status', 'SettingsController::transferStatus');
     $routes->get('designer', 'DesignerController::index', ['as' => 'designer']);
+    $routes->get('settings/trainer-token', 'SettingsController::trainerToken');
+    $routes->post('settings/trainer-token', 'SettingsController::trainerToken');
     $routes->post('designer/save', 'DesignerController::save');
     $routes->post('designer/reset', 'DesignerController::reset');
     $routes->get('designer/maps', 'DesignerController::maps');

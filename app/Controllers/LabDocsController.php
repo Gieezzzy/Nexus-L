@@ -507,7 +507,8 @@ class LabDocsController extends BaseController
         if ($path === null) {
             return $this->response->setStatusCode(404)->setBody('The file is not in the cache; run php spark vfm:import again.');
         }
-        if ($d['kind'] === 'xlsx') {
+        $kind = strtolower((string) ($d['kind'] ?? ''));
+        if ($kind === 'xlsx') {
             $sheets = [];
             foreach (array_slice(LabDocXlsx::sheetNames($path), 0, 8) as $i => $name) {
                 try {
@@ -522,7 +523,61 @@ class LabDocsController extends BaseController
                 'fileUrl' => site_url('labdocs/' . rawurlencode($reg['code']) . '/file/' . rawurlencode($d['doc_key']))]);
         }
 
-        return $this->serve((string) $d['cache_file'], (string) $d['file_name'], $d['kind'] !== 'pdf');
+        if (in_array($kind, ['docx', 'doc'], true)) {
+            $docxHtml = null;
+            if ($kind === 'docx') {
+                $docxHtml = \App\Libraries\LabDocOffice::docxToHtml($path);
+            }
+            $data = [
+                'file' => ['id' => (int) $d['id'], 'name' => $d['file_name'], 'ext' => $kind, 'folder' => '', 'size' => (int) filesize($path), 'at' => 1, 'of' => 1, 'date' => date('d M Y H:i', (int) filemtime($path))],
+                'pdf' => false, 'text' => null, 'docx' => ['html' => $docxHtml ?: '<p>Document preview.</p>'], 'pptx' => null, 'canEdit' => false,
+                'src' => site_url('labdocs/' . rawurlencode($reg['code']) . '/file/' . rawurlencode($d['doc_key'])),
+                'convSrc' => null,
+                'download' => site_url('labdocs/' . rawurlencode($reg['code']) . '/file/' . rawurlencode($d['doc_key']) . '?dl=1'),
+                'saveDocxUrl' => '',
+                'savePptUrl'  => '',
+                'savePdfUrl'  => '',
+                'backUrl' => site_url('labdocs/' . rawurlencode($reg['code'])),
+                'prev' => null, 'next' => null,
+            ];
+
+            return $this->render('labdocs/fileview', [
+                'title' => $d['label'],
+                'withCss' => 'labdocs.css',
+                'withJs' => ['labdocs-collab.js', 'labdocs-zoom.js', 'labdocs-search.js', 'labdocs-revs.js', 'labdocs-fileview.js'],
+                'reg' => $reg,
+                'data' => $data,
+            ]);
+        }
+
+        if (in_array($kind, ['pptx', 'ppt'], true)) {
+            $slides = null;
+            if ($kind === 'pptx') {
+                $slides = \App\Libraries\LabDocOffice::pptxToSlides($path);
+            }
+            $data = [
+                'file' => ['id' => (int) $d['id'], 'name' => $d['file_name'], 'ext' => $kind, 'folder' => '', 'size' => (int) filesize($path), 'at' => 1, 'of' => 1, 'date' => date('d M Y H:i', (int) filemtime($path))],
+                'pdf' => false, 'text' => null, 'docx' => null, 'pptx' => ['slides' => $slides ?: [['id' => 1, 'title' => $d['file_name'], 'content' => ['Presentation file.'], 'notes' => '']]], 'canEdit' => false,
+                'src' => site_url('labdocs/' . rawurlencode($reg['code']) . '/file/' . rawurlencode($d['doc_key'])),
+                'convSrc' => null,
+                'download' => site_url('labdocs/' . rawurlencode($reg['code']) . '/file/' . rawurlencode($d['doc_key']) . '?dl=1'),
+                'saveDocxUrl' => '',
+                'savePptUrl'  => '',
+                'savePdfUrl'  => '',
+                'backUrl' => site_url('labdocs/' . rawurlencode($reg['code'])),
+                'prev' => null, 'next' => null,
+            ];
+
+            return $this->render('labdocs/fileview', [
+                'title' => $d['label'],
+                'withCss' => 'labdocs.css',
+                'withJs' => ['labdocs-collab.js', 'labdocs-zoom.js', 'labdocs-search.js', 'labdocs-revs.js', 'labdocs-fileview.js'],
+                'reg' => $reg,
+                'data' => $data,
+            ]);
+        }
+
+        return $this->serve((string) $d['cache_file'], (string) $d['file_name'], $this->request->getGet('dl') !== null);
     }
 
     public function file(string $code, string $key): ResponseInterface
@@ -565,7 +620,10 @@ class LabDocsController extends BaseController
                 }
                 echo $chunk;
                 $left -= strlen($chunk);
-                flush();
+                // flush() inside an output buffer makes the web server send the headers NOW, before the file type is set (the PDF then arrived as text/html)
+                if (ob_get_level() === 0) {
+                    flush();
+                }
             }
             fclose($h);
         });
@@ -580,9 +638,29 @@ class LabDocsController extends BaseController
 
     // ------------------------------------------------------------------------------------------------ folders of files (#DTP-Lab-108)
 
-    private const TYPES = ['pdf' => 'application/pdf', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'gif' => 'image/gif',
-        'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'doc' => 'application/msword', 'xls' => 'application/vnd.ms-excel', 'zip' => 'application/zip'];
+    private const TYPES = [
+        'pdf'  => 'application/pdf',
+        'jpg'  => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'png'  => 'image/png',
+        'gif'  => 'image/gif',
+        'webp' => 'image/webp',
+        'svg'  => 'image/svg+xml',
+        'bmp'  => 'image/bmp',
+        'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'xlsm' => 'application/vnd.ms-excel.sheet.macroEnabled.12',
+        'xls'  => 'application/vnd.ms-excel',
+        'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'doc'  => 'application/msword',
+        'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'ppt'  => 'application/vnd.ms-powerpoint',
+        'csv'  => 'text/csv; charset=UTF-8',
+        'txt'  => 'text/plain; charset=UTF-8',
+        'htm'  => 'text/html; charset=UTF-8',
+        'html' => 'text/html; charset=UTF-8',
+        'zip'  => 'application/zip',
+        'rar'  => 'application/x-rar-compressed',
+    ];
 
     /** one level of the folder tree: its folders and files as cards; ?p= is the folder, ?q= a search over every folder */
     private function filesPage(array $reg): string
@@ -624,11 +702,23 @@ class LabDocsController extends BaseController
         }
         $bookKeys = array_column($db->table('tbl_labdoc_books')->select('book_key')->where('register_id', $reg['id'])->get()->getResultArray(), 'book_key');
         $files    = array_map(static function ($f) use ($base, $bookKeys, $conv) {
-            $view = in_array($f['ext'], ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'csv', 'txt'], true) || (in_array($f['ext'], ['doc', 'docx', 'ppt', 'pptx'], true) && isset($conv[(int) $f['id']]));
-            $url  = $view ? $base . '/v/' . $f['id'] : (in_array('f' . $f['id'], $bookKeys, true) ? $base . '/b/f' . $f['id'] : $base . '/f/' . $f['id'] . '?dl=1');
+            $ext = strtolower(trim((string) $f['ext']));
+            $isSheet = in_array($ext, ['xlsx', 'xls', 'xlsm'], true);
+            $url = $isSheet
+                ? $base . '/b/f' . $f['id']
+                : $base . '/v/' . $f['id'];
 
-            return ['name' => $f['name'], 'ext' => $f['ext'], 'folder' => $f['folder'], 'size' => (int) $f['file_size'], 'date' => $f['file_mtime'] ? date('d M Y', strtotime((string) $f['file_mtime'])) : '',
-                'url' => $url, 'id' => (int) $f['id'], 'open' => $view || in_array('f' . $f['id'], $bookKeys, true), 'thumb' => $f['has_thumb'] ? $base . '/thumb/' . $f['id'] : null];
+            return [
+                'name' => $f['name'],
+                'ext' => $f['ext'],
+                'folder' => $f['folder'],
+                'size' => (int) $f['file_size'],
+                'date' => $f['file_mtime'] ? date('d M Y', strtotime((string) $f['file_mtime'])) : '',
+                'url' => $url,
+                'id' => (int) $f['id'],
+                'open' => true,
+                'thumb' => $f['has_thumb'] ? $base . '/thumb/' . $f['id'] : null,
+            ];
         }, $rows);
         $parent = $p === '' ? '' : (str_contains($p, '/') ? $base . '?p=' . rawurlencode(substr($p, 0, (int) strrpos($p, '/'))) : $base);
         $crumbs = [];
@@ -652,34 +742,76 @@ class LabDocsController extends BaseController
     {
         $reg = $this->register(rawurldecode($code));
         $db  = $this->db();
-        $f   = $reg ? $db->table('tbl_labdoc_files')->select('id, folder, name, ext, file_size, file_mtime')->where(['id' => (int) $id, 'register_id' => $reg['id']])->get()->getRowArray() : null;
+        $f   = $reg ? $db->table('tbl_labdoc_files')->select('id, folder, name, ext, file_size, file_mtime, disk_path')->where(['id' => (int) $id, 'register_id' => $reg['id']])->get()->getRowArray() : null;
         if (! $f) {
             return redirect()->to(site_url('labdocs'))->with('error', 'That file is not in the database.');
         }
         $base = site_url('labdocs/' . rawurlencode($reg['code']));
-        $sib  = $db->table('tbl_labdoc_files')->select('id, name')->where(['register_id' => $reg['id'], 'folder' => $f['folder'], 'src_key' => ''])->whereIn('ext', ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'doc', 'docx', 'ppt', 'pptx', 'csv', 'txt'])->get()->getResultArray();
+        $ext  = strtolower(trim((string) $f['ext']));
+
+        // If it's an Excel spreadsheet, ensure book exists and redirect to interactive spreadsheet viewer
+        if (in_array($ext, ['xlsx', 'xls', 'xlsm'], true)) {
+            $bKey = $this->ensureBookForFile($reg, $f);
+            if ($bKey) {
+                return redirect()->to($base . '/b/' . $bKey);
+            }
+        }
+
+        $sib  = $db->table('tbl_labdoc_files')->select('id, name')->where(['register_id' => $reg['id'], 'folder' => $f['folder'], 'src_key' => '', 'deleted_at' => null])->get()->getResultArray();
         usort($sib, static fn ($a, $b) => strnatcasecmp($a['name'], $b['name']));
         $ids = array_column($sib, 'id');
         $at  = array_search((string) $f['id'], array_map('strval', $ids), true);
         $nav = static fn ($i) => isset($ids[$i]) ? $base . '/v/' . $ids[$i] : null;
         $showId = (int) $f['id'];                                   // the file whose bytes the viewer shows: the PDF made from a Word document, or the file itself
-        $isPdf  = $f['ext'] === 'pdf';
+        $isPdf  = $ext === 'pdf';
         $text   = null;
-        if (in_array($f['ext'], ['doc', 'docx', 'ppt', 'pptx'], true)) {
-            $cv = $db->table('tbl_labdoc_files')->select('id')->where(['register_id' => $reg['id'], 'src_key' => 'conv:' . $f['id']])->get()->getRowArray();
-            if (! $cv) {
-                return redirect()->to($base . '/f/' . $f['id'] . '?dl=1');
+        $docx   = null;
+        $pptx   = null;
+        $html   = null;
+
+        $cv = $db->table('tbl_labdoc_files')->select('id')->where(['register_id' => $reg['id'], 'src_key' => 'conv:' . $f['id']])->get()->getRowArray();
+        $convSrc = $cv ? $base . '/f/' . $cv['id'] : null;
+
+        if (in_array($ext, ['doc', 'docx'], true)) {
+            $tmp = tempnam(sys_get_temp_dir(), 'docx_');
+            $this->writeDbFileToPath((int) $f['id'], $tmp);
+            if ($ext === 'docx') {
+                $docxHtml = \App\Libraries\LabDocOffice::docxToHtml($tmp);
+                $docx = ['html' => $docxHtml];
+            } else {
+                $cv = $db->table('tbl_labdoc_files')->select('id')->where(['register_id' => $reg['id'], 'src_key' => 'conv:' . $f['id']])->get()->getRowArray();
+                if ($cv) {
+                    $showId = (int) $cv['id'];
+                    $isPdf  = true;
+                } else {
+                    $docx = ['html' => '<p>Legacy Word .doc document. You can edit content below or save modern updates.</p>'];
+                }
             }
-            $showId = (int) $cv['id'];
-            $isPdf  = true;
-        } elseif (in_array($f['ext'], ['csv', 'txt'], true)) {
+            @unlink($tmp);
+        } elseif (in_array($ext, ['ppt', 'pptx'], true)) {
+            $tmp = tempnam(sys_get_temp_dir(), 'pptx_');
+            $this->writeDbFileToPath((int) $f['id'], $tmp);
+            if ($ext === 'pptx') {
+                $slides = \App\Libraries\LabDocOffice::pptxToSlides($tmp);
+                $pptx = ['slides' => $slides];
+            } else {
+                $cv = $db->table('tbl_labdoc_files')->select('id')->where(['register_id' => $reg['id'], 'src_key' => 'conv:' . $f['id']])->get()->getRowArray();
+                if ($cv) {
+                    $showId = (int) $cv['id'];
+                    $isPdf  = true;
+                } else {
+                    $pptx = ['slides' => [['id' => 1, 'title' => $f['name'], 'content' => ['Legacy .ppt presentation file.'], 'notes' => '']]];
+                }
+            }
+            @unlink($tmp);
+        } elseif (in_array($ext, ['csv', 'txt'], true)) {
             $raw = '';
             foreach ($db->table('tbl_labdoc_file_parts')->select('data')->where('file_id', $f['id'])->orderBy('part')->get(3)->getResultArray() as $part) {
                 $raw .= $part['data'];
             }
             $raw  = mb_convert_encoding(substr($raw, 0, 1200000), 'UTF-8', 'UTF-8, Windows-1252');
-            $text = ['kind' => $f['ext'], 'rows' => []];
-            if ($f['ext'] === 'csv') {
+            $text = ['kind' => $ext, 'rows' => []];
+            if ($ext === 'csv') {
                 foreach (array_slice(preg_split('/\r\n|\n|\r/', $raw) ?: [], 0, 2000) as $ln) {
                     if ($ln !== '') {
                         $text['rows'][] = array_map(static fn ($c) => (string) $c, str_getcsv($ln, strpos($ln, ';') !== false && substr_count($ln, ';') > substr_count($ln, ',') ? ';' : ',', '"', ''));
@@ -688,17 +820,244 @@ class LabDocsController extends BaseController
             } else {
                 $text['raw'] = mb_substr($raw, 0, 200000);
             }
+        } elseif (in_array($ext, ['htm', 'html'], true)) {
+            $tmp = tempnam(sys_get_temp_dir(), 'html_');
+            $this->writeDbFileToPath((int) $f['id'], $tmp);
+            if (is_file($tmp)) {
+                $html = (string) file_get_contents($tmp);
+                @unlink($tmp);
+            }
         }
         $data = [
             'file' => ['id' => (int) $f['id'], 'name' => $f['name'], 'ext' => $f['ext'], 'folder' => $f['folder'], 'size' => (int) $f['file_size'], 'at' => $at === false ? 0 : $at + 1, 'of' => count($ids),
                 'date' => $f['file_mtime'] ? date('d M Y H:i', strtotime((string) $f['file_mtime'])) : ''],
-            'pdf' => $isPdf, 'text' => $text, 'src' => $base . '/f/' . $showId, 'download' => $base . '/f/' . $f['id'] . '?dl=1',
+            'pdf' => $isPdf, 'text' => $text, 'docx' => $docx, 'pptx' => $pptx, 'html' => $html, 'canEdit' => $this->canEdit(),
+            'src' => $base . '/f/' . $showId, 'convSrc' => $convSrc, 'download' => $base . '/f/' . $f['id'] . '?dl=1',
+            'saveDocxUrl' => $base . '/f/' . $f['id'] . '/save-docx',
+            'savePptUrl'  => $base . '/f/' . $f['id'] . '/save-ppt',
+            'savePdfUrl'  => $base . '/f/' . $f['id'] . '/save-pdf',
             'prev' => $at === false ? null : $nav($at - 1), 'next' => $at === false ? null : $nav($at + 1),
             'backUrl' => $f['folder'] === '' ? $base : $base . '?p=' . rawurlencode($f['folder']),
         ];
 
         return $this->render('labdocs/fileview', ['title' => $f['name'], 'withCss' => 'labdocs.css', 'withJs' => ['labdocs-collab.js', 'labdocs-zoom.js', 'labdocs-search.js', 'labdocs-revs.js', 'labdocs-fileview.js'], 'reg' => $reg, 'data' => $data,
             'labRevs' => $this->revList($reg, 'file', (string) $f['id'], false), 'labCollab' => $this->collabInfo($reg, 'file', (string) $f['id'], false)], $this->layout());
+    }
+
+    public function saveDocxFile(string $code, string $id): ResponseInterface
+    {
+        if (! $this->canEdit()) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'message' => 'Only authorized users can modify documents.']);
+        }
+        $reg = $this->register(rawurldecode($code));
+        $db  = $this->db();
+        $f   = $reg ? $db->table('tbl_labdoc_files')->where(['id' => (int) $id, 'register_id' => $reg['id']])->get()->getRowArray() : null;
+        if (! $f) {
+            return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'Document not found.']);
+        }
+        $in   = $this->request->getJSON(true);
+        $html = (string) ($in['html'] ?? '');
+
+        $tmp = tempnam(sys_get_temp_dir(), 'docx_');
+        $this->writeDbFileToPath((int) $f['id'], $tmp);
+
+        \App\Libraries\LabDocOffice::htmlToDocx($tmp, $html);
+
+        $user = $this->userName();
+        $this->updateFileFromTemp($reg, $f, $tmp, $user, 'Saved document edits');
+        @unlink($tmp);
+
+        return $this->response->setJSON(['ok' => true, 'message' => 'Document saved successfully.', 'csrf' => csrf_hash()]);
+    }
+
+    public function savePptFile(string $code, string $id): ResponseInterface
+    {
+        if (! $this->canEdit()) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'message' => 'Only authorized users can modify presentations.']);
+        }
+        $reg = $this->register(rawurldecode($code));
+        $db  = $this->db();
+        $f   = $reg ? $db->table('tbl_labdoc_files')->where(['id' => (int) $id, 'register_id' => $reg['id']])->get()->getRowArray() : null;
+        if (! $f) {
+            return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'Presentation not found.']);
+        }
+        $in     = $this->request->getJSON(true);
+        $slides = is_array($in['slides'] ?? null) ? $in['slides'] : [];
+
+        $tmp = tempnam(sys_get_temp_dir(), 'pptx_');
+        $this->writeDbFileToPath((int) $f['id'], $tmp);
+
+        \App\Libraries\LabDocOffice::slidesToPptx($tmp, $slides);
+
+        $user = $this->userName();
+        $this->updateFileFromTemp($reg, $f, $tmp, $user, 'Saved presentation edits');
+        @unlink($tmp);
+
+        return $this->response->setJSON(['ok' => true, 'message' => 'Presentation saved successfully.', 'csrf' => csrf_hash()]);
+    }
+
+    public function savePdfFile(string $code, string $id): ResponseInterface
+    {
+        if (! $this->canEdit()) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'message' => 'Only authorized users can modify PDF documents.']);
+        }
+        $reg = $this->register(rawurldecode($code));
+        $db  = $this->db();
+        $f   = $reg ? $db->table('tbl_labdoc_files')->where(['id' => (int) $id, 'register_id' => $reg['id']])->get()->getRowArray() : null;
+        if (! $f) {
+            return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'PDF document not found.']);
+        }
+        $in   = $this->request->getJSON(true);
+        $user = $this->userName();
+
+        $pdfBase64 = (string) ($in['pdf_base64'] ?? '');
+        if ($pdfBase64 !== '') {
+            $bin = base64_decode(preg_replace('#^data:application/pdf;base64,#', '', $pdfBase64));
+            if ($bin !== false && strlen($bin) > 100) {
+                $tmp = tempnam(sys_get_temp_dir(), 'pdf_');
+                file_put_contents($tmp, $bin);
+                $this->updateFileFromTemp($reg, $f, $tmp, $user, 'Saved PDF annotations');
+                @unlink($tmp);
+                return $this->response->setJSON(['ok' => true, 'message' => 'PDF updated successfully.', 'csrf' => csrf_hash()]);
+            }
+        }
+
+        $annotations = $in['annotations'] ?? null;
+        if ($annotations) {
+            $this->archive($reg, 'file_ann', (string) $f['id'], ($f['folder'] === '' ? '' : $f['folder'] . '/') . $f['name'],
+                ['annotations' => $annotations, 'file_id' => (int) $f['id']], null, $user, null);
+            return $this->response->setJSON(['ok' => true, 'message' => 'Annotations saved as revision.', 'csrf' => csrf_hash()]);
+        }
+
+        return $this->response->setStatusCode(400)->setJSON(['ok' => false, 'message' => 'No valid data provided.']);
+    }
+
+    private function writeDbFileToPath(int $id, string $targetPath): bool
+    {
+        $db = $this->db();
+        $f  = $db->table('tbl_labdoc_files')->select('disk_path')->where('id', $id)->get()->getRowArray();
+        if ($f && ! empty($f['disk_path']) && $this->cachePath((string) $f['disk_path']) !== null) {
+            $p = (string) $this->cachePath((string) $f['disk_path']);
+            if (is_file($p)) {
+                return @copy($p, $targetPath);
+            }
+        }
+        $fh = fopen($targetPath, 'wb');
+        if (! $fh) {
+            return false;
+        }
+        foreach ($db->table('tbl_labdoc_file_parts')->select('data')->where('file_id', $id)->orderBy('part')->get()->getResultArray() as $pt) {
+            fwrite($fh, $pt['data']);
+        }
+        fclose($fh);
+        return true;
+    }
+
+    private function ensureBookForFile(array $reg, array $f): ?string
+    {
+        $db  = $this->db();
+        $key = 'f' . $f['id'];
+        $cur = $db->table('tbl_labdoc_books')->where(['register_id' => $reg['id'], 'book_key' => $key])->get()->getRowArray();
+        if ($cur) {
+            return $key;
+        }
+
+        $ext = strtolower((string) ($f['ext'] ?? 'xlsx'));
+        $tmp = tempnam(sys_get_temp_dir(), 'bk_') . '.' . $ext;
+        if (! $this->writeDbFileToPath((int) $f['id'], $tmp)) {
+            @unlink($tmp);
+            return null;
+        }
+
+        $m = null;
+        try {
+            $m = \App\Libraries\XlsxSheets::read($tmp, FCPATH . 'assets/labdocs/books/' . $key);
+        } catch (\Throwable) {
+            $m = null;
+        }
+
+        if (empty($m['sheets'])) {
+            @unlink($tmp);
+            return null;
+        }
+
+        $db->table('tbl_labdoc_books')->insert([
+            'register_id' => $reg['id'],
+            'book_key'    => $key,
+            'label'       => pathinfo((string) $f['name'], PATHINFO_FILENAME),
+            'file_name'   => $f['name'],
+            'file_path'   => $f['disk_path'] ?? '',
+            'styles_json' => json_encode($m['styles'] ?? []),
+            'sheet_count' => count($m['sheets']),
+            'file_size'   => (int) $f['file_size'],
+            'file_mtime'  => $f['file_mtime'] ?: date('Y-m-d H:i:s'),
+            'sort_order'  => 0,
+        ]);
+        $bid = (int) $db->insertID();
+
+        foreach ($m['sheets'] as $i => $sh) {
+            $db->table('tbl_labdoc_sheets')->insert([
+                'book_id'    => $bid,
+                'idx'        => $i,
+                'name'       => $sh['name'],
+                'model_json' => '',
+            ]);
+            $sid    = (int) $db->insertID();
+            $shJson = json_encode($sh, JSON_UNESCAPED_UNICODE);
+            foreach (str_split($shJson, 200000) as $piece) {
+                $db->query('UPDATE tbl_labdoc_sheets SET model_json = CONCAT(model_json, ?) WHERE id = ?', [$piece, $sid]);
+            }
+        }
+
+        @unlink($tmp);
+        return $key;
+    }
+
+    private function updateFileFromTemp(array $reg, array $cur, string $tmpPath, string $user, string $reason): void
+    {
+        $db  = $this->db();
+        $now = date('Y-m-d H:i:s');
+        $fid = (int) $cur['id'];
+        $dir = (string) ($cur['folder'] ?? '');
+        $name = (string) $cur['name'];
+        $ext = (string) $cur['ext'];
+
+        // Archive previous revision
+        $old = tempnam(sys_get_temp_dir(), 'lab_old');
+        $this->writeDbFileToPath($fid, $old);
+        $this->archive($reg, 'file', (string) $fid, ($dir === '' ? '' : $dir . '/') . $name,
+            ['name' => $name, 'size' => (int) $cur['file_size'], 'saved' => $cur['file_mtime'], 'reason' => $reason],
+            $old, $user, basename($name));
+        @unlink($old);
+
+        // Update main file record
+        $size = (int) @filesize($tmpPath);
+        $db->table('tbl_labdoc_files')->where('id', $fid)->update([
+            'file_size' => $size,
+            'file_mtime' => $now,
+        ]);
+
+        // Update parts or disk
+        $db->table('tbl_labdoc_file_parts')->where('file_id', $fid)->delete();
+        $disk = is_dir(WRITEPATH . 'labdocs');
+        if ($disk) {
+            $rel = 'other/' . preg_replace('/[^A-Za-z0-9._-]+/', '-', $reg['code']) . '/' . $fid . ($ext !== '' ? '.' . $ext : '');
+            @mkdir(dirname(WRITEPATH . 'labdocs/' . $rel), 0775, true);
+            copy($tmpPath, WRITEPATH . 'labdocs/' . $rel);
+            $db->table('tbl_labdoc_files')->where('id', $fid)->update(['disk_path' => $rel]);
+        } else {
+            $h = fopen($tmpPath, 'rb');
+            for ($i = 0; $h && ! feof($h); $i++) {
+                $piece = fread($h, 400000);
+                if ($piece === false || $piece === '') {
+                    break;
+                }
+                $db->table('tbl_labdoc_file_parts')->insert(['file_id' => $fid, 'part' => $i, 'data' => $piece]);
+            }
+            if ($h) {
+                fclose($h);
+            }
+        }
     }
 
     // ------------------------------------------------------------------------------------------------ editing a folder of files (Encoder, Manager, Supervisor, Admin)
@@ -970,7 +1329,7 @@ class LabDocsController extends BaseController
         $reg = $this->register(rawurldecode($code));
         $f   = $reg ? $this->db()->table('tbl_labdoc_files')->select('id, name, ext')->where(['id' => (int) $id, 'register_id' => $reg['id']])->get()->getRowArray() : null;
 
-        return $f ? $this->sendDbFile((int) $f['id'], (string) $f['name'], $this->request->getGet('dl') !== null || ! in_array($f['ext'], ['pdf', 'jpg', 'jpeg', 'png', 'gif'], true)) : $this->response->setStatusCode(404)->setBody('Not found');
+        return $f ? $this->sendDbFile((int) $f['id'], (string) $f['name'], $this->request->getGet('dl') !== null) : $this->response->setStatusCode(404)->setBody('Not found');
     }
 
     /** the preview picture of a file (first page of a PDF, small copy of a picture) */
@@ -1006,7 +1365,10 @@ class LabDocsController extends BaseController
                     }
                     echo $chunk;
                     $left -= strlen($chunk);
-                    flush();
+                    // flush() inside an output buffer makes the web server send the headers NOW, before the file type is set (the PDF then arrived as text/html)
+                    if (ob_get_level() === 0) {
+                        flush();
+                    }
                 }
                 fclose($h);
             });
@@ -1021,7 +1383,10 @@ class LabDocsController extends BaseController
                 $b     = min($to, $start + strlen($r['data']) - 1) - $start;
                 if ($b >= $a) {
                     echo substr($r['data'], $a, $b - $a + 1);
-                    flush();
+                    // flush() inside an output buffer makes the web server send the headers NOW, before the file type is set (the PDF then arrived as text/html)
+                    if (ob_get_level() === 0) {
+                        flush();
+                    }
                 }
             }
         });
@@ -1115,9 +1480,24 @@ class LabDocsController extends BaseController
 
     public function book(string $code, string $key): ResponseInterface|string
     {
-        $reg = $this->register(rawurldecode($code));
-        $b   = $reg ? $this->db()->table('tbl_labdoc_books')->where(['register_id' => $reg['id'], 'book_key' => rawurldecode($key)])->get()->getRowArray() : null;
+        $reg        = $this->register(rawurldecode($code));
+        $decodedKey = rawurldecode($key);
+        $db         = $this->db();
+        $b          = $reg ? $db->table('tbl_labdoc_books')->where(['register_id' => $reg['id'], 'book_key' => $decodedKey])->get()->getRowArray() : null;
+
+        if (! $b && $reg && preg_match('/^f(\d+)$/', $decodedKey, $fm)) {
+            $fRow = $db->table('tbl_labdoc_files')->where(['id' => (int) $fm[1], 'register_id' => $reg['id']])->get()->getRowArray();
+            if ($fRow) {
+                $this->ensureBookForFile($reg, $fRow);
+                $b = $db->table('tbl_labdoc_books')->where(['register_id' => $reg['id'], 'book_key' => $decodedKey])->get()->getRowArray();
+            }
+        }
+
         if (! $reg || ! $b) {
+            if ($reg && preg_match('/^f(\d+)$/', $decodedKey, $fm)) {
+                return redirect()->to(site_url('labdocs/' . rawurlencode($reg['code']) . '/v/' . $fm[1]));
+            }
+
             return redirect()->to(site_url('labdocs'))->with('error', 'That workbook is not in the database.');
         }
         $sheets = [];
@@ -1141,7 +1521,7 @@ class LabDocsController extends BaseController
         $data = [
             'book' => ['key' => $b['book_key'], 'label' => $b['label'], 'file' => $b['file_name'], 'status' => $b['file_status'], 'updatedAt' => $b['updated_at'], 'updatedBy' => $b['updated_by']],
             'styles' => json_decode((string) $b['styles_json'], true) ?: [], 'sheets' => $sheets, 'assets' => base_url('assets/labdocs/books/' . $b['book_key']) . '/',
-            'canEdit' => $snap ? false : $this->canEdit(), 'saveUrl' => $base . '/b/' . rawurlencode($b['book_key']) . '/save', 'sheetUrl' => $base . '/b/' . rawurlencode($b['book_key']) . '/sheet/',
+            'canEdit' => $snap ? false : $this->canEdit(), 'saveUrl' => $base . '/b/' . rawurlencode($b['book_key']) . '/save', 'sheetUrl' => $base . '/b/' . rawurlencode($b['book_key']) . '/sheet/', 'downloadUrl' => $base . '/b/' . rawurlencode($b['book_key']) . '/download',
             'backUrl' => $this->bookBack($reg, $b, $base),
         ];
 
@@ -1296,6 +1676,9 @@ class LabDocsController extends BaseController
             $row = [];
             foreach ($line as $c) {
                 $cell = ['v' => mb_substr(str_replace("\r", '', (string) ($c['v'] ?? '')), 0, 5000), 's' => max(0, min($nStyles - 1, (int) ($c['s'] ?? 0)))];
+                if (! empty($c['f'])) {
+                    $cell['f'] = mb_substr(str_replace("\r", '', (string) $c['f']), 0, 2000);
+                }
                 if (isset($c['k']) && preg_match('/^\d{1,5}:\d{1,3}$/', (string) $c['k'])) {
                     $cell['k'] = (string) $c['k'];
                 }

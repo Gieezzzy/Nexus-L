@@ -587,9 +587,18 @@
     const baseTitle = document.title.replace(/^\(\d+\)\s*/, '');
     document.title = totalUnread > 0 ? `(${totalUnread}) ${baseTitle}` : baseTitle;
   };
+  let autoOpenedChat = false;
   const loadList = () => api(`conversations?q=${enc(el.q.value.trim())}`).then((d) => {
     convCache = d.conversations; people = el.q.value.trim() ? (d.people || []) : [];
     banner((d.warnings || []).join(' ')); renderList(); updateTabTitle();
+    if (!autoOpenedChat && key === null) {
+      const wantKey = new URLSearchParams(location.search).get('chat');
+      if (wantKey) {
+        autoOpenedChat = true;
+        const found = convCache.find((c) => c.key === wantKey) || (wantKey === 'n:interlink_etrf' ? { key: 'n:interlink_etrf', id: 'interlink_etrf', name: 'InterLink 2.0 — Application No.', username: 'interlink_etrf', src: 'n', online: true } : null);
+        if (found) open(found);
+      }
+    }
   }).catch((e) => { if (e.message !== 'auth') banner(e.message); });
   window.addEventListener('focus', () => { updateTabTitle(); });
   let qt; el.q.addEventListener('input', () => { clearTimeout(qt); qt = setTimeout(loadList, 250); });

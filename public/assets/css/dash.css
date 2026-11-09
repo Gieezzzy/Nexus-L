@@ -91,9 +91,9 @@ main{flex:1;padding:16px}
 .card h3{margin:0 0 4px;font-size:16px}
 .mt{margin-top:14px}
 .tbl-wrap{overflow-x:auto;margin-top:8px}
-table{width:100%;border-collapse:collapse;font-size:14px}
-th{padding:8px 12px 8px 0;text-align:left;font-size: 12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute);font-weight:600}
-td{padding:9px 12px 9px 0;border-top:1px solid rgba(148,163,184,.3)}
+table:not([class*="luckysheet"]):not(.luckysheet *){width:100%;border-collapse:collapse;font-size:14px}
+th:not([class*="luckysheet"]):not(.luckysheet *){padding:8px 12px 8px 0;text-align:left;font-size: 12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute);font-weight:600}
+td:not([class*="luckysheet"]):not(.luckysheet *){padding:9px 12px 9px 0;border-top:1px solid rgba(148,163,184,.3)}
 .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--mute)}
 .badge{display:inline-block;padding:1px 8px;border-radius:6px;font-size:12px}
 .b-ok{background:#d1fae5;color:#065f46}.b-bad{background:#fee2e2;color:#991b1b}

@@ -28,9 +28,6 @@ class Roles
         'materials'   => 'Material testing',
         'wholeshoe'   => 'Whole shoe testing',
         'bonding'     => 'Shoe bonding',
-        'calendar'    => 'Calendar Monitoring',
-        'insights'    => 'Quality Insights',
-        'erpfinish'   => 'ERP Finish Monitoring',
         'testsummary' => 'Test results summary',
         'analytics'   => 'Analytics',
         'labdocs'     => 'Lab documents',
@@ -47,17 +44,17 @@ class Roles
 
     /** role => module => level (0 none, 1 view, 2 edit). Admin is not listed: it is always 2 everywhere. */
     private const MATRIX = [
-        'Manager' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 1, 'etrf' => 1, 'dtr' => 1, 'materials' => 1, 'wholeshoe' => 1, 'bonding' => 1, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 2, 'thirdparty' => 1, 'approvals' => 2, 'help' => 2, 'calendar' => 1, 'erpfinish' => 1],
-        'Supervisor' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 2, 'etrf' => 2, 'dtr' => 2, 'materials' => 2, 'wholeshoe' => 2, 'bonding' => 2, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 2, 'thirdparty' => 1, 'approvals' => 2, 'help' => 2, 'calendar' => 1, 'erpfinish' => 2],
-        'Encoding' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 2, 'etrf' => 2, 'dtr' => 2, 'materials' => 1, 'wholeshoe' => 1, 'bonding' => 1, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 2, 'thirdparty' => 2, 'help' => 2, 'calendar' => 1, 'erpfinish' => 2],
-        'Materials' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 1, 'dtr' => 1, 'materials' => 2, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 1, 'help' => 2, 'calendar' => 1, 'erpfinish' => 1],
-        'Bonding' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 1, 'dtr' => 1, 'bonding' => 2, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 1, 'help' => 2, 'calendar' => 1, 'erpfinish' => 1],
-        'Technician' => ['dashboard' => 1, 'inbox' => 2, 'dtr' => 1, 'materials' => 2, 'wholeshoe' => 2, 'bonding' => 2, 'testsummary' => 1, 'labdocs' => 1, 'help' => 2, 'calendar' => 1],
+        'Manager' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 1, 'etrf' => 1, 'dtr' => 1, 'materials' => 1, 'wholeshoe' => 1, 'bonding' => 1, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 2, 'thirdparty' => 1, 'approvals' => 2, 'help' => 2],
+        'Supervisor' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 2, 'etrf' => 2, 'dtr' => 2, 'materials' => 2, 'wholeshoe' => 2, 'bonding' => 2, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 2, 'thirdparty' => 1, 'approvals' => 2, 'help' => 2],
+        'Encoding' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 2, 'etrf' => 2, 'dtr' => 2, 'materials' => 1, 'wholeshoe' => 1, 'bonding' => 1, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 2, 'thirdparty' => 2, 'help' => 2],
+        'Materials' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 1, 'dtr' => 1, 'materials' => 2, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 1, 'help' => 2],
+        'Bonding' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 1, 'dtr' => 1, 'bonding' => 2, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 1, 'help' => 2],
+        'Technician' => ['dashboard' => 1, 'inbox' => 2, 'dtr' => 1, 'materials' => 2, 'wholeshoe' => 2, 'bonding' => 2, 'testsummary' => 1, 'labdocs' => 1, 'help' => 2],
     ];
 
     /** the first URL segment of a page => its module (a segment that is not here is not restricted) */
     public const SEGMENTS = [
-        'dashboard' => 'dashboard', 'inbox' => 'inbox', 'interlink' => 'interlink', 'lab-monitoring' => 'erpfinish', 'calendar-monitoring' => 'calendar', 'calendar' => 'calendar', 'quality-insights' => 'insights', 'dtr' => 'dtr', 'materials' => 'materials', 'material-testing' => 'materials',
+        'dashboard' => 'dashboard', 'inbox' => 'inbox', 'interlink' => 'interlink', 'lab-monitoring' => 'interlink', 'dtr' => 'dtr', 'materials' => 'materials', 'material-testing' => 'materials',
         'wholeshoe' => 'wholeshoe', 'whole-shoe-test' => 'wholeshoe', 'bonding' => 'bonding', 'test-summary' => 'testsummary', 'tests-summary' => 'testsummary', 'test-results' => 'testsummary',
         'analytics' => 'analytics', 'labdocs' => 'labdocs', 'thirdparty' => 'thirdparty', 'approval' => 'approvals', 'help' => 'help', 'designer' => 'designer', 'brain' => 'brain', 'settings' => 'settings',
     ];
@@ -144,7 +141,7 @@ class Roles
         }
         $roles = self::parse($role);
         if (! $roles) {
-            return in_array($module, ['designer', 'insights'], true) ? 0 : 2;                  // not assigned yet: what every signed-in user had before roles existed
+            return $module === 'designer' ? 0 : 2;                  // not assigned yet: what every signed-in user had before roles existed
         }
         $m   = self::matrix();
         $max = 0;

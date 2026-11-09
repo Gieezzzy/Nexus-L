@@ -16181,6 +16181,11 @@ private function computeIntent(string $text, string $prev = '', string $lastBotM
                 $cmd = ROOTPATH . 'run-ai.cmd';
                 if (is_file($cmd)) {
                     @pclose(@popen('start /B "" "' . $cmd . '"', 'r'));
+                    // the service loads its models for several seconds: wait for it (up to ~25 s) so the switch reports the real state
+                    for ($i = 0; $i < 25 && \App\Libraries\AiBridge::get('/health', 800) === null; $i++) {
+                        usleep(1000000);
+                    }
+                    cache()->delete('brain_ai_online');
                 }
             }
         } else {

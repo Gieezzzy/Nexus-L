@@ -372,6 +372,7 @@ class XlsxSheets
                     continue;
                 }
                 $v = $c->getElementsByTagNameNS(self::NS, 'v')->item(0);
+                $f = $c->getElementsByTagNameNS(self::NS, 'f')->item(0);
                 $t = $c->getAttribute('t');
                 $s = (int) $c->getAttribute('s');
                 $text = '';
@@ -387,7 +388,12 @@ class XlsxSheets
                         default => self::display($v->textContent, $fmt[$s] ?? 'General'),
                     };
                 }
-                $cells[$r][$col] = ['v' => $text, 's' => $s, 'k' => $r . ':' . $col];
+                $cellData = ['v' => $text, 's' => $s, 'k' => $r . ':' . $col];
+                if ($f !== null && trim($f->textContent) !== '') {
+                    $fRaw = trim($f->textContent);
+                    $cellData['f'] = str_starts_with($fRaw, '=') ? $fRaw : '=' . $fRaw;
+                }
+                $cells[$r][$col] = $cellData;
                 $maxR = max($maxR, $r);
                 $maxC = max($maxC, $col);
             }
@@ -640,14 +646,18 @@ class XlsxSheets
             foreach ($line as $ci => $cell) {
                 $c    = $ci + 1;
                 $text = str_replace("\r", '', (string) ($cell['v'] ?? ''));
+                $formula = isset($cell['f']) && trim((string)$cell['f']) !== '' ? (string)$cell['f'] : '';
+                if ($formula === '' && str_starts_with($text, '=') && strlen($text) > 1) {
+                    $formula = $text;
+                }
                 $s    = (int) ($cell['s'] ?? 0);
                 $s    = $s >= 0 && $s < $nStyles ? $s : 0;
                 $src  = isset($cell['k']) && isset($orig[$cell['k']]) && $orig[$cell['k']]['text'] === $text ? $orig[$cell['k']]['node'] : null;
-                if ($src === null && $text === '' && $s === 0 && ! ($ri === $nR - 1 && $ci === $nC - 1)) {          // the last cell always exists: it fixes the size of the sheet
+                if ($src === null && $text === '' && $formula === '' && $s === 0 && ! ($ri === $nR - 1 && $ci === $nC - 1)) {          // the last cell always exists: it fixes the size of the sheet
                     continue;
                 }
                 $ref = LabDocXlsx::colLetter($c) . $r;
-                if ($src !== null) {
+                if ($src !== null && $formula === '') {
                     $n = $src->cloneNode(true);
                     /** @var DOMElement $n */
                     $n->setAttribute('r', $ref);
@@ -660,7 +670,17 @@ class XlsxSheets
                 if ($s) {
                     $n->setAttribute('s', (string) $s);
                 }
-                if ($text !== '') {
+                if ($formula !== '') {
+                    $formulaBody = ltrim($formula, '=');
+                    $fEl = $doc->createElementNS(self::NS, 'f');
+                    $fEl->appendChild($doc->createTextNode($formulaBody));
+                    $n->appendChild($fEl);
+                    if ($text !== '' && !str_starts_with($text, '=')) {
+                        $vEl = $doc->createElementNS(self::NS, 'v');
+                        $vEl->appendChild($doc->createTextNode($text));
+                        $n->appendChild($vEl);
+                    }
+                } elseif ($text !== '') {
                     $n->setAttribute('t', 'inlineStr');
                     $is = $doc->createElementNS(self::NS, 'is');
                     $t  = $doc->createElementNS(self::NS, 't');

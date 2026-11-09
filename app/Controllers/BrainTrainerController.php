@@ -31,21 +31,6 @@ class BrainTrainerController extends BaseController
         return null;
     }
 
-    /** the command-line PHP: under Apache PHP_BINARY is httpd.exe, which must never be run as a command */
-    private function php(): string
-    {
-        if (strcasecmp(basename(PHP_BINARY), 'php.exe') === 0) {
-            return PHP_BINARY;
-        }
-        foreach ([dirname(PHP_BINARY, 2) . '\php\php.exe', PHP_BINDIR . '\php.exe', 'C:\xampp\php\php.exe'] as $c) {
-            if (is_file($c)) {
-                return $c;
-            }
-        }
-
-        return 'php';
-    }
-
     private function dir(): string
     {
         $d = WRITEPATH . 'brain-train/';
@@ -141,7 +126,7 @@ class BrainTrainerController extends BaseController
         if ($r = $this->denied()) {
             return $r;
         }
-        $out = (string) shell_exec('cd /d ' . escapeshellarg(ROOTPATH) . ' && ' . escapeshellarg($this->php()) . ' spark brain:bench 2>&1');
+        $out = (string) shell_exec('cd /d ' . escapeshellarg(ROOTPATH) . ' && ' . escapeshellarg(PHP_BINARY) . ' spark brain:bench 2>&1');
         $ok  = preg_match('/OVERALL BENCHMARK[^|]*\|\s*([\d.]+)%/', $out, $m);
 
         return $this->response->setJSON(['ok' => (bool) $ok, 'benchmark' => $ok ? (float) $m[1] : null]);
@@ -191,7 +176,7 @@ class BrainTrainerController extends BaseController
         $bat = $this->dir() . 'run.bat';
         file_put_contents($bat, "@echo off
 cd /d \"" . rtrim(ROOTPATH, '\/') . "\"
-\"" . $this->php() . "\" spark brain:train-night --config \"" . $file . "\" > \"" . $this->dir() . "run.out\" 2>&1
+\"" . PHP_BINARY . "\" spark brain:train-night --config \"" . $file . "\" > \"" . $this->dir() . "run.out\" 2>&1
 ");
         pclose(popen('start /B "" cmd /c "' . $bat . '"', 'r'));
 
@@ -220,12 +205,9 @@ cd /d \"" . rtrim(ROOTPATH, '\/') . "\"
         }
         @unlink($this->dir() . 'stop');
         $bat = $this->dir() . 'resume.bat';
-        file_put_contents($bat, "@echo off
-
-cd /d \"" . rtrim(ROOTPATH, '\/') . "\"
-
-\"" . $this->php() . "\" spark brain:train-night --resume >> \"" . $this->dir() . "run.out\" 2>&1
-
+        file_put_contents($bat, "@echo off
+cd /d \"" . rtrim(ROOTPATH, '\/') . "\"
+\"" . PHP_BINARY . "\" spark brain:train-night --resume >> \"" . $this->dir() . "run.out\" 2>&1
 ");
         pclose(popen('start /B "" cmd /c "' . $bat . '"', 'r'));
 
@@ -258,7 +240,7 @@ cd /d \"" . rtrim(ROOTPATH, '\/') . "\"
         @unlink($this->dir() . 'stop');
         // a run ended in the middle of a round may have left the weights half written: check, and go back to the copy made before the round
         $note = '';
-        $out  = (string) shell_exec('cd /d ' . escapeshellarg(ROOTPATH) . ' && ' . escapeshellarg($this->php()) . ' spark brain:bench 2>&1');
+        $out  = (string) shell_exec('cd /d ' . escapeshellarg(ROOTPATH) . ' && ' . escapeshellarg(PHP_BINARY) . ' spark brain:bench 2>&1');
         if (! preg_match('/OVERALL BENCHMARK[^|]*\|\s*([\d.]+)%/', $out, $m) || (float) $m[1] < 100.0) {
             $db = \Config\Database::connect();
             if ($db->query("SHOW TABLES LIKE 'tbl_bot_weights_bak_night'")->getNumRows()) {
