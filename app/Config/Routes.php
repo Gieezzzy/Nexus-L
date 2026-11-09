@@ -56,6 +56,15 @@ $routes->post('notifier/send', 'NotifierController::send');
 $routes->get('notifier/unacked', 'NotifierController::unacked');
 $routes->get('notifier/log', 'NotifierController::log');
 $routes->get('notifier/ack/(:segment)', 'NotifierController::ack/$1');
+
+// NEXUS-L Outlook Email Relay Windows app (token in X-Relay-Token)
+$routes->get('mail-relay/ping', 'MailRelayController::ping');
+$routes->get('mail-relay/config', 'MailRelayController::config');
+$routes->post('mail-relay/heartbeat', 'MailRelayController::heartbeat');
+$routes->get('mail-relay/queue', 'MailRelayController::queue');
+$routes->post('mail-relay/update-status', 'MailRelayController::updateStatus');
+$routes->post('mail-relay/enqueue', 'MailRelayController::enqueue');
+$routes->get('mail-relay/stats', 'MailRelayController::stats');
 $routes->post('photo/(:segment)/claim', 'PhotoLinkController::claim/$1');
 $routes->post('photo/(:segment)/release', 'PhotoLinkController::release/$1');
 
@@ -219,6 +228,11 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->post('labdocs/(:segment)/f/(:num)/save-ppt', 'LabDocsController::savePptFile/$1/$2');
     $routes->post('labdocs/(:segment)/f/(:num)/save-pdf', 'LabDocsController::savePdfFile/$1/$2');
     $routes->get('labdocs/(:segment)/thumb/(:num)', 'LabDocsController::thumb/$1/$2');
+    // a folder of files (Admin, Manager, Supervisor, Encoder): new folder, upload, refresh from the share, delete a file
+    $routes->post('labdocs/(:segment)/files/folder', 'LabDocsController::newFolder/$1');
+    $routes->post('labdocs/(:segment)/files/upload', 'LabDocsController::upload/$1');
+    $routes->post('labdocs/(:segment)/files/refresh', 'LabDocsController::refresh/$1');
+    $routes->post('labdocs/(:segment)/files/(:num)/delete', 'LabDocsController::deleteFile/$1/$2');
     $routes->get('labdocs/(:segment)', 'LabDocsController::show/$1');
     $routes->post('labdocs/(:segment)/save', 'LabDocsController::save/$1');
 
@@ -314,6 +328,11 @@ $routes->group('', ['filter' => 'auth:admin'], static function (RouteCollection 
     $routes->post('settings/trainer-token', 'SettingsController::trainerToken');
     $routes->get('settings/notifier-token', 'SettingsController::notifierToken');
     $routes->post('settings/notifier-token', 'SettingsController::notifierToken');
+    $routes->get('settings/mail/status', 'SettingsController::mailStatus');
+    $routes->post('settings/mail/retry', 'SettingsController::mailRetry');
+    $routes->post('settings/mail/test', 'SettingsController::mailTest');
+    $routes->get('settings/relay-token', 'SettingsController::relayToken');
+    $routes->post('settings/relay-token', 'SettingsController::relayToken');
     $routes->post('settings/ai/seed', 'SettingsController::seedAiKnowledge');
     $routes->post('settings/git/sync', 'SettingsController::gitSync');
     $routes->post('settings/db/test', 'SettingsController::dbTest');

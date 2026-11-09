@@ -76,6 +76,59 @@
     });
   }
 
+  // ---- Outlook Relay app token: show / generate / copy --------------------------------------------------------------------------
+  const rk = $('#st-relay-token');
+  if (rk) {
+    const rmsg = $('#st-relay-msg');
+    $('#st-relay-show').addEventListener('click', async () => {
+      try { const j = await api('settings/relay-token'); rk.value = j.token || ''; say(rmsg, j.token ? '' : 'No token yet - press Generate.', j.token ? '' : 'bad'); } catch (e) { say(rmsg, e.message, 'bad'); }
+    });
+    $('#st-relay-gen').addEventListener('click', async () => {
+      if (rk.dataset.had !== '0' && !confirm('Generate a new token? The Outlook Relay app stops working until the new token is typed into it.')) return;
+      try { const j = await api('settings/relay-token', {}); rk.value = j.token; rk.dataset.had = '1'; say(rmsg, 'New token generated and saved. Copy it into the app.', 'ok'); } catch (e) { say(rmsg, e.message, 'bad'); }
+    });
+    $('#st-relay-copy').addEventListener('click', async () => {
+      if (!rk.value) { say(rmsg, 'Press Show or Generate first.', 'bad'); return; }
+      try { await navigator.clipboard.writeText(rk.value); } catch (e) { rk.select(); document.execCommand('copy'); }
+      say(rmsg, 'Copied.', 'ok');
+    });
+  }
+
+  // ---- E-mail (Outlook Relay): is it alive, the latest e-mails, retry, test ---------------------------------------------------------
+  const mlBox = $('#ml-status');
+  if (mlBox) {
+    const esc = (v) => String(v == null ? '' : v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const list = $('#ml-list');
+    const load = async () => {
+      try {
+        const j = await api('settings/mail/status');
+        const r = j.relay || {}, i = r.info || {}, c = j.counts || {};
+        const dot = r.online ? 'ok' : 'bad';
+        mlBox.innerHTML = '<div class="ml-line"><span class="ml-dot ' + dot + '"></span><b>' + (r.online ? 'Outlook Relay is online' : (r.has_token ? 'Outlook Relay is offline' : 'No Relay token yet - press Generate below')) + '</b>'
+          + (r.seen_at ? ' <span class="muted">last seen ' + esc(r.seen_at) + '</span>' : '') + '</div>'
+          + (r.online && i.account ? '<div class="muted sm">Outlook: ' + esc(i.account) + (i.smtp ? ' &lt;' + esc(i.smtp) + '&gt;' : '') + (i.host ? ' on ' + esc(i.host) : '') + (i.version ? ' (v' + esc(i.version) + ')' : '') + (i.outlook_connected === false ? ' - <span class="st-bad">Outlook not connected</span>' : '') + '</div>' : '')
+          + '<div class="ml-counts"><span>Queued <b>' + (c.queued || 0) + '</b></span><span>Sending <b>' + (c.sending || 0) + '</b></span><span>Sent <b>' + (c.sent || 0) + '</b></span><span>Failed <b>' + (c.failed || 0) + '</b></span></div>';
+        const rows = j.rows || [];
+        list.innerHTML = rows.length ? '<table class="ml-tbl"><thead><tr><th>#</th><th>To</th><th>Subject</th><th>Status</th><th>Tries</th><th>When</th><th></th></tr></thead><tbody>' + rows.map((m) =>
+          '<tr><td>' + m.id + '</td><td>' + esc(m.to_address) + '</td><td title="' + esc(m.last_error || '') + '">' + esc(m.subject) + '</td><td><span class="ml-pill ' + esc(m.status) + '">' + esc(m.status) + '</span>' + (m.last_error ? '<div class="ml-err">' + esc(m.last_error).slice(0, 120) + '</div>' : '') + '</td><td>' + m.attempts + '</td><td>' + esc(m.sent_at || m.created_at) + '</td><td>'
+          + (m.status === 'failed' || (m.status === 'queued' && m.next_attempt_at) ? '<button type="button" class="nx-btn" data-retry="' + m.id + '">Retry now</button>' : '') + '</td></tr>').join('') + '</tbody></table>' : '<span class="muted sm">No e-mail yet.</span>';
+      } catch (e) { mlBox.innerHTML = '<span class="st-bad">' + esc(e.message) + '</span>'; }
+    };
+    list.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-retry]'); if (!b) return;
+      b.disabled = true;
+      try { await api('settings/mail/retry', { id: Number(b.dataset.retry) }); } catch (er) { /* shown by the next refresh */ }
+      load();
+    });
+    $('#ml-test').addEventListener('click', async () => {
+      const msg = $('#st-mail-msg'), to = $('#ml-test-to').value.trim();
+      if (!to) { say(msg, 'Type the address to send the test to.', 'bad'); return; }
+      try { const j = await api('settings/mail/test', { to }); say(msg, 'Test e-mail #' + j.id + ' queued. It goes out within a few seconds.', 'ok'); load(); } catch (e) { say(msg, e.message, 'bad'); }
+    });
+    load();
+    setInterval(() => { if (!document.hidden) load(); }, 8000);
+  }
+
   // ---- AI Assistant & Bot Engine test ------------------------------------------------------------------------------------------
   $('#st-ai-test')?.addEventListener('click', async () => {
     const msg = $('#st-ai-msg');

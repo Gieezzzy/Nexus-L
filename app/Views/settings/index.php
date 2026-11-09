@@ -45,6 +45,7 @@ $field = static function (array $r): string {
     <nav class="st-nav" id="st-nav" aria-label="Settings sections">
         <a href="#su-root">Users &amp; roles</a>
         <a href="#st-ai">AI assistant</a>
+        <a href="#st-mail">E-mail</a>
         <a href="#st-service">InterLink service</a>
         <a href="#st-db">Database</a>
         <a href="#st-transfer">Transfer</a>
@@ -109,7 +110,7 @@ $field = static function (array $r): string {
     <div class="card glass" id="st-ai">
         <h3><?= esc($categories['ai'] ?? 'AI Assistant & Bot Engine') ?> <small class="muted">(LangGraph, Rasa NLU, Mem0 &amp; Phoenix stack)</small></h3>
         <p class="muted sm">Configure operating mode (Shadow vs. Live), local Python service address, shared API key, confidence thresholds, and safe fallback messaging.</p>
-        <?php foreach ($byCat['ai'] ?? [] as $r) { if (in_array($r['key'], ['ai.trainer_token', 'notify.token'], true)) { continue; } echo $field($r); } ?>
+        <?php foreach ($byCat['ai'] ?? [] as $r) { if (in_array($r['key'], ['ai.trainer_token', 'notify.token', 'mail.relay_token'], true)) { continue; } echo $field($r); } ?>
         <div class="st-row" id="st-trainer">
             <span class="st-label">Brain Trainer app token</span>
             <div>
@@ -143,6 +144,35 @@ $field = static function (array $r): string {
             <button type="button" class="nx-btn" id="st-git-push">Push to Git</button>
             <span class="st-msg" id="st-ai-msg"></span>
         </div>
+    </div>
+
+    <!-- E-mail: the Outlook Relay -->
+    <div class="card glass" id="st-mail">
+        <h3><?= esc($categories['mail'] ?? 'E-mail (Outlook Relay)') ?></h3>
+        <p class="muted sm">NEXUS-L puts every e-mail in a queue. The <b>Outlook Relay</b> (a Windows program on a PC with Outlook) sends them in order, and the Server HTML Handler is the fallback. The Relay follows the settings below the next time it connects.</p>
+        <div class="ml-status" id="ml-status" aria-live="polite"><span class="muted">Checking the Relay...</span></div>
+        <?php foreach ($byCat['mail'] ?? [] as $r) { if ($r['key'] === 'mail.relay_token') { continue; } echo $field($r); } ?>
+        <div class="st-row" id="st-relay">
+            <span class="st-label">Outlook Relay app token</span>
+            <div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                    <input type="text" id="st-relay-token" readonly placeholder="no token yet" style="flex:1;min-width:260px;font-family:Consolas,monospace" autocomplete="off">
+                    <button type="button" class="nx-btn" id="st-relay-show">Show</button>
+                    <button type="button" class="nx-btn nx-primary" id="st-relay-gen">Generate new token</button>
+                    <button type="button" class="nx-btn" id="st-relay-copy">Copy</button>
+                </div>
+                <small class="muted">Type this token into the NEXUS-L Outlook Email Relay Windows app (NexusOutlookRelay.exe). Generating a new one signs the app out until the new token is entered. Saved at once; no need to press Save.</small>
+                <span class="st-msg" id="st-relay-msg"></span>
+            </div>
+        </div>
+        <div class="st-actions">
+            <button type="button" class="nx-btn nx-primary" data-save="st-mail">Save</button>
+            <input type="email" id="ml-test-to" placeholder="send a test e-mail to..." style="min-width:240px" autocomplete="off">
+            <button type="button" class="nx-btn" id="ml-test">Send test e-mail</button>
+            <span class="st-msg" id="st-mail-msg"></span>
+        </div>
+        <h4 class="su-h4">Latest e-mails</h4>
+        <div class="ml-list" id="ml-list"><span class="muted sm">Loading...</span></div>
     </div>
 
     <!-- InterLink service -->

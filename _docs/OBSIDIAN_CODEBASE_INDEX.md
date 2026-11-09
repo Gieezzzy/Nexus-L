@@ -1,7 +1,7 @@
 ---
 type: "CodebaseIndex"
 tags: [obsidian, graphify, icm, codebase-index, nexus-l, interlink, dtr, qc-lab]
-updated: "2026-11-08"
+updated: "2026-11-10"
 ---
 
 # NEXUS-L - Codebase Index
@@ -17,6 +17,8 @@ NEXUS-L is the laboratory intelligence and execution system built on CodeIgniter
 | `app/Controllers/SettingsController.php` | Settings page (Admin only): InterLink background service settings & connectivity test, database in use / testing / switching, table-by-table background migration, and AI engine controls. |
 | `app/Controllers/BotController.php` | LEXIS AI (Laboratory Execution Intelligence System): live read-only DB querying (`dbSearchIntent`), Synology approval reminders (`approvalReminderIntent`), interactive test computation & pass/fail rating (`computeIntent`), and knowledge retrieval. |
 | `app/Libraries/ProblemKnowledgeSeeder.php` | 200 real-world QC Lab & testing problem scenarios with step-by-step diagnostic solutions, automated export to `C:\NexusAI\knowledge.jsonl`, and FAISS vector re-indexing. |
+| `app/Controllers/MailRelayController.php` | API of the Outlook Email Relay Windows app (`mail-relay/*`, token `X-Relay-Token`): ping/config/heartbeat, atomic FIFO queue claim, retry back-off, enqueue, stats. See [[ICM_CHANGELOG]] Phase 207. |
+| `app/Libraries/MailOutbox.php` | The one way to queue an e-mail into `tbl_email_outbox`; relay config and online state. Used by Dtr, Approval, MailRelay and Settings. |
 | `app/Libraries/SystemSettings.php` | Persistent admin configuration in `tbl_system_settings` with `.env` fallback for AI mode, InterLink defaults, approval expiry, and Synology chat. |
 | `app/Libraries/AiBridge.php` | AI assistant microservice bridge: routes questions and user clickstream telemetry to the LangGraph/Rasa agent, handles shadow inference and live zero-hallucination gating. |
 | `app/Controllers/InterlinkController.php` | InterLink 2.0 proxy, Pre-Sync ComboBox data provider (`/interlink/labrefs`), report persistence, and 1-click live postback to Intertek portal. |

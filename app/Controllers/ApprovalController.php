@@ -358,10 +358,7 @@ class ApprovalController extends BaseController
         }
         try {
             $db = $this->db();
-            $db->query('CREATE TABLE IF NOT EXISTS tbl_email_outbox (id BIGINT AUTO_INCREMENT PRIMARY KEY, source VARCHAR(50) NOT NULL DEFAULT \'NEXUS-L\', to_address TEXT NOT NULL, cc_address TEXT NULL,
-                subject VARCHAR(255) NOT NULL, body MEDIUMTEXT NOT NULL, is_html TINYINT(1) NOT NULL DEFAULT 1, status VARCHAR(10) NOT NULL DEFAULT \'queued\', attempts INT NOT NULL DEFAULT 0,
-                last_error TEXT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, next_attempt_at DATETIME NULL, sent_at DATETIME NULL, KEY idx_outbox_status (status, next_attempt_at))
-                ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+            \App\Libraries\MailOutbox::ensureTable();
             $qr = 'data:image/png;base64,' . base64_encode(\App\Libraries\QrPng::make($link));
             foreach ($signRows as $sr) {
                 $u = $db->table('tbl_users')->select('Email')->where('UserID', (int) $sr['user_id'])->get()->getRowArray();
@@ -378,7 +375,7 @@ class ApprovalController extends BaseController
                     . '<p><img src="' . $qr . '" width="200" height="200" alt="QR code to open the approval page" style="border:1px solid #e5e7eb;border-radius:8px"></p>'
                     . "<p style=\"font-size:13px;color:#4b5563\">The link works once and expires in {$minutes} minutes. Open it on the company Wi-Fi. If it expired, ask the lab to send the report for approval again.</p>"
                     . '<p style="font-size:12px;color:#6b7280">NEXUS-L Laboratory System - this message was sent automatically.</p></div>';
-                $db->table('tbl_email_outbox')->insert(['source' => 'NEXUS-L approval', 'to_address' => $to, 'subject' => mb_substr('NEXUS-L: report approval needed - ' . $about, 0, 250), 'body' => $html, 'is_html' => 1]);
+                \App\Libraries\MailOutbox::enqueue($to, 'NEXUS-L: report approval needed - ' . $about, $html, ['source' => 'NEXUS-L approval']);
             }
         } catch (\Throwable $e) {
             log_message('error', 'Approval e-mail not queued: ' . $e->getMessage());

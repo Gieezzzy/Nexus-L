@@ -2562,33 +2562,64 @@ class DtrController extends BaseController
         }
 
         try {
-            $email = service('email');
-            $email->setTo($to);
-            $email->setSubject($subject);
-            $email->setMessage(nl2br(htmlspecialchars($message, ENT_QUOTES, 'UTF-8')));
+            $attachments = [];
+            $imgHtml = '';
 
-            // Optional attachment
-            foreach (['image', 'image2'] as $field) {   // image = the report graph card, image2 = the photo (phone or upload)
-                $file = $this->request->getFile($field);
-                if ($file && $file->isValid()) {
-                    $email->attach($file->getTempName(), 'attachment', $file->getClientName());
-                }
+            // Process image attachments: image = Report Graph Card, image2 = Photo
+            $cardFile = $this->request->getFile('image');
+            if ($cardFile && $cardFile->isValid()) {
+                $cData = file_get_contents($cardFile->getTempName());
+                $cBase64 = base64_encode($cData);
+                $attachments[] = [
+                    'filename'     => $cardFile->getClientName() ?: 'Report_Graph_Card.png',
+                    'content_type' => $cardFile->getClientMimeType() ?: 'image/png',
+                    'data_base64'  => $cBase64,
+                    'cid'          => 'card_image',
+                ];
+                $imgHtml .= '<div style="margin:16px 0;text-align:center;"><p style="font-size:12px;color:#6b7280;margin-bottom:4px;font-weight:bold;">TEST RESULT GRAPH CARD</p><img src="cid:card_image" style="max-width:100%;height:auto;border:1px solid #d1d5db;border-radius:6px;box-shadow:0 2px 4px rgba(0,0,0,0.06);" alt="Bonding Test Graph Card"></div>';
             }
 
-            if ($email->send(false)) {
-                return $this->response->setJSON([
-                    'ok' => true,
-                    'message' => 'Email report successfully dispatched to ' . $to,
-                ]);
+            $photoFile = $this->request->getFile('image2');
+            if ($photoFile && $photoFile->isValid()) {
+                $pData = file_get_contents($photoFile->getTempName());
+                $pBase64 = base64_encode($pData);
+                $attachments[] = [
+                    'filename'     => $photoFile->getClientName() ?: 'photo.jpg',
+                    'content_type' => $photoFile->getClientMimeType() ?: 'image/jpeg',
+                    'data_base64'  => $pBase64,
+                    'cid'          => 'photo_image',
+                ];
+                $imgHtml .= '<div style="margin:16px 0;text-align:center;"><p style="font-size:12px;color:#6b7280;margin-bottom:4px;font-weight:bold;">SPECIMEN PHOTO</p><img src="cid:photo_image" style="max-width:100%;height:auto;border:1px solid #d1d5db;border-radius:6px;box-shadow:0 2px 4px rgba(0,0,0,0.06);" alt="Specimen Photo"></div>';
+            }
+
+            // Build rich HTML email body
+            $htmlBody = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:20px;background-color:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">'
+                . '<div style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">'
+                . '<div style="background:#1e293b;color:#ffffff;padding:18px 24px;"><h2 style="margin:0;font-size:18px;letter-spacing:0.5px;">NEXUS-L QC LABORATORY REPORT</h2><p style="margin:4px 0 0;font-size:12px;color:#94a3b8;">Whole Shoe Bonding Quality Control</p></div>'
+                . '<div style="padding:24px;">'
+                . '<div style="background:#f8fafc;border-left:4px solid #2563eb;padding:12px 16px;margin-bottom:20px;font-size:14px;line-height:1.6;white-space:pre-wrap;">' . htmlspecialchars($message, ENT_QUOTES, 'UTF-8') . '</div>'
+                . $imgHtml
+                . '<div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:11px;color:#64748b;text-align:center;">'
+                . 'This report was generated and dispatched automatically by <b>NEXUS-L Laboratory System</b>.<br>Please do not reply directly to this automated email.'
+                . '</div></div></div></body></html>';
+
+            // Queue it in the outbox (tbl_email_outbox): the Outlook Relay (or, when it is offline, the Server HTML Handler) sends it in FIFO order
+            [$queueId, $queueErr] = \App\Libraries\MailOutbox::enqueue($to, $subject, $htmlBody, [
+                'source'      => 'DTR-Bonding',
+                'attachments' => ! empty($attachments) ? $attachments : null,
+            ]);
+            if ($queueId === 0) {
+                return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => $queueErr]);
             }
 
             return $this->response->setJSON([
-                'ok' => true,
-                'message' => 'Email queued / sent to ' . $to,
+                'ok'      => true,
+                'queue_id'=> $queueId,
+                'message' => 'Report successfully queued for Outlook dispatch (FIFO #' . $queueId . ') to ' . $to,
             ]);
         } catch (\Throwable $e) {
             return $this->response->setStatusCode(500)->setJSON([
-                'ok' => false,
+                'ok'    => false,
                 'error' => 'Mailer exception: ' . $e->getMessage(),
             ]);
         }

@@ -326,6 +326,70 @@ class SettingsController extends BaseController
         return $this->json(['ok' => true, 'token' => (string) SystemSettings::get('notify.token', '')]);
     }
 
+    /** GET settings/mail/status: is the Outlook Relay alive, the queue counts and the latest e-mails (Admin only) */
+    public function mailStatus()
+    {
+        if (! $this->isAdmin()) {
+            return $this->deny();
+        }
+        \App\Libraries\MailOutbox::ensureTable();
+        $db     = \Config\Database::connect();
+        $counts = ['queued' => 0, 'sending' => 0, 'sent' => 0, 'failed' => 0];
+        foreach ($db->query('SELECT status, COUNT(*) c FROM tbl_email_outbox GROUP BY status')->getResultArray() as $r) {
+            $counts[$r['status']] = (int) $r['c'];
+        }
+        $rows = $db->query('SELECT id, source, to_address, subject, status, attempts, last_error, created_at, sent_at, next_attempt_at FROM tbl_email_outbox ORDER BY id DESC LIMIT 25')->getResultArray();
+        $info = json_decode((string) SystemSettings::get('mail.relay_info', ''), true) ?: [];
+
+        return $this->json([
+            'ok'     => true,
+            'relay'  => ['online' => \App\Libraries\MailOutbox::relayOnline(), 'seen_at' => (string) SystemSettings::get('mail.relay_seen_at', ''), 'info' => $info, 'has_token' => (string) SystemSettings::get('mail.relay_token', '') !== ''],
+            'counts' => $counts,
+            'rows'   => $rows,
+        ]);
+    }
+
+    /** POST settings/mail/retry {id}: a failed (or waiting) e-mail goes to the front of the queue again */
+    public function mailRetry()
+    {
+        if (! $this->isAdmin()) {
+            return $this->deny();
+        }
+        $id = (int) (($this->request->getJSON(true) ?: [])['id'] ?? 0);
+        $db = \Config\Database::connect();
+        $db->query("UPDATE tbl_email_outbox SET status = 'queued', attempts = 0, next_attempt_at = NULL, last_error = NULL WHERE id = ? AND status IN ('failed','queued')", [$id]);
+
+        return $this->json(['ok' => $db->affectedRows() > 0]);
+    }
+
+    /** POST settings/mail/test {to}: queues a short test e-mail so the whole chain can be checked */
+    public function mailTest()
+    {
+        if (! $this->isAdmin()) {
+            return $this->deny();
+        }
+        $to = trim((string) (($this->request->getJSON(true) ?: [])['to'] ?? ''));
+        [$id, $err] = \App\Libraries\MailOutbox::enqueue($to, 'NEXUS-L test e-mail', '<p>This is a test e-mail from <b>NEXUS-L</b> (Settings &gt; E-mail), sent at ' . date('Y-m-d H:i:s') . '.</p><p>If you can read it, the Outlook Relay chain works.</p>', ['source' => 'NEXUS-L test']);
+
+        return $this->json($id ? ['ok' => true, 'id' => $id] : ['ok' => false, 'message' => $err], $id ? 200 : 422);
+    }
+
+    /** GET settings/relay-token: the saved Outlook Relay app token (Admin only). POST: makes a new one and saves it. */
+    public function relayToken()
+    {
+        if (! $this->isAdmin()) {
+            return $this->deny();
+        }
+        if ($this->request->getMethod() === 'post') {
+            $t = bin2hex(random_bytes(12));
+            SystemSettings::set('mail.relay_token', $t, $this->me());
+
+            return $this->json(['ok' => true, 'token' => $t]);
+        }
+
+        return $this->json(['ok' => true, 'token' => (string) SystemSettings::get('mail.relay_token', '')]);
+    }
+
     /** GET settings/trainer-token: the saved Brain Trainer app token (Admin only). POST: makes a new one and saves it. */
     public function trainerToken()
     {

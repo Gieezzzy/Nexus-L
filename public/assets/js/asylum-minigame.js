@@ -609,35 +609,87 @@
       });
     },
 
-    // EVERY key is hidden inside furniture (drawers, lockers, cabinets, freezers, beds, couches, toilets...), never lying around.
-    // The door keys are placed so that each one can be reached with the keys found before it; the exit keys are spread over the floors.
+    // Keys float in the open. The door keys are placed so that each one can be reached with the keys found before it; the exit keys are spread over the floors.
+    // keys float in the open, at random places on every floor (the cupboards, lockers and beds are for hiding, not for keys)
     placeKeys() {
       const w = this.world;
       this.containers = [];
       w.floors.forEach((F) => F.searchSpots.forEach((c) => { c.contents = null; c.searched = false; this.containers.push(c); }));
-      const used = new Set();
+      (this.floatKeys || []).forEach((k) => { if (k.mesh.parent) k.mesh.parent.remove(k.mesh); });
+      this.floatKeys = [];
+      const taken = [];                                              // [floor, x, z] so keys do not lie on top of each other
+      const spotOn = (floor, R) => {
+        const F = w.floors[floor];
+        for (let i = 0; i < 60; i++) {
+          const p = pickOf(F.patrolPoints);
+          const x = p[0] + (Math.random() - 0.5) * 5, z = p[1] + (Math.random() - 0.5) * 5;
+          if (!F.walkable(x, z)) continue;
+          if (R && !w.inSet(R, floor, x, z)) continue;
+          if (taken.some(t => t[0] === floor && Math.hypot(t[1] - x, t[2] - z) < 4)) continue;
+          taken.push([floor, x, z]);
+          return [x, z];
+        }
+        const p = pickOf(F.patrolPoints); taken.push([floor, p[0], p[1]]);
+        return [p[0], p[1]];
+      };
+      // the key of each locked door lies where the player can reach it before that door is opened
       const opened = [];
-      const standOk = (R, c) => w.inSet(R, c.floor, c.anchor[0], c.anchor[1]);
       shuffleIn(this.lockedDoors.slice()).forEach((d) => {
         const R = w.reachable(opened);
-        const cands = this.containers.filter(c => !used.has(c) && standOk(R, c));
-        const c = cands.length ? pickOf(cands) : pickOf(this.containers.filter(x => !used.has(x)));
-        used.add(c);
-        c.contents = { kind: 'door', door: d };
+        const floors = [0, 1, 2, 3, 4].filter(f => R && w.floors[f] && w.floors[f].patrolPoints.length);
+        const f = d.floor !== undefined && Math.random() < 0.7 ? d.floor : pickOf(floors.length ? floors : [0]);
+        const pos = spotOn(f, R);
+        this.addFloatKey('door', f, pos, d);
         opened.push(d);
       });
+      // the keys for the exit: spread over the floors, as evenly as the number allows, anywhere on the floor
       const R = w.reachable(opened);
-      let pool = this.containers.filter(c => !used.has(c) && standOk(R, c));
-      if (pool.length < this.keysNeeded) pool = this.containers.filter(c => !used.has(c));
       const perFloor = [0, 0, 0, 0, 0];
-      for (let k = 0; k < this.keysNeeded && pool.length; k++) {
-        const least = Math.min(...pool.map(c => perFloor[c.floor]));
-        const c = pickOf(pool.filter(x => perFloor[x.floor] === least));
-        pool.splice(pool.indexOf(c), 1);
-        used.add(c);
-        c.contents = { kind: 'key' };
-        perFloor[c.floor]++;
+      for (let k = 0; k < this.keysNeeded; k++) {
+        const least = Math.min(...perFloor);
+        const f = pickOf([0, 1, 2, 3, 4].filter(x => perFloor[x] === least));
+        perFloor[f]++;
+        this.addFloatKey('key', f, spotOn(f, R));
       }
+    },
+
+    addFloatKey(kind, floor, pos, door) {
+      const gold = kind === 'key' ? 0xfacc15 : 0x38bdf8;
+      const g = new THREE.Group();
+      const mat = new THREE.MeshStandardMaterial({ color: gold, emissive: gold, emissiveIntensity: 0.9, metalness: 0.8, roughness: 0.3 });
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.04, 8, 18), mat); ring.position.y = 0.2;
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.4, 8), mat); shaft.position.y = -0.1;
+      const t1 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.05, 0.04), mat); t1.position.set(0.06, -0.22, 0);
+      const t2 = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.05, 0.04), mat); t2.position.set(0.05, -0.12, 0);
+      const halo = new THREE.Mesh(new THREE.SphereGeometry(0.45, 14, 10), new THREE.MeshBasicMaterial({ color: gold, transparent: true, opacity: 0.18, depthWrite: false, blending: THREE.AdditiveBlending }));
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.2, 8, 1, true), new THREE.MeshBasicMaterial({ color: gold, transparent: true, opacity: 0.16, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+      beam.position.y = 0.9;
+      g.add(ring, shaft, t1, t2, halo, beam);
+      g.scale.setScalar(1.5);
+      g.position.set(pos[0], 1.0, pos[1]);
+      this.world.floors[floor].group.add(g);
+      this.floatKeys.push({ kind, floor, door, mesh: g, x: pos[0], z: pos[1], taken: false, phase: Math.random() * 6 });
+    },
+
+    updateFloatKeys(delta, time, p) {
+      (this.floatKeys || []).forEach((k) => {
+        if (k.taken) return;
+        k.mesh.rotation.y += delta * 2.2;
+        k.mesh.position.y = 1.0 + Math.sin(time * 2.4 + k.phase) * 0.12;
+        if (k.floor === this.floor && !this.hiding && !this.inTransition && Math.hypot(k.x - p.x, k.z - p.z) < 1.2) {
+          k.taken = true;
+          if (k.mesh.parent) k.mesh.parent.remove(k.mesh);
+          AudioEngine.playKeyPickup();
+          if (k.kind === 'key') {
+            this.keysFound++;
+            if (window.lexusSay) window.lexusSay('🗝️ You picked up a key! <b>' + this.keysFound + ' of ' + this.keysNeeded + '</b>.', 'happy');
+          } else {
+            this.doorKeys[k.door.keyId] = true;
+            if (window.lexusSay) window.lexusSay('🗝️ You picked up ' + k.door.keyLabel + '. It opens a locked door.', 'happy');
+          }
+          this.renderHud();
+        }
+      });
     },
 
     // ------------------------------------------------------------------ pick-ups: power-ups drift, guns stay; more of both with more floors and more players
@@ -1499,8 +1551,8 @@
       const lex = this.lexus || (this.warehouseState && this.warehouseState.lexus);
       if (!lex || !lex.root || !this.containers) return '';
       let best = null, bd = 1e9;
-      this.containers.forEach((c) => {
-        if (c.searched || !c.contents) return;
+      (this.floatKeys || []).forEach((c) => {
+        if (c.taken || c.kind !== 'key') return;
         const d = Math.hypot(c.x - lex.root.position.x, c.z - lex.root.position.z) + Math.abs(c.floor - this.floor) * 40;
         if (d < bd) { bd = d; best = c; }
       });
@@ -1509,7 +1561,7 @@
       const dirs = ['east', 'south-east', 'south', 'south-west', 'west', 'north-west', 'north', 'north-east'];
       const a = Math.round(((Math.atan2(dz, dx) * 180 / Math.PI) + 360) % 360 / 45) % 8;
       const where = best.floor === this.floor ? Math.round(Math.hypot(dx, dz)) + ' m ' + dirs[a] : 'floor ' + (best.floor + 1);
-      return where + ' (' + best.searchLabel + ')';
+      return where;
     },
 
     // -------------------------------------------------------------------------
@@ -1545,6 +1597,7 @@
         if (this.disguiseMesh) { this.disguiseMesh.position.set(p.x, 0, p.z); this.disguiseMesh.rotation.y = lex.currentYaw || 0; }
         if (this.fx.disguise <= 0) { this.endTransform(); if (window.lexusSay) window.lexusSay('The disguise wore off.', 'curious'); }
       }
+      this.updateFloatKeys(delta, time, p);
       // loose power-ups vanish every 10 seconds and show up somewhere else; guns stay where they are
       this.powerups.forEach((o) => {
         if (!o.fixed) { o.timer += delta; if (o.timer >= 10) this.relocatePower(o); }

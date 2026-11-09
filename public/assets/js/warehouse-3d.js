@@ -1994,11 +1994,18 @@
 
     if (dom.tblCount) dom.tblCount.textContent = filtered.length;
 
+    // pages of 10 at most
+    const PAGE = 10;
+    const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
+    state.adminPage = Math.min(Math.max(1, state.adminPage || 1), pages);
+    const pageRows = filtered.slice((state.adminPage - 1) * PAGE, state.adminPage * PAGE);
+    renderAdminPager(pages, filtered.length, PAGE);
+
     let html = '';
     if (filtered.length === 0) {
       html = '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:24px;">No retain boxes match the filter.</td></tr>';
     } else {
-      filtered.forEach(b => {
+      pageRows.forEach(b => {
         let statusBadge = '<span class="wh-status-active">ACTIVE</span>';
         if (b.status === 'FOR_DISPOSAL') statusBadge = '<span class="wh-status-disposal">DISPOSAL</span>';
         if (b.status === 'ARCHIVED') statusBadge = '<span class="wh-status-archived">ARCHIVED</span>';
@@ -2029,35 +2036,36 @@
 
     dom.boxesTableTbody.innerHTML = html;
 
-    // Table action buttons
-    dom.boxesTableTbody.querySelectorAll('.btn-locate').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = parseInt(btn.dataset.id, 10);
-        const b = state.boxes.find(item => item.id === id);
-        if (b) {
-          closeAdminDrawer();
-          selectBox(b);
-          showNavigationPathToBox(b);
-        }
-      });
-    });
+  }
 
-    dom.boxesTableTbody.querySelectorAll('.btn-edit').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = parseInt(btn.dataset.id, 10);
-        const b = state.boxes.find(item => item.id === id);
-        if (b) openBoxModal(b);
-      });
-    });
+  function renderAdminPager(pages, total, per) {
+    const el = document.getElementById('wh-tbl-pager');
+    if (!el) return;
+    const cur = state.adminPage;
+    if (pages <= 1) { el.innerHTML = '<span class="wh-pg-info">' + total + ' box' + (total === 1 ? '' : 'es') + '</span>'; return; }
+    const nums = [];
+    for (let i = 1; i <= pages; i++) if (i === 1 || i === pages || Math.abs(i - cur) <= 1) nums.push(i);
+    let h = '<button type="button" data-pg="' + (cur - 1) + '"' + (cur === 1 ? ' disabled' : '') + '>&lsaquo; Prev</button>';
+    let prev = 0;
+    nums.forEach((i) => { if (i - prev > 1) h += '<span class="wh-pg-gap">…</span>'; h += '<button type="button" data-pg="' + i + '" class="' + (i === cur ? 'on' : '') + '">' + i + '</button>'; prev = i; });
+    h += '<button type="button" data-pg="' + (cur + 1) + '"' + (cur === pages ? ' disabled' : '') + '>Next &rsaquo;</button>';
+    h += '<span class="wh-pg-info">' + ((cur - 1) * per + 1) + '–' + Math.min(cur * per, total) + ' of ' + total + '</span>';
+    el.innerHTML = h;
+  }
 
-    dom.boxesTableTbody.querySelectorAll('.btn-delete').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const id = parseInt(btn.dataset.id, 10);
-        if (confirm('Are you sure you want to delete or dispose this retention box?')) {
-          await deleteBox(id);
-        }
-      });
-    });
+  // one listener for every row action (no listeners to re-attach on each page)
+  function onAdminTableClick(e) {
+    const btn = e.target.closest('.wh-tbl-btn');
+    if (!btn) return;
+    const id = parseInt(btn.dataset.id, 10);
+    const b = state.boxes.find(item => String(item.id) === String(id));
+    if (btn.classList.contains('btn-locate')) {
+      if (b) { if (state.encoding) setEncodingMode(false); else closeAdminDrawer(); selectBox(b); showNavigationPathToBox(b); }
+    } else if (btn.classList.contains('btn-edit')) {
+      if (b) openBoxModal(b);
+    } else if (btn.classList.contains('btn-delete')) {
+      if (confirm('Are you sure you want to delete or dispose this retention box?')) deleteBox(id);
+    }
   }
 
   function openBoxModal(boxData) {
@@ -2150,6 +2158,27 @@
       dom.adminDrawer.setAttribute('aria-hidden', 'false');
     }
     renderAdminTable(state.boxes);
+  }
+
+  // Hide View: the 3D warehouse goes away and the box encoding (Manage Boxes) takes its place on the page instead of opening at the side
+  function setEncodingMode(on) {
+    const root = document.getElementById('wh-root');
+    if (!root || !dom.adminDrawer) return;
+    if (on && window.AsylumGame && window.AsylumGame.isActive()) return;
+    root.classList.toggle('wh-encoding', on);
+    const b = document.getElementById('wh-btn-hide-view'), t = document.getElementById('wh-hide-view-txt');
+    if (b) { b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+    if (t) t.textContent = on ? 'Show View' : 'Hide View';
+    if (on) {
+      if (pilot.on) setPilot(false);
+      state.encoding = true;
+      openAdminDrawer();
+    } else {
+      state.encoding = false;
+      closeAdminDrawer();
+      setTimeout(onWindowResize, 30);
+    }
+    try { localStorage.setItem('wh.encoding', on ? '1' : '0'); } catch (e) { /* private window */ }
   }
 
   function closeAdminDrawer() {
@@ -2245,13 +2274,13 @@
       state.markerPin.position.y += Math.sin(time * 4) * 0.0015;
     }
 
-    if (renderer && scene && camera) {
+    if (renderer && scene && camera && !state.encoding) {
       renderer.render(scene, camera);
     }
   }
 
   function onWindowResize() {
-    if (!renderer || !camera || !dom.canvasWrap) return;
+    if (!renderer || !camera || !dom.canvasWrap || state.encoding) return;
     const width = dom.canvasWrap.clientWidth;
     const height = dom.canvasWrap.clientHeight || 560;
     camera.aspect = width / height;
@@ -3030,13 +3059,26 @@
     // Admin drawer & modal
     if (isAdmin) {
       if (dom.btnOpenAdmin) dom.btnOpenAdmin.addEventListener('click', openAdminDrawer);
+      const hv = document.getElementById('wh-btn-hide-view');
+      if (hv) hv.addEventListener('click', () => setEncodingMode(!state.encoding));
       if (dom.adminClose) dom.adminClose.addEventListener('click', closeAdminDrawer);
       if (dom.adminDismiss) dom.adminDismiss.addEventListener('click', closeAdminDrawer);
       if (dom.adminBackdrop) dom.adminBackdrop.addEventListener('click', closeAdminDrawer);
 
-      if (dom.tblSearch) dom.tblSearch.addEventListener('input', () => renderAdminTable(state.boxes));
-      if (dom.tblRackFilter) dom.tblRackFilter.addEventListener('change', () => renderAdminTable(state.boxes));
-      if (dom.tblTierFilter) dom.tblTierFilter.addEventListener('change', () => renderAdminTable(state.boxes));
+      let tblTimer = null;
+      const refilter = () => { state.adminPage = 1; renderAdminTable(state.boxes); };
+      if (dom.tblSearch) dom.tblSearch.addEventListener('input', () => { clearTimeout(tblTimer); tblTimer = setTimeout(refilter, 150); });
+      if (dom.tblRackFilter) dom.tblRackFilter.addEventListener('change', refilter);
+      if (dom.tblTierFilter) dom.tblTierFilter.addEventListener('change', refilter);
+      if (dom.boxesTableTbody) dom.boxesTableTbody.addEventListener('click', onAdminTableClick);
+      const pager = document.getElementById('wh-tbl-pager');
+      if (pager) pager.addEventListener('click', (e) => {
+        const g = e.target.closest('button[data-pg]');
+        if (!g || g.disabled) return;
+        state.adminPage = parseInt(g.dataset.pg, 10);
+        renderAdminTable(state.boxes);
+        const sc = document.querySelector('.wh-tbl-scroll'); if (sc) sc.scrollTop = 0;
+      });
 
       if (dom.btnAddNewBox) dom.btnAddNewBox.addEventListener('click', () => openBoxModal(null));
       if (dom.boxModalClose) dom.boxModalClose.addEventListener('click', closeBoxModal);
