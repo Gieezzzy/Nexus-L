@@ -83,7 +83,7 @@ class NotifierController extends BaseController
             return $r;
         }
 
-        return $this->json(['ok' => true, 'server_time' => date('c'), 'tz' => date_default_timezone_get(), 'base' => site_url()]);
+        return $this->json(['ok' => true, 'server_time' => date('c'), 'tz' => date_default_timezone_get(), 'base' => site_url(), 'routing' => \App\Libraries\PayloadRouting::info($this->request)]);
     }
 
     /** GET notifier/directory: every active user with his roles, the roles, and the lines / test types seen in the data */
@@ -334,6 +334,11 @@ class NotifierController extends BaseController
         $isTest = ! empty($p['test']);
         if ($text === '' || ! $ids || ($key === '' && ! $isTest)) {
             return $this->json(['ok' => false, 'error' => 'Nothing to send (text, recipients and key are needed).'], 422);
+        }
+        if (! $isTest && ! \App\Libraries\PayloadRouting::allowed($this->request)) {
+            $routing = \App\Libraries\PayloadRouting::info($this->request);
+
+            return $this->json(['ok' => false, 'error' => $routing['note'], 'routing' => $routing]);
         }
         $db     = $this->db();
         $store  = new NexusStore();

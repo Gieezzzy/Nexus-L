@@ -62,6 +62,7 @@ class MailRelayController extends BaseController
             'default_sender_name'  => (string) SystemSettings::get('mail.sender_name', 'Nexus-L'),
             'default_sender_email' => (string) SystemSettings::get('mail.sender_email', 'Nexus-Noreply@outlook.com'),
             'config'               => MailOutbox::relayConfig(),
+            'routing'              => \App\Libraries\PayloadRouting::info($this->request),
         ]);
     }
 
@@ -73,7 +74,7 @@ class MailRelayController extends BaseController
         }
         MailOutbox::touchRelay();
 
-        return $this->response->setJSON(['ok' => true, 'config' => MailOutbox::relayConfig()]);
+        return $this->response->setJSON(['ok' => true, 'config' => MailOutbox::relayConfig(), 'routing' => \App\Libraries\PayloadRouting::info($this->request)]);
     }
 
     /** POST mail-relay/heartbeat: the Relay says it is alive and what Outlook it uses (shown under Settings > E-mail) */
@@ -95,7 +96,7 @@ class MailRelayController extends BaseController
             'error'             => mb_substr((string) ($j['error'] ?? ''), 0, 200),
         ]);
 
-        return $this->response->setJSON(['ok' => true, 'config' => MailOutbox::relayConfig()]);
+        return $this->response->setJSON(['ok' => true, 'config' => MailOutbox::relayConfig(), 'routing' => \App\Libraries\PayloadRouting::info($this->request)]);
     }
 
     /** GET mail-relay/queue: the oldest due e-mails, FIFO. Each one is claimed ('sending') before it is handed out. */
@@ -107,8 +108,12 @@ class MailRelayController extends BaseController
         MailOutbox::ensureTable();
         MailOutbox::touchRelay();
         $cfg = MailOutbox::relayConfig();
+        $routing = \App\Libraries\PayloadRouting::info($this->request);
         if ($cfg['transport'] === 'handler') {
-            return $this->response->setJSON(['ok' => true, 'count' => 0, 'items' => [], 'note' => 'Settings say the Server HTML Handler sends the e-mails.', 'config' => $cfg]);
+            return $this->response->setJSON(['ok' => true, 'count' => 0, 'items' => [], 'note' => 'Settings say the Server HTML Handler sends the e-mails.', 'config' => $cfg, 'routing' => $routing]);
+        }
+        if (! $routing['is_target']) {
+            return $this->response->setJSON(['ok' => true, 'count' => 0, 'items' => [], 'note' => $routing['note'], 'config' => $cfg, 'routing' => $routing]);
         }
 
         $db    = \Config\Database::connect();
@@ -123,7 +128,7 @@ class MailRelayController extends BaseController
             $today = (int) $db->table('tbl_email_outbox')->where('status', 'sent')->where('sent_at >=', date('Y-m-d 00:00:00'))->countAllResults();
             $limit = min($limit, max(0, $cfg['daily_limit'] - $today));
             if ($limit === 0) {
-                return $this->response->setJSON(['ok' => true, 'count' => 0, 'items' => [], 'note' => 'The daily limit of ' . $cfg['daily_limit'] . ' e-mails is reached.', 'config' => $cfg]);
+                return $this->response->setJSON(['ok' => true, 'count' => 0, 'items' => [], 'note' => 'The daily limit of ' . $cfg['daily_limit'] . ' e-mails is reached.', 'config' => $cfg, 'routing' => $routing]);
             }
         }
 
@@ -160,7 +165,7 @@ class MailRelayController extends BaseController
             $items[]          = $r;
         }
 
-        return $this->response->setJSON(['ok' => true, 'count' => count($items), 'items' => $items, 'config' => $cfg]);
+        return $this->response->setJSON(['ok' => true, 'count' => count($items), 'items' => $items, 'config' => $cfg, 'routing' => $routing]);
     }
 
     /** POST mail-relay/update-status {id, status: sent|failed|queued, error_message}: a failed e-mail goes back to the queue until the attempts are used up */

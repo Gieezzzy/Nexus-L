@@ -123,6 +123,11 @@ class SystemSettings
             'mail.relay_allowed_domains' => $d('mail', 'Relay: only send to these domains', 'text', '', 'Comma separated, for example dtshoes.com, intertek.com. Empty = anyone. An address outside the list is refused (marked failed).'),
             'mail.relay_seen_at'         => $d('hidden', 'Relay last seen', 'text', '', ''),
             'mail.relay_info'            => $d('hidden', 'Relay info', 'text', '', ''),
+            // --- Payload routing: which PC (.43 / .45) sends e-mail and alerts ----------------------------------------------------
+            'ops.target'                 => $d('routing', 'Which PC sends e-mail and alerts', 'select:auto,43,45,custom', 'auto', 'auto = either PC may send (the usual case). Choosing one PC means only it does the work; a Hub on the other PC stays idle instead of competing.'),
+            'ops.ip_43'                   => $d('routing', 'Address of .43', 'text', '192.168.32.43', ''),
+            'ops.ip_45'                   => $d('routing', 'Address of .45', 'text', '192.168.32.45', ''),
+            'ops.ip_custom'               => $d('routing', 'Address (custom)', 'text', '', 'Used only when the choice above is "custom".'),
             'insights.aliases'           => $d('ai', 'Supplier spelling merges (Quality Insights)', 'textarea', '', 'One per line: WRONG SPELLING=RIGHT NAME. For example NNAPAO=NANPAO. Suppliers written both ways are counted as one in the scorecard.'),
             'ai.git_synced_v201'         => $d('ai', 'Git Auto-Sync Flag', 'text', '0', 'Internal flag indicating whether Phase 201 has been pushed to git.'),
         ];
@@ -132,6 +137,7 @@ class SystemSettings
     {
         return [
             'ai'       => 'AI Assistant & Bot Engine',
+            'routing'  => 'Payload routing (.43 / .45)',
             'mail'     => 'E-mail (Outlook Relay)',
             'service'  => 'InterLink service',
             'defaults' => 'InterLink report defaults',

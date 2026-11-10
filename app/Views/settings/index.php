@@ -46,6 +46,7 @@ $field = static function (array $r): string {
         <a href="#su-root">Users &amp; roles</a>
         <a href="#st-ai">AI assistant</a>
         <a href="#st-mail">E-mail</a>
+        <a href="#st-routing">Payload routing</a>
         <a href="#st-service">InterLink service</a>
         <a href="#st-db">Database</a>
         <a href="#st-transfer">Transfer</a>
@@ -144,6 +145,14 @@ $field = static function (array $r): string {
             <button type="button" class="nx-btn" id="st-git-push">Push to Git</button>
             <span class="st-msg" id="st-ai-msg"></span>
         </div>
+    </div>
+
+    <!-- Payload routing: which PC (.43 / .45) sends e-mail and alerts -->
+    <div class="card glass" id="st-routing">
+        <h3><?= esc($categories['routing'] ?? 'Payload routing (.43 / .45)') ?></h3>
+        <p class="muted sm">Where this lab's Outlook Relay / Notifier runs on two PCs (.43 and .45). Leave "Any PC may send" unless two Hubs are both running and you want only one of them to actually send; choosing one PC here makes the other Hub stay idle instead of competing for the same e-mails and alerts.</p>
+        <?php foreach ($byCat['routing'] ?? [] as $r) { echo $field($r); } ?>
+        <div class="st-actions"><button type="button" class="nx-btn nx-primary" data-save="st-routing">Save</button> <span class="st-msg" id="st-routing-msg"></span></div>
     </div>
 
     <!-- E-mail: the Outlook Relay -->

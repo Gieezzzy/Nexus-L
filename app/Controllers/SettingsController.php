@@ -316,7 +316,7 @@ class SettingsController extends BaseController
         if (! $this->isAdmin()) {
             return $this->deny();
         }
-        if ($this->request->getMethod() === 'post') {
+        if (strtolower($this->request->getMethod()) === 'post') {
             $t = bin2hex(random_bytes(12));
             SystemSettings::set('notify.token', $t, $this->me());
 
@@ -470,7 +470,7 @@ class SettingsController extends BaseController
         if (! $this->isAdmin()) {
             return $this->deny();
         }
-        if ($this->request->getMethod() === 'post') {
+        if (strtolower($this->request->getMethod()) === 'post') {
             $t = bin2hex(random_bytes(12));
             SystemSettings::set('mail.relay_token', $t, $this->me());
 
@@ -486,7 +486,7 @@ class SettingsController extends BaseController
         if (! $this->isAdmin()) {
             return $this->deny();
         }
-        if ($this->request->getMethod() === 'post') {
+        if (strtolower($this->request->getMethod()) === 'post') {
             $t = bin2hex(random_bytes(12));
             SystemSettings::set('ai.trainer_token', $t, $this->me());
 
