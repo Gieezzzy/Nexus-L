@@ -267,21 +267,21 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                 <button type="button" class="dtr-btn dtr-btn-primary" data-add-record="containers">+ Material Receive</button>
             </div>
             <div class="dtr-table-wrap dtr-fill-wrap" style="max-height:290px">
-                <table class="dtr-table">
+                <table class="dtr-table dtr-mat-log-table">
                     <thead>
                         <tr>
-                            <th>Container #</th>
-                            <th>Date Arrived</th>
-                            <th>Date Received in the Lab</th>
                             <th>Lab Reference</th>
-                            <th>Material Name</th>
-                            <th>Material Code</th>
-                            <th>VSP Code</th>
-                            <th>Quantity</th>
-                            <th>IQC ERP</th>
-                            <th>Status</th>
+                            <th>Production Code</th>
+                            <th>Colorway</th>
+                            <th>Style</th>
+                            <th>MTL #</th>
+                            <th>Material Test</th>
+                            <th>Material</th>
+                            <th>Technician</th>
+                            <th>Machine Number</th>
                             <th>Result</th>
-                            <th>Remarks</th>
+                            <th>Test Start</th>
+                            <th>Test End</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -289,23 +289,23 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                         <?php foreach ($containers as $c): ?>
                             <?php
                                 $cName = trim((string) ($c['MaterialName'] ?? '')) !== '' ? $c['MaterialName'] : ($c['ReceiptName'] ?? '');
-                                $cProd = trim((string) ($c['MaterialProdCode'] ?? '')) !== '' ? $c['MaterialProdCode'] : ($c['ReceiptProd'] ?? '');
-                                $cRem  = trim((string) ($c['MaterialRemarks'] ?? '')) !== '' ? $c['MaterialRemarks'] : ($c['ContainerRemarks'] ?? '');
-                                $cFin  = trim((string) ($c['FinalStatus'] ?? ''));
+                                $cMat  = trim((string) $cName) !== '' ? $cName : (string) ($c['MaterialCode'] ?? '');
+                                $cRes  = trim((string) ($c['Result'] ?? ''));
+                                $cRef  = trim((string) ($c['LabRef'] ?? ''));
                             ?>
                             <tr>
-                                <td class="mono"><b><?= esc($c['ContainerNo'] ?? '') ?></b></td>
-                                <td><?= esc(substr((string) ($c['DateArrived'] ?? ''), 0, 10)) ?></td>
-                                <td><?= esc(substr((string) ($c['DateReceivedInLab'] ?? ''), 0, 10)) ?></td>
-                                <td class="mono"><?php if (! empty($c['LabReference'])): ?><?= $labThumb('containers', (string) $c['LabReference']) ?><a href="#" class="dtr-labref-link" data-open-material="<?= esc($c['LabReference'], 'attr') ?>" title="Open in Material Tests"><b><?= esc($c['LabReference']) ?></b></a><?php endif ?></td>
-                                <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="<?= esc((string) $cName, 'attr') ?>"><?= esc((string) $cName) ?></td>
-                                <td class="mono"><?= esc($c['MaterialCode'] ?? '') ?></td>
-                                <td class="mono"><?= esc((string) $cProd) ?></td>
-                                <td style="text-align:center"><?= esc($c['Quantity'] ?? '') ?></td>
-                                <td class="mono"><?= esc($c['IQCERP'] ?? '') ?></td>
-                                <td><?= esc($c['TestingStatus'] ?? '') ?></td>
-                                <td><?php if ($cFin !== ''): $fc = $resChip(strtoupper($cFin)); ?><?= str_contains($fc, 'res-chip') ? $fc : '<span class="badge b-ok">' . esc($cFin) . '</span>' ?><?php endif ?></td>
-                                <td><?= esc((string) $cRem) ?></td>
+                                <td class="mono"><?php if ($cRef !== ''): ?><?= $labThumb('containers', $cRef) ?><a href="#" class="dtr-labref-link" data-open-material="<?= esc($cRef, 'attr') ?>" title="Open in Material Tests"><b><?= esc($cRef) ?></b></a><?php endif ?></td>
+                                <td class="mono"><b><?= esc((string) (trim((string) ($c['ReceiptProd'] ?? '')) !== '' ? $c['ReceiptProd'] : ($c['MaterialProdCode'] ?? ''))) ?></b></td>
+                                <td><?= esc((string) ($c['ReceiptColor'] ?? '')) ?></td>
+                                <td><?= esc((string) ($c['ReceiptStyle'] ?? '')) ?></td>
+                                <td class="mono"><?= esc((string) ($c['ReceiptMTL'] ?? '')) ?></td>
+                                <td><?= esc((string) ($c['TestName'] ?? '')) ?></td>
+                                <td title="Container <?= esc((string) ($c['ContainerNo'] ?? ''), 'attr') ?>"><?= esc((string) $cMat) ?></td>
+                                <td><?= esc((string) ($c['Tech'] ?? '')) ?></td>
+                                <td class="mono"><?= esc((string) ($c['Machine'] ?? '')) ?></td>
+                                <td><?php if ($cRes !== ''): $fc = $resChip(strtoupper($cRes)); ?><?= str_contains($fc, 'res-chip') ? $fc : '<span class="badge b-ok">' . esc($cRes) . '</span>' ?><?php endif ?></td>
+                                <td><?= esc((string) ($c['TestStart'] ?? '')) ?></td>
+                                <td><?= esc((string) ($c['TestEnd'] ?? '')) ?></td>
                                 <td style="text-align:center"><button type="button" class="dtr-del-btn" data-del="<?= ! empty($c['MaterialID']) ? 'material' : 'container' ?>" data-id="<?= (int) (! empty($c['MaterialID']) ? $c['MaterialID'] : $c['ContainerID']) ?>" data-ref="<?= esc((string) ($c['ContainerNo'] ?? '') . ' / ' . ($c['MaterialCode'] ?? ''), 'attr') ?>" title="Delete this entry" aria-label="Delete this entry"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg></button></td>
                             </tr>
                         <?php endforeach ?>
@@ -434,7 +434,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                                 <td><?= esc(substr((string) ($s['IntakeProductionDate'] ?? ''), 0, 10)) ?></td>
                                 <td><?= esc(substr((string) (($s['TimeCompleted'] ?? '') ?: ($s['TimeStarted'] ?? '')), 0, 10)) ?></td>
                                 <td><?= $wRes !== '' ? esc($wRes) : '-' ?></td>
-                                <td><?= $wRes !== '' ? 'Tested' : ($wStat !== '' ? esc($wStat) : 'Pending') ?></td>
+                                <td><?= $wRes !== '' ? '<span class="badge b-ok">Tested</span>' : '<span class="badge b-warn">' . ($wStat !== '' ? esc(ucfirst(strtolower($wStat))) : 'Pending') . '</span>' ?></td>
                                 <td><?= esc(trim((string) ($s['Technician'] ?? ''))) ?></td>
                                 <td style="text-align:center"><button type="button" class="dtr-del-btn" data-del="wholeshoe" data-id="<?= (int) ($s['TrackerID'] ?? 0) ?>" data-ref="<?= esc((string) ($s['LabRefNo'] ?? ''), 'attr') ?>" title="Delete this entry" aria-label="Delete this entry"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg></button></td>
                             </tr>
@@ -1360,7 +1360,10 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                             <div class="vf-tpl-title-en">Bonding Test Results</div>
                             <div class="vf-tpl-title-cn">胶着力测试</div>
                         </div>
-                        <img class="vf-tpl-satra" src="<?= base_url('assets/images/satra-accredited.png') ?>" alt="SATRA Accredited Laboratory">
+                        <div class="vf-tpl-right">
+                            <div class="vf-tpl-result"><label for="bf_Result">* Overall Result</label><input type="text" name="Result" id="bf_Result" class="bold mono dtr-rate-inp" readonly></div>
+                            <img class="vf-tpl-satra" src="<?= base_url('assets/images/satra-accredited.png') ?>" alt="SATRA Accredited Laboratory">
+                        </div>
                     </div>
 
                     <div class="vf-tpl-ids">
@@ -1428,9 +1431,8 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                                 <option value="Right">Right</option>
                             </select>
                         </div>
-                        <div class="vf-sheet-cell"><label>* Overall Result</label><input type="text" name="Result" id="bf_Result" class="bold mono dtr-rate-inp" readonly></div>
-                        <div class="vf-sheet-cell"><label>Mode of Failure(s) <span class="cn">失败的方式</span> <small style="font-weight:400;color:#b45309" title="A Fail or Tolerable result cannot be saved without it">(needed for Fail / Tolerable)</small></label><input type="text" name="ModeOfFailure" id="bf_ModeOfFailure"></div>
-                        <div class="vf-sheet-cell"><label>Possible Cause(s) <span class="cn">可能的原因</span></label><input type="text" name="PossibleCause" id="bf_PossibleCause"></div>
+                        <div class="vf-sheet-cell vf-cell-off"><label>Mode of Failure(s) <span class="cn">失败的方式</span> <small style="font-weight:400;color:#b45309" title="A Fail or Tolerable result cannot be saved without it">(needed for Fail / Tolerable)</small></label><input type="text" name="ModeOfFailure" id="bf_ModeOfFailure"></div>
+                        <div class="vf-sheet-cell vf-cell-off"><label>Possible Cause(s) <span class="cn">可能的原因</span></label><input type="text" name="PossibleCause" id="bf_PossibleCause"></div>
                     </div>
                     <script>
                     (function () {
@@ -1486,23 +1488,15 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                             <td class="vf-res-mark" data-for="bp_UTF_Result" data-side="pass"></td>
                             <td class="vf-res-mark" data-for="bp_UTF_Result" data-side="fail"></td>
                             <td rowspan="8" class="vf-res-legend">
-                                <p><b>AF=</b> Failure at the adhesive/substrate interface or the adhesive/primer interface</p>
-                                <p><b>CF=</b> Cohesive Failure of the adhesive (failure within the adhesive or between the two layers of adhesive).</p>
-                                <p><b>PF=</b> Failure at the primer/substrate interface</p>
-                                <p><b>SF=</b> Failure of the substrate, including the location of the failure within the substrate</p>
+                                <p><label class="vf-cause-opt"><input type="checkbox" class="vf-mode-chk" value="AF"> <span><b>AF=</b> Failure at the adhesive/substrate interface or the adhesive/primer interface</span></label></p>
+                                <p><label class="vf-cause-opt"><input type="checkbox" class="vf-mode-chk" value="CF"> <span><b>CF=</b> Cohesive Failure of the adhesive (failure within the adhesive or between the two layers of adhesive).</span></label></p>
+                                <p><label class="vf-cause-opt"><input type="checkbox" class="vf-mode-chk" value="PF"> <span><b>PF=</b> Failure at the primer/substrate interface</span></label></p>
+                                <p><label class="vf-cause-opt"><input type="checkbox" class="vf-mode-chk" value="SF"> <span><b>SF=</b> Failure of the substrate, including the location of the failure within the substrate</span></label></p>
                             </td>
                             <td rowspan="8" class="vf-res-legend vf-res-causes">
-                                <p>(a) Poor Priming <span class="cn">药水不良</span></p>
-                                <p>(b) Poor cementing <span class="cn">胶水不良</span></p>
-                                <p>(c) Over-dried cement <span class="cn">积胶</span></p>
-                                <p>(d) Wet primer <span class="cn">湿的药水</span></p>
-                                <p>(e) Wet cement <span class="cn">湿的胶水</span></p>
-                                <p>(f) Poor pressing <span class="cn">压机不良</span></p>
-                                <p>(g) Poor Roughing <span class="cn">打粗不良</span></p>
-                                <p>(h) Upper material - weak <span class="cn">鞋面材料不良</span></p>
-                                <p>(i) EVA-Weak <span class="cn">EVA 不良</span></p>
-                                <p>(j) Dusty component <span class="cn">粉沫</span></p>
-                                <p>(k) Splitting of foxing tape <span class="cn">围条分层</span></p>
+                                <?php foreach ([['a', 'Poor Priming', '药水不良'], ['b', 'Poor cementing', '胶水不良'], ['c', 'Over-dried cement', '积胶'], ['d', 'Wet primer', '湿的药水'], ['e', 'Wet cement', '湿的胶水'], ['f', 'Poor pressing', '压机不良'], ['g', 'Poor Roughing', '打粗不良'], ['h', 'Upper material - weak', '鞋面材料不良'], ['i', 'EVA-Weak', 'EVA 不良'], ['j', 'Dusty component', '粉沫'], ['k', 'Splitting of foxing tape', '围条分层']] as [$cl, $ce, $cc]): ?>
+                                <p><label class="vf-cause-opt"><input type="checkbox" class="vf-cause-chk" value="(<?= $cl ?>) <?= $ce ?>"> <span>(<?= $cl ?>) <?= $ce ?> <span class="cn"><?= $cc ?></span></span></label></p>
+                                <?php endforeach ?>
                             </td>
                         </tr>
                         <tr>
@@ -2176,10 +2170,6 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                 <label for="dtr-intake-collection">Collection Date</label>
                 <input type="date" id="dtr-intake-collection" value="<?= date('Y-m-d') ?>">
             </div>
-            <div class="dtr-intake-field">
-                <label for="dtr-intake-production">Production Date</label>
-                <input type="date" id="dtr-intake-production" value="<?= date('Y-m-d') ?>">
-            </div>
             <div class="dtr-intake-field" style="margin-left:auto">
                 <label for="dtr-intake-encoder">Encoded By</label>
                 <input type="text" id="dtr-intake-encoder" value="<?= esc((string) (service('auth')->user()['name'] ?? ''), 'attr') ?>" placeholder="Name of encoder" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;min-width:220px">
@@ -2189,7 +2179,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
             <table class="dtr-table dtr-intake-table" id="dtr-intake-table">
                 <thead>
                     <tr>
-                        <th>Active</th><th>Line</th><th>Side</th><th class="dtr-labref-th">Lab Ref No <span class="dtr-prod-ico" id="dtr-prod-ico" title="Pick another Production Date to load its specimen queue" aria-label="Pick another Production Date"><svg class="ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><input type="date" id="dtr-prod-cal" aria-label="Production date picker" tabindex="-1"></span></th><th>Test Type</th><th>Production Code</th><th>Style</th><th>Colorway</th><th>MTL #</th>
+                        <th>Active</th><th>Line</th><th>Side</th><th class="dtr-labref-th">Lab Ref No <span class="dtr-prod-ico" id="dtr-prod-ico" title="Production Date: <?= date('Y-m-d') ?>"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><input type="date" id="dtr-intake-production" value="<?= date('Y-m-d') ?>" aria-label="Production Date"></span></th><th>Test Type</th><th>Production Code</th><th>Style</th><th>Colorway</th><th>MTL #</th>
                         <th>Image</th><th>Pull Type</th><th>Lacking</th><th>Remarks</th>
                     </tr>
                 </thead>
@@ -2261,29 +2251,29 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
         <div class="dtr-modal-header dtr-intake-head">
             <div>
                 <h3>Material Receive</h3>
-                <small>Enter every material received, one per line. Use + Add line for more than 10.</small>
+                <small>Enter every material received, one per line. The Lab Reference is generated automatically when you save. Use + Add line for more.</small>
             </div>
             <button type="button" id="btn-mrec-close" class="dtr-btn-xs" style="background:transparent;color:#fff;border:none;font-size:20px;cursor:pointer" aria-label="Close">&times;</button>
         </div>
         <div class="dtr-intake-bar">
+            <button type="button" id="btn-mrec-addrow" class="dtr-btn dtr-btn-outline" style="margin-bottom:2px">+ Add line</button>
+            <div class="dtr-intake-field">
+                <label for="dtr-mrec-date">Received Date</label>
+                <input type="date" id="dtr-mrec-date" value="<?= date('Y-m-d') ?>">
+            </div>
             <div class="dtr-intake-field">
                 <label for="dtr-mrec-arrived">Date Arrived</label>
                 <input type="date" id="dtr-mrec-arrived" value="<?= date('Y-m-d') ?>">
             </div>
-            <div class="dtr-intake-field">
-                <label for="dtr-mrec-date">Lab. Received Date</label>
-                <input type="date" id="dtr-mrec-date" value="<?= date('Y-m-d') ?>">
-            </div>
-            <button type="button" id="btn-mrec-addrow" class="dtr-btn dtr-btn-outline" style="margin-bottom:2px">+ Add line</button>
             <div class="dtr-intake-field" style="margin-left:auto">
                 <label for="dtr-mrec-encoder">Encoded By</label>
                 <input type="text" id="dtr-mrec-encoder" value="<?= esc((string) (service('auth')->user()['name'] ?? ''), 'attr') ?>" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;min-width:220px">
             </div>
         </div>
         <div class="dtr-modal-body dtr-intake-body">
-            <table class="dtr-table dtr-intake-table dtr-mrec-table">
+            <table class="dtr-table dtr-intake-table dtr-mrec-table" style="table-layout:fixed;width:100%">
                 <thead>
-                    <tr><th>Type of Materials</th><th>Material Name</th><th>Container No.</th><th>Prod Code</th><th>Processing No.</th><th>Quantity (Materials Received)</th><th>Estimated Timeline (Finish Testing)</th></tr>
+                    <tr><th style="width:150px">Production Code</th><th style="width:14%">Colorway</th><th style="width:11%">Style</th><th style="width:118px">MTL #</th><th style="width:128px">Material Code</th><th style="width:20%">Material Name</th><th style="width:112px">Material Type</th><th style="width:10%">Supplier</th><th style="width: 80px;">Container #</th><th style="width: 80px;">Batch #</th><th style="width:64px">Qty</th><th style="width:64px">QC Qty</th></tr>
                 </thead>
                 <tbody id="dtr-mrec-tbody"></tbody>
             </table>
@@ -2608,8 +2598,10 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
             <button type="button" id="btn-dtr-close-print-modal" class="dtr-btn-xs" style="background:transparent;color:#fff;border:none;font-size:18px;cursor:pointer">&times;</button>
         </div>
         <div class="dtr-modal-body">
-            <div id="dtr-print-sheet-container">
-                <!-- Dynamically rendered printable report sheet -->
+            <div class="dtr-a4-paper">
+                <div id="dtr-print-sheet-container">
+                    <!-- Dynamically rendered printable report sheet -->
+                </div>
             </div>
         </div>
         <div class="dtr-modal-footer">

@@ -435,7 +435,7 @@
           <td>${type === 'TECH TRIAL' ? '<input type="text" class="ik-mtl" placeholder="Type MTL #" autocomplete="off">' : '<input type="text" class="ik-mtl" placeholder="MTL #" readonly tabindex="-1">'}</td>
           <td class="ik-imgcell"><img class="ik-img" alt="" hidden></td>
           <td class="ik-pulls"><label><input type="checkbox" class="ik-pt" value="HEEL PULL"> Heel Pull</label><label><input type="checkbox" class="ik-pt" value="EYELET"> Eyelet</label><label><input type="checkbox" class="ik-pt" value="D-RING"> D-Ring</label><label><input type="checkbox" class="ik-pt" value="RIVET"> Rivet</label></td>
-          <td style="text-align:center"><input type="checkbox" class="ik-lacking" aria-label="Lacking"><input type="date" class="ik-lackdate" tabindex="-1" aria-label="Lacking date" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none"><div class="ik-lackshow"></div></td>
+          <td class="ik-lackcell" style="text-align:center"><input type="checkbox" class="ik-lacking" aria-label="Lacking (1 = lacking, 0 = not)"${type === 'LACKING' ? ' checked' : ''}><input type="date" class="ik-lackdate" tabindex="-1" aria-label="Lacking date" value="${type === 'LACKING' ? ($('#dtr-intake-production')?.value || '') : ''}" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none"><div class="ik-lackshow">${type === 'LACKING' ? ($('#dtr-intake-production')?.value || '').slice(5) : ''}</div></td>
           <td><textarea class="ik-retest-note" rows="2" placeholder="Remarks"></textarea></td>
         </tr>`;
   };
@@ -462,26 +462,16 @@
     const label = $('#dtr-intake-batch-label');
     if (label) label.textContent = `${b} • ${$('#dtr-intake-collection')?.value || ''}`;
     refreshIntakeLabRefs();
-  (() => {
-    const ico = $('#dtr-prod-ico'), inp = $('#dtr-intake-production');
-    if (!ico || !inp) return;
-    const tip = () => { ico.title = 'Production Date: ' + (inp.value || '-'); };
-    ico.addEventListener('mouseenter', tip);
-    inp.addEventListener('change', tip);
-    inp.addEventListener('click', () => { try { inp.showPicker(); } catch (e) {} });
-  })();
-
   };  // Lab Ref No = DTP + production date (YYYYMMDD) + SH + building + line number + -side (same rule the server uses on save)
   const refreshIntakeLabRefs = () => {
     const prodDate = $('#dtr-intake-production')?.value || '';
     const seen = {};   // running number (-#) per Lab Ref base in the order shown (the server confirms the free number on save)
     $$('#dtr-intake-tbody tr').forEach((tr) => {
-      // a lacking specimen is booked under the date it is due, so the real specimen collected that day updates it instead of duplicating it
-      const lackDate = tr.querySelector('.ik-lacking').checked ? tr.querySelector('.ik-lackdate').value : '';
-      const d = (lackDate || prodDate).replace(/-/g, '');
+      // every Lab Ref carries the Production Date selected at the top of the form
+      const d = prodDate.replace(/-/g, '');
       const side = tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L';
       const type = tr.querySelector('.ik-type').value;
-      const isRetest = type === 'RETEST' || tr.querySelector('.ik-retest-note').value.trim() !== '';
+      const isRetest = type === 'RETEST';
       // Lab Ref formats (the server confirms the free numbers on save):
       //   DAILY             DTP<date>SH<line>-<side>-<#>
       //   TRIAL             DTP<date>TRIALSH-<side>-<#>          (no line)
@@ -497,7 +487,12 @@
       const key = isStrip ? `DTP${d}${subV}` : `DTP${d}${pre}${ikNoLine(type) ? '' : tr.dataset.line}`;   // the number runs per line, whatever the side
       let ref;
       if (isRetest) ref = (tr.dataset.retestOf ? tr.dataset.retestOf.replace(/(-R\d+|-\d+)$/, '') : `DTP${d}SH${tr.dataset.line}-${side}`) + '-R01';
-      else { seen[key] = (seen[key] || 0) + 1; ref = isStrip ? `${key}-${seen[key]}` : `${key}-${side}-${seen[key]}`; }
+      else {
+        // no running number on a bonding Lab Ref (DTP<date>SH<line>-<side>); a second row of the same line and side gets -2, -3 ...
+        const sk = isStrip ? key : `${key}-${side}`;
+        seen[sk] = (seen[sk] || 0) + 1;
+        ref = isStrip ? `${key}-${seen[sk]}` : (seen[sk] === 1 ? `${key}-${side}` : `${key}-${side}-${seen[sk]}`);
+      }
       tr.querySelector('.ik-lr').textContent = d ? ref : '';
     });
   };
@@ -558,6 +553,14 @@
   };
   $('#dtr-intake-collection')?.addEventListener('change', syncIntakeDates);
   $('#dtr-intake-production')?.addEventListener('change', () => { intakeProdTouched = true; refreshIntakeLabRefs(); });
+  (() => {
+    const ico = $('#dtr-prod-ico'), inp = $('#dtr-intake-production');
+    if (!ico || !inp) return;
+    const tip = () => { ico.title = 'Production Date: ' + (inp.value || '-'); };
+    ico.addEventListener('mouseenter', tip);
+    inp.addEventListener('change', tip);
+    inp.addEventListener('click', () => { try { inp.showPicker(); } catch (e) {} });
+  })();
   // L / R toggle changes the -L / -R ending
   intakeEl.tbody?.addEventListener('click', (e) => { if (e.target.closest('.dtr-side-toggle')) setTimeout(refreshIntakeLabRefs, 0); });
 
@@ -588,10 +591,12 @@
           const item = ev.target.closest('.lib-item');
           if (!item) return;
           const s = shoes[Number(item.dataset.i)];
-          tr.querySelector('.ik-code').value = s.ProdCode || '';
-          tr.querySelector('.ik-style').value = s.StyleNo || '';
-          tr.querySelector('.ik-color').value = s.Colorway || '';
-          tr.querySelector('.ik-mtl').value = s.MTL || '';
+          // intake row (.ik-*) or the inline editor of a Lab Tracker list row (data-f); a cell that already has data has no input and is left alone
+          const put = (sels, v) => { for (const sel of sels) { const el = tr.querySelector(sel); if (el) { el.value = v; return; } } };
+          put(['.ik-code', '[data-f=POLotNO]', '[data-f=ProdCode]'], s.ProdCode || '');
+          put(['.ik-style', '[data-f=ModelStyle]', '[data-f=Style]'], s.StyleNo || '');
+          put(['.ik-color', '[data-f=Color]', '[data-f=Colorway]'], s.Colorway || '');
+          put(['.ik-mtl', '[data-f=MTL]'], s.MTL || '');
           setIntakeImage(tr);
           closeLibrary();
         };
@@ -646,7 +651,8 @@
       const panel = libPanel;
       const list = panel.querySelector('.lib-list');
       try {
-        const res = await apiFetch(`dtr/erp-shoe-search?q=${encodeURIComponent(input.value.trim())}`);
+        // Material Receive filters on tbl_dtr_shoe_list; the intake forms on the ERP production orders
+        const res = await apiFetch(`${input.closest('#dtr-mrec-tbody') ? 'dtr/shoe-list-search' : 'dtr/erp-shoe-search'}?q=${encodeURIComponent(input.value.trim())}`);
         let shoes = (res && res.shoes) || [];
         const byMtl = input.classList.contains('ik-mtl');
         if (byMtl) {   // MTL # picker: one entry per MTL #, newest order first
@@ -674,10 +680,12 @@
           const item = ev.target.closest('.lib-item');
           if (!item) return;
           const s = shoes[Number(item.dataset.i)];
-          tr.querySelector('.ik-code').value = s.ProdCode || '';
-          tr.querySelector('.ik-style').value = s.StyleNo || '';
-          tr.querySelector('.ik-color').value = s.Colorway || '';
-          tr.querySelector('.ik-mtl').value = s.MTL || '';
+          // intake row (.ik-*) or the inline editor of a Lab Tracker list row (data-f); a cell that already has data has no input and is left alone
+          const put = (sels, v) => { for (const sel of sels) { const el = tr.querySelector(sel); if (el) { el.value = v; return; } } };
+          put(['.ik-code', '[data-f=POLotNO]', '[data-f=ProdCode]'], s.ProdCode || '');
+          put(['.ik-style', '[data-f=ModelStyle]', '[data-f=Style]'], s.StyleNo || '');
+          put(['.ik-color', '[data-f=Color]', '[data-f=Colorway]'], s.Colorway || '');
+          put(['.ik-mtl', '[data-f=MTL]'], s.MTL || '');
           setIntakeImage(tr);
           closeLibrary();
         };
@@ -820,6 +828,9 @@
         if (!di.value) di.value = $('#dtr-intake-production')?.value || '';
         try { di.showPicker(); } catch (_) { /* older browsers: the default date stays */ }
       } else di.value = '';
+      // Lacking ticked: the whole row is locked (greyed) and recorded as lacking, like a shutdown; only the Lacking box stays usable
+      tr.classList.toggle('lacked', e.target.checked);
+      tr.querySelectorAll('input:not(.ik-lacking):not(.ik-lackdate), select, textarea, .dtr-side-toggle button, .ik-addrow').forEach((el) => { el.disabled = e.target.checked; });
     }
     if (e.target.classList.contains('ik-lacking') || e.target.classList.contains('ik-lackdate')) {
       tr.querySelector('.ik-lackshow').textContent = tr.querySelector('.ik-lacking').checked ? tr.querySelector('.ik-lackdate').value.slice(5) : '';
@@ -838,11 +849,28 @@
   $('#btn-intake-save')?.addEventListener('click', async () => {
     const rows = [];
     const shutdowns = [];
+    const lackings = [];
     const trialSeen = new Set();
     let trialIssue = '';
     $$('#dtr-intake-tbody tr').forEach((tr) => {
       const act = tr.querySelector('.ik-active');
       if (act && !act.checked) { if (!tr.dataset.extra) shutdowns.push(tr.dataset.line); return; }   // main row toggled off = line shutdown (an extra row only skips itself)
+      if (tr.querySelector('.ik-lacking').checked) {   // lacking line: recorded like a shutdown (no specimen, no Lab Ref)
+        lackings.push({
+          line: tr.dataset.line,
+          side: tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L',
+          date: tr.querySelector('.ik-lackdate').value || $('#dtr-intake-production').value,
+          type: tr.querySelector('.ik-type').value,
+          code: tr.querySelector('.ik-code').value.trim(),
+          style: tr.querySelector('.ik-style').value.trim(),
+          color: tr.querySelector('.ik-color').value.trim(),
+          mtl: tr.querySelector('.ik-mtl').value.trim(),
+          pullTypes: [...tr.querySelectorAll('.ik-pt:checked')].map((c) => c.value),
+          remarks: tr.querySelector('.ik-retest-note').value.trim().replace(/\s*\n\s*/g, ' | '),
+          labRef: tr.querySelector('.ik-lr').textContent.trim(),
+        });
+        return;
+      }
       const row = {
         line: tr.dataset.line,
         side: tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L',
@@ -860,7 +888,7 @@
         lacking: tr.querySelector('.ik-lacking').checked,
         lackingDate: tr.querySelector('.ik-lacking').checked ? tr.querySelector('.ik-lackdate').value : '',
       };
-      row.retest = row.type === 'RETEST' || row.retestNote !== '';
+      row.retest = row.type === 'RETEST';   // a remark on any other test type is only a remark, it does not turn the row into a retest
       if (row.type === 'TECH TRIAL' && row.mtl && !row.style) { trialIssue = `MTL # ${row.mtl} was not found in the production orders. Pick it from the list.`; return; }
       if (row.type === 'TECH TRIAL') {
         // a trial is checked first: the same MTL # / Style on the same side must not be entered twice in this batch
@@ -870,7 +898,9 @@
       if (row.code || row.style || row.color || row.mtl || row.type === 'SAMPLE') rows.push(row);
     });
     if (trialIssue) { intakeEl.msg.textContent = trialIssue; return; }
-    if (!rows.length && !shutdowns.length) { intakeEl.msg.textContent = 'Fill in at least one active line before saving.'; return; }
+    if (!rows.length && !shutdowns.length && !lackings.length) { intakeEl.msg.textContent = 'Fill in at least one active line before saving.'; return; }
+    const sb = savingBox('Saving batch...');
+    closeIntake();   // the window closes at once; a message box confirms the save
     try {
       const res = await apiFetch('dtr/intake-save', {
         method: 'POST',
@@ -882,27 +912,70 @@
           encodedBy: $('#dtr-intake-encoder').value.trim(),
           rows,
           shutdowns,
+          lackings,
         }),
       });
       if (res && res.ok) {
-        showToast(`✓ ${res.message}`);
-        closeIntake();
-        setTimeout(() => location.reload(), 700);   // the new lines show in the collection list
+        afterSave(res.message, 'bonding');
       } else {
+        sb.fail(); intakeEl.back?.classList.remove('hidden');
         intakeEl.msg.textContent = (res && res.message) || 'Save failed.';
       }
     } catch (err) {
+      sb.fail(); intakeEl.back?.classList.remove('hidden');
       intakeEl.msg.textContent = 'Save failed: ' + err.message;
     }
   });
 
+  // After a save the page reloads straight onto the list that was saved into (its sub-tab opens) and the success box is shown over it
+  const afterSave = (msg, sub) => {
+    try { sessionStorage.setItem('dtr_after_save', JSON.stringify({ msg, sub })); } catch (e) { /* storage blocked: the list just reloads */ }
+    location.reload();
+  };
+  try {
+    const as = JSON.parse(sessionStorage.getItem('dtr_after_save') || 'null');
+    if (as) {
+      sessionStorage.removeItem('dtr_after_save');
+      document.querySelector(`.dtr-subtab[data-subtab="${as.sub}"]`)?.click();
+      setTimeout(() => successBox(as.msg), 150);
+    }
+  } catch (e) { /* ignore */ }
 
-    const EDIT_COLS = {
+  // Message box shown after a save (and after a delete): stays until OK is pressed, then onClose runs (e.g. reload the list)
+  const successBox = (msg, onClose, title = 'Saved successfully') => {
+    const ov = document.createElement('div');
+    ov.className = 'dtr-msgbox-bd';
+    ov.innerHTML = `<div class="dtr-msgbox" role="alertdialog" aria-modal="true"><div class="dtr-msgbox-ic">&#10003;</div><h3>${escHtml(title)}</h3><p>${escHtml(msg || '')}</p><button type="button" class="dtr-btn dtr-btn-primary">OK</button></div>`;
+    const done = () => { ov.remove(); document.removeEventListener('keydown', onKey); if (onClose) onClose(); };
+    const onKey = (e) => { if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); done(); } };
+    ov.querySelector('button').addEventListener('click', done);
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(ov);
+    ov.querySelector('button').focus();
+  };
+
+  // Save in progress: the form window closes at once and this box waits for the server; .ok() turns it into the success box, .fail() removes it (the window reopens with the error)
+  const savingBox = (text = 'Saving...') => {
+    const ov = document.createElement('div');
+    ov.className = 'dtr-msgbox-bd';
+    ov.innerHTML = `<div class="dtr-msgbox" role="status"><div class="dtr-spin"></div><h3>${escHtml(text)}</h3><p>Please wait.</p></div>`;
+    document.body.appendChild(ov);
+    return { ok: (msg, onClose) => { ov.remove(); successBox(msg, onClose); }, fail: () => ov.remove() };
+  };
+
+  // Edit button (before Delete) of every Lab Tracker list: the columns with no data on that row become editable (date columns get a calendar)
+  const toast = (msg) => {
+    const t = document.createElement('div');
+    t.className = 'dtr-mini-toast'; t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 3200);
+  };
+  const EDIT_COLS = {
     bonding:   { 'Prod. Code': 'POLotNO', 'Style No.': 'ModelStyle', 'Colorway': 'Color', 'MTL #': 'MTL', 'Prod. Date': ['ProductionDate', 'date'], 'Tested Date': ['TestedDate', 'date'], 'Technician': 'Technician' },
     lacking:   { 'Prod. Code': 'POLotNO', 'Style No.': 'ModelStyle', 'Colorway': 'Color', 'MTL #': 'MTL', 'Prod. Date': ['ProductionDate', 'date'], 'Technician': 'Technician' },
     wholeshoe: { 'Prod. Code': 'ProdCode', 'Style No.': 'Style', 'Colorway': 'Colorway', 'MTL #': 'MTL', 'Prod. Date': ['ProductionDate', 'date'] },
-    container: { 'Date Arrived': ['DateArrived', 'date'], 'Date Received in the Lab': ['DateReceivedInLab', 'date'] },
-    material:  { 'Material Type': 'MaterialType', 'Material Code': 'MaterialCode', 'Material Name': 'MaterialName', 'VSP Code': 'MaterialProdCode', 'Supplier': 'Supplier', 'IQC ERP': 'IQCERP', 'Remarks': 'Remarks' },
+    container: {},
+    material:  { 'Material': 'MaterialName', 'Material Type': 'MaterialType', 'Material Code': 'MaterialCode', 'VSP Code': 'MaterialProdCode', 'Supplier': 'Supplier', 'IQC ERP': 'IQCERP', 'Remarks': 'Remarks' },
   };
   const EDIT_ICO = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
   const CHECK_ICO = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
@@ -1040,11 +1113,11 @@
         <td class="ik-linecell"><b>${line}</b> <button type="button" class="ik-addrow" title="Add another row for ${line}" aria-label="Add another row for ${line}">+</button>${extra ? '<button type="button" class="ik-delrow" title="Remove this row" aria-label="Remove this row">&times;</button>' : ''}</td>
         <td><div class="dtr-side-toggle"><button type="button" data-side="L" class="${rightSide ? '' : 'active'}">L</button><button type="button" data-side="R" class="${rightSide ? 'active' : ''}">R</button></div></td>
         <td class="ik-tlabref mono"></td>
-        <td><input type="text" class="ik-code" placeholder="Enter code"></td>
-        <td><input type="text" class="ik-style" placeholder="Enter style"></td>
-        <td><input type="text" class="ik-color" placeholder="Enter colorway"></td>
-        <td><input type="text" class="ik-mtl" placeholder="Enter MTL #"></td>
-        <td><button type="button" class="dtr-btn dtr-btn-outline ik-lib">Library</button></td>
+        <td><input type="text" class="ik-code" placeholder="Type to filter" autocomplete="off"></td>
+        <td><input type="text" class="ik-style" placeholder="Style" readonly tabindex="-1"></td>
+        <td><input type="text" class="ik-color" placeholder="Colorway" readonly tabindex="-1"></td>
+        <td><input type="text" class="ik-mtl" placeholder="MTL #" readonly tabindex="-1"></td>
+        <td class="ik-imgcell"><img class="ik-img" alt="" hidden></td>
         <td><input type="number" class="ik-qty" min="1" step="1" value="1"></td>
         <td class="ik-tests">${WS_TESTS.map((t) => `<label class="ik-test"><input type="checkbox" value="${t}"><span>${t}</span></label>`).join('')}</td>
       </tr>`;
@@ -1070,14 +1143,15 @@
       if (!d) { tcell.textContent = ''; return; }
       const side = tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L';
       if (!tr.querySelector('.ik-tests input:checked')) {   // no test ticked yet: show the format the Lab Ref will follow
-        tcell.innerHTML = `<div class="ik-child" style="opacity:.55;font-style:italic">DTP${d}&lt;test&gt;${tr.dataset.line}-${side}-#</div>`;
+        tcell.innerHTML = `<div class="ik-child" style="opacity:.55;font-style:italic">DTP${d}&lt;test&gt;${tr.dataset.line}-${side}</div>`;
         return;
       }
       tcell.innerHTML = [...tr.querySelectorAll('.ik-tests input:checked')].map((c) => {
         const code = WS_CODES[c.value] || '';
-        const key = `DTP${d}${code}${tr.dataset.line}`;
-        seen[key] = (seen[key] || 0) + 1;
-        return `<div class="ik-child">${code === 'UV' ? `${key}-${seen[key]}` : `${key}-${side}-${seen[key]}`}</div>`;
+        // no running number (DTP<date><code><line>-<side>, UV has no side); a second row with the same Lab Ref gets -2, -3 ...
+        const base = code === 'UV' ? `DTP${d}${code}${tr.dataset.line}` : `DTP${d}${code}${tr.dataset.line}-${side}`;
+        seen[base] = (seen[base] || 0) + 1;
+        return `<div class="ik-child">${seen[base] === 1 ? base : `${base}-${seen[base]}`}</div>`;
       }).join('');
     });
   };  const openWholeShoe = () => {
@@ -1131,6 +1205,17 @@
     const lib = e.target.closest('.ik-lib');
     if (lib) openLibrary(lib.closest('tr'), lib);
   });
+  // Production Code box filters the ERP production orders, same as the Specimen Intake; style / colorway / MTL # come from the picked order
+  wsEl.tbody?.addEventListener('input', (e) => {
+    if (!e.target.classList.contains('ik-code')) return;
+    const tr = e.target.closest('tr');
+    ['.ik-style', '.ik-color', '.ik-mtl'].forEach((s) => { tr.querySelector(s).value = ''; });
+    setIntakeImage(tr);
+    suggestProdCode(tr, e.target);
+  });
+  wsEl.tbody?.addEventListener('focusin', (e) => {
+    if (e.target.classList.contains('ik-code') && !libPanel) suggestProdCode(e.target.closest('tr'), e.target);
+  });
   wsEl.tbody?.addEventListener('change', (e) => {
     if (e.target.classList.contains('ik-active')) e.target.closest('tr').classList.toggle('inactive', !e.target.checked);
     if (e.target.closest('.ik-tests')) refreshWholeShoeLabRefs();
@@ -1153,6 +1238,8 @@
       if (row.code) rows.push(row);
     });
     if (!rows.length) { wsEl.msg.textContent = 'Enter a Production Code on at least one active line.'; return; }
+    const sb = savingBox('Saving batch...');
+    closeWholeShoe();
     try {
       const res = await apiFetch('dtr/wholeshoe-save', {
         method: 'POST',
@@ -1166,13 +1253,13 @@
         }),
       });
       if (res && res.ok) {
-        showToast(`✓ ${res.message}`);
-        closeWholeShoe();
-        setTimeout(() => location.reload(), 700);
+        afterSave(res.message, 'shoes');
       } else {
+        sb.fail(); wsEl.back?.classList.remove('hidden');
         wsEl.msg.textContent = (res && res.message) || 'Save failed.';
       }
     } catch (err) {
+      sb.fail(); wsEl.back?.classList.remove('hidden');
       wsEl.msg.textContent = 'Save failed: ' + err.message;
     }
   });
@@ -1183,21 +1270,92 @@
   const mrBack = $('#dtr-mrec-backdrop');
   const mrBody = $('#dtr-mrec-tbody');
   const mrMsg = $('#dtr-mrec-msg');
+  const today = () => new Date().toISOString().slice(0, 10);
   const addMaterialRow = () => {
     mrBody.insertAdjacentHTML('beforeend', `
       <tr>
-        <td><select class="mr-type"><option value="">Select type</option>${['LEATHER', 'FABRIC', 'SYNTHETIC', 'ACCESSORIES', 'RUBBER'].map((t) => `<option value="${t}">${t}</option>`).join('')}</select></td>
-        <td><input type="text" class="mr-name" placeholder="Material name"></td>
-        <td><input type="text" class="mr-no" placeholder="Container no."></td>
-        <td><input type="text" class="mr-prod" placeholder="Prod code"></td>
-        <td><input type="text" class="mr-proc" placeholder="Processing no."></td>
-        <td><input type="text" class="mr-qty" placeholder="Qty"></td>
-        <td><input type="date" class="mr-eta"></td>
+        <td><input type="text" class="ik-code" placeholder="Type to filter" autocomplete="off"></td>
+        <td><input type="text" class="ik-color" placeholder="Colorway" readonly tabindex="-1"></td>
+        <td><input type="text" class="ik-style" placeholder="Style" readonly tabindex="-1"></td>
+        <td><input type="text" class="ik-mtl" placeholder="MTL #" readonly tabindex="-1"></td>
+        <td><input type="text" class="mr-code mono" placeholder="Material code" autocomplete="off"></td>
+        <td><input type="text" class="mr-name" placeholder="Material name" readonly tabindex="-1"></td>
+        <td><input type="text" class="mr-type" placeholder="Material type" readonly tabindex="-1"></td>
+        <td><input type="text" class="mr-supplier" placeholder="Supplier" readonly tabindex="-1"></td>
+        <td><input type="text" class="mr-container" placeholder="Container #"></td>
+        <td><input type="text" class="mr-batch" placeholder="Batch #"></td>
+        <td><input type="text" class="mr-qty" placeholder="Qty" inputmode="decimal"></td>
+        <td><input type="text" class="mr-qcqty" placeholder="QC Qty" inputmode="decimal"></td>
       </tr>`);
   };
+  // Production Code box = filter on tbl_dtr_shoe_list; the picked code fills Colorway / Style / MTL #, editing the code clears them
+  mrBody?.addEventListener('input', (e) => {
+    if (e.target.classList.contains('ik-code')) {
+      const tr = e.target.closest('tr');
+      ['.ik-style', '.ik-color', '.ik-mtl'].forEach((s) => { tr.querySelector(s).value = ''; });
+      suggestProdCode(tr, e.target);
+    } else if (e.target.classList.contains('mr-code')) {
+      const tr = e.target.closest('tr');
+      ['.mr-name', '.mr-type', '.mr-supplier'].forEach((s) => { tr.querySelector(s).value = ''; });
+      suggestMaterialCode(tr, e.target);
+    }
+  });
+  mrBody?.addEventListener('focusin', (e) => {
+    if (libPanel) return;
+    if (e.target.classList.contains('ik-code')) suggestProdCode(e.target.closest('tr'), e.target);
+    else if (e.target.classList.contains('mr-code')) suggestMaterialCode(e.target.closest('tr'), e.target);
+  });
+  // Material Code box: type or look up (tbl_dtr_material_type_status); the code fills Material Name + Supplier (tbl_dtr_material_list) and Material Type
+  let mcTimer = null;
+  const fillMaterial = (tr, it) => {
+    tr.querySelector('.mr-code').value = it.code || '';
+    tr.querySelector('.mr-name').value = it.name || '';
+    tr.querySelector('.mr-type').value = it.type || '';
+    tr.querySelector('.mr-supplier').value = it.supplier || '';
+  };
+  const suggestMaterialCode = (tr, input) => {
+    clearTimeout(mcTimer);
+    mcTimer = setTimeout(async () => {
+      closeLibrary();
+      const rect = input.getBoundingClientRect();
+      libPanel = document.createElement('div');
+      libPanel.className = 'dtr-lib-panel';
+      libPanel.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 540)) + 'px';
+      libPanel.style.top = Math.min(rect.bottom + 2, window.innerHeight - 300) + 'px';
+      libPanel.innerHTML = '<div class="lib-list"><div class="lib-empty">Searching...</div></div>';
+      document.body.appendChild(libPanel);
+      const panel = libPanel;
+      const list = panel.querySelector('.lib-list');
+      try {
+        const res = await apiFetch(`dtr/material-code-search?q=${encodeURIComponent(input.value.trim())}`);
+        const items = (res && res.items) || [];
+        if (!items.length) { list.innerHTML = '<div class="lib-empty">No material code found. The typed code is kept.</div>'; return; }
+        list.innerHTML = items.map((it, i) => `<div class="lib-item" data-i="${i}"><b>${escHtml(it.code)}</b><span>${escHtml(it.name)}</span><span>${escHtml(it.type)}${it.supplier ? ' - ' + escHtml(it.supplier) : ''}</span></div>`).join('');
+        list.onclick = (ev) => {
+          const item = ev.target.closest('.lib-item');
+          if (!item) return;
+          fillMaterial(tr, items[Number(item.dataset.i)]);
+          closeLibrary();
+        };
+      } catch (err) {
+        list.innerHTML = '<div class="lib-empty">Material lookup failed (' + escHtml(String(err.message || err)) + ').</div>';
+      }
+    }, 250);
+  };
+  // a full code typed and left: taken straight from the lists when it matches one exactly
+  mrBody?.addEventListener('change', async (e) => {
+    if (!e.target.classList.contains('mr-code') || !e.target.value.trim()) return;
+    const tr = e.target.closest('tr');
+    try {
+      const res = await apiFetch(`dtr/material-code-search?q=${encodeURIComponent(e.target.value.trim())}`);
+      const hit = ((res && res.items) || []).find((it) => it.code.toUpperCase() === e.target.value.trim().toUpperCase());
+      if (hit) fillMaterial(tr, hit);
+    } catch (err) { /* the typed code stays */ }
+  });
   const openMaterialReceive = () => {
     mrBody.innerHTML = '';
-    for (let i = 0; i < 10; i++) addMaterialRow();
+    $('#dtr-mrec-date').value = today(); $('#dtr-mrec-arrived').value = today();
+    for (let i = 0; i < 6; i++) addMaterialRow();
     mrMsg.textContent = '';
     mrBack.classList.remove('hidden');
   };
@@ -1209,24 +1367,27 @@
   $('#btn-mrec-save')?.addEventListener('click', async () => {
     const v = (tr, c) => tr.querySelector(c).value.trim();
     const rows = [...mrBody.children].map((tr) => ({
-      type: v(tr, '.mr-type'), name: v(tr, '.mr-name'), no: v(tr, '.mr-no'), prod: v(tr, '.mr-prod'), proc: v(tr, '.mr-proc'),
-      qty: v(tr, '.mr-qty'), eta: v(tr, '.mr-eta'),
-    })).filter((r) => r.no || r.prod || r.proc);
-    if (!rows.length) { mrMsg.textContent = 'Enter a Container No., Prod Code or Processing No. on at least one line.'; return; }
+      date: $('#dtr-mrec-date').value, arrived: $('#dtr-mrec-arrived').value, prod: v(tr, '.ik-code'), color: v(tr, '.ik-color'), style: v(tr, '.ik-style'), mtl: v(tr, '.ik-mtl'),
+      code: v(tr, '.mr-code'), name: v(tr, '.mr-name'), type: v(tr, '.mr-type'), supplier: v(tr, '.mr-supplier'),
+      container: v(tr, '.mr-container'), batch: v(tr, '.mr-batch'), qty: v(tr, '.mr-qty'), qcqty: v(tr, '.mr-qcqty'),
+    })).filter((r) => r.code || r.prod || r.container || r.batch);
+    if (!rows.length) { mrMsg.textContent = 'Enter a Material Code on at least one line.'; return; }
+    if (rows.some((r) => !r.code)) { mrMsg.textContent = 'Every line needs a Material Code.'; return; }
+    const sb = savingBox('Saving...');
+    closeMaterialReceive();
     try {
       const res = await apiFetch('dtr/material-receive-save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ arrivedDate: $('#dtr-mrec-arrived').value, receivedDate: $('#dtr-mrec-date').value, encodedBy: $('#dtr-mrec-encoder').value.trim(), rows }),
+        body: JSON.stringify({ encodedBy: $('#dtr-mrec-encoder').value.trim(), rows }),
       });
       if (res && res.ok) {
-        showToast(`✓ ${res.message}`);
-        closeMaterialReceive();
-        setTimeout(() => location.reload(), 900);
+        afterSave(res.message, 'containers');
       } else {
+        sb.fail(); mrBack.classList.remove('hidden');
         mrMsg.textContent = (res && res.message) || 'Save failed.';
       }
-    } catch (err) { mrMsg.textContent = 'Save failed: ' + err.message; }
+    } catch (err) { sb.fail(); mrBack.classList.remove('hidden'); mrMsg.textContent = 'Save failed: ' + err.message; }
   });
 
   // =========================================================================
@@ -1479,18 +1640,19 @@
     const load = async () => {
       msg('Loading...');
       try {
-        base = await loadImg(`${BASE_URL}dtr/bonding-image?lab_ref=${encodeURIComponent(labRef)}&t=${Date.now()}`);
+        base = await loadImg(`${BASE_URL}dtr/bonding-image?tab=${imgTab}&lab_ref=${encodeURIComponent(labRef)}&t=${Date.now()}`);
         cv.width = base.naturalWidth; cv.height = base.naturalHeight;
         objs = []; sel = -1; temp = null; editing = -1; txt.classList.add('hidden'); redraw(); msg('');
         scale = fitScale(); applyScale(); stage.scrollTo(0, 0);
       } catch (e) { msg('No report picture found for this Lab Ref.'); base = null; }
     };
-    const open = (ref) => { labRef = ref; $('#bimg-title').textContent = 'Report - ' + ref; setTool('circle'); back.classList.remove('hidden'); load(); };
+    let imgTab = 'bonding';
+    const open = (ref, tab) => { labRef = ref; imgTab = tab || 'bonding'; $('#bimg-title').textContent = 'Report - ' + ref; setTool('circle'); back.classList.remove('hidden'); load(); };
     const close = () => { stopEdit(true); back.classList.add('hidden'); base = null; };
 
     document.addEventListener('click', (e) => {
       const t = e.target.closest('.bs-thumb');
-      if (t && t.dataset.labRef) { e.preventDefault(); open(t.dataset.labRef); }
+      if (t && t.dataset.labRef) { e.preventDefault(); open(t.dataset.labRef, t.dataset.tab); }
     });
     $('#bimg-close').addEventListener('click', close);
     document.addEventListener('keydown', (e) => {
@@ -1576,11 +1738,11 @@
       try {
         const res = await apiFetch('dtr/bonding-image-save', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lab_ref: labRef, image: cv.toDataURL('image/png') }),
+          body: JSON.stringify({ lab_ref: labRef, tab: imgTab, image: cv.toDataURL('image/png') }),
         });
         if (res && res.ok) {
           nxToast(res.message, 'success', 5000);
-          $$('.bs-thumb').filter((i) => i.dataset.labRef === labRef).forEach((i) => { i.parentNode.classList.remove('none'); i.src = `${BASE_URL}dtr/bonding-image?lab_ref=${encodeURIComponent(labRef)}&t=${Date.now()}`; });
+          $$('.bs-thumb').filter((i) => i.dataset.labRef === labRef && (i.dataset.tab || 'bonding') === imgTab).forEach((i) => { i.parentNode.classList.remove('none'); i.src = `${BASE_URL}dtr/bonding-image?tab=${imgTab}&lab_ref=${encodeURIComponent(labRef)}&t=${Date.now()}`; });
           close();
         } else msg((res && res.message) || 'Save failed.');
       } catch (err) { msg('Save failed: ' + err.message); }
@@ -1704,6 +1866,27 @@
     if (!a) return;
     e.preventDefault();
     const id = a.dataset.openBonding;
+    // a pull-test Lab Ref (DTP<date>EYA1-L = eyelet, DR = D-ring, HP = heel pull, RVT = rivet) opens as a Pull Footwear Test Result in Shoe Bonding (U60)
+    const ref = (a.textContent || '').trim();
+    if (/^DTP\d{8}(HP|EY|DR|RVT)[A-Z]\d+/i.test(ref)) {
+      switchTab('bonding');
+      markDtrNav('bonding');
+      setReportKind('pull');
+      let found = null;
+      try {
+        const res = await apiFetch(`dtr/records?slug=pull&q=${encodeURIComponent(ref)}`);
+        found = ((res && res.rows) || []).find((r) => String(r.lab_ref_no).toLowerCase() === ref.toLowerCase()) || null;
+      } catch (err) { found = null; }
+      if (found) { await loadPullRecord(found.source_id); return; }
+      // no pull report yet: a new one for this Lab Ref, filled from the list row
+      const tds = [...(a.closest('tr')?.children || [])].map((td) => td.textContent.trim());
+      resetPullForm();
+      const put = (k, v) => { const el = $(`#pf_${k}`); if (el && v) el.value = v; };
+      put('LabRefNo', ref); put('POLotNo', tds[1]); put('ModelNoStyle', tds[2]); put('Color', tds[3]); put('TestedDate', tds[7]); put('Technician', tds[10]);
+      computePull();
+      showToast(`New Pull Footwear Test Report for ${ref}.`);
+      return;
+    }
     if (!id || id === '0') return;
     switchTab('bonding');
     markDtrNav('bonding');
@@ -2501,6 +2684,20 @@
     }
   };
 
+  // PO/Lot No (production code) loaded -> Shipped Date (the order's CRD) and PO Quantity (its pairs) come from dberp.production_orders; filled boxes are left alone
+  const fillFromErpOrder = async () => {
+    const code = ($('#bf_POLotNO')?.value || '').split('/')[0].trim();
+    const ship = $('#bf_ShippedDate'), qty = $('#bf_POQuantity');
+    if (!code || !ship || !qty || (ship.value.trim() && qty.value.trim())) return;
+    try {
+      const res = await apiFetch(`dtr/erp-po?code=${encodeURIComponent(code)}`);
+      if (!res || !res.ok || !res.order) return;
+      if (!ship.value.trim() && res.order.shipped) ship.value = res.order.shipped;
+      if (!qty.value.trim() && res.order.qty) qty.value = res.order.qty;
+    } catch (e) { /* the ERP is not reachable: the boxes stay as they are */ }
+  };
+  $('#bf_POLotNO')?.addEventListener('change', fillFromErpOrder);
+
   const loadSingleBondingRecord = async (sourceId = 0, labRefNo = '') => {
     try {
       const query = labRefNo ? `lab_ref_no=${encodeURIComponent(labRefNo)}` : `source_id=${encodeURIComponent(sourceId)}`;
@@ -2527,6 +2724,7 @@
         if (swapped && $('#bf_ETRFNo')) $('#bf_ETRFNo').value = '';
       }
       if ($('#bf_Technician')) $('#bf_Technician').value = withMachineNo($('#bf_Technician').value);   // add the machine no. to older records
+      fillFromErpOrder();
 
       for (let i = 1; i <= 35; i++) {
         if ($(`#bp_UTFpoint${i}`)) $(`#bp_UTFpoint${i}`).value = bp[`UTFpoint${i}`] ?? '';
@@ -3412,10 +3610,79 @@
     if (!one) return;
     vec.start = Object.assign({ label: 'START' }, vec.start || {}, { x: one.x, y: one.y });
   }
+  // Layouts without dot positions: spot 1 is the box at the START arrow (lower right of the sketch, e.g. 5.01 on the 34-point sketch);
+  // the readings carry on from there around the contour (spot 2 follows 1 ...). Returns a rotated copy, the cached config is never changed.
+  function rotateBoxesToArrow(cfg, vec) {
+    if (!cfg || !cfg.utf || (vec && vec.vector)) return cfg;
+    const out = JSON.parse(JSON.stringify(cfg));
+    const ids = Object.keys(out.utf).map(Number).sort((a, b) => a - b);
+    if (ids.length < 3) return out;
+    let best = 0; let bd = Infinity;
+    ids.forEach((i, p) => {
+      const b = out.utf[i];
+      const d = Math.hypot(b.pctLeft - 86.6, b.pctTop - 79.9);
+      if (d < bd) { bd = d; best = p; }
+    });
+    if (best === 0) return out;
+    ['utf', 'fto'].forEach((k) => {
+      const src = out[k] || {};
+      const keys = Object.keys(src).map(Number).sort((a, b) => a - b);
+      if (keys.length !== ids.length) return;
+      const nb = {};
+      keys.forEach((n, p) => { nb[n] = src[keys[(best + p) % keys.length]]; });
+      out[k] = nb;
+    });
+    return out;
+  }
   // START marker (red diamond + label) placed just before the value box of spot 1 when the layout has no dot positions
   function startMarkerHtml(c) {
     return `<div class="vf-start-mark" style="position:absolute;left:${c.pctLeft}%;top:${c.pctTop}%;transform:translate(0,-95%);display:flex;align-items:center;gap:3px;white-space:nowrap;color:#b91c1c;font:800 9px sans-serif;pointer-events:none"><i style="display:block;width:9px;height:9px;background:#dc2626;transform:rotate(45deg)"></i>START</div>`;
   }
+  // Possible Cause(s) legend (a)-(k): tick a cause and its phrase is highlighted; the ticked ones are kept in the Possible Cause field of the form
+  (function () {
+    const inp = $('#bf_PossibleCause');
+    const boxes = $$('.vf-cause-chk');
+    if (!inp || !boxes.length) return;
+    let last = null;
+    const paint = () => boxes.forEach((b) => b.closest('.vf-cause-opt').classList.toggle('on', b.checked));
+    const fromField = () => {
+      last = inp.value;
+      boxes.forEach((b) => { b.checked = inp.value.indexOf(b.value.slice(0, 3)) >= 0; });
+      paint();
+    };
+    boxes.forEach((b) => b.addEventListener('change', () => {
+      inp.value = boxes.filter((x) => x.checked).map((x) => x.value).join('; ');
+      last = inp.value;
+      paint();
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+    }));
+    // the field is filled by code when a record loads (no event): follow it
+    setInterval(() => { if (inp.value !== last) fromField(); }, 400);
+    fromField();
+  })();
+
+  // Mode of Failure(s) legend (AF / CF / PF / SF): same logic as the causes: tick one and its phrase is highlighted; the ticked codes go to the Mode of Failure field
+  (function () {
+    const inp = $('#bf_ModeOfFailure');
+    const boxes = $$('.vf-mode-chk');
+    if (!inp || !boxes.length) return;
+    let last = null;
+    const paint = () => boxes.forEach((b) => b.closest('.vf-cause-opt').classList.toggle('on', b.checked));
+    const fromField = () => {
+      last = inp.value;
+      const have = inp.value.toUpperCase().split(/[^A-Z]+/).filter(Boolean);
+      boxes.forEach((b) => { b.checked = have.includes(b.value); });
+      paint();
+    };
+    boxes.forEach((b) => b.addEventListener('change', () => {
+      inp.value = boxes.filter((x) => x.checked).map((x) => x.value).join(', ');
+      last = inp.value;
+      paint();
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+    }));
+    setInterval(() => { if (inp.value !== last) fromField(); }, 400);
+    fromField();
+  })();
   // Left or Right shoe: the -L / -R ending of the Lab Ref No decides (retest -R01 style endings count), else the Side field
   function bondingIsLeft() {
     const ref = ($('#bf_LabRefNo')?.value || '').trim().toUpperCase();
@@ -3524,6 +3791,7 @@
     }
 
     rotateSpotsToStart(cfg, vec);
+    cfg = rotateBoxesToArrow(cfg, vec);
     startOnSpotOne(vec);
 
     const colour = (val) => {
@@ -3692,6 +3960,7 @@
     }
 
     rotateSpotsToStart(cfg, layoutVec);
+    cfg = rotateBoxesToArrow(cfg, layoutVec);
     startOnSpotOne(layoutVec);
 
     // Spot Color logic
@@ -4122,6 +4391,17 @@
     probe.remove();
     return Math.max(0.4, Math.round(scale * 1000) / 1000);
   };
+
+  // The preview is a true A4 page (210 x 297 mm, 6 mm margins): whatever report fills it is scaled to fit ONE page, exactly as it prints / downloads
+  const a4Box = $('#dtr-print-sheet-container');
+  if (a4Box) {
+    new MutationObserver(() => {
+      if (!a4Box.innerHTML.trim()) return;
+      const s = fitOnePageScale(a4Box.innerHTML);
+      a4Box.style.width = (198 / 25.4 * 96 / s) + 'px';
+      a4Box.style.zoom = String(s);
+    }).observe(a4Box, { childList: true });
+  }
 
   $('#btn-dtr-print-preview')?.addEventListener('click', openMaterialPrintPreview);
   $('#btn-bond-print-preview')?.addEventListener('click', () => (isPull() ? openPullPrintPreview() : openBondingPrintPreview()));

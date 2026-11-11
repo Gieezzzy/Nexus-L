@@ -270,6 +270,16 @@ class DtrController extends BaseController
         $totalReports = array_sum(array_column($catRows, 'cnt'));
         $totalPass    = array_sum(array_column($catRows, 'pass_cnt'));
         $totalFail    = array_sum(array_column($catRows, 'fail_cnt'));
+        // lines marked SHUTDOWN in the Specimen Intake (one mark per line and production date): all time, and for today's production date
+        $shutTotal = 0;
+        $shutToday = 0;
+        if ($db->tableExists('tbl_dtr_BondingTracker')) {
+            $shutTotal = (int) $db->table('tbl_dtr_BondingTracker')->where('Shutdown', 1)->countAllResults();
+            $shutToday = (int) $db->table('tbl_dtr_BondingTracker')->where('Shutdown', 1)->where('ProductionDate', date('Y-m-d'))->countAllResults();
+        }
+        // older SHUTDOWN lines were recorded as rows of tbl_dtr_bonding_info: they are not listed any more but still counted
+        $shutTotal += (int) $db->table('tbl_dtr_bonding_info b')->where(self::SHUTDOWN_ROW, null, false)->countAllResults();
+        $shutToday += (int) $db->table('tbl_dtr_bonding_info b')->where(self::SHUTDOWN_ROW, null, false)->where('b.ProductionDate', date('Y-m-d'))->countAllResults();
         $totalTol     = array_sum(array_column($catRows, 'tol_cnt'));
 
         // Recent 100 unified reports sorted by actual test/received date descending
@@ -280,12 +290,52 @@ class DtrController extends BaseController
             ->get()
             ->getResultArray();
 
-        // Containers & Materials Master (IQC Receiving Log)
-        $containers = $db->table('tbl_dtr_containers')
-            ->orderBy('ContainerID', 'DESC')
-            ->limit(40)
-            ->get()
-            ->getResultArray();
+        try {
+            $this->runDueEditSyncs();
+        } catch (\Throwable $e) {
+            // the list still loads
+        }
+        // IQC Container Receiving Log: one row per material of a container (a container with no material yet shows alone);
+        // joined with tbl_dtr_material_receipts & tbl_dtr_unified_labrefs to display test details
+        $rc = $db->tableExists('tbl_dtr_material_receipts');
+        $containers = $db->query('SELECT c.ContainerID, c.ContainerNo, c.DateArrived, c.DateReceivedInLab, c.Remarks AS ContainerRemarks, c.Encodedby,
+                m.MaterialID, m.MaterialCode, m.MaterialName, m.MaterialProdCode, m.LabReference, m.IQCERP, m.TestingStatus, m.FinalStatus, m.Remarks AS MaterialRemarks'
+            . ($rc ? ', (SELECT r.LabReference FROM tbl_dtr_material_receipts r WHERE r.ContainerNo COLLATE utf8mb4_general_ci = c.ContainerNo COLLATE utf8mb4_general_ci ORDER BY r.ReceiptID DESC LIMIT 1) AS ReceiptLabRef,
+                (SELECT r.MaterialTest FROM tbl_dtr_material_receipts r WHERE r.ContainerNo COLLATE utf8mb4_general_ci = c.ContainerNo COLLATE utf8mb4_general_ci ORDER BY r.ReceiptID DESC LIMIT 1) AS ReceiptType,
+                (SELECT r.Style FROM tbl_dtr_material_receipts r WHERE r.ContainerNo COLLATE utf8mb4_general_ci = c.ContainerNo COLLATE utf8mb4_general_ci ORDER BY r.ReceiptID DESC LIMIT 1) AS ReceiptStyle,
+                (SELECT r.Colorway FROM tbl_dtr_material_receipts r WHERE r.ContainerNo COLLATE utf8mb4_general_ci = c.ContainerNo COLLATE utf8mb4_general_ci ORDER BY r.ReceiptID DESC LIMIT 1) AS ReceiptColor,
+                (SELECT r.MTL FROM tbl_dtr_material_receipts r WHERE r.ContainerNo COLLATE utf8mb4_general_ci = c.ContainerNo COLLATE utf8mb4_general_ci ORDER BY r.ReceiptID DESC LIMIT 1) AS ReceiptMTL,
+                (SELECT r.Quantity FROM tbl_dtr_material_receipts r WHERE r.ContainerNo COLLATE utf8mb4_general_ci = c.ContainerNo COLLATE utf8mb4_general_ci ORDER BY r.ReceiptID DESC LIMIT 1) AS Quantity,
+                (SELECT r.MaterialName FROM tbl_dtr_material_receipts r WHERE r.ContainerNo COLLATE utf8mb4_general_ci = c.ContainerNo COLLATE utf8mb4_general_ci ORDER BY r.ReceiptID DESC LIMIT 1) AS ReceiptName,
+                (SELECT r.ProdCode FROM tbl_dtr_material_receipts r WHERE r.ContainerNo COLLATE utf8mb4_general_ci = c.ContainerNo COLLATE utf8mb4_general_ci ORDER BY r.ReceiptID DESC LIMIT 1) AS ReceiptProd' : ", NULL AS ReceiptLabRef, NULL AS ReceiptType, NULL AS ReceiptStyle, NULL AS ReceiptColor, NULL AS ReceiptMTL, NULL AS Quantity, NULL AS ReceiptName, NULL AS ReceiptProd")
+            . ' FROM tbl_dtr_containers c LEFT JOIN tbl_dtr_materials_master m ON m.ContainerID = c.ContainerID
+                ORDER BY c.ContainerID DESC, m.MaterialID ASC LIMIT 40')->getResultArray();
+
+        $refs = array_values(array_unique(array_filter(array_map(static fn ($x) => trim((string) (($x['LabReference'] ?? '') !== '' ? $x['LabReference'] : ($x['ReceiptLabRef'] ?? ''))), $containers))));
+        $tests = [];
+        if ($refs) {
+            foreach ($db->table('tbl_dtr_unified_labrefs')->select('lab_ref_no, form_category, technician, overall_result, received_date, tested_date, finished_date')->whereIn('lab_ref_no', $refs)->get()->getResultArray() as $u) {
+                $tests[strtolower($u['lab_ref_no'])] = $u;
+            }
+        }
+        foreach ($containers as &$cr) {
+            $ref  = trim((string) (($cr['LabReference'] ?? '') !== '' ? $cr['LabReference'] : ($cr['ReceiptLabRef'] ?? '')));
+            $u    = $tests[strtolower($ref)] ?? [];
+            $tech = trim((string) ($u['technician'] ?? ''));
+            $mach = '';
+            if (preg_match('/^(DTP-[A-Z]+-\d+)\s*-\s*(.+)$/i', $tech, $mm)) {
+                $mach = $mm[1];
+                $tech = trim($mm[2]);
+            }
+            $cr['LabRef']    = $ref;
+            $cr['TestName']  = trim((string) ($u['form_category'] ?? '')) !== '' ? $u['form_category'] : (string) ($cr['ReceiptType'] ?? '');
+            $cr['Tech']      = $tech;
+            $cr['Machine']   = $mach;
+            $cr['Result']    = trim((string) ($u['overall_result'] ?? '')) !== '' ? $u['overall_result'] : (string) ($cr['FinalStatus'] ?? '');
+            $cr['TestStart'] = (string) ($u['tested_date'] ?? '');
+            $cr['TestEnd']   = (string) ($u['finished_date'] ?? '');
+        }
+        unset($cr);
 
         $materialsMaster = $db->table('tbl_dtr_materials_master')
             ->orderBy('MaterialID', 'DESC')
@@ -298,14 +348,29 @@ class DtrController extends BaseController
         // one row per Lab Ref No: of older duplicates the one holding a result wins, otherwise the newest
         // Style / Colorway / MTL / Prod. Code: from the bonding record, or from the intake tracker (tbl_dtr_BondingTracker) when the record has none
         $bondingShoes = $db->table('tbl_dtr_bonding_info b')
-            ->select("b.BondingTestID, b.LabRefNo, COALESCE(NULLIF(b.ModelStyle, ''), t.Style) AS ModelStyle, COALESCE(NULLIF(b.Color, ''), t.Colorway) AS Color, b.Side, b.Factory, b.ProductionDate, b.TestedDate, b.Technician, b.Result, b.LabNotesComments, COALESCE(NULLIF(b.POLotNO, ''), t.ProductionCode) AS POLotNO, COALESCE(NULLIF(b.MTL, ''), t.MTL) AS MTL, b.ReceivedDate, b.Remarks, b.TestType, COALESCE(NULLIF(b.MachineNumber, ''), t.MachineNumber) AS MachineNumber, b.FailPart, b.Cause, b.TestDuration, b.RetestOf, b.SourceSystem", false)
+            ->select("b.BondingTestID, b.LabRefNo, COALESCE(NULLIF(b.ModelStyle, ''), t.Style) AS ModelStyle, COALESCE(NULLIF(b.Color, ''), t.Colorway) AS Color, b.Side, b.Factory, b.ProductionDate, b.TestedDate, b.Technician, b.Result, b.LabNotesComments, COALESCE(NULLIF(b.POLotNO, ''), t.ProductionCode) AS POLotNO, COALESCE(NULLIF(b.MTL, ''), t.MTL) AS MTL, b.ReceivedDate, b.Remarks, b.TestType, COALESCE(NULLIF(b.MachineNumber, ''), t.MachineNumber) AS MachineNumber, b.FailPart, b.Cause, b.TestDuration, b.RetestOf, b.SourceSystem, t.`LineNo` AS TrackerLine, t.PullTestType, t.Lacking", false)
             ->join('(SELECT LabRefNo, MAX(TrackerID) AS tid FROM tbl_dtr_BondingTracker WHERE LabRefNo IS NOT NULL GROUP BY LabRefNo) tm', 'tm.LabRefNo = b.LabRefNo COLLATE utf8mb4_general_ci', 'left', false)
             ->join('tbl_dtr_BondingTracker t', 't.TrackerID = tm.tid', 'left')
+            ->where('NOT (' . self::SHUTDOWN_ROW . ')', null, false)
             ->where("(b.LabRefNo IS NULL OR b.LabRefNo = '' OR b.BondingTestID IN (SELECT keep_id FROM (SELECT COALESCE(MAX(CASE WHEN Result IS NOT NULL AND Result <> '' THEN BondingTestID END), MAX(BondingTestID)) AS keep_id FROM tbl_dtr_bonding_info WHERE LabRefNo IS NOT NULL AND LabRefNo <> '' GROUP BY LabRefNo) k))", null, false)
             ->orderBy("COALESCE(NULLIF(LEFT(b.TestedDate, 10), ''), NULLIF(LEFT(b.ReceivedDate, 10), ''), NULLIF(LEFT(b.ProductionDate, 10), ''), '1970-01-01') DESC, b.BondingTestID DESC", '', false)
             ->limit(150)
             ->get()
             ->getResultArray();
+        // lines marked LACKING have no specimen yet but are part of the collection: they are listed too (shutdown marks are not)
+        if ($db->tableExists('tbl_dtr_BondingTracker')) {
+            foreach ($db->table('tbl_dtr_BondingTracker')->where('TestType', 'LACKING')->where('Shutdown', 0)->orderBy('TrackerID', 'DESC')->limit(30)->get()->getResultArray() as $lk) {
+                $bondingShoes[] = [
+                    'BondingTestID' => 0, 'TrackerID' => (int) $lk['TrackerID'], 'IsLacking' => 1,
+                    'LabRefNo' => trim((string) $lk['LabRefNo']) !== '' ? $lk['LabRefNo'] : 'DTP' . str_replace('-', '', (string) $lk['ProductionDate']) . 'SH' . $lk['LineNo'] . '-' . $lk['Side'], 'ModelStyle' => $lk['Style'], 'Color' => $lk['Colorway'],
+                    'Side' => $lk['Side'], 'Factory' => '', 'ProductionDate' => $lk['ProductionDate'], 'TestedDate' => null, 'Technician' => $lk['Technician'], 'Result' => '',
+                    'LabNotesComments' => trim('LACKING (due ' . (string) $lk['LackingDate'] . ') ' . (string) $lk['RetestDetails']), 'POLotNO' => $lk['ProductionCode'], 'MTL' => $lk['MTL'],
+                    'ReceivedDate' => $lk['CollectionDate'], 'Remarks' => $lk['RetestDetails'], 'TestType' => 'LACKING', 'TrackerLine' => $lk['LineNo'], 'PullTestType' => $lk['PullTestType'], 'Lacking' => 1,
+                ];
+            }
+            usort($bondingShoes, static fn ($a, $b) => strcmp((string) ($b['ProductionDate'] ?? ''), (string) ($a['ProductionDate'] ?? '')));
+            $bondingShoes = array_slice($bondingShoes, 0, 150);
+        }
 
         $shoeTotal  = $db->table('tbl_dtr_shoe_list')->countAllResults();
         $this->wsReportTable();   // makes sure tbl_dtr_wholeshoe_reports exists (the list reads the Technician saved in a report)
@@ -340,8 +405,12 @@ class DtrController extends BaseController
             'totalReports'     => $totalReports,
             'totalPass'        => $totalPass,
             'totalFail'        => $totalFail,
+            'labImg'           => ['bonding' => $this->reportImageCfg('bonding')['on'], 'shoes' => $this->reportImageCfg('shoes')['on'], 'containers' => $this->reportImageCfg('containers')['on']],
+            'shutTotal'        => $shutTotal,
+            'shutToday'        => $shutToday,
             'totalTol'         => $totalTol,
             'recentReports'    => $recentReports,
+            'editLocked'       => $this->lockedEdits($db),
             'containers'       => $containers,
             'materialsMaster'  => $materialsMaster,
             'bondingTotal'     => $bondingTotal,
@@ -567,6 +636,7 @@ class DtrController extends BaseController
             WHERE STR_TO_DATE(COALESCE(NULLIF(tested_date, ''), NULLIF(received_date, '')), '%d %b %Y') BETWEEN ? AND ?", [$from, $to])->getRowArray();
         $shut = $db->tableExists('tbl_dtr_BondingTracker')
             ? (int) $db->table('tbl_dtr_BondingTracker')->where('Shutdown', 1)->where('ProductionDate >=', $from)->where('ProductionDate <=', $to)->countAllResults() : 0;
+        $shut += (int) $db->table('tbl_dtr_bonding_info b')->where(self::SHUTDOWN_ROW, null, false)->where('b.ProductionDate >=', $from)->where('b.ProductionDate <=', $to)->countAllResults();
 
         return $this->response->setJSON([
             'ok' => true, 'total' => (int) $r['total'], 'pass' => (int) $r['pass_cnt'], 'tol' => (int) $r['tol_cnt'], 'fail' => (int) $r['fail_cnt'], 'shut' => $shut, 'csrf' => csrf_hash(),
@@ -1327,6 +1397,64 @@ class DtrController extends BaseController
         return $this->response->setJSON(['ok' => true, 'shoes' => $shoes, 'csrf' => csrf_hash()]);
     }
 
+    /** GET /dtr/material-code-search?q= : Material Code lookup: tbl_dtr_material_type_status (code -> material type) with the name and supplier of tbl_dtr_material_list; codes only in the material list are added */
+    public function materialCodeSearch()
+    {
+        $q   = trim((string) ($this->request->getGet('q') ?? ''));
+        $db  = \Config\Database::connect();
+        $out = [];
+        try {
+            $col = 'COLLATE utf8mb4_general_ci';
+            foreach ($db->query("SELECT s.MaterialCode, s.MaterialType,
+                    (SELECT l.MaterialName FROM tbl_dtr_material_list l WHERE l.MaterialCode {$col} = s.MaterialCode {$col} LIMIT 1) AS MaterialName,
+                    (SELECT l.Supplier FROM tbl_dtr_material_list l WHERE l.MaterialCode {$col} = s.MaterialCode {$col} LIMIT 1) AS Supplier
+                FROM tbl_dtr_material_type_status s WHERE s.MaterialCode LIKE ? ORDER BY s.MaterialCode LIMIT 30", ['%' . $q . '%'])->getResultArray() as $r) {
+                $out[strtoupper($r['MaterialCode'])] = $r;
+            }
+            if (count($out) < 30) {
+                foreach ($db->query("SELECT l.MaterialCode, l.`Material Type` AS MaterialType, l.MaterialName, l.Supplier FROM tbl_dtr_material_list l
+                    WHERE l.MaterialCode LIKE ? AND NOT EXISTS (SELECT 1 FROM tbl_dtr_material_type_status s WHERE s.MaterialCode {$col} = l.MaterialCode {$col})
+                    ORDER BY l.MaterialCode LIMIT " . (30 - count($out)), ['%' . $q . '%'])->getResultArray() as $r) {
+                    $out[strtoupper($r['MaterialCode'])] = $r;
+                }
+            }
+        } catch (\Throwable $e) {
+            return $this->response->setStatusCode(500)->setJSON(['ok' => false, 'items' => [], 'message' => 'The material lists are not reachable.', 'csrf' => csrf_hash()]);
+        }
+        $items = array_map(static fn ($r) => ['code' => (string) $r['MaterialCode'], 'type' => trim((string) ($r['MaterialType'] ?? '')), 'name' => trim((string) ($r['MaterialName'] ?? '')), 'supplier' => trim((string) ($r['Supplier'] ?? ''))], array_values($out));
+
+        return $this->response->setJSON(['ok' => true, 'items' => $items, 'csrf' => csrf_hash()]);
+    }
+
+    /** GET /dtr/shoe-list-search?q= : Production Code filter (tbl_dtr_shoe_list): production code, style, colorway and MTL # of every shoe that has a production code, newest first */
+    public function shoeListSearch()
+    {
+        $q = trim((string) ($this->request->getGet('q') ?? ''));
+        $b = \Config\Database::connect()->table('tbl_dtr_shoe_list')->select('ProdCode, StyleNo, Colorway, MTL')->where('ProdCode <>', '');
+        if ($q !== '') {
+            $b->groupStart()->like('ProdCode', $q)->orLike('StyleNo', $q)->orLike('MTL', $q)->orLike('Colorway', $q)->groupEnd();
+        }
+        $shoes = $b->groupBy('ProdCode, StyleNo, Colorway, MTL')->orderBy('MAX(ID)', 'DESC', false)->limit(300)->get()->getResultArray();
+
+        return $this->response->setJSON(['ok' => true, 'shoes' => $shoes, 'csrf' => csrf_hash()]);
+    }
+
+    /** GET /dtr/erp-po?code= : Shipped Date (crd) and PO Quantity (pairs) of one production order of dberp.production_orders */
+    public function erpPo()
+    {
+        $code = trim((string) ($this->request->getGet('code') ?? ''));
+        if ($code === '') {
+            return $this->response->setJSON(['ok' => true, 'order' => null, 'csrf' => csrf_hash()]);
+        }
+        try {
+            $r = \Config\Database::connect()->table('dberp.production_orders')->select('crd, pairs, po_no')->where('prod_code', $code)->orderBy('id', 'DESC')->limit(1)->get()->getRowArray();
+        } catch (\Throwable $e) {
+            return $this->response->setStatusCode(500)->setJSON(['ok' => false, 'order' => null, 'message' => 'ERP production orders are not reachable.', 'csrf' => csrf_hash()]);
+        }
+
+        return $this->response->setJSON(['ok' => true, 'order' => $r ? ['shipped' => (string) ($r['crd'] ?? ''), 'qty' => (string) ($r['pairs'] ?? ''), 'po' => (string) ($r['po_no'] ?? '')] : null, 'csrf' => csrf_hash()]);
+    }
+
     /**
      * GET /dtr/bonding-std?style= : the pass / fail limits of tbl_bonding_test_std for the style code (first word of the
      * Model/Style, e.g. "UY CLASSIC SLIP-ON" -> UY). The Bonding sheet shows them as FailMax - PassMin (1.99 - 2.50).
@@ -1361,14 +1489,19 @@ class DtrController extends BaseController
         ]);
     }
 
-    private const BOND_IMG_DIR = 'D:\\BACK UP\\SystemProcess\\BondingImages\\';
+    /** a SHUTDOWN line recorded as a row of tbl_dtr_bonding_info (alias b) */
+    private const SHUTDOWN_ROW = "(COALESCE(b.LabRefNo, '') LIKE '%SHUTDOWN%' OR COALESCE(b.POLotNO, '') = 'SHUTDOWN' OR COALESCE(b.ModelStyle, '') = 'SHUTDOWN')";
 
-    
+    private const TEST_TYPE_DIRS = ['DAILY', 'TECH TRIAL', 'SAMPLE', 'INTERNAL TESTING', 'FIRST ARTICLE', 'RETEST'];
+
     /** Settings > Lab Report Settings of one Lab Tracker tab (bonding | shoes | containers): is the picture on, where it is read from, how that folder is organised */
     private function reportImageCfg(string $tab): array
     {
         $tab  = in_array($tab, ['bonding', 'shoes', 'containers'], true) ? $tab : 'bonding';
         $root = trim((string) \App\Libraries\SystemSettings::get("labreport.{$tab}.folder", ''));
+        if ($root !== '' && ! preg_match('~^(\\\\\\\\|[A-Za-z]:[\\\\/]|https?://)~', $root)) {
+            $root = '';   // not a full folder path (a bare name like "BondingImages" is read from the web server's own folder, not the share): the main folder is used
+        }
         if ($root === '') {
             $root = trim((string) \App\Libraries\SystemSettings::get('labreport.image_root', ''));
         }
@@ -1403,7 +1536,11 @@ class DtrController extends BaseController
     private function reportImageIndex(array $cfg): array
     {
         $root = $cfg['root'];
-        if ($root === '' || ! $this->reportShareReachable($root)) {
+        if ($root === '') {
+            return [];
+        }
+        $http = $this->reportShareReachable($root) ? '' : $this->reportHttpRoot($root);
+        if ($http === '' && ! $this->reportShareReachable($root)) {
             return [];
         }
         $cache = $this->reportImageCache($cfg);
@@ -1435,6 +1572,59 @@ class DtrController extends BaseController
                 }
             }
         };
+        if ($http !== '') {
+            // the web server cannot open the share (the Apache service has no network login): read the same folder over the web server of the PC that holds it
+            $list = static function (string $url): array {
+                $html = (string) @file_get_contents($url, false, stream_context_create(['http' => ['timeout' => 8]]));
+                $out  = ['files' => [], 'dirs' => []];
+                if (preg_match_all('~<a href="([^"?/][^"]*?)">[^<]*</a>(?:</td><td[^>]*>\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2}))?~i', $html, $mm, PREG_SET_ORDER)) {
+                    foreach ($mm as $x) {
+                        $n = $x[1];
+                        if (substr($n, -1) === '/') {
+                            $out['dirs'][] = $n;
+                        } else {
+                            $out['files'][] = [$n, isset($x[2]) ? (int) strtotime($x[2]) : 0];
+                        }
+                    }
+                }
+
+                return $out;
+            };
+            $add = static function (string $base, array $files) use (&$map): void {
+                foreach ($files as [$f, $t]) {
+                    $dec = rawurldecode($f);
+                    if (! preg_match('/^(.+?)\.(png|jpe?g)$/i', $dec, $m)) {
+                        continue;
+                    }
+                    $name = $m[1]; $exact = true;
+                    if (preg_match('/^\d{8}-\d{4}_(.+)_[0-9a-f]{8}$/i', $name, $mm)) {
+                        $name = $mm[1]; $exact = false;
+                    } elseif (preg_match('/^(.+)_\d+$/', $name, $mm)) {
+                        $name = $mm[1]; $exact = false;
+                    }
+                    $key = strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', $name));
+                    $cur = $map[$key] ?? null;
+                    if ($cur === null || ($exact && ! $cur['e']) || ($exact === $cur['e'] && $t >= $cur['t'])) {
+                        $map[$key] = ['p' => $base . $f, 't' => $t, 'e' => $exact];
+                    }
+                }
+            };
+            $r0 = $list($http . '/');
+            $add($http . '/', $r0['files']);
+            if ($cfg['layout'] === 'type_date') {
+                foreach ($r0['dirs'] as $a) {
+                    $r1 = $list($http . '/' . $a);
+                    $add($http . '/' . $a, $r1['files']);
+                    foreach ($r1['dirs'] as $b) {
+                        $r2 = $list($http . '/' . $a . $b);
+                        $add($http . '/' . $a . $b, $r2['files']);
+                    }
+                }
+            }
+            @file_put_contents($cache, json_encode($map));
+
+            return $map;
+        }
         $scan($root);
         if ($cfg['layout'] === 'type_date') {
             foreach (@scandir($root) ?: [] as $a) {
@@ -1461,7 +1651,20 @@ class DtrController extends BaseController
         }
         $hit = $this->reportImageIndex($this->reportImageCfg($tab))[strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', $labRef))] ?? null;
 
-        return ($hit && is_file($hit['p'])) ? $hit['p'] : null;
+        return ($hit && (preg_match('~^https?://~i', $hit['p']) || is_file($hit['p']))) ? $hit['p'] : null;
+    }
+
+    /** \\host\html\Folder -> http://host/Folder (the share "html" is the web root of that PC); an http(s):// folder is used as it is; '' when neither */
+    private function reportHttpRoot(string $root): string
+    {
+        if (preg_match('~^https?://~i', $root)) {
+            return rtrim($root, '/');
+        }
+        if (preg_match('~^\\\\\\\\([^\\\\]+)\\\\html(?:\\\\(.*))?$~i', $root, $m)) {
+            return 'http://' . $m[1] . (isset($m[2]) && $m[2] !== '' ? '/' . implode('/', array_map('rawurlencode', explode('\\', $m[2]))) : '');
+        }
+
+        return '';
     }
 
     /** GET /dtr/bonding-image?lab_ref=[&tab=bonding|shoes|containers] : the report picture of a Lab Ref (404 when there is none) */
@@ -1484,12 +1687,15 @@ class DtrController extends BaseController
             return $this->response->setStatusCode(404);
         }
         $mime = preg_match('/\.jpe?g$/i', $file) ? 'image/jpeg' : 'image/png';
+        $body = preg_match('~^https?://~i', $file) ? (string) @file_get_contents($file, false, stream_context_create(['http' => ['timeout' => 10]])) : (string) file_get_contents($file);
+        if ($body === '') {
+            return $this->response->setStatusCode(404);
+        }
 
-        return $this->response->setHeader('Content-Type', $mime)->setHeader('Cache-Control', 'private, max-age=30')->setBody((string) file_get_contents($file));
+        return $this->response->setHeader('Content-Type', $mime)->setHeader('Cache-Control', 'private, max-age=30')->setBody($body);
     }
 
-
-    /** POST /dtr/bonding-image-save {lab_ref, image: data:image/png;base64,...} : saved as the new current report; the old one is kept as the next _n version */
+    /** POST /dtr/bonding-image-save {lab_ref, tab, image: data:image/png;base64,...} : saved as the new current report; the old one is kept as the next _n version */
     public function bondingImageSave()
     {
         $p      = $this->request->getJSON(true) ?? [];
@@ -1500,8 +1706,9 @@ class DtrController extends BaseController
         if (! preg_match('/^[A-Za-z0-9_\-]{3,60}$/', $labRef)) {
             return $fail('Invalid Lab Ref No.');
         }
-        if (! is_dir(self::BOND_IMG_DIR)) {
-            return $fail('The BondingImages folder is not reachable.');
+        $cfg = $this->reportImageCfg((string) ($p['tab'] ?? 'bonding'));
+        if ($cfg['root'] === '' || ! $this->reportShareReachable($cfg['root'])) {
+            return $fail('The report picture folder is not reachable (' . $cfg['root'] . '). Check Settings > Lab Report Settings.');
         }
         if (! preg_match('#^data:image/png;base64,#', $data)) {
             return $fail('The edited picture is missing.');
@@ -1510,7 +1717,20 @@ class DtrController extends BaseController
         if ($bin === false || strncmp($bin, "\x89PNG", 4) !== 0 || strlen($bin) > 25 * 1024 * 1024) {
             return $fail('The edited picture is not a valid PNG (up to 25 MB).');
         }
-        $dir     = self::BOND_IMG_DIR;
+        // the edited report goes next to the picture it came from; with none yet: <folder>\<TEST TYPE>\<today>\ (TYPE_DATE) or the folder itself (FLAT)
+        $found = $this->reportImageFile($cfg['tab'], $labRef);
+        if ($found !== null) {
+            $dir = dirname($found) . DIRECTORY_SEPARATOR;
+        } elseif ($cfg['layout'] === 'type_date') {
+            $tt = strtoupper(trim((string) (\Config\Database::connect()->table('tbl_dtr_bonding_info')->select('TestType')->where('LabRefNo', $labRef)->orderBy('BondingTestID', 'DESC')->get(1)->getRow('TestType') ?? '')));
+            $tt = $tt === 'TRIAL' ? 'TECH TRIAL' : (in_array($tt, self::TEST_TYPE_DIRS, true) ? $tt : 'DAILY');
+            $dir = $cfg['root'] . DIRECTORY_SEPARATOR . $tt . DIRECTORY_SEPARATOR . date('Y-m-d') . DIRECTORY_SEPARATOR;
+            if (! is_dir($dir) && ! @mkdir($dir, 0777, true)) {
+                return $fail('Could not create the folder ' . $dir);
+            }
+        } else {
+            $dir = $cfg['root'] . DIRECTORY_SEPARATOR;
+        }
         $current = $dir . $labRef . '.png';
         $moved   = '';
         // the report in place becomes the next old version (<LabRef>_<n+1>.png); the edited picture becomes the current <LabRef>.png
@@ -1531,10 +1751,11 @@ class DtrController extends BaseController
                 @rename($dir . $moved, $current);   // put the old report back
             }
 
-            return $fail('Could not save into the BondingImages folder.');
+            return $fail('Could not save into the report picture folder.');
         }
         // batch-tracking copy, same naming as the machine batches: <date>-<time>_<LabRef>_<hash>.png
         @file_put_contents($dir . date('Ymd-Hi') . '_' . $labRef . '_' . substr(md5($bin), 0, 8) . '.png', $bin);
+        @unlink($this->reportImageCache($cfg));
 
         return $this->response->setJSON([
             'ok' => true, 'csrf' => csrf_hash(),
@@ -1707,15 +1928,18 @@ class DtrController extends BaseController
             foreach ((array) ($r['tests'] ?? []) as $tt) {
                 $tc = $codes[strtolower(trim((string) $tt))] ?? null;
                 if ($tc !== null) {
-                    // Test Type Lab Ref No: DTP<date><code><line>-<side>-<#>  (UV: DTP<date>UV<line>-<#>, no side); # = next free number of that code on that line
-                    $key = 'DTP' . $pd . $tc . $bld . $lineN;
-                    $n   = 0;
-                    foreach ($db->table('tbl_dtr_WholeshoeTracker')->select('LabRefNo')->like('LabRefNo', $key . '-', 'after')->get()->getResultArray() as $x) {
-                        if (preg_match('/^' . preg_quote($key, '/') . '-(?:[LR]-)?(\d+)$/', (string) $x['LabRefNo'], $mm)) {
+                    // Test Type Lab Ref No: DTP<date><code><line>-<side>  (UV: DTP<date>UV<line>, no side), no running number; only a Lab Ref that is already taken gets -2, -3 ...
+                    $key  = 'DTP' . $pd . $tc . $bld . $lineN;
+                    $base = $tc === 'UV' ? $key : $key . '-' . $side;
+                    $n    = 0;
+                    foreach ($db->table('tbl_dtr_WholeshoeTracker')->select('LabRefNo')->like('LabRefNo', $base, 'after')->get()->getResultArray() as $x) {
+                        if ((string) $x['LabRefNo'] === $base) {
+                            $n = max($n, 1);
+                        } elseif (preg_match('/^' . preg_quote($base, '/') . '-(\d+)$/', (string) $x['LabRefNo'], $mm)) {
                             $n = max($n, (int) $mm[1]);
                         }
                     }
-                    $kids[] = ['type' => trim((string) $tt), 'code' => $tc, 'ref' => $tc === 'UV' ? $key . '-' . ($n + 1) : $key . '-' . $side . '-' . ($n + 1)];
+                    $kids[] = ['type' => trim((string) $tt), 'code' => $tc, 'ref' => $n === 0 ? $base : $base . '-' . ($n + 1)];
                 }
             }
             // one tracker row per test type; a line with no test ticked is recorded once under the mother Lab Ref No
@@ -1822,6 +2046,45 @@ class DtrController extends BaseController
         return $this->response->setJSON(['ok' => $saved > 0, 'message' => $msg, 'saved' => $saved, 'skipped' => $skipped, 'csrf' => csrf_hash()]);
     }
 
+    /** GET /dtr/material-labref-next?material=&date= : the Lab Reference the next received line of that material and date will get */
+    public function materialLabrefNext()
+    {
+        $material = trim((string) ($this->request->getGet('material') ?? ''));
+        $d        = trim((string) ($this->request->getGet('date') ?? ''));
+        $d        = preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) ? $d : date('Y-m-d');
+        $db       = \Config\Database::connect();
+        $has      = $db->tableExists('tbl_dtr_material_receipts') && $db->fieldExists('LabReference', 'tbl_dtr_material_receipts');
+        $ref      = $has ? $this->nextMaterialLabRef($db, $material, $d) : $this->nextMaterialLabRefBase($material, $d) . '-1';
+
+        return $this->response->setJSON(['ok' => true, 'labref' => $ref, 'csrf' => csrf_hash()]);
+    }
+
+    /** DTP + date + material code: a single word gives its first 3 letters (FAB, LEA), several words their initials (NW, LF) */
+    private function nextMaterialLabRefBase(string $material, string $date): string
+    {
+        $words = preg_split('/[^A-Za-z0-9]+/', trim($material), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if (count($words) === 1) {
+            $code = strtoupper(substr($words[0], 0, 3));
+        } else {
+            $code = strtoupper(implode('', array_map(static fn ($w) => $w[0], array_slice($words, 0, 3))));
+        }
+
+        return 'DTP' . str_replace('-', '', $date) . ($code !== '' ? $code : 'MT');
+    }
+
+    private function nextMaterialLabRef($db, string $type, string $date): string
+    {
+        $base = $this->nextMaterialLabRefBase($type, $date);
+        $n    = 0;
+        foreach ($db->query('SELECT LabReference AS r FROM tbl_dtr_material_receipts WHERE LabReference LIKE ? UNION SELECT lab_ref_no FROM tbl_dtr_unified_labrefs WHERE lab_ref_no LIKE ?', [$base . '-%', $base . '-%'])->getResultArray() as $x) {
+            if (preg_match('/-(\d+)$/', (string) $x['r'], $m)) {
+                $n = max($n, (int) $m[1]);
+            }
+        }
+
+        return $base . '-' . ($n + 1);
+    }
+
     /**
      * POST /dtr/material-receive-save
      * Material Receive batch: each line is added to the IQC Container Receiving Log (tbl_dtr_containers; an existing
@@ -1851,9 +2114,39 @@ class DtrController extends BaseController
             CreatedAt DATETIME NULL,
             INDEX (ContainerNo)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
-        foreach (['MaterialName', 'ProdCode', 'ProcessingNo'] as $col) {
+        foreach (['MaterialName', 'ProdCode', 'ProcessingNo', 'LabReference', 'MaterialTest', 'Remarks', 'Style', 'Colorway', 'MTL'] as $col) {
             if (! $db->fieldExists($col, 'tbl_dtr_material_receipts')) {
                 $db->query("ALTER TABLE tbl_dtr_material_receipts ADD COLUMN {$col} VARCHAR(191) NULL AFTER ContainerNo");
+            }
+        }
+
+        $db->query('CREATE TABLE IF NOT EXISTS tbl_dtr_MaterialTracker (
+            TrackerID INT AUTO_INCREMENT PRIMARY KEY,
+            LabRefNo VARCHAR(191) NOT NULL,
+            ReceivedDate DATE NULL,
+            DateArrived DATE NULL,
+            ProductionCode VARCHAR(191) NULL,
+            Colorway VARCHAR(191) NULL,
+            Style VARCHAR(191) NULL,
+            MTL VARCHAR(191) NULL,
+            MaterialCode VARCHAR(191) NULL,
+            MaterialName VARCHAR(500) NULL,
+            MaterialType VARCHAR(191) NULL,
+            Supplier VARCHAR(191) NULL,
+            ContainerNo VARCHAR(191) NULL,
+            BatchNo VARCHAR(191) NULL,
+            Qty VARCHAR(100) NULL,
+            QCQty VARCHAR(100) NULL,
+            Remarks VARCHAR(500) NULL,
+            EncodedBy VARCHAR(191) NULL,
+            CreatedAt DATETIME NULL,
+            UNIQUE KEY uq_labref (LabRefNo),
+            INDEX (ProductionCode), INDEX (ReceivedDate), INDEX (MaterialCode)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+        // a table made by an earlier version of this form gets the new columns
+        foreach (['DateArrived' => 'DATE', 'MaterialCode' => 'VARCHAR(191)', 'MaterialName' => 'VARCHAR(500)', 'MaterialType' => 'VARCHAR(191)', 'Supplier' => 'VARCHAR(191)', 'Qty' => 'VARCHAR(100)', 'QCQty' => 'VARCHAR(100)'] as $col => $type) {
+            if (! $db->fieldExists($col, 'tbl_dtr_MaterialTracker')) {
+                $db->query("ALTER TABLE tbl_dtr_MaterialTracker ADD COLUMN {$col} {$type} NULL");
             }
         }
 
@@ -1865,49 +2158,50 @@ class DtrController extends BaseController
         $skipped = [];
 
         foreach ($rows as $r) {
-            $containerNo = $str($r['no'] ?? '');
-            $prod        = $str($r['prod'] ?? '');
-            $proc        = $str($r['proc'] ?? '');
-            $no          = $containerNo ?: ($prod ?: $proc);   // the receiving log is keyed by whichever number was entered first
-            if ($no === '') {
+            $code = $str($r['code'] ?? '');
+            if ($code === '') {
                 continue;
             }
-            $received = $date($p['receivedDate'] ?? '');
-            $arrived  = $date($p['arrivedDate'] ?? '');
+            $received = $date($r['date'] ?? '') ?: date('Y-m-d');
+            $arrived  = $date($r['arrived'] ?? '') ?: $received;
+            $type     = $str($r['type'] ?? '');
+            $name     = $str($r['name'] ?? '', 500);
+            $labRef   = $this->nextMaterialLabRef($db, $type !== '' ? $type : $code, $received);
+            $qty      = $str($r['qty'] ?? '', 100);
             $db->table('tbl_dtr_material_receipts')->insert([
-                'MaterialType'        => $str($r['type'] ?? ''),
-                'MaterialName'        => $str($r['name'] ?? ''),
-                'ContainerNo'         => $containerNo,
-                'ProdCode'            => $prod,
-                'ProcessingNo'        => $proc,
+                'LabReference'        => $labRef,
+                'MaterialType'        => $type,
+                'MaterialName'        => $name !== '' ? $name : $code,
+                'ProdCode'            => $str($r['prod'] ?? ''),
+                'Style'               => $str($r['style'] ?? ''),
+                'Colorway'            => $str($r['color'] ?? ''),
+                'MTL'                 => $str($r['mtl'] ?? ''),
+                'ContainerNo'         => $labRef,   // the receiving log is keyed by this Lab Reference
                 'DateArrived'         => $arrived,
                 'LabReceivedDate'     => $received,
-                'Quantity'            => $str($r['qty'] ?? '', 100),
-                'FinishedTesting'     => $str($r['finished'] ?? '', 100),
-                'RemainingForTesting' => $str($r['remaining'] ?? '', 100),
-                'EstimatedTimeline'   => $date($r['eta'] ?? ''),
+                'Quantity'            => $qty,
                 'EncodedBy'           => $enc,
                 'CreatedAt'           => $now,
             ]);
-            if ($db->table('tbl_dtr_containers')->where('ContainerNo', $no)->countAllResults() > 0) {
-                $skipped[] = $no;
-            } else {
-                $db->table('tbl_dtr_containers')->insert([
-                    'ContainerNo'       => $no,
-                    'DateArrived'       => $arrived,
-                    'DateReceivedInLab' => $received,
-                    'Remarks'           => $str(trim(($r['type'] ?? '') . ' ' . ($r['name'] ?? ''))),
-                    'Encodedby'         => $enc,
-                    'EncodedDate'       => $now,
-                ]);
-            }
+            // MaterialTracker: every received material with all the details entered on the form
+            $db->table('tbl_dtr_MaterialTracker')->insert([
+                'LabRefNo' => $labRef, 'ReceivedDate' => $received, 'DateArrived' => $arrived, 'ProductionCode' => $str($r['prod'] ?? ''), 'Colorway' => $str($r['color'] ?? ''),
+                'Style' => $str($r['style'] ?? ''), 'MTL' => $str($r['mtl'] ?? ''), 'MaterialCode' => $code, 'MaterialName' => $name, 'MaterialType' => $type,
+                'Supplier' => $str($r['supplier'] ?? ''), 'ContainerNo' => $str($r['container'] ?? ''), 'BatchNo' => $str($r['batch'] ?? ''), 'Qty' => $qty,
+                'QCQty' => $str($r['qcqty'] ?? '', 100), 'EncodedBy' => $enc, 'CreatedAt' => $now,
+            ]);
+            $db->table('tbl_dtr_containers')->insert([
+                'ContainerNo'       => $labRef,
+                'DateArrived'       => $arrived,
+                'DateReceivedInLab' => $received,
+                'Remarks'           => $str(trim($code . ' ' . $name)),
+                'Encodedby'         => $enc,
+                'EncodedDate'       => $now,
+            ]);
             $saved++;
         }
 
         $msg = "Saved {$saved} material line(s).";
-        if ($skipped) {
-            $msg .= ' Already in the receiving log (details still kept): ' . implode(', ', $skipped) . '.';
-        }
 
         return $this->response->setJSON(['ok' => $saved > 0, 'message' => $msg, 'saved' => $saved, 'skipped' => $skipped, 'csrf' => csrf_hash()]);
     }
@@ -1959,7 +2253,8 @@ class DtrController extends BaseController
             return $fail('Collection and Production dates are required.');
         }
         $shutdowns = array_values(array_filter(array_map(static fn ($x) => strtoupper(trim((string) $x)), is_array($p['shutdowns'] ?? null) ? $p['shutdowns'] : [])));
-        if (! $rows && ! $shutdowns) {
+        $lackings = is_array($p['lackings'] ?? null) ? $p['lackings'] : [];
+        if (! $rows && ! $shutdowns && ! $lackings) {
             return $fail('No specimen lines to save.');
         }
 
@@ -1978,6 +2273,47 @@ class DtrController extends BaseController
                 'CollectionDate' => $collect, 'ProductionDate' => $prod, 'EncodedBy' => $encodedBy, 'CreatedAt' => date('Y-m-d H:i:s'),
             ]);
             $down++;
+        }
+        // lines ticked LACKING are recorded like a shutdown: one marker per line / side, booked under the date the specimen is due (no Lab Ref, no specimen)
+        $lack = 0;
+        foreach ($lackings as $lk) {
+            $ln   = strtoupper(trim((string) ($lk['line'] ?? '')));
+            $ls   = (($lk['side'] ?? 'L') === 'R') ? 'R' : 'L';
+            $due  = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($lk['date'] ?? '')) ? $lk['date'] : $prod;
+            if (! preg_match('/^' . $building . '(\d{1,2})$/', $ln, $m)) {
+                continue;
+            }
+            // everything entered on the lacking row is kept: Lab Ref (daily format of the due date), production code, style, colorway, MTL #, pull types, remarks, test type
+            $pullCodesL = ['HEEL PULL' => 'HP', 'EYELET' => 'EY', 'D-RING' => 'DR', 'RIVET' => 'RVT'];
+            $pulls      = array_values(array_filter(array_map(static fn ($x) => strtoupper(trim((string) $x)), is_array($lk['pullTypes'] ?? null) ? $lk['pullTypes'] : []), static fn ($x) => isset($pullCodesL[$x])));
+            $detail     = [
+                'ProductionCode' => mb_substr(trim((string) ($lk['code'] ?? '')), 0, 191),
+                'Style'          => mb_substr(trim((string) ($lk['style'] ?? '')), 0, 191),
+                'Colorway'       => mb_substr(trim((string) ($lk['color'] ?? '')), 0, 191),
+                'MTL'            => mb_substr(trim((string) ($lk['mtl'] ?? '')), 0, 191),
+                'PullTest'       => $pulls ? 1 : 0,
+                'PullTestType'   => $pulls ? mb_substr(implode(', ', $pulls), 0, 30) : null,
+                'RetestDetails'  => mb_substr(trim((string) ($lk['remarks'] ?? '')), 0, 500),
+                'Lacking'        => 1,
+                'LackingDate'    => $due,
+            ];
+            $lkRef = 'DTP' . str_replace('-', '', $prod) . 'SH' . $building . (int) $m[1] . '-' . $ls;
+            // a batch tracking record of that line / side / due date already exists: mark it lacking instead of adding a marker
+            $exist = $db->table('tbl_dtr_BondingTracker')->where(['Building' => $building, 'LineNo' => $building . (int) $m[1], 'Side' => $ls, 'ProductionDate' => $due])
+                ->where('LabRefNo IS NOT NULL', null, false)->where('TestType !=', 'LACKING')->orderBy('TrackerID', 'DESC')->get()->getRowArray();
+            if ($exist) {
+                $upd = array_filter($detail, static fn ($v, $k) => in_array($k, ['Lacking', 'LackingDate'], true) || ($v !== '' && $v !== null && $v !== 0), ARRAY_FILTER_USE_BOTH);
+                $db->table('tbl_dtr_BondingTracker')->where('TrackerID', $exist['TrackerID'])->update($upd);
+                $lack++;
+                continue;
+            }
+            $db->table('tbl_dtr_BondingTracker')->where(['TestType' => 'LACKING', 'Building' => $building, 'LineNo' => $building . (int) $m[1], 'Side' => $ls, 'ProductionDate' => $due])->delete();
+            $db->table('tbl_dtr_BondingTracker')->where('LabRefNo', $lkRef)->delete();
+            $db->table('tbl_dtr_BondingTracker')->insert($detail + [
+                'LabRefNo' => $lkRef, 'Building' => $building, 'LineNo' => $building . (int) $m[1], 'Side' => $ls, 'LabTest' => 'Bonding', 'TestType' => 'LACKING',
+                'CollectionDate' => $collect, 'ProductionDate' => $due, 'EncodedBy' => $encodedBy, 'CreatedAt' => date('Y-m-d H:i:s'),
+            ]);
+            $lack++;
         }
         $table   = $db->table('tbl_dtr_bonding_info');
         $saved   = 0;
@@ -2016,7 +2352,7 @@ class DtrController extends BaseController
             foreach ($variants as [$prefix, $pullType]) {
             // a lacking specimen is booked under the date it is due; the real specimen encoded that day then updates it (no duplicate)
             $lackDate = (! empty($r['lacking']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($r['lackingDate'] ?? ''))) ? $r['lackingDate'] : '';
-            $keyRef = 'DTP' . str_replace('-', '', $lackDate ?: $prod) . $prefix . (($noLine && $prefix === $mainPre) ? '' : $building . (int) $m[1]);
+            $keyRef = 'DTP' . str_replace('-', '', $prod) . $prefix . (($noLine && $prefix === $mainPre) ? '' : $building . (int) $m[1]);
             $labRef = $keyRef . ($isStrip ? '' : '-' . $side);   // retest base / fallback
             if ($typeU === 'TECH TRIAL' && $prefix === $mainPre) {
                 // a trial is checked first: the same MTL # / Style on the same side may not be recorded twice
@@ -2041,17 +2377,21 @@ class DtrController extends BaseController
                 $n = 0;
                 $lackRef = '';
                 $q = $db->table('tbl_dtr_bonding_info')->select('LabRefNo, LabNotesComments')->like('LabRefNo', $keyRef . '-', 'after')->orderBy('BondingTestID', 'DESC')->get()->getResultArray();
-                $pat = $isStrip ? '/^' . preg_quote($keyRef, '/') . '-(\d+)$/' : '/^' . preg_quote($keyRef, '/') . '-([LR])-(\d+)$/';
+                // bonding Lab Ref = DTP<date>SH<line>-<side> (no number); only when that Lab Ref is already taken the next one gets -2, -3 ...
+                $pat = $isStrip ? '/^' . preg_quote($keyRef, '/') . '-(\d+)$/' : '/^' . preg_quote($keyRef, '/') . '-([LR])(?:-(\d+))?$/';
                 foreach ($q as $x) {
                     if (preg_match($pat, (string) $x['LabRefNo'], $mm)) {
-                        $num = (int) end($mm);
+                        $num = $isStrip ? (int) $mm[1] : (int) ($mm[2] ?? 1);
+                        if (! $isStrip && $mm[1] !== $side) {
+                            continue;
+                        }
                         $n = max($n, $num);
-                        if ($lackRef === '' && ($isStrip || $mm[1] === $side) && stripos((string) $x['LabNotesComments'], 'LACKING') !== false) {
+                        if ($lackRef === '' && stripos((string) $x['LabNotesComments'], 'LACKING') !== false) {
                             $lackRef = $x['LabRefNo'];
                         }
                     }
                 }
-                $labRef = (empty($r['lacking']) && $lackRef !== '') ? $lackRef : ($isStrip ? $keyRef . '-' . ($n + 1) : $keyRef . '-' . $side . '-' . ($n + 1));
+                $labRef = (empty($r['lacking']) && $lackRef !== '') ? $lackRef : ($isStrip ? $keyRef . '-' . ($n + 1) : ($n === 0 ? $keyRef . '-' . $side : $keyRef . '-' . $side . '-' . ($n + 1)));
             }
 
             if (! empty($r['retest'])) {
@@ -2078,6 +2418,8 @@ class DtrController extends BaseController
             }
             if (! empty($r['retest'])) {
                 $notes[] = 'RETEST: ' . trim((string) ($r['retestNote'] ?? ''));
+            } elseif (trim((string) ($r['retestNote'] ?? '')) !== '') {
+                $notes[] = 'REMARKS: ' . trim((string) $r['retestNote']);   // a remark typed on any other test type is kept as a remark
             }
             if (! empty($r['lacking'])) {
                 $notes[] = 'LACKING' . ($lackDate !== '' ? ' (due ' . $lackDate . ')' : '');
@@ -2147,10 +2489,15 @@ class DtrController extends BaseController
                 'CreatedAt'      => date('Y-m-d H:i:s'),
             ]);
             $saved++;
+            // the real specimen has arrived: the lacking marker of that line / side / due date is cleared
+            $db->table('tbl_dtr_BondingTracker')->where(['Lacking' => 1, 'TestType' => 'LACKING', 'Building' => $building, 'LineNo' => $building . (int) $m[1], 'Side' => $side, 'ProductionDate' => $prod])->delete();
             }
         }
 
         $msg = "Saved {$saved} specimen(s) for Building {$building}.";
+        if ($lack) {
+            $msg .= " {$lack} line(s) marked LACKING.";
+        }
         if ($updated) {
             $msg .= " ({$updated} existing Lab Ref updated.)";
         }
@@ -2161,7 +2508,7 @@ class DtrController extends BaseController
             $msg .= ' Not saved, trial already recorded: ' . implode(', ', array_unique($skipped)) . '.';
         }
 
-        return $this->response->setJSON(['ok' => $saved > 0 || $down > 0, 'message' => $msg, 'saved' => $saved, 'skipped' => $skipped, 'csrf' => csrf_hash()]);
+        return $this->response->setJSON(['ok' => $saved > 0 || $down > 0 || $lack > 0, 'message' => $msg, 'saved' => $saved, 'skipped' => $skipped, 'csrf' => csrf_hash()]);
     }
 
     /**

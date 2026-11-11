@@ -3140,3 +3140,86 @@ tr[data-dfhide]{display:none !important}
 .dtr-edit-btn.is-save{background:#16a34a;border-color:#16a34a;color:#fff}
 .dtr-edit-in{width:100%;min-width:96px;box-sizing:border-box;padding:4px 6px;border:1px solid #93c5fd;border-radius:4px;font:inherit;font-size:12px;background:#fff}
 .dtr-mini-toast{position:fixed;left:50%;bottom:32px;transform:translateX(-50%);background:#0f172a;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;z-index:10000;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+/* Material Receive form: 14 columns */
+.dtr-mrec-dialog{max-width:min(1780px,97vw) !important;width:97vw}
+.dtr-mrec-table input,.dtr-mrec-table select{width:100%;box-sizing:border-box;min-width:0}
+.dtr-mrec-table th{white-space:normal;line-height:1.15}
+.dtr-mrec-table .mr-date,.dtr-mrec-table .mr-arrived{min-width:128px}
+.dtr-mrec-table .ik-code,.dtr-mrec-table .mr-code{min-width:130px}
+.dtr-mrec-table .ik-color,.dtr-mrec-table .ik-style,.dtr-mrec-table .mr-name{min-width:150px}
+.dtr-mrec-table .mr-qty,.dtr-mrec-table .mr-qcqty{min-width:70px}
+/* Material Receive form: compact */
+.dtr-mrec-dialog{max-width:min(1500px,96vw) !important}
+.dtr-mrec-table th{padding:5px 4px !important;font-size:10px !important}
+.dtr-mrec-table td{padding:2px 3px !important}
+.dtr-mrec-table input,.dtr-mrec-table select{padding:3px 5px !important;font-size:11.5px !important;height:26px}
+.dtr-mrec-table .ik-code,.dtr-mrec-table .mr-code{min-width:105px}
+.dtr-mrec-table .ik-color,.dtr-mrec-table .ik-style,.dtr-mrec-table .mr-name{min-width:120px}
+.dtr-mrec-table .mr-type,.dtr-mrec-table .mr-supplier{min-width:95px}
+.dtr-mrec-table .mr-container,.dtr-mrec-table .mr-batch{min-width:85px}
+.dtr-mrec-table .mr-qty,.dtr-mrec-table .mr-qcqty{min-width:54px}
+#dtr-mrec-backdrop .dtr-intake-bar{gap:10px;padding:8px 14px}
+#dtr-mrec-backdrop .dtr-intake-head{padding:10px 16px}
+/* Material Receive form: wider window, roomier columns */
+.dtr-mrec-dialog{max-width:min(1860px,98vw) !important;width:98vw !important}
+.dtr-mrec-table{width:100%;table-layout:auto}
+.dtr-mrec-table .ik-code{min-width:150px}
+.dtr-mrec-table .mr-code{min-width:140px}
+.dtr-mrec-table .ik-color{min-width:170px}
+.dtr-mrec-table .ik-style{min-width:150px}
+.dtr-mrec-table .ik-mtl{min-width:120px}
+.dtr-mrec-table .mr-name{min-width:210px}
+.dtr-mrec-table .mr-type{min-width:130px}
+.dtr-mrec-table .mr-supplier{min-width:140px}
+.dtr-mrec-table .mr-container,.dtr-mrec-table .mr-batch{min-width:110px}
+.dtr-mrec-table .mr-qty,.dtr-mrec-table .mr-qcqty{min-width:80px}
+.dtr-mrec-table td{padding:3px 5px !important}
+/* Material Receive: fixed column widths so every filled value is readable */
+.dtr-mrec-table{table-layout:fixed !important;width:100% !important}
+.dtr-mrec-table th:nth-child(1){width:10.5% !important}
+.dtr-mrec-table th:nth-child(2){width:13% !important}
+.dtr-mrec-table th:nth-child(3){width:12% !important}
+.dtr-mrec-table th:nth-child(4){width:8.5% !important}
+.dtr-mrec-table th:nth-child(5){width:9% !important}
+.dtr-mrec-table th:nth-child(6){width:13% !important}
+.dtr-mrec-table th:nth-child(7){width:8% !important}
+.dtr-mrec-table th:nth-child(8){width:8% !important}
+.dtr-mrec-table th:nth-child(9){width:7% !important}
+.dtr-mrec-table th:nth-child(10){width:5.5% !important}
+.dtr-mrec-table th:nth-child(11){width:3% !important}
+.dtr-mrec-table th:nth-child(12){width:3% !important}
+.dtr-mrec-table input,.dtr-mrec-table select{min-width:0 !important;text-overflow:ellipsis}
+.dtr-mrec-table .ik-code,.dtr-mrec-table .ik-color,.dtr-mrec-table .ik-style,.dtr-mrec-table .ik-mtl,.dtr-mrec-table .mr-code,.dtr-mrec-table .mr-name,.dtr-mrec-table .mr-type,.dtr-mrec-table .mr-supplier{font-size:11px !important;padding-left:4px !important;padding-right:4px !important}
+/* Material Receive: short columns shrink to their content, the text columns take the free width */
+.dtr-mrec-table{table-layout:auto !important;width:100% !important}
+.dtr-mrec-table th:nth-child(n){width:1% !important;white-space:nowrap}
+.dtr-mrec-table th:nth-child(2){width:19% !important}
+.dtr-mrec-table th:nth-child(3){width:16% !important}
+.dtr-mrec-table th:nth-child(6){width:22% !important}
+.dtr-mrec-table th:nth-child(8){width:15% !important}
+.dtr-mrec-table th:nth-child(1) input,.dtr-mrec-table .ik-code{min-width:135px !important}
+.dtr-mrec-table .ik-mtl{min-width:115px !important}
+.dtr-mrec-table .mr-code{min-width:125px !important}
+.dtr-mrec-table .mr-type{min-width:120px !important}
+.dtr-mrec-table .mr-container{min-width:105px !important}
+.dtr-mrec-table .mr-batch{min-width:95px !important}
+.dtr-mrec-table .mr-qty,.dtr-mrec-table .mr-qcqty{min-width:68px !important}
+.dtr-mrec-table td{overflow:visible !important}
+.dtr-mrec-dialog{width:99vw !important;max-width:99vw !important}
+.dtr-mrec-dialog .dtr-intake-body{overflow-x:auto}
+/* Material Receive: short columns get a fixed narrow width, Colorway / Style / Material Name / Supplier take the rest */
+.dtr-mrec-table{table-layout:fixed !important;width:100% !important}
+.dtr-mrec-table th:nth-child(1){width:128px !important}
+.dtr-mrec-table th:nth-child(2){width:15% !important}
+.dtr-mrec-table th:nth-child(3){width:12% !important}
+.dtr-mrec-table th:nth-child(4){width:112px !important}
+.dtr-mrec-table th:nth-child(5){width:122px !important}
+.dtr-mrec-table th:nth-child(6){width:21% !important}
+.dtr-mrec-table th:nth-child(7){width:108px !important}
+.dtr-mrec-table th:nth-child(8){width:11% !important}
+.dtr-mrec-table th:nth-child(9){width:98px !important}
+.dtr-mrec-table th:nth-child(10){width:82px !important}
+.dtr-mrec-table th:nth-child(11){width:62px !important}
+.dtr-mrec-table th:nth-child(12){width:62px !important}
+.dtr-mrec-table .ik-code,.dtr-mrec-table .ik-mtl,.dtr-mrec-table .mr-code,.dtr-mrec-table .mr-type,.dtr-mrec-table .mr-container,.dtr-mrec-table .mr-batch,.dtr-mrec-table .mr-qty,.dtr-mrec-table .mr-qcqty{min-width:0 !important}
+.dtr-mrec-table th{white-space:normal !important}

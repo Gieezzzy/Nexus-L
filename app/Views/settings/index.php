@@ -54,6 +54,7 @@ $field = static function (array $r): string {
         <a href="#st-approval">Approval</a>
         <a href="#st-erp">ERP agent</a>
         <a href="#st-labreport">Lab Report Settings</a>
+        <?php if (\App\Libraries\Roles::can((string) (service('auth')->user()['role'] ?? ''), 'dtr')): ?><a href="<?= site_url('dtr?tab=calculators') ?>">Calculators &amp; Standards</a><?php endif ?>
         <a href="#st-synology">Synology Chat</a>
     </nav>
     <div class="st-empty" id="st-empty" hidden>No setting matches that search.</div>
