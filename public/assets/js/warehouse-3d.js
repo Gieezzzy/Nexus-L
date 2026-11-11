@@ -2370,9 +2370,17 @@
     el.classList.toggle('hidden', !text);
   }
 
-  // the nearest thing he can interact with: a box in reach, or a lamp overhead
+  // the nearest thing he can interact with: a box in reach, or a lamp overhead, or open secret door
   function pilotScan(lex) {
     const p = lex.root.position;
+    if (window.AsylumGame && window.AsylumGame.isDoorOpen && !window.AsylumGame.isActive()) {
+      const dDoor = Math.hypot((window.AsylumGame.SECRET ? window.AsylumGame.SECRET.x : 0.5) - p.x, (window.AsylumGame.SECRET ? window.AsylumGame.SECRET.z : -19.08) - p.z);
+      if (dDoor < 4.2) {
+        pilot.near = { type: 'asylum-door', d: dDoor };
+        setPilotHint('🌀 Press E or step into portal to enter The Dark Asylum');
+        return;
+      }
+    }
     const tmp = new THREE.Vector3();
     let best = null;
     interactiveBoxes.forEach(m => {
@@ -2392,6 +2400,12 @@
 
   function pilotInteract() {
     const n = pilot.near;
+    if (n && n.type === 'asylum-door') {
+      if (window.AsylumGame && !window.AsylumGame.isActive()) {
+        window.AsylumGame.enterAsylum();
+        return;
+      }
+    }
     if (!n) { lexusSay('🤔 Nothing here to interact with. Walk up to a box or under a lamp.', 'curious'); return; }
     if (n.type === 'lamp') { toggleBulb(n.obj); return; }
     const b = n.obj.userData;
@@ -2517,7 +2531,10 @@
     }
     // Check if secret door is open in warehouse and player steps into it
     if (window.AsylumGame && window.AsylumGame.isDoorOpen && !window.AsylumGame.isActive()) {
-      if (p.x < window.AsylumGame.SECRET.x + 0.35 && Math.abs(p.z - window.AsylumGame.SECRET.z) < 0.9) {   // he has stepped into the doorway
+      const sx = window.AsylumGame.SECRET ? window.AsylumGame.SECRET.x : 0.5;
+      const sz = window.AsylumGame.SECRET ? window.AsylumGame.SECRET.z : -19.08;
+      const dPortal = Math.hypot(p.x - sx, p.z - sz);
+      if ((p.x < sx + 0.65 && Math.abs(p.z - sz) < 1.3) || dPortal < 1.15) {   // stepped into doorway or portal
         window.AsylumGame.enterAsylum();
       }
     }

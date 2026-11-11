@@ -287,6 +287,15 @@ class WstController extends BaseController
                 return;
             }
 
+            // Bulk-load existing labreference keys in a single query to avoid N+1 lookups.
+            $existingMap = [];
+            foreach ($db->table('tbl_material_tests')->select('labreference')->get()->getResultArray() as $er) {
+                $key = strtoupper(trim((string) ($er['labreference'] ?? '')));
+                if ($key !== '') {
+                    $existingMap[$key] = true;
+                }
+            }
+
             $model = new MaterialTestModel();
             foreach ($trackers as $r) {
                 $labref = trim((string) ($r['LabRefNo'] ?? ''));
@@ -294,18 +303,22 @@ class WstController extends BaseController
                     continue;
                 }
 
-                $existing = $model->where('labreference', $labref)->first();
-                if ($existing) {
+                $refKey = strtoupper($labref);
+                if (isset($existingMap[$refKey])) {
                     continue;
                 }
+                $existingMap[$refKey] = true;
 
                 $category = self::mapTrackerTestTypeToCategory((string) ($r['TestType'] ?? ''), (string) ($r['TestCode'] ?? ''));
                 $spec = trim((string) ($r['Style'] ?? 'Standard'));
                 if (! empty($r['Colorway'])) {
                     $spec .= ' - ' . trim((string) $r['Colorway']);
                 }
-                $operator = trim((string) ($r['EncodedBy'] ?? 'QC Specialist'));
+                $operator = trim((string) ($r['Technician'] ?? '')) ?: trim((string) ($r['EncodedBy'] ?? 'QC Specialist'));
                 $testdate = ! empty($r['CollectionDate']) ? $r['CollectionDate'] : (! empty($r['ProductionDate']) ? $r['ProductionDate'] : date('Y-m-d'));
+                $machine  = trim((string) ($r['MachineCode'] ?? '')) ?: 'MC-01';
+                $rawStat  = strtoupper(trim((string) ($r['Status'] ?? '')));
+                $status   = in_array($rawStat, ['COMPLETED', 'RUNNING', 'PENDING', 'STOPPED'], true) ? $rawStat : 'PENDING';
                 $target = match ($category) {
                     'hydrolysis', 'heat-aging' => 168,
                     'uv-light' => 24,
@@ -321,14 +334,14 @@ class WstController extends BaseController
                     'labreference'     => $labref,
                     'testdate'         => $testdate,
                     'type'             => $spec,
-                    'machine_number'   => 'MC-01',
+                    'machine_number'   => $machine,
                     'samplecountdry'   => 1,
                     'samplecountwet'   => 0,
                     'samplecounthydro' => 0,
                     'target_cycles'    => $target,
                     'current_cycles'   => 0,
-                    'status'           => 'PENDING',
-                    'is_running'       => 0,
+                    'status'           => $status,
+                    'is_running'       => $status === 'RUNNING' ? 1 : 0,
                     'operator'         => $operator,
                     'technician'       => $operator,
                     'temperature'      => 23.00,
@@ -393,7 +406,7 @@ class WstController extends BaseController
                 ->groupEnd();
         }
 
-        $allRows = $builder->orderBy('id', 'DESC')->limit(300)->get()->getResultArray();
+        $allRows = $builder->orderBy('testdate', 'DESC')->orderBy('id', 'DESC')->limit(300)->get()->getResultArray();
 
         $testIds = array_column($allRows, 'id');
         $labRefs = array_filter(array_column($allRows, 'labreference'));

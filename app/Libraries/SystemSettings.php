@@ -92,6 +92,18 @@ class SystemSettings
             'erp.extract_port'           => $d('erp', 'Extract agent - port', 'number', '5058', 'listen_port in the agent_config.json of that PC.'),
             'erp.extract_token'          => $d('erp', 'Extract agent - token', 'password', '', 'token in the agent_config.json of that PC (run: ERP_Extract_Agent.exe --token).'),
 
+            // --- Lab Report Settings: the report picture beside the Lab Ref No of each Lab Tracker tab ----------------------------------
+            'labreport.image_root'       => $d('labreport', 'Report pictures - main folder', 'text', '\\\\192.168.32.43\\html\\BondingImages', 'Folder (or network share) that holds the report pictures. Used by every tab below that has no folder of its own.'),
+            'labreport.bonding.show'     => $d('labreport', 'Bonding Shoe Collection - show the report picture', 'bool', '1', 'The small picture beside each Lab Ref No. Click it to open and mark up the report.'),
+            'labreport.bonding.folder'   => $d('labreport', 'Bonding Shoe Collection - folder', 'text', '', 'Empty = the main folder above.'),
+            'labreport.bonding.layout'   => $d('labreport', 'Bonding Shoe Collection - how the folder is organised', 'select:type_date,flat', 'type_date', 'TYPE_DATE = a folder per test type (DAILY, TECH TRIAL, SAMPLE, INTERNAL TESTING, FIRST ARTICLE, RETEST) and inside it a folder per date, with <Lab Ref No>.png in it. FLAT = all pictures in the one folder.'),
+            'labreport.shoes.show'       => $d('labreport', 'Whole Shoe Collection - show the report picture', 'bool', '0', 'Off until the pictures of the whole shoe reports have a folder.'),
+            'labreport.shoes.folder'     => $d('labreport', 'Whole Shoe Collection - folder', 'text', '', 'Empty = the main folder above.'),
+            'labreport.shoes.layout'     => $d('labreport', 'Whole Shoe Collection - how the folder is organised', 'select:flat,type_date', 'flat', 'FLAT = all pictures in the one folder, named <Lab Ref No>.png.'),
+            'labreport.containers.show'  => $d('labreport', 'IQC Container Receiving Log - show the report picture', 'bool', '0', 'The picture is looked up by the Lab Reference of the material.'),
+            'labreport.containers.folder' => $d('labreport', 'IQC Container Receiving Log - folder', 'text', '', 'Empty = the main folder above.'),
+            'labreport.containers.layout' => $d('labreport', 'IQC Container Receiving Log - how the folder is organised', 'select:flat,type_date', 'flat', 'FLAT = all pictures in the one folder, named <Lab Reference>.png.'),
+
             // --- Synology Chat -----------------------------------------------------------------------------------------------------
             'synology.base_url'          => $d('synology', 'Synology Chat address', 'url', '', 'Empty = the address in the .env file.'),
             'synology.bot_token'         => $d('synology', 'Bot token', 'password', '', 'Empty = the token in the .env file.'),
@@ -143,6 +155,7 @@ class SystemSettings
             'defaults' => 'InterLink report defaults',
             'approval' => 'Report approval',
             'erp'      => 'ERP agent',
+            'labreport' => 'Lab Report Settings',
             'synology' => 'Synology Chat',
         ];
     }

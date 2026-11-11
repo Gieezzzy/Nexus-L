@@ -441,16 +441,23 @@
       if (this.active || this.inTransition || !lex || !lex.root) return;
       const p = lex.root.position;
       const dist = Math.hypot(p.x - this.SECRET.x, p.z - this.SECRET.z);
-      if (dist < 3.2 && p.x > this.SECRET.x - 0.2) {
+      // North-west corner zone near Rack 4 (Material Specimens) and Partition East Wall
+      const inSecretZone = (dist < 5.5) || (p.x >= 0.0 && p.x <= 5.5 && p.z <= -16.0 && p.z >= -22.2);
+      if (inSecretZone) {
         const now = performance.now();
-        if (now - this.qLastTime > 3000) this.qPressCount = 0;
+        if (now - this.qLastTime > 4500) this.qPressCount = 0;
         this.qLastTime = now;
         this.qPressCount++;
         AudioEngine.playSecretChime(this.qPressCount);
+        const hintEl = document.getElementById('wh-pilot-hint');
         if (this.qPressCount === 1) {
-          if (window.lexusSay) window.lexusSay("Did you hear that wall whispering...? (Press Q again)", "curious");
+          const msg = "Did you hear that wall whispering...? (Press Q again)";
+          if (window.lexusSay) window.lexusSay(msg, "curious");
+          if (hintEl) { hintEl.textContent = '🔮 ' + msg; hintEl.classList.remove('hidden'); }
         } else if (this.qPressCount === 2) {
-          if (window.lexusSay) window.lexusSay("The stone wall is trembling! (Press Q once more!)", "surprised");
+          const msg = "The stone wall is trembling! (Press Q once more!)";
+          if (window.lexusSay) window.lexusSay(msg, "surprised");
+          if (hintEl) { hintEl.textContent = '⚡ ' + msg; hintEl.classList.remove('hidden'); }
         } else if (this.qPressCount >= 3) {
           this.qPressCount = 0;
           this.triggerCinematicSecretDoor();

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Sidebar navigation. Add items to $menu; 'roles' restricts visibility.
  */
@@ -98,13 +98,19 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
             </a><?php endif ?>
         </details>
 
-        <!-- Lab Monitoring: Warehouse 3D Tracker & ERP Finish (Calendar Monitoring is in the main list above) -->
-        <?php $monOpen = in_array((string) $segment, ['lab-monitoring', 'warehouse-tracker', 'warehouse'], true); ?>
+        <!-- Lab Monitoring: Lab Tracker, Warehouse 3D Tracker & ERP Finish -->
+        <?php $monOpen = in_array((string) $segment, ['lab-monitoring', 'warehouse-tracker', 'warehouse', 'calendar-monitoring', 'calendar'], true) || ($segment === 'dtr' && $activeTabParam === 'labtracker'); ?>
         <details class="side-group side-group-collapsible" data-grp="labmon"<?= $monOpen ? ' open data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
             <summary class="side-group-h" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer;list-style:none">
                 <span>Lab Monitoring</span>
                 <svg class="side-group-c" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:14px;height:14px;transition:transform .15s ease-out" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
             </summary>
+            <?php if ($can('dtr')): ?>
+            <a href="<?= site_url('dtr?tab=labtracker') ?>" class="nav-link <?= ($segment === 'dtr' && $activeTabParam === 'labtracker') ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
+                <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 12h6M9 16h6"/></svg>
+                Lab Tracker
+            </a>
+            <?php endif ?>
             <a href="<?= site_url('warehouse-tracker') ?>" class="nav-link <?= in_array((string) $segment, ['warehouse-tracker', 'warehouse'], true) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
                 <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
                 Warehouse 3D Tracker
@@ -122,7 +128,6 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
         <!-- Sub-navigation for QC Lab Digital Test Reports (#Digital Test Report) -->
         <?php
         $labLinks = [
-            ['tab' => 'labtracker',  'label' => 'Lab Tracker',            'icon' => 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 12h6M9 16h6'],
             ['tab' => 'bonding',     'label' => 'Shoe Bonding (U60)',     'icon' => 'M13 10V3L4 14h7v7l9-11h-7z'],
             ['tab' => 'wholeshoe',   'label' => 'Whole Shoe',             'icon' => 'M3 18h18v-2H3v2zm19-4c0-1.1-.9-2-2-2h-2.5l-3-4.5c-.4-.6-1-1-1.7-1H8c-.8 0-1.5.5-1.8 1.2L4 12H3c-1.1 0-2 .9-2 2v2h21v-2z'],
             ['tab' => 'material',    'label' => 'Material Tests',         'icon' => 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10'],
@@ -132,7 +137,7 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
         ];
         $labMod = ['bonding' => 'bonding', 'wholeshoe' => 'wholeshoe', 'material' => 'materials', 'thirdparty' => 'thirdparty'];
         $labLinks = array_values(array_filter($labLinks, static fn ($l) => \App\Libraries\Roles::can($myRole, $labMod[$l['tab']] ?? 'dtr')));
-        $labReportsOpen = in_array((string) $segment, ['dtr', 'thirdparty'], true);
+        $labReportsOpen = ($segment === 'dtr' && $activeTabParam !== 'labtracker') || $segment === 'thirdparty';
         ?>
         <details class="side-group side-group-collapsible" data-grp="labreports"<?= $labReportsOpen ? ' open data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
             <summary class="side-group-h" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer;list-style:none">

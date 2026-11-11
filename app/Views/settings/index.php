@@ -53,6 +53,7 @@ $field = static function (array $r): string {
         <a href="#st-defaults">Report defaults</a>
         <a href="#st-approval">Approval</a>
         <a href="#st-erp">ERP agent</a>
+        <a href="#st-labreport">Lab Report Settings</a>
         <a href="#st-synology">Synology Chat</a>
     </nav>
     <div class="st-empty" id="st-empty" hidden>No setting matches that search.</div>
@@ -278,6 +279,24 @@ $field = static function (array $r): string {
         <p class="muted sm">ERP Finish Monitoring sends each report to a small program on the ERP PC (NexusErpAgent.exe). It enters the reports in the ERP one at a time, oldest first, in the background.</p>
         <?php foreach ($byCat['erp'] ?? [] as $r) echo $field($r); ?>
         <div class="st-actions"><button type="button" class="nx-btn nx-primary" data-save="st-erp">Save</button><button type="button" class="nx-btn" id="st-erp-test">Check the ERP PC</button><span class="st-msg" id="st-erp-msg"></span></div>
+    </div>
+
+    <!-- Lab Report Settings: the report picture beside the Lab Ref No of each Lab Tracker tab -->
+    <div class="card glass" id="st-labreport">
+        <h3><?= esc($categories['labreport'] ?? 'Lab Report Settings') ?></h3>
+        <p class="muted sm">The small report picture beside the Lab Ref No in the Lab Tracker (QC Lab Digital Test Reports). Each tab can show it or not and read from its own folder. <b>TYPE_DATE</b> = <code>&lt;folder&gt;\&lt;TEST TYPE&gt;\&lt;date&gt;\&lt;Lab Ref No&gt;.png</code> (a folder per test type, a folder per date inside it); <b>FLAT</b> = every picture in the one folder.</p>
+        <?php
+        $lr = [];
+        foreach ($byCat['labreport'] ?? [] as $r) { $lr[$r['key']] = $r; }
+        ?>
+        <?php if (isset($lr['labreport.image_root'])) echo $field($lr['labreport.image_root']); ?>
+        <?php foreach (['bonding' => 'Bonding Shoe Collection', 'shoes' => 'Whole Shoe Collection', 'containers' => 'IQC Container Receiving Log'] as $tabKey => $tabName): ?>
+            <fieldset class="st-fs">
+                <legend><?= esc($tabName) ?></legend>
+                <?php foreach (['show' => 'Show the report picture', 'folder' => 'Folder (empty = main folder)', 'layout' => 'Folder organisation'] as $part => $partLabel) { if (isset($lr["labreport.$tabKey.$part"])) { $row = $lr["labreport.$tabKey.$part"]; $row['label'] = $partLabel; $row['help'] = ''; echo $field($row); } } ?>
+            </fieldset>
+        <?php endforeach ?>
+        <div class="st-actions"><button type="button" class="nx-btn nx-primary" data-save="st-labreport">Save</button><span class="st-msg"></span></div>
     </div>
 
     <!-- Synology -->

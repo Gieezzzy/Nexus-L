@@ -220,9 +220,9 @@ class DtrController extends BaseController
         $db->query("UPDATE tbl_dtr_WholeshoeTracker SET
                 WholeshoeLabRefNo = IF(WholeshoeLabRefNo IS NULL OR WholeshoeLabRefNo = '' OR WholeshoeLabRefNo LIKE '%-L' OR WholeshoeLabRefNo LIKE '%-R', WholeshoeLabRefNo, CONCAT(WholeshoeLabRefNo, '-', Side)),
                 LabRefNo = CONCAT(LabRefNo, '-', Side)
-            WHERE Side IN ('L', 'R') AND LabRefNo NOT LIKE '%-%'");   // only the old refs with no dash at all (DTP<date>..<line>); the new DTP<date><code><line>-<side>-<#> refs already carry their side
+            WHERE Side IN ('L', 'R') AND LabRefNo NOT LIKE '%-L' AND LabRefNo NOT LIKE '%-R'");
         if ($db->tableExists('tbl_dtr_wholeshoe_intake') && in_array('side', array_map('strtolower', $db->getFieldNames('tbl_dtr_wholeshoe_intake')), true)) {
-            $db->query("UPDATE tbl_dtr_wholeshoe_intake SET LabRefNo = CONCAT(LabRefNo, '-', Side) WHERE Side IN ('L', 'R') AND LabRefNo NOT LIKE '%-%'");
+            $db->query("UPDATE tbl_dtr_wholeshoe_intake SET LabRefNo = CONCAT(LabRefNo, '-', Side) WHERE Side IN ('L', 'R') AND LabRefNo NOT LIKE '%-L' AND LabRefNo NOT LIKE '%-R'");
         }        if (in_array('testtypes', $have, true)) {
             // first version kept one row per line (LabRefNo = mother, TestTypes = list): split it into one row per test type
             $codes = ['heat aging' => 'AG', 'hydrolysis' => 'HY', 'washing' => 'WS', 'uv' => 'UV', 'flexing' => 'FX', 'dip test' => 'DT'];
@@ -254,6 +254,7 @@ class DtrController extends BaseController
         $db        = \Config\Database::connect();
         $this->ensureTrackerTables($db);
         $activeTab = trim((string) ($this->request->getGet('tab') ?? 'tracker'));
+        $subTab    = trim((string) ($this->request->getGet('subtab') ?? ''));
 
         // Category counts from tbl_dtr_unified_labrefs
         $catRows = $db->query("
@@ -269,34 +270,22 @@ class DtrController extends BaseController
         $totalReports = array_sum(array_column($catRows, 'cnt'));
         $totalPass    = array_sum(array_column($catRows, 'pass_cnt'));
         $totalFail    = array_sum(array_column($catRows, 'fail_cnt'));
-        // lines marked SHUTDOWN in the Specimen Intake (one mark per line and production date): all time, and for today's production date
-        $shutTotal = 0;
-        $shutToday = 0;
-        if ($db->tableExists('tbl_dtr_BondingTracker')) {
-            $shutTotal = (int) $db->table('tbl_dtr_BondingTracker')->where('Shutdown', 1)->countAllResults();
-            $shutToday = (int) $db->table('tbl_dtr_BondingTracker')->where('Shutdown', 1)->where('ProductionDate', date('Y-m-d'))->countAllResults();
-        }
         $totalTol     = array_sum(array_column($catRows, 'tol_cnt'));
 
-        // Recent 100 unified reports
+        // Recent 100 unified reports sorted by actual test/received date descending
         $recentReports = $db->table('tbl_dtr_unified_labrefs')
-            ->select('id, lab_ref_no, tr_no, form_category, form_slug, interlink_sample_type, source_id, material_type, material_code, material_description, supplier, model_style, color, po_lot_no, mtl_no, received_date, tested_date, finished_date, technician, status, overall_result, thickness_ave, weight_ave')
-            ->orderBy('id', 'DESC')
+            ->select('id, lab_ref_no, tr_no, form_category, form_slug, interlink_sample_type, source_table, source_id, material_type, material_code, material_description, supplier, model_style, color, po_lot_no, mtl_no, received_date, tested_date, finished_date, technician, status, overall_result, thickness_ave, weight_ave, source_system')
+            ->orderBy("COALESCE(STR_TO_DATE(NULLIF(tested_date, ''), '%d %b %Y'), STR_TO_DATE(NULLIF(received_date, ''), '%d %b %Y'), DATE('1970-01-01')) DESC, id DESC", '', false)
             ->limit(100)
             ->get()
             ->getResultArray();
 
         // Containers & Materials Master (IQC Receiving Log)
-        // IQC Container Receiving Log: one row per material of a container (a container with no material yet shows alone);
-        // Quantity / Material Name of a container that was only booked in through "+ Material Receive" come from tbl_dtr_material_receipts
-        $rc = $db->tableExists('tbl_dtr_material_receipts');
-        $containers = $db->query('SELECT c.ContainerID, c.ContainerNo, c.DateArrived, c.DateReceivedInLab, c.Remarks AS ContainerRemarks, c.Encodedby,
-                m.MaterialID, m.MaterialCode, m.MaterialName, m.MaterialProdCode, m.LabReference, m.IQCERP, m.TestingStatus, m.FinalStatus, m.Remarks AS MaterialRemarks'
-            . ($rc ? ', (SELECT r.Quantity FROM tbl_dtr_material_receipts r WHERE r.ContainerNo COLLATE utf8mb4_general_ci = c.ContainerNo COLLATE utf8mb4_general_ci ORDER BY r.ReceiptID DESC LIMIT 1) AS Quantity,
-                (SELECT r.MaterialName FROM tbl_dtr_material_receipts r WHERE r.ContainerNo COLLATE utf8mb4_general_ci = c.ContainerNo COLLATE utf8mb4_general_ci ORDER BY r.ReceiptID DESC LIMIT 1) AS ReceiptName,
-                (SELECT r.ProdCode FROM tbl_dtr_material_receipts r WHERE r.ContainerNo COLLATE utf8mb4_general_ci = c.ContainerNo COLLATE utf8mb4_general_ci ORDER BY r.ReceiptID DESC LIMIT 1) AS ReceiptProd' : ", NULL AS Quantity, NULL AS ReceiptName, NULL AS ReceiptProd")
-            . ' FROM tbl_dtr_containers c LEFT JOIN tbl_dtr_materials_master m ON m.ContainerID = c.ContainerID
-                ORDER BY c.ContainerID DESC, m.MaterialID ASC LIMIT 400')->getResultArray();
+        $containers = $db->table('tbl_dtr_containers')
+            ->orderBy('ContainerID', 'DESC')
+            ->limit(40)
+            ->get()
+            ->getResultArray();
 
         $materialsMaster = $db->table('tbl_dtr_materials_master')
             ->orderBy('MaterialID', 'DESC')
@@ -309,37 +298,30 @@ class DtrController extends BaseController
         // one row per Lab Ref No: of older duplicates the one holding a result wins, otherwise the newest
         // Style / Colorway / MTL / Prod. Code: from the bonding record, or from the intake tracker (tbl_dtr_BondingTracker) when the record has none
         $bondingShoes = $db->table('tbl_dtr_bonding_info b')
-            ->select("b.BondingTestID, b.LabRefNo, COALESCE(NULLIF(b.ModelStyle, ''), t.Style) AS ModelStyle, COALESCE(NULLIF(b.Color, ''), t.Colorway) AS Color, b.Side, b.Factory, b.ProductionDate, b.TestedDate, b.Technician, b.Result, b.LabNotesComments, COALESCE(NULLIF(b.POLotNO, ''), t.ProductionCode) AS POLotNO, COALESCE(NULLIF(b.MTL, ''), t.MTL) AS MTL, b.ReceivedDate, b.Remarks, b.TestType, t.`LineNo` AS TrackerLine, t.PullTestType, t.Lacking", false)
+            ->select("b.BondingTestID, b.LabRefNo, COALESCE(NULLIF(b.ModelStyle, ''), t.Style) AS ModelStyle, COALESCE(NULLIF(b.Color, ''), t.Colorway) AS Color, b.Side, b.Factory, b.ProductionDate, b.TestedDate, b.Technician, b.Result, b.LabNotesComments, COALESCE(NULLIF(b.POLotNO, ''), t.ProductionCode) AS POLotNO, COALESCE(NULLIF(b.MTL, ''), t.MTL) AS MTL, b.ReceivedDate, b.Remarks, b.TestType, COALESCE(NULLIF(b.MachineNumber, ''), t.MachineNumber) AS MachineNumber, b.FailPart, b.Cause, b.TestDuration, b.RetestOf, b.SourceSystem", false)
             ->join('(SELECT LabRefNo, MAX(TrackerID) AS tid FROM tbl_dtr_BondingTracker WHERE LabRefNo IS NOT NULL GROUP BY LabRefNo) tm', 'tm.LabRefNo = b.LabRefNo COLLATE utf8mb4_general_ci', 'left', false)
             ->join('tbl_dtr_BondingTracker t', 't.TrackerID = tm.tid', 'left')
             ->where("(b.LabRefNo IS NULL OR b.LabRefNo = '' OR b.BondingTestID IN (SELECT keep_id FROM (SELECT COALESCE(MAX(CASE WHEN Result IS NOT NULL AND Result <> '' THEN BondingTestID END), MAX(BondingTestID)) AS keep_id FROM tbl_dtr_bonding_info WHERE LabRefNo IS NOT NULL AND LabRefNo <> '' GROUP BY LabRefNo) k))", null, false)
-            ->orderBy('b.BondingTestID', 'DESC')
-            ->limit(100)
+            ->orderBy("COALESCE(NULLIF(LEFT(b.TestedDate, 10), ''), NULLIF(LEFT(b.ReceivedDate, 10), ''), NULLIF(LEFT(b.ProductionDate, 10), ''), '1970-01-01') DESC, b.BondingTestID DESC", '', false)
+            ->limit(150)
             ->get()
             ->getResultArray();
-        // lines marked LACKING have no specimen yet but are part of the collection: they are listed too (shutdown marks are not)
-        if ($db->tableExists('tbl_dtr_BondingTracker')) {
-            foreach ($db->table('tbl_dtr_BondingTracker')->where('TestType', 'LACKING')->where('Shutdown', 0)->orderBy('TrackerID', 'DESC')->limit(100)->get()->getResultArray() as $lk) {
-                $bondingShoes[] = [
-                    'BondingTestID' => 0, 'TrackerID' => (int) $lk['TrackerID'], 'IsLacking' => 1,
-                    'LabRefNo' => trim((string) $lk['LabRefNo']) !== '' ? $lk['LabRefNo'] : 'DTP' . str_replace('-', '', (string) $lk['ProductionDate']) . 'SH' . $lk['LineNo'] . '-' . $lk['Side'], 'ModelStyle' => $lk['Style'], 'Color' => $lk['Colorway'],
-                    'Side' => $lk['Side'], 'Factory' => '', 'ProductionDate' => $lk['ProductionDate'], 'TestedDate' => null, 'Technician' => $lk['Technician'], 'Result' => '',
-                    'LabNotesComments' => trim('LACKING (due ' . (string) $lk['LackingDate'] . ') ' . (string) $lk['RetestDetails']), 'POLotNO' => $lk['ProductionCode'], 'MTL' => $lk['MTL'],
-                    'ReceivedDate' => $lk['CollectionDate'], 'Remarks' => $lk['RetestDetails'], 'TestType' => 'LACKING', 'TrackerLine' => $lk['LineNo'], 'PullTestType' => $lk['PullTestType'], 'Lacking' => 1,
-                ];
-            }
-            usort($bondingShoes, static fn ($a, $b) => strcmp((string) ($b['ProductionDate'] ?? ''), (string) ($a['ProductionDate'] ?? '')));
-        }
 
         $shoeTotal  = $db->table('tbl_dtr_shoe_list')->countAllResults();
         $this->wsReportTable();   // makes sure tbl_dtr_wholeshoe_reports exists (the list reads the Technician saved in a report)
         // Whole Shoe Collection = every recorded test type (one row each) from tbl_dtr_WholeshoeTracker
         $wholeShoes = $db->table('tbl_dtr_WholeshoeTracker')
-            ->select('TrackerID, LabRefNo, WholeshoeLabRefNo, ProductionCode AS ProdCode, Style AS StyleNo, Colorway, MTL, Building, `LineNo`, Side, NoOfShoes, TestType AS TestTypes, CollectionDate, ProductionDate AS IntakeProductionDate, EncodedBy, Status, FinalResult, Findings, TimeStarted, TimeCompleted, (SELECT JSON_VALUE(rp.ReportData, \'$.technician\') FROM tbl_dtr_wholeshoe_reports rp WHERE rp.LabRefNo COLLATE utf8mb4_general_ci IN (tbl_dtr_WholeshoeTracker.LabRefNo COLLATE utf8mb4_general_ci, tbl_dtr_WholeshoeTracker.WholeshoeLabRefNo COLLATE utf8mb4_general_ci) ORDER BY rp.ReportID DESC LIMIT 1) AS Technician', false)
-            ->orderBy('TrackerID', 'DESC')
+            ->select("TrackerID, LabRefNo, WholeshoeLabRefNo, ProductionCode AS ProdCode, Style AS StyleNo, Colorway, MTL, Building, `LineNo`, Side, NoOfShoes, TestType AS TestTypes, CollectionDate, ProductionDate AS IntakeProductionDate, EncodedBy, Status, FinalResult, Findings, TimeStarted, TimeCompleted, COALESCE(NULLIF(Technician, ''), (SELECT JSON_VALUE(rp.ReportData, '$.technician') FROM tbl_dtr_wholeshoe_reports rp WHERE rp.LabRefNo COLLATE utf8mb4_general_ci IN (tbl_dtr_WholeshoeTracker.LabRefNo COLLATE utf8mb4_general_ci, tbl_dtr_WholeshoeTracker.WholeshoeLabRefNo COLLATE utf8mb4_general_ci) ORDER BY rp.ReportID DESC LIMIT 1)) AS Technician, MachineCode, DurationOfTest, ActualDuration, BoxNo, SourceSystem", false)
+            ->orderBy("COALESCE(NULLIF(LEFT(CollectionDate, 10), ''), NULLIF(LEFT(ProductionDate, 10), ''), LEFT(TimeStarted, 10), '1970-01-01') DESC, TrackerID DESC", '', false)
             ->limit(200)
             ->get()
             ->getResultArray();
+
+        $benchTotal  = $db->tableExists('tbl_dtr_material_bench_log') ? $db->table('tbl_dtr_material_bench_log')->countAllResults() : 0;
+        $erpTotal    = $db->tableExists('tbl_erp_test_orders') ? $db->table('tbl_erp_test_orders')->countAllResults() : 0;
+        $cfaTotal    = $db->tableExists('tbl_cfa_test_reports') ? $db->table('tbl_cfa_test_reports')->countAllResults() : 0;
+        $schedTotal  = $db->tableExists('tbl_production_test_schedule') ? $db->table('tbl_production_test_schedule')->countAllResults() : 0;
+        $failedTotal = $db->tableExists('tbl_failed_samples_registry') ? $db->table('tbl_failed_samples_registry')->countAllResults() : 0;
 
         // Distinct MaterialTypes in tbl_dtr_standards
         $standardMatTypes = array_column(
@@ -352,13 +334,12 @@ class DtrController extends BaseController
             'withCss'          => 'dtr.css',
             'withJs'           => ['dtr.js', 'dtr-photo.js', 'dtr-photo-attach.js'],
             'activeTab'        => $activeTab,
+            'subTab'           => $subTab,
             'formConfig'       => self::FORM_CONFIG,
             'catRows'          => $catRows,
             'totalReports'     => $totalReports,
             'totalPass'        => $totalPass,
             'totalFail'        => $totalFail,
-            'shutTotal'        => $shutTotal,
-            'shutToday'        => $shutToday,
             'totalTol'         => $totalTol,
             'recentReports'    => $recentReports,
             'containers'       => $containers,
@@ -367,6 +348,11 @@ class DtrController extends BaseController
             'bondingShoes'     => $bondingShoes,
             'shoeTotal'        => $shoeTotal,
             'wholeShoes'       => $wholeShoes,
+            'benchTotal'       => $benchTotal,
+            'erpTotal'         => $erpTotal,
+            'cfaTotal'         => $cfaTotal,
+            'schedTotal'       => $schedTotal,
+            'failedTotal'      => $failedTotal,
             'standardMatTypes' => $standardMatTypes,
         ]);
     }
@@ -382,7 +368,7 @@ class DtrController extends BaseController
         $q    = trim((string) ($this->request->getGet('q') ?? ''));
 
         $builder = $db->table('tbl_dtr_unified_labrefs')
-            ->select('id, lab_ref_no, tr_no, form_category, form_slug, interlink_sample_type, source_table, source_id, material_type, material_code, material_description, supplier, model_style, color, po_lot_no, mtl_no, received_date, tested_date, finished_date, technician, status, overall_result, thickness_ave, weight_ave');
+            ->select('id, lab_ref_no, tr_no, form_category, form_slug, interlink_sample_type, source_table, source_id, material_type, material_code, material_description, supplier, model_style, color, po_lot_no, mtl_no, received_date, tested_date, finished_date, technician, status, overall_result, thickness_ave, weight_ave, source_system');
 
         if ($slug !== '' && $slug !== 'all') {
             $builder->where('form_slug', $slug);
@@ -392,14 +378,22 @@ class DtrController extends BaseController
                 ->like('lab_ref_no', $q)
                 ->orLike('tr_no', $q)
                 ->orLike('material_code', $q)
+                ->orLike('material_description', $q)
                 ->orLike('model_style', $q)
+                ->orLike('color', $q)
+                ->orLike('po_lot_no', $q)
                 ->orLike('supplier', $q)
                 ->orLike('mtl_no', $q)
                 ->orLike('material_type', $q)
+                ->orLike('technician', $q)
                 ->groupEnd();
         }
 
-        $rows = $builder->orderBy('id', 'DESC')->limit(200)->get()->getResultArray();
+        $rows = $builder
+            ->orderBy("COALESCE(STR_TO_DATE(NULLIF(tested_date, ''), '%d %b %Y'), STR_TO_DATE(NULLIF(received_date, ''), '%d %b %Y'), DATE('1970-01-01')) DESC, id DESC", '', false)
+            ->limit(200)
+            ->get()
+            ->getResultArray();
 
         return $this->response->setJSON([
             'ok'   => true,
@@ -408,6 +402,152 @@ class DtrController extends BaseController
         ]);
     }
 
+    /**
+     * GET /dtr/appsheet-archive?type=bench|erp|cfa|schedule&q=&page=1&limit=100
+     * Paginated searchable endpoint for the AppSheet Lab Log, ERP Test Orders, CFA/CAP, and Production Schedule datasets.
+     */
+    public function appsheetArchive()
+    {
+        $db    = \Config\Database::connect();
+        $type  = strtolower(trim((string) ($this->request->getGet('type') ?? 'bench')));
+        $q     = trim((string) ($this->request->getGet('q') ?? ''));
+        $page  = max(1, (int) ($this->request->getGet('page') ?? 1));
+        $limit = max(25, min(200, (int) ($this->request->getGet('limit') ?? 100)));
+        $offset = ($page - 1) * $limit;
+
+        $rows    = [];
+        $total   = 0;
+        $capRows = [];
+
+        if ($type === 'bench' && $db->tableExists('tbl_dtr_material_bench_log')) {
+            $where = '1=1';
+            $binds = [];
+            if ($q !== '') {
+                $like = '%' . $q . '%';
+                $where = "(m.lab_ref_no LIKE ? OR m.material_test_name LIKE ? OR m.material_category_name LIKE ? OR m.technician LIKE ? OR m.machine_number LIKE ? OR m.possible_cause LIKE ? OR m.remarks LIKE ?)";
+                $binds = [$like, $like, $like, $like, $like, $like, $like];
+            }
+            $total = (int) $db->query("SELECT COUNT(*) AS cnt FROM tbl_dtr_material_bench_log m WHERE $where", $binds)->getRow()->cnt;
+            $rows  = $db->query("
+                SELECT m.id, m.appsheet_material_id, m.lab_ref_no, m.test_code, m.material_category_name,
+                       m.material_test_name, m.technician, m.machine_number, m.result, m.possible_cause, m.remarks,
+                       COALESCE(DATE_FORMAT(m.iqc_received_date, '%Y-%m-%d'), DATE_FORMAT(m.started_at, '%Y-%m-%d'), DATE_FORMAT(m.created_at, '%Y-%m-%d'), '') AS test_date,
+                       DATE_FORMAT(m.started_at, '%Y-%m-%d %H:%i') AS started_at_fmt,
+                       COALESCE(m.finished_at, '') AS finished_at,
+                       COALESCE(d.detail_count, 0) AS detail_count,
+                       COALESCE(d.details_summary, '') AS details_summary
+                FROM tbl_dtr_material_bench_log m
+                LEFT JOIN (
+                    SELECT parent_id,
+                           COUNT(*) AS detail_count,
+                           GROUP_CONCAT(DISTINCT CONCAT(COALESCE(NULLIF(part_name, ''), NULLIF(material_name, ''), 'Item'), ': ', COALESCE(test_name, ''), ' [', COALESCE(NULLIF(result, ''), '-'), ']') SEPARATOR ' | ') AS details_summary
+                    FROM tbl_dtr_material_bench_details
+                    GROUP BY parent_id
+                ) d ON d.parent_id = m.appsheet_material_id
+                WHERE $where
+                ORDER BY COALESCE(m.iqc_received_date, DATE(m.started_at), DATE(m.created_at), '1970-01-01') DESC, m.id DESC
+                LIMIT $limit OFFSET $offset
+            ", $binds)->getResultArray();
+        } elseif ($type === 'erp' && $db->tableExists('tbl_erp_test_orders')) {
+            $b = $db->table('tbl_erp_test_orders');
+            if ($q !== '') {
+                $b->groupStart()
+                    ->like('lab_ref_no', $q)->orLike('vsp_code', $q)->orLike('mtl', $q)
+                    ->orLike('style_no', $q)->orLike('colorway', $q)
+                    ->orLike('bonding_tr', $q)->orLike('pull_tr', $q)->orLike('flexing_tr', $q)
+                    ->orLike('aging_tr', $q)->orLike('hydrolysis_tr', $q)->orLike('washing_tr', $q)->orLike('uv_tr', $q)
+                    ->groupEnd();
+            }
+            $total = (int) $b->countAllResults(false);
+            $rows  = $b->select("id, vsp_code, mtl, lab_ref_no, style_no, colorway, test_result, total_tests, bonding_tr, pull_tr, flexing_tr, aging_tr, hydrolysis_tr, washing_tr, uv_tr, COALESCE(DATE_FORMAT(test_date, '%Y-%m-%d'), DATE_FORMAT(receipt_date, '%Y-%m-%d'), '') AS test_date, COALESCE(DATE_FORMAT(send_date, '%Y-%m-%d'), '') AS send_date, COALESCE(DATE_FORMAT(receipt_date, '%Y-%m-%d'), '') AS receipt_date, creator, line_no, side", false)
+                ->orderBy("COALESCE(test_date, receipt_date, send_date, '1970-01-01') DESC, id DESC", '', false)
+                ->limit($limit, $offset)
+                ->get()
+                ->getResultArray();
+        } elseif ($type === 'cfa' && $db->tableExists('tbl_cfa_test_reports')) {
+            $where = '1=1';
+            $binds = [];
+            if ($q !== '') {
+                $like = '%' . $q . '%';
+                $where = "(c.lab_ref_no LIKE ? OR c.production_code LIKE ? OR c.mtl LIKE ? OR c.style LIKE ? OR c.colorway LIKE ? OR c.test_name LIKE ? OR c.tr_bonding LIKE ? OR c.tr_flexing LIKE ? OR c.tr_mtr LIKE ? OR c.document_status LIKE ?)";
+                $binds = array_fill(0, 10, $like);
+            }
+            $total = (int) $db->query("SELECT COUNT(*) AS cnt FROM tbl_cfa_test_reports c WHERE $where", $binds)->getRow()->cnt;
+            $rows  = $db->query("
+                SELECT c.id, c.record_id, COALESCE(DATE_FORMAT(c.production_date, '%Y-%m-%d'), '') AS production_date,
+                       c.production_code, c.mtl, c.style, c.colorway, c.test_name, c.lab_ref_no,
+                       c.tr_bonding, c.tr_flexing, c.tr_mtr, c.sent_cfa, c.flag, c.document_status, c.remarks,
+                       COALESCE(DATE_FORMAT(c.check_timestamp, '%Y-%m-%d %H:%i'), '') AS check_timestamp_fmt,
+                       COALESCE(a.ack_count, 0) AS ack_count,
+                       COALESCE(a.ack_pics, '') AS ack_pics,
+                       COALESCE(r.req_count, 0) AS req_count,
+                       COALESCE(r.latest_status, '') AS latest_req_status
+                FROM tbl_cfa_test_reports c
+                LEFT JOIN (
+                    SELECT record_id, COUNT(*) AS ack_count, GROUP_CONCAT(DISTINCT NULLIF(pic, '') SEPARATOR ', ') AS ack_pics
+                    FROM tbl_cfa_acknowledgements
+                    GROUP BY record_id
+                ) a ON a.record_id = c.record_id
+                LEFT JOIN (
+                    SELECT record_id, COUNT(*) AS req_count, MAX(NULLIF(resolved_status, '')) AS latest_status
+                    FROM tbl_cfa_request_board
+                    GROUP BY record_id
+                ) r ON r.record_id = c.record_id
+                WHERE $where
+                ORDER BY COALESCE(c.production_date, '1970-01-01') DESC, c.id DESC
+                LIMIT $limit OFFSET $offset
+            ", $binds)->getResultArray();
+            if ($page === 1 && $db->tableExists('tbl_bonding_cap')) {
+                $capRows = $db->table('tbl_bonding_cap')
+                    ->select("cap_id, COALESCE(DATE_FORMAT(production_date, '%Y-%m-%d'), '') AS production_date, line_no, submitted_by, COALESCE(DATE_FORMAT(date_uploaded_by_lab, '%Y-%m-%d %H:%i'), '') AS date_uploaded_by_lab, COALESCE(DATE_FORMAT(date_submitted_by_assy, '%Y-%m-%d %H:%i'), '') AS date_submitted_by_assy, cap_file", false)
+                    ->orderBy('production_date', 'DESC')
+                    ->get()
+                    ->getResultArray();
+            }
+        } elseif ($type === 'schedule' && $db->tableExists('tbl_production_test_schedule')) {
+            $b = $db->table('tbl_production_test_schedule');
+            if ($q !== '') {
+                $b->groupStart()
+                    ->like('lab_ref_no', $q)->orLike('production_code', $q)->orLike('mtl', $q)
+                    ->orLike('style', $q)->orLike('colorway', $q)->orLike('test_name', $q)
+                    ->orLike('testing_status', $q)->orLike('machine_tested', $q)->orLike('failure_part', $q)->orLike('tr_no', $q)
+                    ->groupEnd();
+            }
+            $total = (int) $b->countAllResults(false);
+            $rows  = $b->select("id, record_id, COALESCE(DATE_FORMAT(production_date, '%Y-%m-%d'), '') AS production_date, building, line_no, line_code, production_code, mtl, style, colorway, test_name, test_code, testing_status, test_type, machine_tested, test_result, remarks, retest_no, lab_ref_no, failure_part, possible_cause, side, tr_no", false)
+                ->orderBy("COALESCE(production_date, DATE(created_at), '1970-01-01') DESC, id DESC", '', false)
+                ->limit($limit, $offset)
+                ->get()
+                ->getResultArray();
+        } elseif ($type === 'failed' && $db->tableExists('tbl_failed_samples_registry')) {
+            $b = $db->table('tbl_failed_samples_registry');
+            if ($q !== '') {
+                $b->groupStart()
+                    ->like('sample_id', $q)->orLike('mtl', $q)->orLike('style', $q)
+                    ->orLike('colorway', $q)->orLike('test_failed', $q)
+                    ->groupEnd();
+            }
+            $total = (int) $b->countAllResults(false);
+            $rows  = $b->select("id, sample_id, mtl, style, colorway, test_failed, COALESCE(DATE_FORMAT(created_date, '%Y-%m-%d'), '') AS created_date", false)
+                ->orderBy("COALESCE(created_date, '1970-01-01') DESC, id DESC", '', false)
+                ->limit($limit, $offset)
+                ->get()
+                ->getResultArray();
+        }
+
+        return $this->response->setJSON([
+            'ok'      => true,
+            'type'    => $type,
+            'total'   => $total,
+            'page'    => $page,
+            'limit'   => $limit,
+            'rows'    => $rows,
+            'capRows' => $capRows,
+            'csrf'    => csrf_hash(),
+        ]);
+    }
+
+    
     /**
      * GET /dtr/kpis?from=YYYY-MM-DD&to=YYYY-MM-DD : the KPI cards for a date range. A report counts on its tested date (its received date while it
      * is not tested yet); a shutdown line counts on its production date.
@@ -431,6 +571,255 @@ class DtrController extends BaseController
         return $this->response->setJSON([
             'ok' => true, 'total' => (int) $r['total'], 'pass' => (int) $r['pass_cnt'], 'tol' => (int) $r['tol_cnt'], 'fail' => (int) $r['fail_cnt'], 'shut' => $shut, 'csrf' => csrf_hash(),
         ]);
+    }
+
+    /**
+     * POST /dtr/update-entry {kind, id, fields:{...}}: fills the EMPTY columns of one Lab Tracker entry. Only whitelisted columns are written and
+     * a column that already holds data is never overwritten.
+     */
+    public function updateEntry()
+    {
+        $p      = $this->request->getJSON(true) ?? [];
+        $kind   = (string) ($p['kind'] ?? '');
+        $id     = (int) ($p['id'] ?? 0);
+        $fields = is_array($p['fields'] ?? null) ? $p['fields'] : [];
+        $fail   = fn (string $m, int $c = 422) => $this->response->setStatusCode($c)->setJSON(['ok' => false, 'message' => $m, 'csrf' => csrf_hash()]);
+
+        // kind => [table, key column, [posted name => db column]]
+        $map = [
+            'bonding'   => ['tbl_dtr_bonding_info', 'BondingTestID', ['POLotNO' => 'POLotNO', 'ModelStyle' => 'ModelStyle', 'Color' => 'Color', 'MTL' => 'MTL', 'ProductionDate' => 'ProductionDate', 'TestedDate' => 'TestedDate', 'Technician' => 'Technician']],
+            'lacking'   => ['tbl_dtr_BondingTracker', 'TrackerID', ['POLotNO' => 'ProductionCode', 'ModelStyle' => 'Style', 'Color' => 'Colorway', 'MTL' => 'MTL', 'ProductionDate' => 'ProductionDate', 'Technician' => 'Technician']],
+            'wholeshoe' => ['tbl_dtr_WholeshoeTracker', 'TrackerID', ['ProdCode' => 'ProductionCode', 'Style' => 'Style', 'Colorway' => 'Colorway', 'MTL' => 'MTL', 'ProductionDate' => 'ProductionDate']],
+            'container' => ['tbl_dtr_containers', 'ContainerID', ['DateArrived' => 'DateArrived', 'DateReceivedInLab' => 'DateReceivedInLab']],
+            'material'  => ['tbl_dtr_materials_master', 'MaterialID', ['MaterialType' => 'MaterialType', 'MaterialCode' => 'MaterialCode', 'MaterialName' => 'MaterialName', 'MaterialProdCode' => 'MaterialProdCode', 'Supplier' => 'Supplier', 'IQCERP' => 'IQCERP', 'Remarks' => 'Remarks']],
+        ];
+        if (! isset($map[$kind]) || $id <= 0) {
+            return $fail('Nothing to edit.');
+        }
+        [$table, $key, $cols] = $map[$kind];
+        $db  = \Config\Database::connect();
+        if (in_array($kind . ':' . $id, $this->lockedEdits($db), true)) {
+            return $fail('This entry is already synced and locked. It can no longer be edited.');
+        }
+        $row = $db->table($table)->where($key, $id)->get()->getRowArray();
+        if (! $row) {
+            return $fail('That entry no longer exists.', 404);
+        }
+        $set = [];
+        foreach ($fields as $name => $val) {
+            if (! isset($cols[$name])) {
+                continue;
+            }
+            $col = $cols[$name];
+            $val = mb_substr(trim((string) $val), 0, 255);
+            if ($val === '' || ! array_key_exists($col, $row) || trim((string) $row[$col]) !== '') {
+                continue;   // blank input, unknown column or already filled
+            }
+            if (str_contains($col, 'Date') && ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $val)) {
+                continue;
+            }
+            $set[$col] = $val;
+        }
+        if (! $set) {
+            return $fail('Nothing new to save. Only empty columns can be filled.');
+        }
+        $db->table($table)->where($key, $id)->update($set);
+
+        if ($kind === 'bonding') {
+            $this->balanceBonding($db, (string) ($row['LabRefNo'] ?? ''));   // tracker record created / completed right away
+        }
+        if ($kind === 'wholeshoe') {
+            $this->balanceWholeShoe($db, $id);
+        }
+        // the edit is carried over to the other tables that hold this Lab Ref 3 minutes later (runDueEditSyncs)
+        $this->ensureEditSyncTable($db);
+        $db->table('tbl_dtr_edit_sync')->insert([
+            'Kind' => $kind, 'EntryID' => $id, 'LabRefNo' => (string) ($row['LabRefNo'] ?? $row['LabReference'] ?? ''),
+            'Fields' => json_encode($set), 'EditedBy' => (string) (service('auth')->user()['name'] ?? ''),
+            'CreatedAt' => date('Y-m-d H:i:s'), 'DueAt' => date('Y-m-d H:i:s', time() + 180),
+        ]);
+
+        return $this->response->setJSON(['ok' => true, 'message' => 'Entry updated. It syncs to the other tables of this Lab Ref in 3 minutes.', 'saved' => $set, 'csrf' => csrf_hash()]);
+    }
+
+    /**
+     * Keeps tbl_dtr_bonding_info and tbl_dtr_BondingTracker balanced for one Lab Ref No: a Lab Ref with no tracker record gets one (built from the
+     * bonding record), otherwise the empty columns of each side are filled from the other. Existing data is never overwritten.
+     */
+    private function balanceBonding($db, string $ref): void
+    {
+        $ref = trim($ref);
+        if ($ref === '' || ! $db->tableExists('tbl_dtr_BondingTracker')) {
+            return;
+        }
+        $info = $db->table('tbl_dtr_bonding_info')->where('LabRefNo', $ref)->orderBy('BondingTestID', 'DESC')->get()->getRowArray();
+        if (! $info) {
+            return;
+        }
+        $trk = $db->table('tbl_dtr_BondingTracker')->where('LabRefNo', $ref)->get()->getRowArray();
+        $date = static fn ($v) => preg_match('/^\d{4}-\d{2}-\d{2}/', (string) $v) ? substr((string) $v, 0, 10) : null;
+        if (! $trk) {
+            $b = $c = $side = null;
+            $ln = '';
+            if (preg_match('/^DTP\d{8}[A-Z]{2}([A-Z])(\d+)-([LR])/i', $ref, $m)) {
+                $b = strtoupper($m[1]); $ln = strtoupper($m[1]) . (int) $m[2]; $side = strtoupper($m[3]);
+            }
+            $side = $side ?: (in_array(strtoupper((string) ($info['Side'] ?? '')), ['L', 'R'], true) ? strtoupper($info['Side']) : null);
+            $db->table('tbl_dtr_BondingTracker')->insert([
+                'LabRefNo' => $ref, 'Building' => $b, 'LineNo' => $ln !== '' ? $ln : null, 'Side' => $side,
+                'ProductionCode' => (string) ($info['POLotNO'] ?? ''), 'Style' => (string) ($info['ModelStyle'] ?? ''), 'Colorway' => (string) ($info['Color'] ?? ''), 'MTL' => (string) ($info['MTL'] ?? ''),
+                'TestType' => (string) ($info['TestType'] ?? ''), 'Technician' => (string) ($info['Technician'] ?? ''), 'Lacking' => 0, 'Shutdown' => 0,
+                'CollectionDate' => $date($info['ReceivedDate'] ?? ''), 'ProductionDate' => $date($info['ProductionDate'] ?? ''),
+                'EncodedBy' => (string) (service('auth')->user()['name'] ?? ''), 'CreatedAt' => date('Y-m-d H:i:s'),
+            ]);
+
+            return;
+        }
+        // tracker column => bonding_info column
+        $pairs = ['ProductionCode' => 'POLotNO', 'Style' => 'ModelStyle', 'Colorway' => 'Color', 'MTL' => 'MTL', 'ProductionDate' => 'ProductionDate', 'Technician' => 'Technician', 'TestType' => 'TestType'];
+        $toTrk = $toInfo = [];
+        foreach ($pairs as $tc => $ic) {
+            if (trim((string) ($trk[$tc] ?? '')) === '' && trim((string) ($info[$ic] ?? '')) !== '') {
+                $toTrk[$tc] = $info[$ic];
+            } elseif (trim((string) ($info[$ic] ?? '')) === '' && trim((string) ($trk[$tc] ?? '')) !== '') {
+                $toInfo[$ic] = $trk[$tc];
+            }
+        }
+        $this->fillEmpty($db, 'tbl_dtr_BondingTracker', ['TrackerID' => $trk['TrackerID']], $toTrk);
+        $this->fillEmpty($db, 'tbl_dtr_bonding_info', ['BondingTestID' => $info['BondingTestID']], $toInfo);
+    }
+
+    /**
+     * Whole Shoe twin of balanceBonding: keeps tbl_dtr_WholeshoeTracker (one row per test type) and tbl_dtr_wholeshoe_intake (the shoe collection,
+     * keyed by the Whole Shoe Lab Ref No) balanced. A collection with no intake record gets one; otherwise empty columns are filled from the other
+     * side, and the other test-type rows of the same collection get the empty code / style / colorway / MTL / production date too.
+     */
+    private function balanceWholeShoe($db, int $trackerId): void
+    {
+        if ($trackerId <= 0 || ! $db->tableExists('tbl_dtr_wholeshoe_intake')) {
+            return;
+        }
+        $t = $db->table('tbl_dtr_WholeshoeTracker')->where('TrackerID', $trackerId)->get()->getRowArray();
+        $m = trim((string) ($t['WholeshoeLabRefNo'] ?? ''));
+        if (! $t || $m === '') {
+            return;
+        }
+        $date = static fn ($v) => preg_match('/^\d{4}-\d{2}-\d{2}/', (string) $v) ? substr((string) $v, 0, 10) : null;
+        $in   = $db->table('tbl_dtr_wholeshoe_intake')->where('LabRefNo', $m)->orderBy('IntakeID', 'DESC')->get()->getRowArray();
+        if (! $in) {
+            $types = array_column($db->table('tbl_dtr_WholeshoeTracker')->select('TestType')->where('WholeshoeLabRefNo', $m)->get()->getResultArray(), 'TestType');
+            $db->table('tbl_dtr_wholeshoe_intake')->insert([
+                'Building' => $t['Building'], 'LineNo' => $t['LineNo'], 'Side' => $t['Side'], 'LabRefNo' => $m, 'ProdCode' => (string) $t['ProductionCode'],
+                'NoOfShoes' => (int) ($t['NoOfShoes'] ?? 1) ?: 1, 'TestTypes' => implode(', ', array_filter($types)),
+                'CollectionDate' => $date($t['CollectionDate']), 'ProductionDate' => $date($t['ProductionDate']),
+                'EncodedBy' => (string) ($t['EncodedBy'] ?: (service('auth')->user()['name'] ?? '')), 'CreatedAt' => date('Y-m-d H:i:s'),
+            ]);
+            $in = ['IntakeID' => (int) $db->insertID()];
+        } else {
+            $this->fillEmpty($db, 'tbl_dtr_wholeshoe_intake', ['IntakeID' => $in['IntakeID']], ['ProdCode' => (string) $t['ProductionCode'], 'ProductionDate' => $date($t['ProductionDate'])]);
+            $this->fillEmpty($db, 'tbl_dtr_WholeshoeTracker', ['TrackerID' => $trackerId], ['ProductionCode' => (string) $in['ProdCode'], 'ProductionDate' => $date($in['ProductionDate'])]);
+        }
+        foreach (['ProductionCode', 'Style', 'Colorway', 'MTL', 'ProductionDate'] as $c) {
+            if (trim((string) ($t[$c] ?? '')) !== '') {
+                $this->fillEmpty($db, 'tbl_dtr_WholeshoeTracker', ['WholeshoeLabRefNo' => $m], [$c => $t[$c]]);
+            }
+        }
+        try {
+            \App\Libraries\DtrLabrefIndex::upsertWholeShoe($db, (int) $in['IntakeID']);
+        } catch (\Throwable $e) {
+            log_message('error', 'Whole shoe index refresh failed: ' . $e->getMessage());
+        }
+    }
+
+    /** "kind:id" of every entry whose edit has been synced: those rows are locked (no more edits). */
+    private function lockedEdits($db): array
+    {
+        $this->ensureEditSyncTable($db);
+        $out = [];
+        foreach ($db->query('SELECT DISTINCT Kind, EntryID FROM tbl_dtr_edit_sync WHERE DoneAt IS NOT NULL')->getResultArray() as $r) {
+            $out[] = $r['Kind'] . ':' . (int) $r['EntryID'];
+        }
+
+        return $out;
+    }
+
+    private function ensureEditSyncTable($db): void
+    {
+        $db->query('CREATE TABLE IF NOT EXISTS tbl_dtr_edit_sync (
+            SyncID INT AUTO_INCREMENT PRIMARY KEY,
+            Kind VARCHAR(20) NOT NULL,
+            EntryID INT NOT NULL,
+            LabRefNo VARCHAR(100) NOT NULL DEFAULT "",
+            Fields TEXT NULL,
+            EditedBy VARCHAR(191) NULL,
+            CreatedAt DATETIME NOT NULL,
+            DueAt DATETIME NOT NULL,
+            DoneAt DATETIME NULL,
+            INDEX (DoneAt, DueAt)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+    }
+
+    /** Fills the empty columns of the rows of $table matching $where; never overwrites data. */
+    private function fillEmpty($db, string $table, array $where, array $data): void
+    {
+        foreach ($data as $col => $val) {
+            if ($val === '' || $val === null || ! $db->fieldExists($col, $table)) {
+                continue;
+            }
+            $b = $db->table($table);
+            foreach ($where as $k => $v) {
+                $b->where($k, $v);
+            }
+            $b->groupStart()->where($col, null)->orWhere($col, '')->groupEnd()->update([$col => $val]);
+        }
+    }
+
+    /** Carries every edit that is 3+ minutes old to the other tables of its Lab Ref (tracker <-> bonding info <-> unified lab refs). */
+    private function runDueEditSyncs(): int
+    {
+        $db = \Config\Database::connect();
+        $this->ensureEditSyncTable($db);
+        $due = $db->table('tbl_dtr_edit_sync')->where('DoneAt', null)->where('DueAt <=', date('Y-m-d H:i:s'))->orderBy('SyncID')->limit(100)->get()->getResultArray();
+        $uni = ['POLotNO' => 'po_lot_no', 'ProductionCode' => 'po_lot_no', 'ModelStyle' => 'model_style', 'Style' => 'model_style', 'Color' => 'color', 'Colorway' => 'color', 'MTL' => 'mtl_no',
+            'Technician' => 'technician', 'MaterialCode' => 'material_code', 'MaterialName' => 'material_description', 'Supplier' => 'supplier', 'MaterialType' => 'material_type'];
+        foreach ($due as $s) {
+            $ref = (string) $s['LabRefNo'];
+            $f   = json_decode((string) $s['Fields'], true) ?: [];
+            if ($ref !== '') {
+                $u = [];
+                foreach ($f as $col => $v) {
+                    if (isset($uni[$col])) {
+                        $u[$uni[$col]] = $v;
+                    } elseif ($col === 'TestedDate' && ($t = strtotime((string) $v))) {
+                        $u['tested_date'] = date('d M Y', $t);
+                    }
+                }
+                $this->fillEmpty($db, 'tbl_dtr_unified_labrefs', ['lab_ref_no' => $ref], $u);
+                if ($s['Kind'] === 'bonding') {
+                    $this->balanceBonding($db, $ref);
+                } elseif ($s['Kind'] === 'lacking') {
+                    $t = ['POLotNO' => $f['ProductionCode'] ?? '', 'ModelStyle' => $f['Style'] ?? '', 'Color' => $f['Colorway'] ?? '', 'MTL' => $f['MTL'] ?? '', 'ProductionDate' => $f['ProductionDate'] ?? '', 'Technician' => $f['Technician'] ?? ''];
+                    $this->fillEmpty($db, 'tbl_dtr_bonding_info', ['LabRefNo' => $ref], $t);
+                } elseif ($s['Kind'] === 'wholeshoe') {
+                    $this->balanceWholeShoe($db, (int) $s['EntryID']);
+                }
+            }
+            $db->table('tbl_dtr_edit_sync')->where('SyncID', $s['SyncID'])->update(['DoneAt' => date('Y-m-d H:i:s')]);
+        }
+
+        return count($due);
+    }
+
+    /** POST /dtr/sync-edits: runs the edit syncs that are due (polled by the Lab Tracker page). */
+    public function syncEdits()
+    {
+        try {
+            $n = $this->runDueEditSyncs();
+        } catch (\Throwable $e) {
+            return $this->response->setJSON(['ok' => false, 'message' => $e->getMessage(), 'csrf' => csrf_hash()]);
+        }
+
+        return $this->response->setJSON(['ok' => true, 'synced' => $n, 'locked' => $this->lockedEdits(\Config\Database::connect()), 'csrf' => csrf_hash()]);
     }
 
     /**
@@ -502,13 +891,7 @@ class DtrController extends BaseController
             $ref    = (string) $row['LabRefNo'];
             $db->table('tbl_dtr_WholeshoeTracker')->where('TrackerID', $id)->delete();
             $mother = trim((string) ($row['WholeshoeLabRefNo'] ?? ''));
-            // the shoe collection itself goes when its last test type is deleted
-            if ($mother !== '' && $db->table('tbl_dtr_WholeshoeTracker')->where('WholeshoeLabRefNo', $mother)->countAllResults() === 0 && $db->tableExists('tbl_dtr_wholeshoe_intake')) {
-                foreach ($db->table('tbl_dtr_wholeshoe_intake')->select('IntakeID')->where('LabRefNo', $mother)->get()->getResultArray() as $ik) {
-                    $db->table('tbl_dtr_unified_labrefs')->where('source_table', 'tbl_dtr_wholeshoe_intake')->where('source_id', (int) $ik['IntakeID'])->delete();
-                }
-                $db->table('tbl_dtr_wholeshoe_intake')->where('LabRefNo', $mother)->delete();
-            }
+            $wsMother = $mother;   // the shoe collection itself goes when its last test type is deleted (cleaned up after the transaction, a failure there must not undo the delete)
         } elseif ($kind === 'material') {
             $row = $db->table('tbl_dtr_materials_master')->where('MaterialID', $id)->get()->getRowArray();
             if (! $row) {
@@ -548,9 +931,22 @@ class DtrController extends BaseController
             'Module'    => $module,
             'EntryRef'  => mb_substr(trim($ref), 0, 191),
         ]);
+        $dbErr = (string) ($db->error()['message'] ?? '');
         $db->transComplete();
         if (! $db->transStatus()) {
-            return $fail('The entry could not be deleted.', 500);
+            return $fail('The entry could not be deleted.' . ($dbErr !== '' ? ' (' . mb_substr($dbErr, 0, 200) . ')' : ''), 500);
+        }
+        if (($wsMother ?? '') !== '') {
+            try {
+                if ($db->table('tbl_dtr_WholeshoeTracker')->where('WholeshoeLabRefNo', $wsMother)->countAllResults() === 0 && $db->tableExists('tbl_dtr_wholeshoe_intake')) {
+                    foreach ($db->table('tbl_dtr_wholeshoe_intake')->select('IntakeID')->where('LabRefNo', $wsMother)->get()->getResultArray() as $ik) {
+                        $db->table('tbl_dtr_unified_labrefs')->where('source_table', 'tbl_dtr_wholeshoe_intake')->where('source_id', (int) $ik['IntakeID'])->delete();
+                    }
+                    $db->table('tbl_dtr_wholeshoe_intake')->where('LabRefNo', $wsMother)->delete();
+                }
+            } catch (\Throwable $e) {
+                log_message('error', 'Whole shoe intake cleanup failed: ' . $e->getMessage());
+            }
         }
 
         return $this->response->setJSON(['ok' => true, 'message' => 'Entry deleted and recorded in the audit trail.', 'csrf' => csrf_hash()]);
@@ -567,24 +963,39 @@ class DtrController extends BaseController
         $slug = trim((string) ($this->request->getGet('slug') ?? 'all'));
         $q    = strtolower(trim((string) ($this->request->getGet('q') ?? '')));
 
-        $rows = $db->table('tbl_dtr_unified_labrefs u')
-            ->select('u.id, u.lab_ref_no, u.tr_no, u.form_category, u.form_slug, u.source_id, u.model_style, u.color, u.po_lot_no, u.mtl_no, u.received_date, u.tested_date, u.status, u.overall_result, bi.ProductionDate AS bpd, wi.ProductionDate AS wpd')
-            ->join('tbl_dtr_bonding_info bi', "u.form_slug = 'bonding' AND bi.BondingTestID = u.source_id", 'left')
-            ->join('tbl_dtr_wholeshoe_intake wi', "u.form_slug = 'wholeshoe' AND wi.IntakeID = u.source_id", 'left')
-            ->orderBy('u.id', 'DESC')->limit(6000)->get()->getResultArray();
-
-        // codes known from the shoe reports, and the MTL # -> code map used to tie material reports to a code
+        // the Production Code -> MTL # cross-reference has to see every bonding/wholeshoe row, not just
+        // the ones a search term or the recency window below would otherwise include, or a filtered/older
+        // material report would fail to resolve its MTL # through its own Production Code
         $known = [];
         $mtlMap = [];
-        foreach ($rows as $r) {
-            if (in_array($r['form_slug'], ['bonding', 'wholeshoe'], true) && trim((string) $r['po_lot_no']) !== '') {
-                $c = strtoupper(trim((string) $r['po_lot_no']));
-                $known[$c] = true;
-                if (trim((string) $r['mtl_no']) !== '') {
-                    $mtlMap[$c] = strtoupper(trim((string) $r['mtl_no']));   // production code -> MTL #
-                }
+        $refRows = $db->table('tbl_dtr_unified_labrefs')
+            ->select('po_lot_no, mtl_no')
+            ->whereIn('form_slug', ['bonding', 'wholeshoe'])
+            ->where('po_lot_no IS NOT NULL', null, false)->where('po_lot_no !=', '')
+            ->get()->getResultArray();
+        foreach ($refRows as $r) {
+            $c = strtoupper(trim((string) $r['po_lot_no']));
+            $known[$c] = true;
+            if (trim((string) $r['mtl_no']) !== '') {
+                $mtlMap[$c] = strtoupper(trim((string) $r['mtl_no']));   // production code -> MTL #
             }
         }
+
+        $builder = $db->table('tbl_dtr_unified_labrefs u')
+            ->select('u.id, u.lab_ref_no, u.tr_no, u.form_category, u.form_slug, u.source_id, u.model_style, u.color, u.po_lot_no, u.mtl_no, u.material_code, u.received_date, u.tested_date, u.status, u.overall_result, bi.ProductionDate AS bpd, wi.ProductionDate AS wpd')
+            ->join('tbl_dtr_bonding_info bi', "u.form_slug = 'bonding' AND bi.BondingTestID = u.source_id", 'left')
+            ->join('tbl_dtr_wholeshoe_intake wi', "u.form_slug = 'wholeshoe' AND wi.IntakeID = u.source_id", 'left');
+        if ($q !== '') {
+            // a search term has to reach the whole table, not just the recent window below, or an older
+            // Lab Ref No. would look like it doesn't exist
+            $builder->groupStart()
+                ->like('u.lab_ref_no', $q)->orLike('u.tr_no', $q)->orLike('u.model_style', $q)->orLike('u.color', $q)
+                ->orLike('u.po_lot_no', $q)->orLike('u.mtl_no', $q)->orLike('u.material_code', $q)
+                ->groupEnd();
+        } else {
+            $builder->orderBy('u.id', 'DESC')->limit(6000);
+        }
+        $rows = $builder->get()->getResultArray();
         $qima = $db->tableExists('tbl_qima') ? $db->table('tbl_qima')->where('MTL IS NOT NULL', null, false)->where('MTL !=', '')->orderBy('ID', 'DESC')->limit(2000)->get()->getResultArray() : [];
 
         $groups = [];
@@ -624,12 +1035,23 @@ class DtrController extends BaseController
             if ($mtl === '' && $code !== '') {
                 $mtl = $mtlMap[$code] ?? '';   // a report without an MTL # takes the one of its Production Code
             }
-            if ($mtl === '') {
-                continue;   // no MTL # to tie it to
+            // nothing to tie it to an MTL # -- rather than drop the report, fall back to the next most
+            // useful thing to group it under (Production Code, then Material Code, then its own Lab Ref
+            // No. as a last resort) so every report still shows up somewhere in the tree
+            $groupKey = $mtl; $groupLabel = $mtl;
+            if ($groupKey === '' && $po !== '') { $groupKey = 'PO#' . $po; $groupLabel = 'PO ' . $po; }
+            if ($groupKey === '') {
+                $mc = strtoupper(trim((string) ($r['material_code'] ?? '')));
+                if ($mc !== '') { $groupKey = 'MC#' . $mc; $groupLabel = 'Material ' . $mc; }
+            }
+            if ($groupKey === '') {
+                $lr = trim((string) $r['lab_ref_no']);
+                $groupKey = $lr !== '' ? ('LR#' . $lr) : ('ID#' . $r['id']);
+                $groupLabel = $lr !== '' ? $lr : ('#' . $r['id']);
             }
             $prod = (string) ($r['bpd'] ?: $r['wpd'] ?: '');
             $t    = (string) $r['tested_date'];
-            $add($mtl, ['code' => $code, 'mtl' => $mtl, 'color' => $r['color'], 'style' => $r['model_style'], 'etrf' => $r['tr_no'], 'prod' => $prod ? substr($prod, 0, 10) : ''], [
+            $add($groupKey, ['code' => $code, 'mtl' => $groupLabel, 'color' => $r['color'], 'style' => $r['model_style'], 'etrf' => $r['tr_no'], 'prod' => $prod ? substr($prod, 0, 10) : ''], [
                 'kind' => $r['form_slug'], 'labref' => $r['lab_ref_no'], 'etrf' => (string) $r['tr_no'], 'code' => $code, 'test' => $r['form_category'], 'slug' => $r['form_slug'], 'source_id' => (int) $r['source_id'],
                 'tested' => $t !== '' && strtotime($t) ? date('Y-m-d', strtotime($t)) : '', 'tested_sort' => $t !== '' && strtotime($t) ? date('Y-m-d', strtotime($t)) : '',
                 'status' => (string) ($r['status'] ?: 'Complete'), 'result' => (string) $r['overall_result'],
@@ -666,6 +1088,7 @@ class DtrController extends BaseController
 
         return $this->response->setJSON(['ok' => true, 'groups' => array_slice($out, 0, 400), 'total' => count($out), 'csrf' => csrf_hash()]);
     }
+
 
     /**
      * GET /dtr/bonding-labrefs
@@ -940,47 +1363,131 @@ class DtrController extends BaseController
 
     private const BOND_IMG_DIR = 'D:\\BACK UP\\SystemProcess\\BondingImages\\';
 
-    /**
-     * The current report picture of a Lab Ref No in the BondingImages folder. Versioning of the folder:
-     *   <LabRef>.png                          = the current report
-     *   <LabRef>_1.png, _2.png ...            = older versions (the oldest is _1)
-     *   <date>-<time>_<LabRef>_<hash>.png     = batch-tracking copy written at every save
-     * The current report wins; without one the newest of the other files is used.
-     */
-    private function bondingImageFile(string $labRef, bool $original = false): ?string
+    
+    /** Settings > Lab Report Settings of one Lab Tracker tab (bonding | shoes | containers): is the picture on, where it is read from, how that folder is organised */
+    private function reportImageCfg(string $tab): array
     {
-        if (! preg_match('/^[A-Za-z0-9_\-]{3,60}$/', $labRef) || ! is_dir(self::BOND_IMG_DIR)) {
-            return null;
+        $tab  = in_array($tab, ['bonding', 'shoes', 'containers'], true) ? $tab : 'bonding';
+        $root = trim((string) \App\Libraries\SystemSettings::get("labreport.{$tab}.folder", ''));
+        if ($root === '') {
+            $root = trim((string) \App\Libraries\SystemSettings::get('labreport.image_root', ''));
         }
-        if (is_file(self::BOND_IMG_DIR . $labRef . '.png')) {
-            return self::BOND_IMG_DIR . $labRef . '.png';
+
+        return [
+            'tab'    => $tab,
+            'on'     => \App\Libraries\SystemSettings::bool("labreport.{$tab}.show", $tab === 'bonding'),
+            'root'   => rtrim($root, '\\/'),
+            'layout' => (string) \App\Libraries\SystemSettings::get("labreport.{$tab}.layout", $tab === 'bonding' ? 'type_date' : 'flat'),
+        ];
+    }
+
+    /** Can the web server open the report picture folder? */
+    private function reportShareReachable(string $root): bool
+    {
+        return @is_dir($root);
+    }
+
+    private function reportImageCache(array $cfg): string
+    {
+        return WRITEPATH . 'cache' . DIRECTORY_SEPARATOR . 'reportimg_' . md5($cfg['root'] . '|' . $cfg['layout']) . '.json';
+    }
+
+    /**
+     * Every picture of the tab's folder, keyed by its Lab Ref No (letters and digits only, so DTP20261109RIVETA11L and DTP20261109RIVETA11-L meet).
+     * Layout TYPE_DATE: <folder>\<TEST TYPE>\<date>\<Lab Ref>.png (and any loose picture in <folder>); FLAT: <folder>\<Lab Ref>.png.
+     * Names:  <LabRef>.png = the current report (wins) | <LabRef>_<n>.png = older version | <date>-<time>_<LabRef>_<hash>.png = batch copy.
+     * Kept for a minute in writable/cache so a list of 100 pictures does not scan the network share 100 times.
+     *
+     * @return array<string,array{p:string,t:int,e:bool}>
+     */
+    private function reportImageIndex(array $cfg): array
+    {
+        $root = $cfg['root'];
+        if ($root === '' || ! $this->reportShareReachable($root)) {
+            return [];
         }
-        $re   = '/^(?:\d{8}-\d{4}_)?' . preg_quote($labRef, '/') . '(?:_\d+|_[0-9a-f]{8})?\.png$/i';
-        $best = null;
-        $bt   = 0;
-        foreach (scandir(self::BOND_IMG_DIR) ?: [] as $f) {
-            if (preg_match($re, $f)) {
-                $t = (int) @filemtime(self::BOND_IMG_DIR . $f);
-                if ($best === null || $t >= $bt) {
-                    $best = self::BOND_IMG_DIR . $f;
-                    $bt   = $t;
+        $cache = $this->reportImageCache($cfg);
+        if (is_file($cache) && time() - (int) @filemtime($cache) < 60) {
+            $j = json_decode((string) @file_get_contents($cache), true);
+            if (is_array($j)) {
+                return $j;
+            }
+        }
+        $map  = [];
+        $scan = static function (string $dir) use (&$map): void {
+            foreach (@scandir($dir) ?: [] as $f) {
+                if (! preg_match('/^(.+?)\.(png|jpe?g)$/i', $f, $m)) {
+                    continue;
+                }
+                $name  = $m[1];
+                $exact = true;
+                if (preg_match('/^\d{8}-\d{4}_(.+)_[0-9a-f]{8}$/i', $name, $mm)) {
+                    $name = $mm[1]; $exact = false;
+                } elseif (preg_match('/^(.+)_\d+$/', $name, $mm)) {
+                    $name = $mm[1]; $exact = false;
+                }
+                $key  = strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', $name));
+                $path = $dir . DIRECTORY_SEPARATOR . $f;
+                $t    = (int) @filemtime($path);
+                $cur  = $map[$key] ?? null;
+                if ($cur === null || ($exact && ! $cur['e']) || ($exact === $cur['e'] && $t >= $cur['t'])) {
+                    $map[$key] = ['p' => $path, 't' => $t, 'e' => $exact];
+                }
+            }
+        };
+        $scan($root);
+        if ($cfg['layout'] === 'type_date') {
+            foreach (@scandir($root) ?: [] as $a) {
+                if ($a === '.' || $a === '..' || ! is_dir($root . DIRECTORY_SEPARATOR . $a)) {
+                    continue;
+                }
+                $scan($root . DIRECTORY_SEPARATOR . $a);
+                foreach (@scandir($root . DIRECTORY_SEPARATOR . $a) ?: [] as $b) {
+                    if ($b !== '.' && $b !== '..' && is_dir($root . DIRECTORY_SEPARATOR . $a . DIRECTORY_SEPARATOR . $b)) {
+                        $scan($root . DIRECTORY_SEPARATOR . $a . DIRECTORY_SEPARATOR . $b);
+                    }
                 }
             }
         }
+        @file_put_contents($cache, json_encode($map));
 
-        return $best;
+        return $map;
     }
 
-    /** GET /dtr/bonding-image?lab_ref=[&orig=1] : the report picture of a Lab Ref (404 when there is none) */
+    private function reportImageFile(string $tab, string $labRef): ?string
+    {
+        if (! preg_match('/^[A-Za-z0-9_\-]{3,60}$/', $labRef)) {
+            return null;
+        }
+        $hit = $this->reportImageIndex($this->reportImageCfg($tab))[strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', $labRef))] ?? null;
+
+        return ($hit && is_file($hit['p'])) ? $hit['p'] : null;
+    }
+
+    /** GET /dtr/bonding-image?lab_ref=[&tab=bonding|shoes|containers] : the report picture of a Lab Ref (404 when there is none) */
     public function bondingImage()
     {
-        $file = $this->bondingImageFile(trim((string) ($this->request->getGet('lab_ref') ?? '')), (bool) $this->request->getGet('orig'));
+        if ($this->request->getGet('diag')) {   // /dtr/bonding-image?diag=1&tab=bonding : why are there no pictures?
+            $cfg  = $this->reportImageCfg((string) ($this->request->getGet('tab') ?? 'bonding'));
+            $before = @is_dir($cfg['root']);
+            @unlink($this->reportImageCache($cfg));
+            $idx = $this->reportImageIndex($cfg);
+
+            return $this->response->setJSON([
+                'tab' => $cfg['tab'], 'enabled' => $cfg['on'], 'folder' => $cfg['root'], 'layout' => $cfg['layout'], 'php_runs_as' => get_current_user(),
+                'folder_open' => $before,
+                'pictures_found' => count($idx), 'sample' => array_slice(array_keys($idx), 0, 5),
+            ]);
+        }
+        $file = $this->reportImageFile((string) ($this->request->getGet('tab') ?? 'bonding'), trim((string) ($this->request->getGet('lab_ref') ?? '')));
         if ($file === null) {
             return $this->response->setStatusCode(404);
         }
+        $mime = preg_match('/\.jpe?g$/i', $file) ? 'image/jpeg' : 'image/png';
 
-        return $this->response->setHeader('Content-Type', 'image/png')->setHeader('Cache-Control', 'private, max-age=30')->setBody((string) file_get_contents($file));
+        return $this->response->setHeader('Content-Type', $mime)->setHeader('Cache-Control', 'private, max-age=30')->setBody((string) file_get_contents($file));
     }
+
 
     /** POST /dtr/bonding-image-save {lab_ref, image: data:image/png;base64,...} : saved as the new current report; the old one is kept as the next _n version */
     public function bondingImageSave()
@@ -1452,8 +1959,7 @@ class DtrController extends BaseController
             return $fail('Collection and Production dates are required.');
         }
         $shutdowns = array_values(array_filter(array_map(static fn ($x) => strtoupper(trim((string) $x)), is_array($p['shutdowns'] ?? null) ? $p['shutdowns'] : [])));
-        $lackings = is_array($p['lackings'] ?? null) ? $p['lackings'] : [];
-        if (! $rows && ! $shutdowns && ! $lackings) {
+        if (! $rows && ! $shutdowns) {
             return $fail('No specimen lines to save.');
         }
 
@@ -1472,47 +1978,6 @@ class DtrController extends BaseController
                 'CollectionDate' => $collect, 'ProductionDate' => $prod, 'EncodedBy' => $encodedBy, 'CreatedAt' => date('Y-m-d H:i:s'),
             ]);
             $down++;
-        }
-        // lines ticked LACKING are recorded like a shutdown: one marker per line / side, booked under the date the specimen is due (no Lab Ref, no specimen)
-        $lack = 0;
-        foreach ($lackings as $lk) {
-            $ln   = strtoupper(trim((string) ($lk['line'] ?? '')));
-            $ls   = (($lk['side'] ?? 'L') === 'R') ? 'R' : 'L';
-            $due  = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($lk['date'] ?? '')) ? $lk['date'] : $prod;
-            if (! preg_match('/^' . $building . '(\d{1,2})$/', $ln, $m)) {
-                continue;
-            }
-            // everything entered on the lacking row is kept: Lab Ref (daily format of the due date), production code, style, colorway, MTL #, pull types, remarks, test type
-            $pullCodesL = ['HEEL PULL' => 'HP', 'EYELET' => 'EY', 'D-RING' => 'DR', 'RIVET' => 'RVT'];
-            $pulls      = array_values(array_filter(array_map(static fn ($x) => strtoupper(trim((string) $x)), is_array($lk['pullTypes'] ?? null) ? $lk['pullTypes'] : []), static fn ($x) => isset($pullCodesL[$x])));
-            $detail     = [
-                'ProductionCode' => mb_substr(trim((string) ($lk['code'] ?? '')), 0, 191),
-                'Style'          => mb_substr(trim((string) ($lk['style'] ?? '')), 0, 191),
-                'Colorway'       => mb_substr(trim((string) ($lk['color'] ?? '')), 0, 191),
-                'MTL'            => mb_substr(trim((string) ($lk['mtl'] ?? '')), 0, 191),
-                'PullTest'       => $pulls ? 1 : 0,
-                'PullTestType'   => $pulls ? mb_substr(implode(', ', $pulls), 0, 30) : null,
-                'RetestDetails'  => mb_substr(trim((string) ($lk['remarks'] ?? '')), 0, 500),
-                'Lacking'        => 1,
-                'LackingDate'    => $due,
-            ];
-            $lkRef = 'DTP' . str_replace('-', '', $prod) . 'SH' . $building . (int) $m[1] . '-' . $ls;
-            // a batch tracking record of that line / side / due date already exists: mark it lacking instead of adding a marker
-            $exist = $db->table('tbl_dtr_BondingTracker')->where(['Building' => $building, 'LineNo' => $building . (int) $m[1], 'Side' => $ls, 'ProductionDate' => $due])
-                ->where('LabRefNo IS NOT NULL', null, false)->where('TestType !=', 'LACKING')->orderBy('TrackerID', 'DESC')->get()->getRowArray();
-            if ($exist) {
-                $upd = array_filter($detail, static fn ($v, $k) => in_array($k, ['Lacking', 'LackingDate'], true) || ($v !== '' && $v !== null && $v !== 0), ARRAY_FILTER_USE_BOTH);
-                $db->table('tbl_dtr_BondingTracker')->where('TrackerID', $exist['TrackerID'])->update($upd);
-                $lack++;
-                continue;
-            }
-            $db->table('tbl_dtr_BondingTracker')->where(['TestType' => 'LACKING', 'Building' => $building, 'LineNo' => $building . (int) $m[1], 'Side' => $ls, 'ProductionDate' => $due])->delete();
-            $db->table('tbl_dtr_BondingTracker')->where('LabRefNo', $lkRef)->delete();
-            $db->table('tbl_dtr_BondingTracker')->insert($detail + [
-                'LabRefNo' => $lkRef, 'Building' => $building, 'LineNo' => $building . (int) $m[1], 'Side' => $ls, 'LabTest' => 'Bonding', 'TestType' => 'LACKING',
-                'CollectionDate' => $collect, 'ProductionDate' => $due, 'EncodedBy' => $encodedBy, 'CreatedAt' => date('Y-m-d H:i:s'),
-            ]);
-            $lack++;
         }
         $table   = $db->table('tbl_dtr_bonding_info');
         $saved   = 0;
@@ -1613,8 +2078,6 @@ class DtrController extends BaseController
             }
             if (! empty($r['retest'])) {
                 $notes[] = 'RETEST: ' . trim((string) ($r['retestNote'] ?? ''));
-            } elseif (trim((string) ($r['retestNote'] ?? '')) !== '') {
-                $notes[] = 'REMARKS: ' . trim((string) $r['retestNote']);   // a remark typed on any other test type is kept as a remark
             }
             if (! empty($r['lacking'])) {
                 $notes[] = 'LACKING' . ($lackDate !== '' ? ' (due ' . $lackDate . ')' : '');
@@ -1684,15 +2147,10 @@ class DtrController extends BaseController
                 'CreatedAt'      => date('Y-m-d H:i:s'),
             ]);
             $saved++;
-            // the real specimen has arrived: the lacking marker of that line / side / due date is cleared
-            $db->table('tbl_dtr_BondingTracker')->where(['Lacking' => 1, 'TestType' => 'LACKING', 'Building' => $building, 'LineNo' => $building . (int) $m[1], 'Side' => $side, 'ProductionDate' => $prod])->delete();
             }
         }
 
         $msg = "Saved {$saved} specimen(s) for Building {$building}.";
-        if ($lack) {
-            $msg .= " {$lack} line(s) marked LACKING.";
-        }
         if ($updated) {
             $msg .= " ({$updated} existing Lab Ref updated.)";
         }
@@ -1703,7 +2161,7 @@ class DtrController extends BaseController
             $msg .= ' Not saved, trial already recorded: ' . implode(', ', array_unique($skipped)) . '.';
         }
 
-        return $this->response->setJSON(['ok' => $saved > 0 || $down > 0 || $lack > 0, 'message' => $msg, 'saved' => $saved, 'skipped' => $skipped, 'csrf' => csrf_hash()]);
+        return $this->response->setJSON(['ok' => $saved > 0 || $down > 0, 'message' => $msg, 'saved' => $saved, 'skipped' => $skipped, 'csrf' => csrf_hash()]);
     }
 
     /**
@@ -2535,7 +2993,7 @@ class DtrController extends BaseController
         if ($q !== '') {
             $b->groupStart()->like('i.LabRefNo', $q)->orLike('i.ProdCode', $q)->orLike('s.StyleNo', $q)->groupEnd();
         }
-        $rows = $b->orderBy('i.IntakeID', 'DESC')->limit(100)->get()->getResultArray();
+        $rows = $b->orderBy('i.CollectionDate', 'DESC')->orderBy('i.IntakeID', 'DESC')->limit(100)->get()->getResultArray();
 
         return $this->response->setJSON(['ok' => true, 'rows' => $rows, 'sections' => $blank, 'csrf' => csrf_hash()]);
     }
@@ -2938,20 +3396,44 @@ class DtrController extends BaseController
                 . 'This report was generated and dispatched automatically by <b>NEXUS-L Laboratory System</b>.<br>Please do not reply directly to this automated email.'
                 . '</div></div></div></body></html>';
 
-            // Queue it in the outbox (tbl_email_outbox): the Outlook Relay (or, when it is offline, the Server HTML Handler) sends it in FIFO order
-            // a design uploaded under Settings > E-mail > E-mail designs ("Report sent") replaces the built-in layout
-            $tplVars = ['title' => $subject, 'message' => $message, 'lab_ref' => (string) ($this->request->getPost('lab_ref') ?? ''), 'result' => (string) ($this->request->getPost('result') ?? ''), 'link' => site_url('dtr'), 'date' => date('Y-m-d H:i'),
-                'sender' => (string) ($this->auth->user()['name'] ?? ''), 'images_html' => $imgHtml];
-            $designed = \App\Libraries\MailOutbox::render('report_sent', $tplVars);
-            if ($designed !== null) {
-                $htmlBody = $designed;
-            }
-            [$queueId, $queueErr] = \App\Libraries\MailOutbox::enqueue($to, $subject, $htmlBody, [
-                'source'      => 'DTR-Bonding',
-                'attachments' => ! empty($attachments) ? $attachments : null,
+            // Insert into FIFO outbox queue (tbl_email_outbox)
+            $db = \Config\Database::connect();
+            $senderName = (string) \App\Libraries\SystemSettings::get('mail.sender_name', 'Nexus-L');
+            $senderEmail = (string) \App\Libraries\SystemSettings::get('mail.sender_email', 'Nexus-Noreply@outlook.com');
+
+            $db->table('tbl_email_outbox')->insert([
+                'source'       => 'DTR-Bonding',
+                'sender_name'  => $senderName,
+                'sender_email' => $senderEmail,
+                'to_address'   => $to,
+                'subject'      => $subject,
+                'body'         => $htmlBody,
+                'is_html'      => 1,
+                'attachments'  => ! empty($attachments) ? json_encode($attachments) : null,
+                'status'       => 'queued',
+                'created_at'   => date('Y-m-d H:i:s'),
             ]);
-            if ($queueId === 0) {
-                return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => $queueErr]);
+
+            $queueId = (int) $db->insertID();
+
+            // Notify local Outlook Relay service (if running on Windows on port 5088)
+            try {
+                $client = service('curlrequest');
+                $client->post('http://127.0.0.1:5088/api/enqueue', [
+                    'json' => [
+                        'id'          => $queueId,
+                        'to'          => $to,
+                        'subject'     => $subject,
+                        'body'        => $htmlBody,
+                        'sender_name' => $senderName,
+                        'sender_email'=> $senderEmail,
+                        'attachments' => $attachments,
+                    ],
+                    'timeout' => 1.2,
+                    'http_errors' => false,
+                ]);
+            } catch (\Throwable $t) {
+                // Background FIFO poller will pick it up automatically
             }
 
             return $this->response->setJSON([

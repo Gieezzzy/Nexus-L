@@ -203,6 +203,8 @@ class SettingsController extends BaseController
         }
         $pw = $this->tempPassword();
         $model->update($id, ['Password' => $pw, 'FailedAttempts' => 0, 'LockedUntil' => null]);
+        // the message below promises their open sessions are gone: revoke every remember-me token too
+        model(\App\Models\RememberTokenModel::class)->where('UserID', $id)->delete();
 
         return $this->json(['ok' => true, 'message' => 'New temporary password for ' . $u['Username'] . '. It is shown once; the person signs in with it and changes it under Account Profile. Their open sessions were signed out.', 'temp_password' => $pw]);
     }
@@ -257,7 +259,7 @@ class SettingsController extends BaseController
         $n    = 0;
         foreach ($vals as $key => $val) {
             $def = $defs[$key] ?? null;
-            if (! $def) {
+            if (! $def || (! is_scalar($val) && $val !== null)) {
                 continue;
             }
             $val = is_bool($val) ? ($val ? '1' : '0') : trim((string) $val);
@@ -374,7 +376,7 @@ class SettingsController extends BaseController
             ?? '<p>This is a test e-mail from <b>NEXUS-L</b> (Settings &gt; E-mail), sent at ' . date('Y-m-d H:i:s') . '.</p><p>If you can read it, the Outlook Relay chain works.</p>';
         [$id, $err] = \App\Libraries\MailOutbox::enqueue($to, \App\Libraries\MailOutbox::subjectOf('general_notice', $vars, 'NEXUS-L test e-mail'), $body, ['source' => 'NEXUS-L test']);
 
-        return $this->json($id ? ['ok' => true, 'id' => $id] : ['ok' => false, 'message' => $err], $id ? 200 : 422);
+        return $this->json($id ? ['ok' => true, 'id' => $id] : ['ok' => false, 'error' => $err, 'message' => $err], $id ? 200 : 422);
     }
 
     /** GET settings/mail/templates: the five e-mail designs and which ones are uploaded (Admin only) */
@@ -406,21 +408,46 @@ class SettingsController extends BaseController
             return $this->json(['ok' => false, 'message' => 'Unknown e-mail format.'], 422);
         }
         if (! $file || ! $file->isValid()) {
-            return $this->json(['ok' => false, 'message' => 'Choose the .html file exported from the Email Designer.'], 422);
+            $errMsg = ($file && $file->getError() !== UPLOAD_ERR_NO_FILE)
+                ? ('Upload error: ' . $file->getErrorString())
+                : 'Choose the .html file exported from the Email Designer.';
+
+            return $this->json(['ok' => false, 'message' => $errMsg], 422);
         }
         if ($file->getSize() > 8 * 1024 * 1024) {
             return $this->json(['ok' => false, 'message' => 'The file is over 8 MB (reduce the pictures).'], 422);
         }
         $html = (string) file_get_contents($file->getTempName());
-        if (! preg_match('/<(html|table|body)\b/i', $html)) {
-            return $this->json(['ok' => false, 'message' => 'That does not look like an HTML e-mail.'], 422);
+        // tolerate files saved as UTF-16 or with a BOM (some editors re-save the export that way)
+        if (str_starts_with($html, "\xFF\xFE") || str_starts_with($html, "\xFE\xFF")) {
+            $html = mb_convert_encoding($html, 'UTF-8', str_starts_with($html, "\xFF\xFE") ? 'UTF-16LE' : 'UTF-16BE');
         }
-        if (preg_match('/<script\b|\son[a-z]+\s*=|javascript:/i', $html)) {
-            return $this->json(['ok' => false, 'message' => 'The design contains a script. Scripts are not allowed in e-mail.'], 422);
+        if (str_starts_with($html, "\xEF\xBB\xBF")) {
+            $html = substr($html, 3);
         }
-        file_put_contents($path, $html);
+        if (! preg_match('/<(?:!doctype|html|head|body|table|div|section|article|main|center|p)\b/i', $html)) {
+            return $this->json(['ok' => false, 'message' => 'That does not look like an HTML e-mail (no HTML structure tag found). Export the design as .html from the Email Designer and upload that file.'], 422);
+        }
+        // e-mail clients never run scripts, so instead of rejecting the whole design, quietly remove
+        // anything script-like and keep the layout: <script> blocks, on*= handlers inside tags, javascript: links
+        $cleaned = 0;
+        $n1 = 0;
+        $n2 = 0;
+        $html = preg_replace('/<script\b[^>]*>.*?<\/script\s*>/is', '', $html, -1, $n1) ?? $html;
+        $html = preg_replace('/<script\b[^>]*\/?>/i', '', $html, -1, $n2) ?? $html;
+        $html = preg_replace_callback('/<[a-z][^>]*>/i', static function (array $m) use (&$cleaned): string {
+            $tag = preg_replace('/\son[a-z]+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $m[0], -1, $n) ?? $m[0];
+            $tag = preg_replace('/(\b(?:href|src)\s*=\s*)(["\']?)\s*javascript:[^"\'>\s]*\2/i', '$1$2#$2', $tag, -1, $j) ?? $tag;
+            $cleaned += $n + $j;
 
-        return $this->json(['ok' => true, 'size' => strlen($html)]);
+            return $tag;
+        }, $html) ?? $html;
+        $cleaned += (int) $n1 + (int) $n2;
+        if (@file_put_contents($path, $html) === false) {
+            return $this->json(['ok' => false, 'message' => 'Could not save the uploaded template on the server (check writable/email-templates permissions).'], 500);
+        }
+
+        return $this->json(['ok' => true, 'size' => strlen($html), 'cleaned' => $cleaned, 'message' => $cleaned > 0 ? "Design uploaded ({$cleaned} script-like part(s) were removed - e-mail cannot run scripts)." : 'Design uploaded.']);
     }
 
     /** POST settings/mail/template/delete {slot}: back to the built-in e-mail */

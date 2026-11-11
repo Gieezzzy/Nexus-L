@@ -17,7 +17,7 @@
     const r = await fetch(BASE + path, opt);
     const j = await r.json().catch(() => ({}));
     if (csrfMeta && j.csrf) csrfMeta.content = j.csrf;
-    if (!r.ok || j.ok === false) throw new Error(j.error || `Request failed (${r.status})`);
+    if (!r.ok || j.ok === false) throw new Error(j.error || j.message || `Request failed (${r.status})`);
     return j;
   };
   const say = (el, text, kind) => { if (!el) return; el.textContent = text; el.className = 'st-msg ' + (kind === 'ok' ? 'st-ok' : kind === 'bad' ? 'st-bad' : ''); };
@@ -131,19 +131,20 @@
       const fd = new FormData(); fd.append('slot', f.dataset.up); fd.append('file', f.files[0]);
       say(msg, 'Uploading...');
       try {
-        const root = $('#st-root'); const csrf = document.querySelector('meta[name="X-CSRF-TOKEN"]');
-        const r = await fetch(root.dataset.base.replace(/\/$/, '') + '/settings/mail/template', { method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf ? csrf.content : '' }, body: fd });
+        const csrf = document.querySelector('meta[name="X-CSRF-TOKEN"]');
+        const r = await fetch(BASE + 'settings/mail/template', { method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf ? csrf.content : '' }, body: fd });
         const j = await r.json().catch(() => ({}));
         if (j.csrf && csrf) csrf.content = j.csrf;
         await loadTpl();
-        say($('#ml-tpl-msg'), r.ok && j.ok ? 'Design uploaded.' : (j.message || 'Upload failed (' + r.status + ').'), r.ok && j.ok ? 'ok' : 'bad');
-      } catch (er) { say(msg, er.message, 'bad'); }
+        const errText = j.message || j.error || 'Upload failed (' + r.status + ').';
+        say($('#ml-tpl-msg'), r.ok && j.ok ? (j.message || 'Design uploaded.') : errText, r.ok && j.ok ? 'ok' : 'bad');
+      } catch (er) { say($('#ml-tpl-msg') || msg, er.message, 'bad'); } finally { f.value = ''; }
     });
     tpl.addEventListener('click', async (e) => {
       const p = e.target.closest('[data-prev]'), rm = e.target.closest('[data-rm]');
       if (p) {
         $('#ml-prevtitle').textContent = p.dataset.title;
-        $('#ml-prevframe').src = $('#st-root').dataset.base.replace(/\/$/, '') + '/settings/mail/template/preview?slot=' + encodeURIComponent(p.dataset.prev) + '&t=' + Date.now();
+        $('#ml-prevframe').src = BASE + 'settings/mail/template/preview?slot=' + encodeURIComponent(p.dataset.prev) + '&t=' + Date.now();
         $('#ml-prev').showModal();
       } else if (rm) {
         if (!confirm('Remove this design? NEXUS-L goes back to its built-in layout for this e-mail.')) return;

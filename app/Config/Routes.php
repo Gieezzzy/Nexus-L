@@ -162,6 +162,10 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     // QC Lab Digital Test Reports (#Digital Test Report & Bonding LIS System)
     $routes->get('dtr', 'DtrController::index', ['as' => 'dtr']);
     $routes->get('dtr/records', 'DtrController::records');
+    $routes->get('dtr/prodcode-summary', 'DtrController::prodCodeSummary');
+    $routes->post('dtr/delete-entry', 'DtrController::deleteEntry');
+    $routes->get('dtr/kpis', 'DtrController::kpis');
+    $routes->get('dtr/appsheet-archive', 'DtrController::appsheetArchive');
     $routes->get('dtr/record', 'DtrController::record');
     $routes->get('dtr/bonding-labrefs', 'DtrController::bondingLabRefs');
     $routes->get('dtr/standards', 'DtrController::standards');
@@ -206,9 +210,6 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('dtr/bonding-access-pdf', 'DtrController::bondingAccessPdf');
     $routes->post('dtr/send-synology', 'DtrController::sendSynology');
     $routes->post('dtr/send-email', 'DtrController::sendEmail');
-    $routes->get('dtr/prodcode-summary', 'DtrController::prodCodeSummary');
-    $routes->post('dtr/delete-entry', 'DtrController::deleteEntry');
-    $routes->get('dtr/kpis', 'DtrController::kpis');
 
     // Laboratory Documents: the registers of the "#" folders of the Lab Documents share
     $routes->get('labdocs', 'LabDocsController::index', ['as' => 'labdocs']);
