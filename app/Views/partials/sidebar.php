@@ -35,6 +35,16 @@ $menuTop    = $order(['Dashboard', 'Inbox', 'Calendar Monitoring', 'Quality Insi
 $menuBottom = $order(['Help', 'Report Designer', 'Brain', 'Settings', 'Account Profile']);
 $segment = service('uri')->getSegment(1);
 $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
+$activeSubParam = (string) (service('request')->getGet('subtab') ?? '');
+$archiveLinks = [
+    ['subtab' => 'materials', 'label' => 'IQC Materials Master Queue', 'icon' => 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 12h6M9 16h6'],
+    ['subtab' => 'bench',     'label' => 'Material Bench Log',         'icon' => 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 12h6M9 16h6'],
+    ['subtab' => 'erp',       'label' => 'ERP Test Orders',            'icon' => 'M3 3v18h18M7 15l4-4 3 3 5-6'],
+    ['subtab' => 'cfa',       'label' => 'CFA & CAP',                  'icon' => 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z'],
+    ['subtab' => 'schedule',  'label' => 'Prod. Test Schedule',        'icon' => 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'],
+    ['subtab' => 'failed',    'label' => 'Failed Samples',             'icon' => 'M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z'],
+];
+$inArchives = ($segment === 'dtr' && $activeTabParam === 'labtracker' && in_array($activeSubParam, array_column($archiveLinks, 'subtab'), true));
 ?>
 <aside id="sidebar" class="side glass">
     <div class="side-head">
@@ -99,14 +109,14 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
         </details>
 
         <!-- Lab Monitoring: Warehouse 3D Tracker & ERP Finish (Calendar Monitoring is in the main list above) -->
-        <?php $monOpen = in_array((string) $segment, ['lab-monitoring', 'warehouse-tracker', 'warehouse'], true) || ($segment === 'dtr' && in_array($activeTabParam, ['labtracker', 'tracker'], true)) || $segment === 'thirdparty'; ?>
+        <?php $monOpen = in_array((string) $segment, ['lab-monitoring', 'warehouse-tracker', 'warehouse'], true) || ($segment === 'dtr' && ($activeTabParam === 'tracker' || ($activeTabParam === 'labtracker' && ! $inArchives))) || $segment === 'thirdparty'; ?>
         <details class="side-group side-group-collapsible" data-grp="labmon"<?= $monOpen ? ' open data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
             <summary class="side-group-h" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer;list-style:none">
                 <span>Lab Monitoring</span>
                 <svg class="side-group-c" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:14px;height:14px;transition:transform .15s ease-out" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
             </summary>
             <?php if ($can('dtr')): ?>
-            <a href="<?= site_url('dtr?tab=labtracker') ?>" class="nav-link <?= ($segment === 'dtr' && $activeTabParam === 'labtracker') ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
+            <a href="<?= site_url('dtr?tab=labtracker') ?>" class="nav-link <?= ($segment === 'dtr' && $activeTabParam === 'labtracker' && ! $inArchives) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
                 <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 12h6M9 16h6"/></svg>
                 Lab Tracker
             </a>
@@ -160,6 +170,20 @@ $activeTabParam = (string) (service('request')->getGet('tab') ?? 'tracker');
             </a>
             <?php endforeach ?>
         </details>
+        <?php if ($can('dtr')): ?>
+        <details class="side-group side-group-collapsible" data-grp="archives"<?= $inArchives ? ' open data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
+            <summary class="side-group-h" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer;list-style:none">
+                <span>Archives</span>
+                <svg class="side-group-c" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:14px;height:14px;transition:transform .15s ease-out" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+            </summary>
+            <?php foreach ($archiveLinks as $al): ?>
+            <a href="<?= site_url('dtr?tab=labtracker&subtab=' . $al['subtab']) ?>" class="nav-link <?= ($segment === 'dtr' && $activeTabParam === 'labtracker' && $activeSubParam === $al['subtab']) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
+                <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px;flex:none"><path d="<?= esc($al['icon'], 'attr') ?>"/></svg>
+                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?= esc($al['label']) ?></span>
+            </a>
+            <?php endforeach ?>
+        </details>
+        <?php endif ?>
         <!-- Laboratory Documents (the numbered "#" folders) and Other Documents (every other folder of the share): one link per register in dbnexus, each group collapsible -->
         <?php
         $labGroups = ['lab' => ['title' => 'Laboratory Documents', 'regs' => []], 'other' => ['title' => 'Other Documents', 'regs' => []]];

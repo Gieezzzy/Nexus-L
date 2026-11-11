@@ -324,8 +324,9 @@
         loadAppsheetArchive(sub, 1);
       }
     });
+  });
 
-    (function () {
+  (function () {
     const btn = $('#dtr-date-btn');
     const pop = $('#dtr-date-pop');
     if (!btn || !pop) return;
@@ -380,8 +381,6 @@
     pop.querySelector('[data-range=all]')?.classList.add('on');
   })();
 
-  });
-
   $$('.dtr-as-search-btn').forEach((b) => b.addEventListener('click', () => loadAppsheetArchive(b.dataset.asType, 1)));
   $$('.dtr-as-search').forEach((inp) => inp.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); loadAppsheetArchive(inp.dataset.asType, 1); }
@@ -395,7 +394,7 @@
     const totalPages = Math.max(1, Math.ceil(asArchiveState[t].total / asArchiveState[t].limit));
     if (asArchiveState[t].page < totalPages) loadAppsheetArchive(t, asArchiveState[t].page + 1);
   }));
-  const initActiveSubtab = $('.dtr-subtab.active')?.dataset.subtab;
+  const initActiveSubtab = $('.dtr-subtab.active')?.dataset.subtab || $('.dtr-subpanel:not(.hidden)')?.dataset.subpanel;
   if (initActiveSubtab && AS_ARCHIVE_TYPES.includes(initActiveSubtab)) {
     loadAppsheetArchive(initActiveSubtab, 1);
   }

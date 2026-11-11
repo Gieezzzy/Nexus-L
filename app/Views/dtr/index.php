@@ -228,17 +228,35 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
      ======================================================================= -->
 <section id="dtr-panel-labtracker" class="dtr-panel <?= $activeTab === 'labtracker' ? '' : 'hidden' ?>">
     <!-- IQC Container & Material Receiving Log (tbl_dtr_containers & tbl_dtr_materials_master) -->
-    <?php $subTab = in_array($subTab ?? '', ['containers', 'materials', 'bonding', 'shoes', 'bench', 'erp', 'cfa', 'schedule', 'failed'], true) ? $subTab : 'bonding'; ?>
+    <?php
+    $subTab = in_array($subTab ?? '', ['containers', 'materials', 'bonding', 'shoes', 'bench', 'erp', 'cfa', 'schedule', 'failed'], true) ? $subTab : 'bonding';
+    $archiveTitles = [
+        'materials' => 'IQC Materials Master Queue',
+        'bench'     => 'Material Bench Log (' . number_format((int) ($benchTotal ?? 0)) . ')',
+        'erp'       => 'ERP Test Orders (' . number_format((int) ($erpTotal ?? 0)) . ')',
+        'cfa'       => 'CFA & CAP (' . number_format((int) ($cfaTotal ?? 0)) . ')',
+        'schedule'  => 'Prod. Test Schedule (' . number_format((int) ($schedTotal ?? 0)) . ')',
+        'failed'    => 'Failed Samples (' . number_format((int) ($failedTotal ?? 0)) . ')',
+    ];
+    $isArchiveSub = isset($archiveTitles[$subTab]);
+    ?>
+    <?php if ($isArchiveSub): ?>
+    <div class="dtr-subtabs" role="tablist">
+        <span class="dtr-subtab active" style="cursor:default"><svg class="ic" aria-hidden="true"><use href="#i-clipboard"/></svg> <?= esc($archiveTitles[$subTab]) ?></span>
+        <div class="dtr-subtabs-right dtr-right-tools">
+            <a href="<?= site_url('dtr?tab=labtracker') ?>" class="dtr-btn dtr-btn-outline">
+                <svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> Back to Lab Tracker
+            </a>
+            <a href="<?= site_url('interlink') ?>" class="dtr-btn dtr-btn-outline">
+                <svg class="ic" aria-hidden="true"><use href="#i-link"/></svg> InterLink Sync
+            </a>
+        </div>
+    </div>
+    <?php else: ?>
     <div class="dtr-subtabs" role="tablist">
         <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'bonding' ? 'active' : '' ?>" data-subtab="bonding"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> Bonding Shoe Collection</button>
         <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'shoes' ? 'active' : '' ?>" data-subtab="shoes"><svg class="ic" aria-hidden="true"><use href="#i-shoe"/></svg> Whole Shoe Collection</button>
         <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'containers' ? 'active' : '' ?>" data-subtab="containers"><svg class="ic" aria-hidden="true"><use href="#i-box"/></svg> IQC Container Receiving Log</button>
-        <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'materials' ? 'active' : '' ?>" data-subtab="materials"><svg class="ic" aria-hidden="true"><use href="#i-clipboard"/></svg> IQC Materials Master Queue</button>
-        <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'bench' ? 'active' : '' ?>" data-subtab="bench"><svg class="ic" aria-hidden="true"><use href="#i-clipboard"/></svg> Material Bench Log (<?= number_format((int) ($benchTotal ?? 0)) ?>)</button>
-        <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'erp' ? 'active' : '' ?>" data-subtab="erp"><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg> ERP Test Orders (<?= number_format((int) ($erpTotal ?? 0)) ?>)</button>
-        <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'cfa' ? 'active' : '' ?>" data-subtab="cfa"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg> CFA &amp; CAP (<?= number_format((int) ($cfaTotal ?? 0)) ?>)</button>
-        <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'schedule' ? 'active' : '' ?>" data-subtab="schedule"><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg> Prod. Test Schedule (<?= number_format((int) ($schedTotal ?? 0)) ?>)</button>
-        <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'failed' ? 'active' : '' ?>" data-subtab="failed"><svg class="ic" aria-hidden="true"><use href="#i-clipboard"/></svg> Failed Samples (<?= number_format((int) ($failedTotal ?? 0)) ?>)</button>
         <div class="dtr-subtabs-right dtr-right-tools">
             <div class="dtr-datefilter">
                 <button type="button" id="dtr-date-btn" class="dtr-btn dtr-btn-outline dtr-date-btn" title="Filter by date" aria-label="Filter by date" aria-haspopup="true" aria-expanded="false">
@@ -259,6 +277,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
             </a>
         </div>
     </div>
+    <?php endif ?>
     <script>window.dtrEditLocked = <?= json_encode(array_values($editLocked ?? [])) ?>;</script>
     <div>
         <div class="card glass dtr-section-card dtr-subpanel <?= $subTab === 'containers' ? '' : 'hidden' ?>" data-subpanel="containers">
