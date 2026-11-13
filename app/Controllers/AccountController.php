@@ -26,6 +26,28 @@ class AccountController extends BaseController
     /** the signed-in user's full record (never the password) */
     private function me(): array
     {
+        if ($this->auth->isGuestSession()) {
+            $sess = (array) $this->auth->user();
+
+            return [
+                'UserID'            => 0,
+                'Username'          => 'guest',
+                'FullName'          => (string) ($sess['name'] ?? 'Guest Visitor'),
+                'Email'             => '',
+                'Phone'             => '',
+                'Department'        => 'Visitor',
+                'JobTitle'          => 'Guest (View-only)',
+                'EmployeeNo'        => '',
+                'SynologyID'        => null,
+                'Role'              => 'Guest',
+                'IsActive'          => 1,
+                'Prefs'             => '',
+                'CreatedAt'         => null,
+                'LastLoginAt'       => isset($sess['login_at']) ? date('Y-m-d H:i:s', (int) $sess['login_at']) : null,
+                'LastLoginIP'       => null,
+                'PasswordChangedAt' => null,
+            ];
+        }
         $u = $this->users()->find((int) $this->auth->id()) ?: [];
         unset($u['Password']);
 
@@ -55,8 +77,9 @@ class AccountController extends BaseController
             'title'     => 'Account Profile',
             'withCss'   => 'account.css',
             'withJs'    => ['account.js'],
-            'u'         => $u,
-            'roles'     => Roles::parse($role),
+            'u'              => $u,
+            'isGuestSession' => $this->auth->isGuestSession(),
+            'roles'          => Roles::parse($role),
             'legacy'    => Roles::isLegacy($role),
             'isAdmin'   => Roles::isAdmin($role),
             'levels'    => Roles::levels($role),
@@ -72,6 +95,9 @@ class AccountController extends BaseController
     /** POST account/save {FullName, Email, Phone, Department, JobTitle, EmployeeNo} */
     public function save()
     {
+        if ($this->auth->isGuestSession()) {
+            return $this->json(['ok' => false, 'error' => 'Guest sessions are read-only and cannot modify profile details.'], 403);
+        }
         $p  = $this->request->getJSON(true) ?? [];
         $id = (int) $this->auth->id();
         $in = [
@@ -113,6 +139,9 @@ class AccountController extends BaseController
     /** POST account/password {current, password, confirm} */
     public function password()
     {
+        if ($this->auth->isGuestSession()) {
+            return $this->json(['ok' => false, 'error' => 'Guest sessions do not have a password to change.'], 403);
+        }
         $p    = $this->request->getJSON(true) ?? [];
         $user = $this->users()->find((int) $this->auth->id());
         $cur  = (string) ($p['current'] ?? '');
@@ -143,6 +172,9 @@ class AccountController extends BaseController
     /** POST account/prefs {landing, sidebar, notify_chat, notify_approval, toasts, page_size} */
     public function prefs()
     {
+        if ($this->auth->isGuestSession()) {
+            return $this->json(['ok' => false, 'error' => 'Preferences cannot be saved in a shared Guest session.'], 403);
+        }
         $p   = $this->request->getJSON(true) ?? [];
         $out = [
             'landing'         => in_array($p['landing'] ?? '', ['dashboard', 'inbox', 'dtr', 'interlink', 'analytics'], true) ? $p['landing'] : 'dashboard',

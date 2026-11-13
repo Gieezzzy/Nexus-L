@@ -82,6 +82,9 @@ public sealed class Notifier
                         application_no = job.ApplicationNo,
                         lab_ref_no = job.LabRefNo,
                         report_no = job.ReportNo,
+                        pdf_name = job.PdfName,
+                        pdf_b64 = job.PdfBase64,
+                        result_json = job.ResultJson,
                     }),
                 };
                 req.Headers.Add("X-Service-Key", _key);

@@ -180,7 +180,8 @@
       try {
         const st = await api(`dtr/approval/status?lab_ref=${encodeURIComponent(data.lab.lab_ref_no)}&application_no=${encodeURIComponent(appNo)}`);
         if (st.approval && st.approval.status === 'approved') {
-          const r = await fetch(st.approval.file, { credentials: 'same-origin' });
+          // the user's own file (when they changed the file of this approved report) is the one sent, not the signed copy
+          const r = await fetch(st.approval.file + (st.approval.user_file ? '?v=user' : ''), { credentials: 'same-origin' });
           const buf = new Uint8Array(await r.arrayBuffer());
           let bin = '';
           for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));

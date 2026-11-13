@@ -71,6 +71,7 @@ public sealed class SettingsForm : Form
         var btnAsst = new Button { Text = $"Login: {InterlinkRunner.AccountLabAsst}", Width = 230, Height = 30, BackColor = Color.FromArgb(239, 246, 255) };
         btnAsst.Click += (_, _) => _signIn(InterlinkRunner.AccountLabAsst);
         Put(btnAsst, y);
+        Put(ImportButton(InterlinkRunner.AccountLabAsst), y, 400);
         Put(_statusAsst, y + 7, 256);
         y += 32;
         Put(new Label { Text = "   Used for: VF eTRF - Material, Product, Product WHOLE SHOE TEST, bonding", AutoSize = true, ForeColor = Color.DimGray }, y);
@@ -79,6 +80,7 @@ public sealed class SettingsForm : Form
         var btnLab = new Button { Text = $"Login: {InterlinkRunner.AccountLab}", Width = 230, Height = 30, BackColor = Color.FromArgb(239, 246, 255) };
         btnLab.Click += (_, _) => _signIn(InterlinkRunner.AccountLab);
         Put(btnLab, y);
+        Put(ImportButton(InterlinkRunner.AccountLab), y, 400);
         Put(_statusLab, y + 7, 256);
         y += 32;
         Put(new Label { Text = "   Used for: VF eTRF - PULLTESTTemplate", AutoSize = true, ForeColor = Color.DimGray }, y);
@@ -105,6 +107,26 @@ public sealed class SettingsForm : Form
         _pollTimer.Start();
         FormClosed += (_, _) => _pollTimer.Dispose();
         _ = CheckAsync();
+    }
+
+    /// <summary>"Import session": take the sign-in of a browser that is already signed in (file from the extension's Export InterLink session)</summary>
+    private Button ImportButton(string account)
+    {
+        var b = new Button { Text = "Import session...", Width = 110, Height = 30 };
+        b.Click += (_, _) =>
+        {
+            using var dlg = new OpenFileDialog { Title = $"Session file for {account}", Filter = "InterLink session (*.json)|*.json|All files|*.*" };
+            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+            try
+            {
+                var cfg = new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddJsonFile(AppSettings.FilePath, optional: true).Build();
+                var file = SignIn.ImportSession(cfg, account, dlg.FileName);
+                MessageBox.Show($"The session was imported for {account}.{Environment.NewLine}{Environment.NewLine}Use 'Check status' - if InterLink still asks to sign in, the exported session had already expired.", "NEXUS-L InterLink service");
+                _ = CheckAsync();
+            }
+            catch (Exception e) { MessageBox.Show("Could not import: " + e.Message, "NEXUS-L InterLink service", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        };
+        return b;
     }
 
     private AppSettings FromForm() => new()

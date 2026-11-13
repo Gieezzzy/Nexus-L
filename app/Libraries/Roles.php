@@ -7,7 +7,7 @@ namespace App\Libraries;
  * "Materials;Encoding"); the user gets the highest access any of the roles gives. Admin sees and does everything, including Settings,
  * the Brain console, the Report Designer and the management of users and roles.
  *
- * The seven roles: Admin, Bonding, Encoding, Materials, Manager, Supervisor, Technician.
+ * The eight roles: Admin, Bonding, Encoding, Materials, Manager, Supervisor, Technician, Guest.
  * A user whose Role is still the old plain "user" (nobody has assigned a role yet) keeps the access that every signed-in user had before,
  * except the admin pages, so introducing roles locks nobody out; assign a role and the matrix below applies.
  *
@@ -16,7 +16,7 @@ namespace App\Libraries;
  */
 class Roles
 {
-    public const ROLES = ['Admin', 'Bonding', 'Encoding', 'Materials', 'Manager', 'Supervisor', 'Technician'];
+    public const ROLES = ['Admin', 'Bonding', 'Encoding', 'Materials', 'Manager', 'Supervisor', 'Technician', 'Guest'];
 
     /** module key => label shown to people */
     public const MODULES = [
@@ -53,12 +53,13 @@ class Roles
         'Materials' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 1, 'dtr' => 1, 'materials' => 2, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 1, 'help' => 2, 'calendar' => 1, 'erpfinish' => 1],
         'Bonding' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 1, 'dtr' => 1, 'bonding' => 2, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 1, 'help' => 2, 'calendar' => 1, 'erpfinish' => 1],
         'Technician' => ['dashboard' => 1, 'inbox' => 2, 'dtr' => 1, 'materials' => 2, 'wholeshoe' => 2, 'bonding' => 2, 'testsummary' => 1, 'labdocs' => 1, 'help' => 2, 'calendar' => 1],
+        'Guest'      => ['dashboard' => 1, 'dtr' => 1, 'materials' => 1, 'wholeshoe' => 1, 'bonding' => 1, 'calendar' => 1, 'insights' => 1, 'erpfinish' => 1, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 1, 'thirdparty' => 1, 'help' => 1],
     ];
 
     /** the first URL segment of a page => its module (a segment that is not here is not restricted) */
     public const SEGMENTS = [
-        'dashboard' => 'dashboard', 'inbox' => 'inbox', 'interlink' => 'interlink', 'lab-monitoring' => 'erpfinish', 'calendar-monitoring' => 'calendar', 'calendar' => 'calendar', 'quality-insights' => 'insights', 'dtr' => 'dtr', 'materials' => 'materials', 'material-testing' => 'materials',
-        'wholeshoe' => 'wholeshoe', 'whole-shoe-test' => 'wholeshoe', 'bonding' => 'bonding', 'test-summary' => 'testsummary', 'tests-summary' => 'testsummary', 'test-results' => 'testsummary',
+        'dashboard' => 'dashboard', 'inbox' => 'inbox', 'interlink' => 'interlink', 'lab-monitoring' => 'erpfinish', 'calendar-monitoring' => 'calendar', 'calendar' => 'calendar', 'quality-insights' => 'insights', 'dtr' => 'dtr', 'warehouse-tracker' => 'dtr', 'warehouse' => 'dtr', 'materials' => 'materials', 'material-testing' => 'materials',
+        'wholeshoe' => 'wholeshoe', 'whole-shoe-test' => 'wholeshoe', 'wst' => 'wholeshoe', 'bonding' => 'bonding', 'test-summary' => 'testsummary', 'tests-summary' => 'testsummary', 'test-results' => 'testsummary',
         'analytics' => 'analytics', 'labdocs' => 'labdocs', 'thirdparty' => 'thirdparty', 'approval' => 'approvals', 'help' => 'help', 'designer' => 'designer', 'brain' => 'brain', 'settings' => 'settings',
     ];
 
@@ -88,6 +89,7 @@ class Roles
             $k === 'manager' => 'Manager',
             in_array($k, ['supervisor', 'supervisor1', 'supervisor2'], true) => 'Supervisor',
             $k === 'technician' || $k === 'tech' => 'Technician',
+            in_array($k, ['guest', 'guests', 'visitor', 'readonly'], true) => 'Guest',
             default => null,
         };
     }
@@ -158,6 +160,31 @@ class Roles
     public static function can(string $role, string $module, int $need = 1): bool
     {
         return self::level($role, $module) >= $need;
+    }
+
+    /** Whether a role may perform write/mutating requests (POST/PUT/PATCH/DELETE) for the given module & request path. */
+    public static function canMutate(string $role, string $module, string $path): bool
+    {
+        if (self::isAdmin($role)) {
+            return true;
+        }
+        $clean = trim(strtolower($path), '/');
+        foreach (['dtr/sheet-pdf', 'dtr/approval/pdf-pages', 'interlink/fetch-live-page', 'interlink/pull-grid-html', 'interlink/fetch-live-form', 'labdocs/presence', 'warehouse-tracker/rt', 'bot/'] as $roPrefix) {
+            if ($clean === rtrim($roPrefix, '/') || str_starts_with($clean, $roPrefix)) {
+                return $module === '' || self::can($role, $module, 1);
+            }
+        }
+        if ($module === '') {
+            return true;
+        }
+        if ($module === 'dtr') {
+            return self::can($role, 'dtr', 2)
+                || self::can($role, 'bonding', 2)
+                || self::can($role, 'materials', 2)
+                || self::can($role, 'wholeshoe', 2);
+        }
+
+        return self::can($role, $module, 2);
     }
 
     /** the module of a request path ('' when the page is not restricted) */

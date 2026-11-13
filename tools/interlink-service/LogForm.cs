@@ -57,7 +57,7 @@ public sealed class LogForm : Form
         _grid.Columns["state"]!.Width = 120;
         _grid.Columns["msg"]!.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
         _grid.DefaultCellStyle.WrapMode = DataGridViewTriState.False;
-        _grid.CellDoubleClick += (_, e) => { if (e.RowIndex >= 0) MessageBox.Show(string.Join(Environment.NewLine, new[] { "Application: " + _grid.Rows[e.RowIndex].Cells["app"].Value, "State: " + _grid.Rows[e.RowIndex].Cells["state"].Value, "", "" + _grid.Rows[e.RowIndex].Cells["msg"].Value }), "Report"); };
+        _grid.CellDoubleClick += (_, e) => { if (e.RowIndex >= 0) MessageBox.Show(string.Join(Environment.NewLine, new[] { (System.Text.RegularExpressions.Regex.IsMatch("" + _grid.Rows[e.RowIndex].Cells["app"].Value, @"^A\d{8,12}") ? "InterLink Application No.: " : "Job (InterLink Application No. not read): ") + _grid.Rows[e.RowIndex].Cells["app"].Value, "State: " + _grid.Rows[e.RowIndex].Cells["state"].Value, "", "" + _grid.Rows[e.RowIndex].Cells["msg"].Value }), "Report"); };
 
         _timer.Tick += (_, _) => { if (_live.Checked) Reload(false); };
         Shown += (_, _) => { Reload(true); _timer.Start(); };

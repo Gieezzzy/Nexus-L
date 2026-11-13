@@ -269,9 +269,23 @@
     window.fetch = (input, init) => {
       const url = typeof input === 'string' ? input : (input && input.url) || '';
       const method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+      let reqInit = init;
+      if (method !== 'GET' && method !== 'HEAD') {
+        let sameOrigin = !/^https?:\/\//i.test(url);
+        if (!sameOrigin) {
+          try { sameOrigin = new URL(url, location.href).origin === location.origin; } catch {}
+        }
+        if (sameOrigin) {
+          const csrfMeta = document.querySelector('meta[name="X-CSRF-TOKEN"]');
+          const h = new Headers((init && init.headers) || (input && typeof input === 'object' && input.headers) || undefined);
+          if (!h.has('X-Requested-With')) h.set('X-Requested-With', 'XMLHttpRequest');
+          if (csrfMeta && csrfMeta.content && !h.has('X-CSRF-TOKEN')) h.set('X-CSRF-TOKEN', csrfMeta.content);
+          reqInit = Object.assign({}, init || {}, { headers: h });
+        }
+      }
       const quiet = QUIET.test(url);
-      const aborted = () => !!(init && init.signal && init.signal.aborted);
-      const attempt = (n) => nativeFetch(input, init).catch((err) => {
+      const aborted = () => !!(reqInit && reqInit.signal && reqInit.signal.aborted);
+      const attempt = (n) => nativeFetch(input, reqInit).catch((err) => {
         if (method === 'GET' && n < 2 && !aborted() && navigator.onLine !== false) {
           return new Promise((r) => setTimeout(r, 700 * (n + 1))).then(() => attempt(n + 1));
         }

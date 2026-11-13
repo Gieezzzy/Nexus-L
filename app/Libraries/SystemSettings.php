@@ -140,16 +140,42 @@ class SystemSettings
             'ops.ip_43'                   => $d('routing', 'Address of .43', 'text', '192.168.32.43', ''),
             'ops.ip_45'                   => $d('routing', 'Address of .45', 'text', '192.168.32.45', ''),
             'ops.ip_custom'               => $d('routing', 'Address (custom)', 'text', '', 'Used only when the choice above is "custom".'),
+            // --- VF Test Request (InterLink > VF - Test Request, Lab Monitoring > VF Test Monitoring) -----------------------------------
+            'vf.cargo_days'              => $d('vf', 'Cargo receive date when the order has no CRD (days from today)', 'number', '30', 'Used on the eTRF only when neither the e-mail nor dberp.production_orders gives a delivery date.'),
+            'vf.default_age_group'       => $d('vf', 'Age group when the style prefix is not recognised', 'select:Infants (0-36 months),Children (3-12 years),Adult', 'Children (3-12 years)', 'TD/IN = Infants, UY/JN/YT = Children, UA/MN/WN = Adult are detected from the style automatically.'),
+            'vf.auto_send_email'         => $d('vf', 'E-mail the eTRF PDFs automatically when a whole request is submitted', 'bool', '1', 'Default for every new request e-mail. It can still be switched per request in VF Test Monitoring.'),
+            'vf_request.default_cc'      => $d('vf', 'CC list for the VF request e-mail', 'text', 'lisa_cheng@dtshoes.com, rachel_yang@dtshoes.com, jason_yang@dtshoes.com, yoyo_lab@dtshoes.com', 'Comma separated. Used on the grouped e-mail that sends the printed eTRF PDFs back to djc_lab.'),
+            'vf.sign_name'               => $d('vf', 'E-mail signature: name', 'text', 'Danica Agbuya, LPT', 'Printed under "Best Regards," on the VF e-mails.'),
+            'vf.sign_title'              => $d('vf', 'E-mail signature: title', 'text', 'QC Laboratory System Encoder PIC', ''),
+            'vf.sign_company'            => $d('vf', 'E-mail signature: company', 'text', 'DA TIAN SUBIC SHOES INC.', ''),
+            'vf.sign_phone'              => $d('vf', 'E-mail signature: telephone', 'text', '(047) 252 - 2899 loc 140', ''),
+            'vf.sign_address'            => $d('vf', 'E-mail signature: address', 'text', 'Lot 1P7-A Subic Bay Gateway Park Phase II, Subic Bay Freeport Zone, Philippines.', ''),
+            'vf.mail_logo'               => $d('vf', 'E-mail signature: logo (file path on the server, optional)', 'text', '', 'For example E:\\html\\NEXUS-L\\public\\assets\\images\\datian-logo.png. A PNG / JPG is placed under the signature when the file exists.'),
+            'vf.mail_greeting'           => $d('vf', 'E-mail greeting', 'text', 'Hello DJC TEAM,', 'First line of the e-mail that sends the eTRF PDFs back.'),
+            'vf.recipients'              => $d('vf', 'Who the eTRF PDF e-mail is sent to (per Test Package)', 'textarea', "CPSIA Product Testing Package | djc_lab@dtshoes.com, nila_erazo@dtshoes.com, dtp_cfa2@dtshoes.com, kenny_shu@dtshoes.com | lisa_cheng@dtshoes.com, rachel_yang@dtshoes.com, jason_yang@dtshoes.com, Lv_jun@dtshoes.com, yoyo_lab@dtshoes.com, aiden_lee@dtshoes.com, xiyi_zhang@dtshoes.com\nKC Test Package | djc_lab@dtshoes.com, nila_erazo@dtshoes.com, dtp_cfa2@dtshoes.com, kenny_shu@dtshoes.com | lisa_cheng@dtshoes.com, rachel_yang@dtshoes.com, jason_yang@dtshoes.com, Lv_jun@dtshoes.com, yoyo_lab@dtshoes.com, aiden_lee@dtshoes.com, xiyi_zhang@dtshoes.com\nGB - Full Package | djc_lab@dtshoes.com, nila_erazo@dtshoes.com, dtp_cfa2@dtshoes.com, kenny_shu@dtshoes.com | lisa_cheng@dtshoes.com, rachel_yang@dtshoes.com, jason_yang@dtshoes.com, Lv_jun@dtshoes.com, yoyo_lab@dtshoes.com, aiden_lee@dtshoes.com, xiyi_zhang@dtshoes.com\nRSL | djc_lab@dtshoes.com, nila_erazo@dtshoes.com, dtp_cfa2@dtshoes.com, kenny_shu@dtshoes.com | lisa_cheng@dtshoes.com, rachel_yang@dtshoes.com, jason_yang@dtshoes.com, Lv_jun@dtshoes.com, yoyo_lab@dtshoes.com, aiden_lee@dtshoes.com, xiyi_zhang@dtshoes.com", 'One line per Test Package: Test Package | To addresses | CC addresses (comma separated). The VF Test Monitoring e-mail dialog starts with these and lets you change them before sending.'),
+            'vf.last_auto_sync'          => $d('hidden', 'Last automatic VF sync', 'text', '', ''),
+            'vf.search_items'            => $d('vf', 'VF - Test Request: Test Package dropdown (search items)', 'textarea', "KC Test Package\nGB - Full Package\nCPSIA Product Testing Package\nRSL", 'One item per line = one entry of the Test Package dropdown on VF - Test Request. Add a new one, or delete a line to remove it. To search InterLink with different words than the name shown, write: Name shown | words typed into InterLink\'s Test Package(s) filter (it matches anywhere in the text, capitals ignored). "All" loads every item here. New items only change the search; submissions still use the 4 built-in packages.'),
+            'vf.grid_max_rows'           => $d('vf', 'InterLink grid sync: newest rows to read', 'number', '1500', 'Sync InterLink Applicant Grid reads the Inhouse & 3rd party search newest first until this many rows were scanned (the whole grid has thousands; more rows = slower).'),
+            'interlink.grid_total_items' => $d('hidden', 'InterLink grid: last known total items', 'text', '7749', ''),
+            'vf.validity_months'         => $d('vf', 'Certificate validity (months after the issue date)', 'number', '12', 'Used when the lab certificate e-mail arrives and no date is printed. Some CPSIA reports are valid 6 months; adjust as needed.'),
+            'vf.auto_sync_minutes'       => $d('vf', 'Read Outlook e-mails automatically every (minutes, 0 = off)', 'number', '10', 'Needs the scheduled task that runs php spark vf:sync (see below). Request, transit, lab-received and certificate e-mails are then processed without pressing the button.'),
             'insights.aliases'           => $d('ai', 'Supplier spelling merges (Quality Insights)', 'textarea', '', 'One per line: WRONG SPELLING=RIGHT NAME. For example NNAPAO=NANPAO. Suppliers written both ways are counted as one in the scorecard.'),
             'ai.git_synced_v201'         => $d('ai', 'Git Auto-Sync Flag', 'text', '0', 'Internal flag indicating whether Phase 201 has been pushed to git.'),
+
+            // --- Guest access ------------------------------------------------------------------------------------------------------
+            'guest.enabled'              => $d('guest', 'Allow one-click Guest sign-in on the login page', 'bool', '1', 'Shows a "Continue as Guest" button on the sign-in screen. What Guest can open is controlled by the Guest column under Users & roles above; turning this off signs out active one-click Guest sessions.'),
+            'guest.display_name'         => $d('guest', 'Guest display name', 'text', 'Guest Visitor', 'Display name shown in the top bar for one-click Guest sessions.'),
+            'guest.landing'              => $d('guest', 'Page opened after Guest sign-in', 'select:dashboard,dtr,analytics,test-summary,calendar-monitoring', 'dashboard', 'First page opened after clicking Continue as Guest (falls back to the first viewable page if restricted).'),
         ];
     }
 
     public static function categories(): array
     {
         return [
-            'ai'       => 'AI Assistant & Bot Engine',
+            'guest'     => 'Guest access',
+            'ai'        => 'AI Assistant & Bot Engine',
             'routing'  => 'Payload routing (.43 / .45)',
+            'vf'       => 'VF Test Request',
             'mail'     => 'E-mail (Outlook Relay)',
             'service'  => 'InterLink service',
             'defaults' => 'InterLink report defaults',

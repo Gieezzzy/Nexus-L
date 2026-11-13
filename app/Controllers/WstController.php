@@ -858,6 +858,7 @@ class WstController extends BaseController
         }
 
         $id = $model->getInsertID();
+        \App\Libraries\DataCache::bump();
 
         return $this->response->setJSON([
             'success' => true,
@@ -1157,6 +1158,7 @@ class WstController extends BaseController
             $trackerSync['TimeCompleted'] = $now;
         }
         $this->syncToWholeshoeTracker($record['labreference'] ?? '', $trackerSync);
+        \App\Libraries\DataCache::bump();
 
         return $this->response->setJSON([
             'success'     => true,
@@ -1332,6 +1334,8 @@ class WstController extends BaseController
                 }
             }
         }
+
+        \App\Libraries\DataCache::bump();
 
         return $this->response->setJSON(['success' => true, 'message' => 'Test session stopped and completed.']);
     }

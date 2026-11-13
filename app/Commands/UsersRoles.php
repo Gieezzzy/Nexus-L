@@ -10,7 +10,7 @@ use CodeIgniter\CLI\CLI;
  * php spark users:roles                         lists every user with the roles
  * php spark users:roles <username> "Materials;Encoder"   gives the user those roles (several are separated by ;)
  *
- * Roles for the Laboratory Documents: Admin, Manager, Supervisor 1, Supervisor 2, Materials, Technician, Encoder.
+ * Roles for the Laboratory Documents: Admin, Manager, Supervisor 1, Supervisor 2, Materials, Technician, Encoder, Guest.
  * Admin, Manager, Supervisors and Encoders may edit, upload, make folders and delete; the others view. The user signs in again to pick up the change.
  */
 class UsersRoles extends BaseCommand

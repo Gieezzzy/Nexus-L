@@ -257,8 +257,8 @@
         <div style="padding:12px 14px">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b">Generated Application No.</div>
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px;padding:8px 11px;background:#fefce8;border:1.5px dashed #eab308;border-radius:9px">
-            <code style="font-size:19px;font-weight:900;color:#0f172a;letter-spacing:.04em">${escHtml(appNo)}</code>
-            <button type="button" data-il-copy style="border:1px solid #ca8a04;background:#facc15;color:#0f172a;font-weight:700;font-size:11.5px;padding:4px 10px;border-radius:6px;cursor:pointer">Copy App No.</button>
+            <code style="font-size:${appNo ? 19 : 14}px;font-weight:900;color:#0f172a;letter-spacing:.04em">${escHtml(appNo || 'Not read - look it up in InterLink')}</code>
+            <button type="button" data-il-copy ${appNo ? '' : 'hidden'} style="border:1px solid #ca8a04;background:#facc15;color:#0f172a;font-weight:700;font-size:11.5px;padding:4px 10px;border-radius:6px;cursor:pointer">Copy App No.</button>
           </div>
           <div style="margin-top:8px;font-size:12.5px;color:#334155;line-height:1.45">
             <div><b>Template:</b> ${escHtml(tpl)}</div>
@@ -291,7 +291,8 @@
         .then((j) => {
           if (!j || !j.ok) return;
           (j.events || []).forEach((ev) => {
-            if (ev.kind === 'success' && (ev.type === 'etrf_submitted' || /^A\d{7,12}$/i.test(String(ev.application_no || '')))) {
+            // a submitted eTRF / Copy as New shows the Application No. InterLink generated; a submitted report is only a normal toast
+            if (ev.kind === 'success' && (ev.type === 'etrf_submitted' || (ev.type !== 'report_submitted' && /^A\d{7,12}$/i.test(String(ev.application_no || ''))))) {
               showInterlinkAppToast(ev);
             } else if (window.nxToast) {
               window.nxToast(ev.text, ev.kind === 'success' ? 'success' : (ev.kind === 'info' ? 'info' : 'error'), ev.kind === 'info' ? 6000 : 12000);

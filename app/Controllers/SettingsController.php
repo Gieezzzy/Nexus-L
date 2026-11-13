@@ -88,7 +88,7 @@ class SettingsController extends BaseController
         return str_shuffle($pw);
     }
 
-    /** the Role value from a list of role names (only the seven roles; none = the old plain "user") */
+    /** the Role value from a list of role names (only the eight roles; none = the old plain "user") */
     private function roleValue(array $list): string
     {
         $out = [];

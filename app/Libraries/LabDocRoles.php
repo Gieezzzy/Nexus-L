@@ -7,14 +7,14 @@ namespace App\Libraries;
  * (for example "Materials;Encoder"): the user may do what any of the roles may.
  *
  *   Admin, Manager, Supervisor 1, Supervisor 2, Encoder   view + edit, upload, new folder, delete
- *   Materials, Technician, user (and anything else)       view only
+ *   Materials, Technician, Guest, user (and anything else) view only
  *
  * Everything in the Laboratory Documents asks this class, so a change of rule is a change here.
  */
 class LabDocRoles
 {
     /** the roles that can be given (the names shown to people) */
-    public const ROLES = ['Admin', 'Bonding', 'Encoding', 'Materials', 'Manager', 'Supervisor', 'Technician'];   // the same seven as Roles::ROLES (the old Encoder / Supervisor 1 / 2 still count)
+    public const ROLES = ['Admin', 'Bonding', 'Encoding', 'Materials', 'Manager', 'Supervisor', 'Technician', 'Guest'];   // the same eight as Roles::ROLES (the old Encoder / Supervisor 1 / 2 still count)
 
     private const EDIT = ['admin', 'manager', 'supervisor', 'supervisor1', 'supervisor2', 'encoder', 'encoders', 'encoding'];
 

@@ -27,8 +27,8 @@ $when = static fn ($d) => $d ? date('d M Y, H:i', strtotime((string) $d)) : '-';
 
     <div class="ac-tabs" role="tablist">
         <button type="button" data-tab="profile">Profile</button>
-        <button type="button" data-tab="security">Password &amp; security</button>
-        <button type="button" data-tab="preferences">My settings</button>
+        <?php if (empty($isGuestSession)): ?><button type="button" data-tab="security">Password &amp; security</button>
+        <button type="button" data-tab="preferences">My settings</button><?php endif ?>
         <button type="button" data-tab="access">My access</button>
         <?php if ($canSign): ?><button type="button" data-tab="signature">Signature</button><?php endif ?>
     </div>
@@ -36,18 +36,18 @@ $when = static fn ($d) => $d ? date('d M Y, H:i', strtotime((string) $d)) : '-';
     <!-- Profile -->
     <section class="card glass ac-pane" data-pane="profile">
         <h3>Personal details</h3>
-        <p class="muted sm">These details are used in reports, approvals, chat and the lists of people. The username and the role are set by an Admin.</p>
+        <p class="muted sm"><?= ! empty($isGuestSession) ? 'Signed in via one-click Guest access (read-only session). Ask an Admin for a personal account or custom permissions.' : 'These details are used in reports, approvals, chat and the lists of people. The username and the role are set by an Admin.' ?></p>
         <div class="ac-grid">
-            <label>Full name *<input type="text" id="p-FullName" value="<?= esc($u['FullName'], 'attr') ?>" maxlength="120"></label>
+            <label>Full name *<input type="text" id="p-FullName" value="<?= esc($u['FullName'], 'attr') ?>" maxlength="120"<?= ! empty($isGuestSession) ? ' disabled' : '' ?>></label>
             <label>Username<input type="text" value="<?= esc($u['Username'], 'attr') ?>" disabled></label>
-            <label>E-mail<input type="email" id="p-Email" value="<?= esc((string) $u['Email'], 'attr') ?>" maxlength="150" placeholder="name@dtshoes.com"></label>
-            <label>Phone<input type="text" id="p-Phone" value="<?= esc((string) $u['Phone'], 'attr') ?>" maxlength="40" placeholder="(047) 252-2899"></label>
-            <label>Department<input type="text" id="p-Department" value="<?= esc((string) $u['Department'], 'attr') ?>" maxlength="100" placeholder="QC Laboratory"></label>
-            <label>Job title<input type="text" id="p-JobTitle" value="<?= esc((string) $u['JobTitle'], 'attr') ?>" maxlength="100" placeholder="Lab Technician"></label>
-            <label>Employee no.<input type="text" id="p-EmployeeNo" value="<?= esc((string) $u['EmployeeNo'], 'attr') ?>" maxlength="40"></label>
+            <label>E-mail<input type="email" id="p-Email" value="<?= esc((string) $u['Email'], 'attr') ?>" maxlength="150" placeholder="name@dtshoes.com"<?= ! empty($isGuestSession) ? ' disabled' : '' ?>></label>
+            <label>Phone<input type="text" id="p-Phone" value="<?= esc((string) $u['Phone'], 'attr') ?>" maxlength="40" placeholder="(047) 252-2899"<?= ! empty($isGuestSession) ? ' disabled' : '' ?>></label>
+            <label>Department<input type="text" id="p-Department" value="<?= esc((string) $u['Department'], 'attr') ?>" maxlength="100" placeholder="QC Laboratory"<?= ! empty($isGuestSession) ? ' disabled' : '' ?>></label>
+            <label>Job title<input type="text" id="p-JobTitle" value="<?= esc((string) $u['JobTitle'], 'attr') ?>" maxlength="100" placeholder="Lab Technician"<?= ! empty($isGuestSession) ? ' disabled' : '' ?>></label>
+            <label>Employee no.<input type="text" id="p-EmployeeNo" value="<?= esc((string) $u['EmployeeNo'], 'attr') ?>" maxlength="40"<?= ! empty($isGuestSession) ? ' disabled' : '' ?>></label>
             <label>Role(s)<input type="text" value="<?= esc($roles ? implode(', ', $roles) : 'not assigned yet', 'attr') ?>" disabled></label>
         </div>
-        <div class="ac-actions"><button type="button" class="nx-btn nx-primary" id="p-save">Save details</button><span class="ac-msg" id="p-msg"></span></div>
+        <?php if (empty($isGuestSession)): ?><div class="ac-actions"><button type="button" class="nx-btn nx-primary" id="p-save">Save details</button><span class="ac-msg" id="p-msg"></span></div><?php endif ?>
 
         <h4>Account information</h4>
         <dl class="ac-dl">

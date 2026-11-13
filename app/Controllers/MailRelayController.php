@@ -212,6 +212,14 @@ class MailRelayController extends BaseController
 
         $db->table('tbl_email_outbox')->where('id', $id)->update($update);
 
+        if ($final === 'sent' && ($row['source'] ?? '') === 'NEXUS-L VF-Request') {
+            try {
+                (new \App\Libraries\VfTestRequestService())->reconcileOutbox();   // marks the requests e-mailed and drops the Inbox message right away
+            } catch (\Throwable $e) {
+                log_message('error', '[MailRelay] VF reconcile failed: ' . $e->getMessage());
+            }
+        }
+
         return $this->response->setJSON(['ok' => true, 'id' => $id, 'status' => $final, 'will_retry' => $final === 'queued' && $status === 'failed']);
     }
 

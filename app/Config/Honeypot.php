@@ -24,7 +24,7 @@ class Honeypot extends BaseConfig
     /**
      * Honeypot HTML Template
      */
-    public string $template = '<label>{label}</label><input type="text" name="{name}" value="">';
+    public string $template = '<label>{label}</label><input type="text" name="{name}" value="" autocomplete="one-time-code" tabindex="-1" aria-hidden="true">';
 
     /**
      * Honeypot container

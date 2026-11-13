@@ -929,11 +929,11 @@ async function fillNormalFormEtrf(etrf) {
   try {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     if (/login|signin|sign-in/i.test(location.pathname)) return { state: 'signin' };
-    for (let i = 0; i < 30 && (!window.ASPxClientControl || !document.getElementById('PH1_NormalFormSelector1_NF1_EGVNF')); i++) {
+    for (let i = 0; i < 30 && (!window.ASPxClientControl || !(document.getElementById('PH1_NormalFormSelector1_NF1_EGVNF') || document.getElementById('NormalFormSelector1_NF1_EGVNF'))); i++) {
       await sleep(300);
     }
     await sleep(600);
-    const grid = document.getElementById('PH1_NormalFormSelector1_NF1_EGVNF');
+    const grid = (document.getElementById('PH1_NormalFormSelector1_NF1_EGVNF') || document.getElementById('NormalFormSelector1_NF1_EGVNF'));
     if (!grid) return { state: 'error', message: 'The eTRF form (PH1_NormalFormSelector1_NF1_EGVNF) was not found on this InterLink page.' };
 
     const setNative = (el, val) => {
@@ -957,11 +957,12 @@ async function fillNormalFormEtrf(etrf) {
       }
 
       // 2. DevExpress ASPxClientControl instances (both global client name and EGVNFTP + code)
-      const ctrlNames = [`ctl00$PH1$NormalFormSelector1$NF1$EGVNFTP${code}`, code];
+      const ctrlNames = [`ctl00$PH1$NormalFormSelector1$NF1$EGVNFTP${code}`, `ctl00$NormalFormSelector1$NF1$EGVNFTP${code}`, code];
       for (const cn of ctrlNames) {
         const c = window[cn];
         if (c && typeof c.SetValue === 'function') {
           try {
+            if (code === 'ITS_OFFICE_DISP') { ok = true; continue; }   // chosen from its list at the end of the fill (5a)
             c.SetValue(val);
             if (typeof c.SetText === 'function' && !/RadioButtonList/i.test((c.constructor && c.constructor.name) || '')) {
               try { c.SetText(val); } catch (e) {}
@@ -977,6 +978,9 @@ async function fillNormalFormEtrf(etrf) {
       )];
       for (const inp of inputs) {
         if (/rblGeneric.*_RB\d+_I$/i.test(inp.id)) continue; // skip individual radio indicator boxes
+        // Lab Location depends on the Service Provider and must hold a value CHOSEN from its list ("Value of Lab Location is Invalid! Please
+        // re-select ..."): it is not typed here but chosen from its list at the end of the fill (5a). Every other box is typed as before.
+        if (code === 'ITS_OFFICE_DISP') { ok = true; continue; }
         setNative(inp, val);
         ok = true;
       }
@@ -1018,6 +1022,16 @@ async function fillNormalFormEtrf(etrf) {
       await sleep(300);
       return dataRows().length > before;
     };
+    // a drop-down in the table (Season ...) has numbered options (7 = S27): choose the option whose TEXT (or value) matches, never set the text as a value
+    const setCell = (el, v) => {
+      if (el && el.tagName === 'SELECT') {
+        const want = String(v).trim().toLowerCase();
+        const opt = [...el.options].find((o) => o.value.toLowerCase() === want || o.text.trim().toLowerCase() === want);
+        if (!opt) return false;
+        return setNative(el, opt.value);
+      }
+      return setNative(el, v);
+    };
     if (rows.length > 0) {
       while (dataRows().length < rows.length) {
         if (!(await addRow())) break;
@@ -1036,7 +1050,7 @@ async function fillNormalFormEtrf(etrf) {
           for (const [k, v] of Object.entries(r)) {                  // by InterLink column code first
             if (!/^REF_FLD\d+$/i.test(k) || v == null || v === '') continue;
             const inp = tr.querySelector(`input[id*="${k}_"], input[name*="${k}_"], textarea[id*="${k}_"], select[id*="${k}_"]`);
-            if (inp) setNative(inp, v);
+            if (inp) setCell(inp, v);
           }
           [...tr.children].forEach((td, idx) => {                    // then by the column heading
             const keys = HEAD[headers[idx] || ''];
@@ -1045,7 +1059,7 @@ async function fillNormalFormEtrf(etrf) {
             if (v == null || v === '') return;
             const cellInputs = [...td.querySelectorAll('input[type="text"], textarea, select')];
             cellInputs.forEach((inp) => {
-              setNative(inp, v);
+              setCell(inp, v);
               const baseId = String(inp.id || '').replace(/_I$/, '');
               const ctrl = baseId && window[baseId];
               if (ctrl && typeof ctrl.SetValue === 'function') {
@@ -1058,12 +1072,55 @@ async function fillNormalFormEtrf(etrf) {
       }
     }
 
+    // 5a. Lab Location: choose it from its list now that everything it depends on is set (the background service has lovPick; the browser extension types it)
+    {
+      const wantLab = String(fields.ITS_OFFICE_DISP || '').trim();
+      const labInp = document.querySelector('input[id*="_TpEdr_ITS_OFFICE_DISP_"][type="text"]');
+      const labBtn = labInp && labInp.closest('.input-group') && labInp.closest('.input-group').querySelector('img[id$="btPick_0"]');
+      if (wantLab && labInp) {
+        let chosen = false;
+        if (labBtn && typeof lovPick === 'function') {
+          try { const r = await lovPick(labBtn.id, wantLab, 0); chosen = !!(r && r.state === 'ok'); await sleep(800); } catch (e) { /* fall back to typing */ }
+        }
+        if (!chosen) setNative(labInp, wantLab);
+      }
+    }
+
+    // 5b. Vendor ID and Factory ID are read-only boxes that InterLink fills when a row is picked in the Vendor lookup. A template that comes with the
+    //     Vendor / Factory NAME but an empty Factory ID (the bonding template) is refused with "Factory ID is missing!", so an empty one is filled here.
+    for (const [labelText, value] of [['vendorid', etrf.vendor_id || '0000507450'], ['factoryid', etrf.factory_id || '0000507452']]) {
+      const lab = [...document.querySelectorAll('label')].find((l) => l.textContent.replace(/[*\s]/g, '').toLowerCase() === labelText);
+      const box = lab && (lab.htmlFor ? document.getElementById(lab.htmlFor) : null);
+      if (box && !String(box.value || '').trim() && value) {
+        const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+        if (desc && desc.set) desc.set.call(box, String(value)); else box.value = String(value);
+        ['input', 'change', 'blur'].forEach((ev) => box.dispatchEvent(new Event(ev, { bubbles: true })));
+      }
+    }
+
+    // 5c. InterLink answers a refused Print & Submit with a small toast that disappears after a few seconds: remember every such message
+    //     (window.__nxRefusals) so the job can say why nothing was created.
+    try {
+      window.__nxRefusals = window.__nxRefusals || [];
+      if (!window.__nxRefusalWatch && document.body) {
+        window.__nxRefusalWatch = new MutationObserver((muts) => {
+          for (const m of muts) {
+            for (const n of m.addedNodes) {
+              const t = String((n && n.textContent) || '').replace(/\s+/g, ' ').trim();
+              if (t && t.length < 300 && /\b(is|are) (missing|required)\b|invalid|must be (entered|selected|filled)|cannot be|not allowed|already exist/i.test(t)) window.__nxRefusals.push(t);
+            }
+          }
+        });
+        window.__nxRefusalWatch.observe(document.body, { childList: true, subtree: true });
+      }
+    } catch (e) { /* no observer: the toast is still looked for while it is on screen */ }
+
     // 6. Read the form back. InterLink's own validation marks every required box that is still empty; for a real submit that stops the job
     //    BEFORE anything is pressed, and the reason names the boxes. (A draft may be incomplete in InterLink, so a draft is not stopped by it.)
     const notSet = [];
     for (const [code, v] of Object.entries(fields)) {
       if (v === '' || v == null) continue;
-      if (!document.querySelector(`[id*="_TpEdr_${code}_"],[name*="$TpEdr_${code}$"]`) && !window[code] && !window[`ctl00$PH1$NormalFormSelector1$NF1$EGVNFTP${code}`]) notSet.push(code);
+      if (!document.querySelector(`[id*="_TpEdr_${code}_"],[name*="$TpEdr_${code}$"]`) && !window[code] && !window[`ctl00$PH1$NormalFormSelector1$NF1$EGVNFTP${code}`] && !window[`ctl00$NormalFormSelector1$NF1$EGVNFTP${code}`]) notSet.push(code);
     }
     const invalid = [];
     try {
@@ -1097,15 +1154,34 @@ async function pressNormalFormCommit(action) {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const visible = (el) => !!el && el.offsetParent !== null && el.getBoundingClientRect().width > 0;
   const wantSave = String(action || '').toLowerCase() === 'save';
+  window.__nxRefusals = [];   // only what InterLink says about THIS press counts
+  try { sessionStorage.removeItem('__nxRefusals'); } catch (e) { /* no storage */ }
+  // the form may have been posted back after it was filled, which drops a watcher set up then: (re)start it right before the press
+  try {
+    if (window.__nxRefusalWatch) { try { window.__nxRefusalWatch.disconnect(); } catch (e) { /* gone */ } }
+    window.__nxRefusalWatch = new MutationObserver((muts) => {
+      for (const m of muts) {
+        for (const n of m.addedNodes) {
+          const t = String((n && n.textContent) || '').replace(/\s+/g, ' ').trim();
+          if (t && t.length < 300 && /\b(is|are) (missing|required)\b|invalid|must be (entered|selected|filled)|cannot be|not allowed|already exist/i.test(t)) window.__nxRefusals.push(t);
+        }
+      }
+    });
+    if (document.body) window.__nxRefusalWatch.observe(document.body, { childList: true, subtree: true });
+  } catch (e) { /* no watcher: the toast is still looked for while it is on screen */ }
   const btnId = wantSave
     ? 'PH1_NormalFormSelector1_NF1_ButtonBar1_ASPxButton_2'
     : 'PH1_NormalFormSelector1_NF1_ButtonBar1_ASPxButton_1';
   const aspxBtn = wantSave ? window.BBAR_ASPxButton_2 : window.BBAR_ASPxButton_1;
-  const domBtn = document.getElementById(btnId)
-    || [...document.querySelectorAll('input[type=submit],input[type=button]')].find((b) => visible(b) && (wantSave ? /^save$/i.test((b.value || '').trim()) : /print\s*&\s*submit|^submit$/i.test((b.value || '').trim())));
+  const domBtn = document.getElementById(btnId) || document.getElementById(btnId.replace(/^PH1_/, ''))
+    || [...document.querySelectorAll('input[type=submit],input[type=button],button,a,span.dxb,div.dxbButton')].find((b) => {
+      const t = String(b.value || b.textContent || '').replace(/\s+/g, ' ').trim();
+      return b.getBoundingClientRect().width > 0 && (wantSave ? /^save$/i.test(t) : /^print\s*(&|&amp;|and)\s*submit$|^submit$/i.test(t));
+    });
 
   if (!domBtn && !aspxBtn) {
-    return { state: 'error', message: 'Neither Print & Submit nor Save button was found on the eTRF form.' };
+    const seen = [...document.querySelectorAll('input[type=submit],input[type=button],button')].filter((b) => b.getBoundingClientRect().width > 0).map((b) => String(b.value || b.textContent || '').trim()).filter(Boolean).slice(0, 12).join(' | ');
+    return { state: 'error', retry: true, message: 'Neither Print & Submit nor Save button was found on the eTRF form. Buttons on screen: ' + seen + ' @ ' + location.pathname };
   }
   const label = (domBtn && domBtn.value) || (wantSave ? 'Save' : 'Print & Submit');
   if (domBtn) domBtn.click();
@@ -1116,7 +1192,7 @@ async function pressNormalFormCommit(action) {
     const byId = [
       'PH1_NormalFormSelector1_NF1_ButtonBar1_pcConfirmOkCancel_ASPxConfirmOk',
       'PH1_NormalFormSelector1_NF1_PopupYesNoCancel1_pcYesNoCancel_btnPopupYNCYes',
-    ].map((id) => document.getElementById(id)).find(visible);
+    ].map((id) => document.getElementById(id) || document.getElementById(id.replace(/^PH1_/, ''))).find(visible);
     const byText = [...document.querySelectorAll('input[type=submit],input[type=button],a')].find((b) => visible(b) && /^(ok|yes)$/i.test((b.value || b.textContent || '').trim()));
     const ok = byId || byText;
     if (ok) { ok.click(); break; }

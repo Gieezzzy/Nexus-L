@@ -1,6 +1,17 @@
 # Disable directory browsing
 Options -Indexes
 
+# Block direct HTTP access to dotfiles (.env, .htaccess, .git, etc.)
+<FilesMatch "^\.">
+	<IfModule mod_authz_core.c>
+		Require all denied
+	</IfModule>
+	<IfModule !mod_authz_core.c>
+		Order allow,deny
+		Deny from all
+	</IfModule>
+</FilesMatch>
+
 # ----------------------------------------------------------------------
 # Rewrite engine
 # ----------------------------------------------------------------------

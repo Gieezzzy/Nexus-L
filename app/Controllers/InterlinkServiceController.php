@@ -65,6 +65,10 @@ class InterlinkServiceController extends BaseController
             UNIQUE KEY uq_job (job_uid),
             KEY ix_user (user_id, finished_at)
         ) DEFAULT CHARSET=utf8mb4');
+        if (! $this->db()->fieldExists('result_json', 'tbl_interlink_service_jobs')) {
+            $this->db()->query('ALTER TABLE tbl_interlink_service_jobs ADD COLUMN result_json MEDIUMTEXT NULL');
+        }
+        $this->db()->query('ALTER TABLE tbl_interlink_service_jobs MODIFY mode VARCHAR(20) NOT NULL DEFAULT "edit"');
         if (! $this->db()->fieldExists('started_at', 'tbl_interlink_service_jobs')) {
             $this->db()->query('ALTER TABLE tbl_interlink_service_jobs ADD COLUMN started_at DATETIME NULL AFTER created_at');
         }
@@ -174,11 +178,14 @@ class InterlinkServiceController extends BaseController
         $q = $this->db()->table('tbl_dtr_report_approvals')->where('lab_ref_no', $labRef)->where('status', 'approved');
         $q->groupStart()->where('application_no', $appNo)->orWhere('application_no', '')->orWhere('application_no IS NULL')->groupEnd();
         $a      = $q->orderBy('id', 'DESC')->get()->getRowArray();
-        $signed = $a ? WRITEPATH . 'approvals/' . ($a['file_key'] ?: $a['token']) . '_signed.pdf' : '';
+        // the signed report - or, when the user changed the attached file of this approved report, the copy of THEIR file kept in NEXUS-L
+        \App\Libraries\ApprovalFiles::ensureColumns();
+        $pick   = $a ? \App\Libraries\ApprovalFiles::chosen($a) : ['path' => '', 'name' => '', 'replaced' => false];
+        $signed = $pick['path'];
         if ($signed === '' || ! is_file($signed)) {
             return $this->json(['ok' => false, 'error' => "{$labRef} has no approved, signed report for {$appNo}. Generate it on the Upload Form and request approval (QR) first."], 409);
         }
-        $pdfName  = preg_replace('/[\\\\\/:*?"<>|\x00-\x1f]+/', '_', trim((string) ($p['pdf_name'] ?? ''))) ?: $appNo . '.pdf';
+        $pdfName  = preg_replace('/[\\\\\/:*?"<>|\x00-\x1f]+/', '_', trim((string) ($p['pdf_name'] ?? ''))) ?: ($pick['replaced'] && $pick['name'] !== '' ? $pick['name'] : $appNo . '.pdf');
         $reportNo = trim((string) ($fields['report_no'] ?? '')) ?: (string) ($this->db()->table('tbl_dtr_unified_labrefs')->select('tr_no')->where('lab_ref_no', $labRef)->get()->getRowArray()['tr_no'] ?? '');
 
         // InterLink does not accept one Report No. twice ("A report with the entered report number has already exists!"): say so before queueing
@@ -389,6 +396,9 @@ class InterlinkServiceController extends BaseController
             // the service took this report up: the user is told it has started (no Synology message for that)
             $this->db()->table('tbl_interlink_service_jobs')->where('id', $job['id'])->where('finished_at IS NULL')->update(['status' => 'running', 'started_at' => date('Y-m-d H:i:s')]);
             $this->db()->table('tbl_interlink_etrf_requests')->where('job_uid', $uid)->update(['status' => 'running', 'status_message' => $msg ?: 'Submitting eTRF in InterLink...', 'updated_at' => date('Y-m-d H:i:s')]);
+            if (($job['mode'] ?? '') === 'vf_copy') {
+                (new \App\Libraries\VfTestRequestService())->handleCopyCallback($job, $p);
+            }
 
             return $this->json(['ok' => true]);
         }
@@ -396,7 +406,20 @@ class InterlinkServiceController extends BaseController
         if ($newApp !== '' && preg_match('/^A\d{6,}$/i', $newApp)) {
             $upd['application_no'] = strtoupper($newApp);
         }
+        if (in_array(($job['mode'] ?? ''), ['grid_html', 'vf_grid'], true) && $state === 'done' && ! empty($p['result_json'])) {
+            $upd['result_json'] = (string) $p['result_json'];
+        }
         $this->db()->table('tbl_interlink_service_jobs')->where('id', $job['id'])->update($upd);
+        if (($job['mode'] ?? '') === 'vf_grid') {
+            // the saved copy of this list page (VF - Test Request) is filled only by the job that was claimed for it
+            try {
+                \App\Libraries\VfGridCache::ensure($this->db());
+                $decoded = $state === 'done' && ! empty($p['result_json']) ? json_decode((string) $p['result_json'], true) : null;
+                \App\Libraries\VfGridCache::finish($this->db(), (string) $uid, (string) $state, (string) $msg, is_array($decoded) ? $decoded : null);
+            } catch (\Throwable $e) {
+                log_message('error', 'VfGridCache finish failed: ' . $e->getMessage());
+            }
+        }
 
         $etrfRow = $this->db()->table('tbl_interlink_etrf_requests')->where('job_uid', $uid)->get()->getRowArray();
         if ($etrfRow) {
@@ -414,30 +437,77 @@ class InterlinkServiceController extends BaseController
             $this->db()->table('tbl_interlink_etrf_requests')->where('id', $etrfRow['id'])->update($etrfUpd);
         }
 
-        $lab = (string) ($job['lab_ref_no'] ?? '');
-        $rep = (string) ($job['report_no'] ?? '');
-        $isEtrf = ($job['mode'] ?? '') === 'etrf';
+        $lab    = (string) ($job['lab_ref_no'] ?? '');
+        $rep    = (string) ($job['report_no'] ?? '');
+        $mode   = (string) ($job['mode'] ?? '');
+        $isEtrf = in_array($mode, ['etrf', 'vf_copy'], true);
         $genApp = (string) ($upd['application_no'] ?? '');
+
+        if ($mode === 'vf_pdf') {
+            (new \App\Libraries\VfTestRequestService())->handlePdfCallback($job, $p);
+        } elseif ($mode === 'vf_copy') {
+            (new \App\Libraries\VfTestRequestService())->handleCopyCallback($job, $p);
+        } elseif ($mode === 'vf_grid' && $state === 'done' && ! empty($p['result_json'])) {
+            $resData = json_decode((string) $p['result_json'], true);
+            $gRows   = is_array($resData['rows'] ?? null) ? $resData['rows'] : [];
+            if ($gRows && $this->db()->tableExists('tbl_interlink_reports')) {
+                $now = date('Y-m-d H:i:s');
+                foreach ($gRows as $gr) {
+                    $gApp = strtoupper(trim((string) ($gr['Application No.'] ?? '')));
+                    if ($gApp === '') {
+                        continue;
+                    }
+                    $pkg = trim((string) ($gr['Test Package(s)'] ?? ($gr['_filter_package'] ?? '')));
+                    $ex  = $this->db()->table('tbl_interlink_reports')->where('application_no', $gApp)->get(1)->getRowArray();
+                    $suffix = substr(preg_replace('/\D/', '', $gApp), -5) ?: '00001';
+                    $rowMap = [
+                        'application_no'      => $gApp,
+                        'sample_type'         => (string) ($gr['Sample Type'] ?? 'Finished Product'),
+                        'trf_submission_date' => (string) ($gr['Online TRF Submission Date'] ?? ''),
+                        'report_no'           => (string) ($gr['Report No.'] ?? ''),
+                        'report_issue_date'   => (string) ($gr['Report Issue Date'] ?? ''),
+                        'job_status'          => (string) ($gr['Job Status'] ?? ''),
+                        'overall_result'      => (string) ($gr['Overall Result'] ?? ''),
+                        'company_name'        => (string) ($gr['Company Name'] ?? 'KEY TRADE CO., LTD'),
+                        'vendor_id'           => (string) ($gr['Vendor ID'] ?? ''),
+                        'vendor_name'         => (string) ($gr['Vendor Name'] ?? ''),
+                        'factory_id'          => (string) ($gr['Factory ID'] ?? ''),
+                        'factory_name'        => (string) ($gr['Factory Name'] ?? ''),
+                        'buyer_brand'         => (string) ($gr['Brand Name'] ?? 'Vans'),
+                        'test_stage'          => (string) ($gr['Test Stage'] ?? 'Production'),
+                        'product_export_to'   => (string) ($gr['Product Export To'] ?? ''),
+                        'service_test_type'   => (string) ($gr['Service Test Type'] ?? ''),
+                        'service_provider'    => (string) ($gr['Service Provider'] ?? ''),
+                        'style_no'            => (string) ($gr['Style No.'] ?? ''),
+                        'material_code'       => (string) ($gr['Material Code'] ?? ''),
+                        'style_color_no'      => (string) ($gr['SKU No.'] ?: $gr['Product ID'] ?? ''),
+                        'season'              => (string) ($gr['Season'] ?? ''),
+                        'sourcing_office'     => (string) ($gr['Sourcing Office'] ?? ''),
+                        'test_packages'       => $pkg,
+                        'color_code'          => (string) ($gr['Color Code'] ?? ''),
+                        'colorway_name'       => (string) ($gr['Color Description'] ?? ''),
+                        'product_category'    => (string) ($gr['Product Category'] ?? 'Footwear'),
+                        'product_id'          => (string) ($gr['Product ID'] ?? ''),
+                        'updated_at'          => $now,
+                    ];
+                    if ($ex) {
+                        $this->db()->table('tbl_interlink_reports')->where('id', $ex['id'])->update($rowMap);
+                    } else {
+                        $rowMap['nexus_sample_id']     = 'NXL-' . date('Y') . '-' . $suffix;
+                        $rowMap['nexus_work_order_no'] = 'WO-' . date('Ymd') . '-' . $suffix;
+                        $rowMap['created_at']          = $now;
+                        $this->db()->table('tbl_interlink_reports')->insert($rowMap);
+                    }
+                }
+            }
+        }
 
         // When an eTRF finishes and InterLink generated an Application No. (A006...), write it back to DTR & InterLink tables
         if ($state === 'done' && $genApp !== '' && preg_match('/^A\d{6,}$/i', $genApp)) {
             if ($lab !== '') {
-                $this->db()->table('tbl_dtr_unified_labrefs')->where('lab_ref_no', $lab)->update(['tr_no' => $genApp]);
+                // the selected Lab Reference is linked to the Application No. through tbl_dtr_unified_labrefs (and the DTR form it came from);
                 // each eTRF type keeps its own Application No. for this Lab Ref (the earlier ones go to its history)
-                \App\Libraries\EtrfAppNos::record($lab, (string) ($etrfRow['etrf_type'] ?? ''), $genApp);
-                $uRows = $this->db()->table('tbl_dtr_unified_labrefs')->where('lab_ref_no', $lab)->get()->getResultArray();
-                foreach ($uRows as $ur) {
-                    $slug = (string) ($ur['form_slug'] ?? '');
-                    $sid  = (int) ($ur['source_id'] ?? 0);
-                    $cfg  = $slug !== '' ? (\App\Controllers\DtrController::FORM_CONFIG[$slug] ?? null) : null;
-                    if ($cfg && $sid > 0 && $this->db()->tableExists($cfg['table'])) {
-                        if ($this->db()->fieldExists('TR', $cfg['table'])) {
-                            $this->db()->table($cfg['table'])->where($cfg['pk'], $sid)->update(['TR' => $genApp]);
-                        } elseif ($this->db()->fieldExists('ETRFNo', $cfg['table'])) {
-                            $this->db()->table($cfg['table'])->where($cfg['pk'], $sid)->update(['ETRFNo' => $genApp]);
-                        }
-                    }
-                }
+                \App\Libraries\EtrfAppNos::linkToLabRef($lab, (string) ($etrfRow['etrf_type'] ?? ''), $genApp);
             }
             if ($etrfRow && $this->db()->tableExists('tbl_interlink_reports')) {
                 $exRep = $this->db()->table('tbl_interlink_reports')->where('application_no', $genApp)->get()->getRowArray();
@@ -476,11 +546,16 @@ class InterlinkServiceController extends BaseController
             }
         }
 
+        if (in_array($mode, ['grid_html', 'vf_grid'], true)) {
+            return $this->json(['ok' => true]);      // reading the grid is not a submission: no Synology message, no toast
+        }
+
         if ($state === 'done') {
-            $appLabel = ($upd['application_no'] ?? $job['application_no']);
+            // for an eTRF only the Application No. InterLink generated counts; the job's own tag holds the lab reference and must never be shown as one
+            $appLabel = $isEtrf ? $genApp : ($upd['application_no'] ?? $job['application_no']);
             if ($isEtrf) {
                 $this->notifyInterlinkChat((int) $job['user_id'], $rep, $lab, (string) $appLabel, $msg, $etrfRow);
-                $this->synology((int) $job['user_id'], "THANK YOU! For your online job submission\nApplication No: {$appLabel}\nTemplate: {$rep}" . ($lab !== '' ? "\nLabRef: {$lab}" : '') . ($msg !== '' ? "\n{$msg}" : ''));
+                $this->synology((int) $job['user_id'], "THANK YOU! For your online job submission\nApplication No: " . ($appLabel !== '' ? $appLabel : 'not read - check InterLink (Lab Ref ' . $lab . ')') . "\nTemplate: {$rep}" . ($lab !== '' ? "\nLabRef: {$lab}" : '') . ($msg !== '' ? "\n{$msg}" : ''));
             } else {
                 $this->synology((int) $job['user_id'], "Labreference: {$lab}\nReportNO: {$rep}\nsubmitted to InterLink");
             }
@@ -509,9 +584,13 @@ class InterlinkServiceController extends BaseController
         $prodName   = trim((string) ($etrfRow['product_name'] ?? ''));
         $pkg        = trim((string) ($etrfRow['test_packages'] ?? ''));
         $isSuccess  = $appNo !== '' && ! str_starts_with($statusMsg, 'FAILED:');
+        $notRead    = $appNo === '' && ! str_starts_with($statusMsg, 'FAILED:');
 
         $lines = [];
-        if ($isSuccess) {
+        if ($notRead) {
+            $lines[] = '⚠️ Submitted, but the InterLink Application No. could not be read';
+            $lines[] = '📌 Application No: not read - open InterLink and look it up';
+        } elseif ($isSuccess) {
             $lines[] = '🎉 THANK YOU! For your online job submission';
             $lines[] = "📌 Application No: {$appNo}";
         } else {
@@ -598,11 +677,38 @@ class InterlinkServiceController extends BaseController
         $q   = $this->db()->table('tbl_dtr_report_approvals')->where('lab_ref_no', $lab)->where('status', 'approved');
         $q->groupStart()->where('application_no', $app)->orWhere('application_no', '')->orWhere('application_no IS NULL')->groupEnd();
         $a      = $q->orderBy('id', 'DESC')->get()->getRowArray();
-        $signed = $a ? WRITEPATH . 'approvals/' . ($a['file_key'] ?: $a['token']) . '_signed.pdf' : '';
+        \App\Libraries\ApprovalFiles::ensureColumns();
+        $signed = $a ? \App\Libraries\ApprovalFiles::chosen($a)['path'] : '';
 
         return $this->json($signed !== '' && is_file($signed)
             ? ['ok' => true, 'approved' => true, 'sha256' => hash_file('sha256', $signed), 'by' => $a['decided_name'], 'at' => $a['decided_at']]
             : ['ok' => true, 'approved' => false]);
+    }
+
+    /**
+     * GET interlink/service/report-jobs : the reports (Add / Edit of an Application) sent to InterLink through the service, newest first, with their
+     * status and - when it failed - the reason. Shown under the main list of the InterLink page, like the eTRF list.
+     */
+    public function reportJobs()
+    {
+        $this->table();
+        $rows = $this->db()->table('tbl_interlink_service_jobs')
+            ->select('id, application_no, lab_ref_no, report_no, mode, status, message, user_name, created_at, started_at, finished_at')
+            ->whereIn('mode', ['add', 'edit'])
+            ->orderBy('id', 'DESC')
+            ->get(25)->getResultArray();
+        $stale = time() - 1800;                       // a job that never finished (the service stopped) is not "running" for ever
+        foreach ($rows as &$r) {
+            $r['live'] = in_array($r['status'], ['queued', 'running'], true) && strtotime((string) $r['created_at']) > $stale;
+            if (in_array($r['status'], ['queued', 'running'], true) && ! $r['live']) {
+                $r['status']  = 'failed';
+                $r['message'] = 'No answer from the InterLink service for 30 minutes: check NexusInterlinkService, then send it again.';
+            }
+        }
+        unset($r);
+        $ahead = (int) $this->db()->table('tbl_interlink_service_jobs')->whereIn('status', ['queued', 'running'])->where('created_at >', date('Y-m-d H:i:s', $stale))->countAllResults();
+
+        return $this->json(['ok' => true, 'rows' => $rows, 'active' => $ahead]);
     }
 
     /** GET interlink/service/feed?after= : finished jobs of the signed-in user, for the toast shown wherever they are in NEXUS-L */
@@ -614,7 +720,7 @@ class InterlinkServiceController extends BaseController
         $this->table();
         $out['running'] = $this->db()->table('tbl_interlink_service_jobs')->where('user_id', $uid)->whereIn('status', ['queued', 'running'])->where('created_at >', date('Y-m-d H:i:s', time() - 900))->countAllResults();
         if ($after !== '') {
-            foreach ($this->db()->table('tbl_interlink_service_jobs')->where('user_id', $uid)->where('started_at >', $after)->orderBy('id')->get(20)->getResultArray() as $j) {
+            foreach ($this->db()->table('tbl_interlink_service_jobs')->where('user_id', $uid)->whereNotIn('mode', ['grid_html', 'vf_grid'])->where('started_at >', $after)->orderBy('id')->get(20)->getResultArray() as $j) {
                 $isEtrf = ($j['mode'] ?? '') === 'etrf';
                 $label  = $isEtrf ? ("eTRF ({$j['report_no']})" . ($j['lab_ref_no'] !== '' ? " [{$j['lab_ref_no']}]" : '')) : "{$j['application_no']} ({$j['lab_ref_no']})";
                 $out['events'][] = [
@@ -626,11 +732,15 @@ class InterlinkServiceController extends BaseController
                     'template'       => $j['report_no'],
                 ];
             }
-            foreach ($this->db()->table('tbl_interlink_service_jobs')->where('user_id', $uid)->where('finished_at >', $after)->orderBy('id')->get(20)->getResultArray() as $j) {
-                $isEtrf = ($j['mode'] ?? '') === 'etrf';
+            foreach ($this->db()->table('tbl_interlink_service_jobs')->where('user_id', $uid)->whereNotIn('mode', ['grid_html', 'vf_grid'])->where('finished_at >', $after)->orderBy('id')->get(20)->getResultArray() as $j) {
+                $isEtrf = in_array($j['mode'] ?? '', ['etrf', 'vf_copy'], true);
                 if ($j['status'] === 'done') {
+                    $realApp = preg_match('/^A\d{6,}/i', (string) $j['application_no']) ? (string) $j['application_no'] : '';   // never the lab reference / job tag
+                    if ($isEtrf) {
+                        $j['application_no'] = $realApp;
+                    }
                     $txt = $isEtrf
-                        ? ("THANK YOU! For your online job submission — Application No: {$j['application_no']} · Template: {$j['report_no']}" . ($j['lab_ref_no'] !== '' ? " · LabRef: {$j['lab_ref_no']}" : ''))
+                        ? ("THANK YOU! For your online job submission — Application No: " . ($realApp !== '' ? $realApp : 'not read, check InterLink') . " · Template: {$j['report_no']}" . ($j['lab_ref_no'] !== '' ? " · LabRef: {$j['lab_ref_no']}" : ''))
                         : "Labreference: {$j['lab_ref_no']} · ReportNO: {$j['report_no']} · submitted to InterLink";
                     $out['events'][] = [
                         'kind'           => 'success',

@@ -370,6 +370,17 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                 <button type="button" class="itk-export-btn">Export to Excel Test Item</button>
                 <button type="button" class="itk-export-btn">Export to Excel Reading</button>
             </div>
+
+            <!-- Reports sent to InterLink from NEXUS-L (Report Submission): status of each, and the reason when one failed -->
+            <div class="itk-sent" id="itk-sent">
+                <h4>Reports sent from NEXUS-L <span class="itk-sent-note" id="itk-sent-note"></span></h4>
+                <div class="itk-sent-list">
+                    <table>
+                        <thead><tr><th>#</th><th>Application No.</th><th>Lab Ref</th><th>Report No.</th><th>Mode</th><th>Status</th><th>By</th><th>When</th></tr></thead>
+                        <tbody id="itk-sent-tbody"><tr><td colspan="8" class="itk-sent-muted">Loading...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <div class="itk-footer">
@@ -767,6 +778,7 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                         <div class="uf-apv hidden" id="uf-apv">
                             <div class="uf-apv-line"><span class="uf-apv-dot" id="uf-apv-dot"></span><span id="uf-apv-status">Needs approval before it can be sent to InterLink.</span></div>
                             <button type="button" class="uf-action-btn uf-btn-gen" id="uf-apv-request">Request approval (QR)</button>
+                            <button type="button" class="uf-att-link hidden" id="uf-apv-use-signed" title="Stop using your own file for this approved report">Use the signed report again</button>
                             <div class="uf-apv-qr-wrap hidden" id="uf-apv-qr-wrap">
                                 <div class="uf-apv-qr" id="uf-apv-qr" aria-label="QR code of the approval link"></div>
                                 <div class="uf-apv-qr-txt">

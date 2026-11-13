@@ -10,6 +10,7 @@ use CodeIgniter\Router\RouteCollection;
 $routes->group('', ['filter' => 'guest'], static function (RouteCollection $routes): void {
     $routes->get('login', 'AuthController::login', ['as' => 'login']);
     $routes->post('login', 'AuthController::attemptLogin');
+    $routes->post('guest-login', 'AuthController::guestLogin', ['as' => 'login.guest']);
 
     $routes->get('register', 'AuthController::register', ['as' => 'register']);
     $routes->post('register', 'AuthController::attemptRegister');
@@ -118,6 +119,14 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     // Lab Monitoring: ERP Finish Monitoring
     $routes->get('lab-monitoring', 'LabMonitoringController::erp', ['as' => 'lab-monitoring']);
     $routes->get('lab-monitoring/erp-finish', 'LabMonitoringController::erp');
+    $routes->get('lab-monitoring/vf-requests', 'VfTestRequestController::monitoring', ['as' => 'lab-monitoring-vf']);
+    $routes->get('lab-monitoring/vf-requests/data', 'VfTestRequestController::monitoringData');
+    $routes->post('lab-monitoring/vf-requests/send-email', 'VfTestRequestController::sendBatchEmail');
+    $routes->post('lab-monitoring/vf-requests/email-preview', 'VfTestRequestController::emailPreview');
+    $routes->post('lab-monitoring/vf-requests/fetch-pdfs', 'VfTestRequestController::fetchPdfs');
+    $routes->post('lab-monitoring/vf-requests/toggle-auto', 'VfTestRequestController::toggleAutoEmail');
+    $routes->post('lab-monitoring/vf-requests/update-row', 'VfTestRequestController::updateRow');
+    $routes->get('lab-monitoring/vf-requests/pdf/(:segment)/(:num)', 'VfTestRequestController::pdf/$1/$2');
     $routes->get('lab-monitoring/data', 'LabMonitoringController::data');
     $routes->get('lab-monitoring/erp-log', 'LabMonitoringController::erpLog');
     $routes->get('lab-monitoring/agent-status', 'LabMonitoringController::agentStatus');
@@ -133,6 +142,7 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->post('interlink/submit', 'InterlinkController::submitToInterlink');
     $routes->post('interlink/fetch-live-page', 'InterlinkController::fetchLivePage');
     $routes->post('interlink/pull-grid-html', 'InterlinkController::pullGridHtml');
+    $routes->post('interlink/service-grid', 'InterlinkController::serviceGrid');
     $routes->post('interlink/fetch-live-form', 'InterlinkController::fetchLiveForm');
     $routes->get('interlink/labrefs', 'InterlinkController::labrefs');
     $routes->get('interlink/search', 'InterlinkController::search');
@@ -142,6 +152,23 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->get('interlink/center/status', 'InterlinkController::centerStatus');
     $routes->post('interlink/center/fill', 'InterlinkController::centerFill');
     $routes->get('interlink/etrf', 'InterlinkController::etrf', ['as' => 'interlink_etrf']);
+    $routes->get('interlink/vf-test-request', 'VfTestRequestController::index', ['as' => 'interlink_vf_request']);
+    $routes->get('interlink/vf-test-request/data', 'VfTestRequestController::data');
+    $routes->get('interlink/vf-test-request/detail/(:segment)', 'VfTestRequestController::detail/$1');
+    $routes->get('interlink/vf-test-request/erp-lookup', 'VfTestRequestController::erpLookup');
+    $routes->post('interlink/vf-test-request/fill-form', 'VfTestRequestController::fillForm');
+    $routes->post('interlink/vf-test-request/submit', 'VfTestRequestController::submit');
+    $routes->post('interlink/vf-test-request/sync-emails', 'VfTestRequestController::syncEmails');
+    $routes->post('interlink/vf-test-request/import-html', 'VfTestRequestController::importHtml');
+    $routes->get('interlink/vf-test-request/past-apps', 'VfTestRequestController::pastApps');
+    $routes->get('interlink/vf-test-request/sources', 'VfTestRequestController::sources');
+    $routes->post('interlink/vf-test-request/sources/save', 'VfTestRequestController::saveSource');
+    $routes->post('interlink/vf-test-request/sources/delete', 'VfTestRequestController::deleteSource');
+    $routes->post('interlink/vf-test-request/sources/share', 'VfTestRequestController::shareSources');
+    $routes->post('interlink/vf-test-request/sources/preview', 'VfTestRequestController::previewSource');
+    $routes->post('interlink/vf-test-request/sync-grid', 'VfTestRequestController::syncGrid');
+    $routes->get('interlink/vf-test-request/job/(:segment)', 'VfTestRequestController::gridJob/$1');
+    $routes->get('interlink/vf-test-request/grid', 'VfTestRequestController::grid');
 $routes->post('interlink/etrf-check', 'InterlinkController::etrfCheck');
 $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('interlink/etrf-history', 'InterlinkController::etrfHistory');
@@ -158,6 +185,7 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->post('interlink/service/signin', 'InterlinkServiceController::signin');
     $routes->post('interlink/service/submit', 'InterlinkServiceController::submit');
     $routes->get('interlink/service/feed', 'InterlinkServiceController::feed');
+    $routes->get('interlink/service/report-jobs', 'InterlinkServiceController::reportJobs');
 
     // QC Lab Digital Test Reports (#Digital Test Report & Bonding LIS System)
     $routes->get('dtr', 'DtrController::index', ['as' => 'dtr']);
@@ -199,6 +227,7 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('dtr/report-pdf', 'ApprovalController::reportPdf');
     $routes->get('dtr/approval/status', 'ApprovalController::status');
     $routes->post('dtr/approval/request', 'ApprovalController::request');
+    $routes->post('dtr/approval/replace-file', 'ApprovalController::replaceFile');
     $routes->get('dtr/approval/file/(:segment)', 'ApprovalController::file/$1');
     $routes->get('dtr/approval/verify', 'ApprovalController::verify');
     $routes->post('dtr/approval/pdf-pages', 'ApprovalController::pdfPages');

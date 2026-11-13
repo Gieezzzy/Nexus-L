@@ -42,7 +42,8 @@ class MailOutbox
         // a table made earlier by the Handler or an older version may miss columns
         $have = array_column($db->query('SHOW COLUMNS FROM tbl_email_outbox')->getResultArray(), 'Field');
         $add  = ['sender_name' => 'VARCHAR(100) NULL', 'sender_email' => 'VARCHAR(150) NULL', 'attachments' => 'LONGTEXT NULL',
-            'claimed_at' => 'DATETIME NULL', 'claimed_by' => 'VARCHAR(20) NULL'];
+            'claimed_at' => 'DATETIME NULL', 'claimed_by' => 'VARCHAR(20) NULL',
+            'reply_to_message_id' => 'VARCHAR(500) NULL', 'reply_to_subject' => 'VARCHAR(255) NULL'];
         foreach ($add as $col => $def) {
             if (! in_array($col, $have, true)) {
                 $db->query("ALTER TABLE tbl_email_outbox ADD COLUMN {$col} {$def}");
@@ -94,12 +95,14 @@ class MailOutbox
             'source'       => mb_substr((string) ($opt['source'] ?? 'NEXUS-L'), 0, 50),
             'sender_name'  => trim((string) ($opt['sender_name'] ?? '')) ?: null,
             'sender_email' => trim((string) ($opt['sender_email'] ?? '')) ?: null,
-            'to_address'   => implode(', ', $toList),
-            'cc_address'   => $cc ? implode(', ', $cc) : null,
+            'to_address'   => implode('; ', $toList),
+            'cc_address'   => $cc ? implode('; ', $cc) : null,
             'subject'      => mb_substr($subject, 0, 250),
             'body'         => $body,
             'attachments'  => $attJson,
             'is_html'      => array_key_exists('is_html', $opt) && ! $opt['is_html'] ? 0 : 1,
+            'reply_to_message_id' => trim((string) ($opt['reply_to_message_id'] ?? '')) ?: null,   // the e-mail is a REPLY in that thread (the Relay answers the original message)
+            'reply_to_subject'    => mb_substr(trim((string) ($opt['reply_to_subject'] ?? '')), 0, 250) ?: null,
             'status'       => 'queued',
             'created_at'   => date('Y-m-d H:i:s'),
         ]);

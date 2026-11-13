@@ -17,7 +17,7 @@
   const note = (text, ok = true) => { const e = $('#su-note'); e.textContent = text; e.className = 'su-note ' + (ok ? 'ok' : 'err'); };
   // the access grid is far below the top note: its own message sits beside the Save button
   const mnote = (text, ok = true) => { const e = $('#su-mnote'); if (!e) return note(text, ok); e.textContent = text; e.className = 'su-mnote ' + (ok ? 'ok' : 'err'); };
-  const COLOR = { Admin: '#b91c1c', Manager: '#1d4ed8', Supervisor: '#0f766e', Encoding: '#b45309', Materials: '#15803d', Bonding: '#9a3412', Technician: '#475569' };
+  const COLOR = { Admin: '#b91c1c', Manager: '#1d4ed8', Supervisor: '#0f766e', Encoding: '#b45309', Materials: '#15803d', Bonding: '#9a3412', Technician: '#475569', Guest: '#0284c7' };
   const hue = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
   const initials = (n) => String(n).split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
   let ROLES = []; let USERS = []; let editing = null;

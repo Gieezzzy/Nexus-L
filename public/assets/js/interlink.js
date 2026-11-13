@@ -387,51 +387,42 @@
    * Fetches any page (1..517) and pageSize live from InterLink 2.0's SearchFormWithHeader.aspx
    * BuilderGridView, upserts into dbnexus, and updates the grid in real time.
    */
-  // Reading InterLink itself: NEXUS-L's server holds no InterLink login (see pullInterlinkGridPage() server-side), so the
-  // only way to show InterLink's own pages is through the sender extension, in the user's own signed-in browser. It reads
-  // InterLink's grid pages (15 rows each) in a background tab it opens and closes by itself - nobody has to keep InterLink
-  // open. Without the extension this view can only show NEXUS-L's saved copy, which holds far fewer rows than InterLink.
-  // Reading needs sender 1.3.1 or newer (older ones answer in a format this page cannot match, which used to look like an
-  // endless "loading"): the page checks the version, and every request must be acknowledged within a few seconds.
-  const MIN_SENDER = '1.3.1';
-  const senderVersion = () => document.documentElement.dataset.nxlSenderVersion || '';
-  const versionAtLeast = (v, min) => {
-    const a = String(v || '0').split('.').map(Number);
-    const b = min.split('.').map(Number);
-    for (let i = 0; i < 3; i++) { if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0); }
-    return true;
+  // Reading InterLink itself goes through the NexusInterlinkService: it works in its own browser window on the service computer,
+  // reads the Inhouse & 3rd party grid pages and NEXUS-L parses them. Nothing opens in the user's browser (the old browser-extension
+  // reader that opened a background tab was removed).
+  const serviceReady = () => state.serviceOnline === true;
+  // Not connected = no data at all: the page never shows NEXUS-L's saved copy of InterLink, only the connection error.
+  const checkService = async (force) => {
+    if (!force && state.connAt && Date.now() - state.connAt < 8000 && state.conn) return state.serviceOnline;
+    let conn = { ok: false, message: 'Connection to the InterLink Service error: NEXUS-L could not ask the service for its status.' };
+    try {
+      const j = await apiFetch('interlink/service/status');
+      if (!j || !j.enabled) conn = { ok: false, message: 'Connection to the InterLink Service error: the service is not set up. An administrator turns it on in Settings > InterLink service.' };
+      else if (!j.online) conn = { ok: false, message: 'Connection to the InterLink Service error: the service does not answer at the address in Settings > InterLink service. Start NexusInterlinkService on that computer.' };
+      else if (!j.signedIn) conn = { ok: false, message: 'Connected to the InterLink Service, but it is not signed in to InterLink. Sign in through the service (tray menu, or the VF - Test Request page offers it), then retry.' };
+      else conn = { ok: true, message: '' };
+    } catch (e) { /* keeps the default error */ }
+    state.conn = conn; state.connAt = Date.now(); state.serviceOnline = conn.ok;
+    return conn.ok;
   };
-  const senderInstalled = () => document.documentElement.dataset.nxlSender === '1';
-  const hasGridSender = () => senderInstalled() && versionAtLeast(senderVersion(), MIN_SENDER);
-  let pullSeq = 0;
-  const nxPullGrid = ({ firstPage, count, silent }) => new Promise((resolve, reject) => {
-    const reqId = `g${Date.now()}_${++pullSeq}`;
-    const cleanup = () => { clearTimeout(timer); clearTimeout(ackTimer); window.removeEventListener('message', onMsg); };
-    const onMsg = (e) => {
-      if (e.source !== window || !e.data || e.data.reqId !== reqId) return;
-      if (e.data.type === 'NXL_GRID_ACK') clearTimeout(ackTimer);
-      if (e.data.type === 'NXL_GRID_PROGRESS' && !silent) { const sub = $('#il-loading-sub'); if (sub && e.data.message) sub.textContent = e.data.message; }
-      if (e.data.type === 'NXL_GRID_HTML') { cleanup(); resolve(e.data.pages || []); }
-      if (e.data.type === 'NXL_GRID_STATUS' && e.data.ok === false) { cleanup(); reject(new Error(e.data.message || 'Could not read InterLink.')); }
-    };
-    const ackTimer = setTimeout(() => { cleanup(); reject(new Error('The extension did not answer. Reload this page (Ctrl+F5); if that does not help, update the NEXUS-L InterLink Sender extension.')); }, 5000);
-    const timer = setTimeout(() => { cleanup(); reject(new Error('InterLink took too long to answer.')); }, 150000);
-    window.addEventListener('message', onMsg);
-    window.postMessage({ type: 'NXL_PULL_GRID', reqId, firstPage, count, silent: !!silent }, location.origin);
+  const showConnectionError = (msg) => {
+    state.reports = [];
+    state.totalItems = 0;
+    const tbody = $('#itk-grid-tbody');
+    if (tbody) tbody.innerHTML = `<tr><td colspan="38" class="muted" style="text-align:center;padding:18px"><b style="color:#dc2626">Connection to InterLink Service error.</b> ${escHtml(String(msg || (state.conn && state.conn.message) || '').replace(/^Connection to the InterLink Service error:\s*/i, ''))} No InterLink data is shown until it is connected. <button type="button" class="itk-live-sync-btn" id="itk-conn-retry" style="margin-left:8px">Retry</button></td></tr>`;
+    const bar = $('#itk-pager-bar'); if (bar) bar.style.display = 'none';
+    const dot = $('#itk-live-dot'); if (dot) dot.className = 'itk-live-dot is-error';
+    const txt = $('#itk-live-text'); if (txt) txt.textContent = 'Not connected';
+    const retry = $('#itk-conn-retry');
+    if (retry) retry.addEventListener('click', () => { fetchLiveInterlinkPage(state.currentPage || 1, state.pageSize || 15, true, false); });
+  };
+  // The NEXUS-L view page `page` of `pageSize` rows, read from InterLink through the service: the InterLink pages that cover it
+  // are read, saved into NEXUS-L's copy, and the rows shown are InterLink's own, in InterLink's order.
+  const liveViewPage = async (page, pageSize) => apiFetch('interlink/service-grid', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ page, pageSize }),
   });
-  // The NEXUS-L view page `page` of `pageSize` rows, read from InterLink: the InterLink pages that cover it are read, saved
-  // into NEXUS-L's copy, and the rows shown are InterLink's own, in InterLink's order.
-  const liveViewPage = async (page, pageSize, silent) => {
-    const start = (page - 1) * pageSize;
-    const firstPage = Math.floor(start / 15) + 1;
-    const lastPage = Math.floor((start + pageSize - 1) / 15) + 1;
-    const pages = await nxPullGrid({ firstPage, count: lastPage - firstPage + 1, silent });
-    return apiFetch('interlink/pull-grid-html', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pages, firstPage, page, pageSize }),
-    });
-  };
 
   const fetchLiveInterlinkPage = async (page = state.currentPage, pageSize = state.pageSize, forceRefresh = false, silent = false) => {
     if (state.isFetchingPage) {
@@ -440,7 +431,9 @@
       if (!state.queuedFetch || (state.queuedFetch.silent && !silent)) state.queuedFetch = { page, pageSize, forceRefresh, silent };
       return;
     }
+    if (!(await checkService(!silent))) { showConnectionError(); return; }
     state.isFetchingPage = true;
+    const pb = $('#itk-pager-bar'); if (pb) pb.style.display = '';
 
     const liveDot = $('#itk-live-dot');
     const liveText = $('#itk-live-text');
@@ -450,36 +443,30 @@
     // Page clicks and the Live Refresh button read InterLink. Timer-driven and first-load calls (silent) only do so while
     // the reader tab is still open from a recent read (it closes by itself about a minute after the last one): they never
     // open a tab on their own, so nothing pops up while you work.
-    const useSender = hasGridSender() && (!silent || Date.now() < (state.liveWarmUntil || 0));
-    if (!silent && senderInstalled() && !hasGridSender() && !state.warnedOldSender) {
-      state.warnedOldSender = true;
-      showToast(`Your NEXUS-L InterLink Sender is out of date${senderVersion() ? ` (v${senderVersion()})` : ''}: pages are shown from NEXUS-L's saved copy only. Download v${MIN_SENDER} or newer with "Install the sender", reload it in chrome://extensions, then reload this page.`, true);
-    }
+    if (state.serviceOnline === undefined) await checkService();
+    const useSender = serviceReady() && Date.now() >= (state.serviceBackoffUntil || 0) && (!silent || Date.now() < (state.liveWarmUntil || 0));
 
     try {
       if (!silent) {
-        beginLoading(useSender ? `Reading page ${page} from InterLink through your browser… (the first read can take about 20 seconds)` : `Loading page ${page} of ${state.totalPages} from NEXUS-L…`, useSender ? 150000 : 30000);
+        beginLoading(useSender ? `Reading page ${page} from InterLink through the InterLink service… (the first read can take about 20 seconds)` : `Loading page ${page} of ${state.totalPages} from NEXUS-L…`, useSender ? 150000 : 30000);
       }
 
       let res = null;
+      let liveError = (Date.now() < (state.serviceBackoffUntil || 0)) ? (state.lastLiveError || '') : '';
       if (useSender) {
         try {
           res = await liveViewPage(page, pageSize, silent);
-          if (!silent) state.liveWarmUntil = Date.now() + 55000;   // only your own clicks keep the reader tab in use
+          if (!silent) state.liveWarmUntil = Date.now() + 55000;   // only your own clicks keep the service reader warm
         } catch (err) {
-          if (!silent) showToast(`${err.message} Showing NEXUS-L's saved copy instead.`, true);
+          liveError = err.message;
+          state.lastLiveError = err.message;
+          state.serviceBackoffUntil = Date.now() + 120000;      // do not retry (and do not repeat the error) for 2 minutes
+          if (!silent || !state.warnedServiceDown) { state.warnedServiceDown = true; showToast(`${err.message} Showing NEXUS-L's saved copy instead.`, true); }
         }
       }
       if (!res) {
-        res = await apiFetch('interlink/fetch-live-page', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            page: Number(page) || 1,
-            pageSize: Number(pageSize) || 15,
-            forceRefresh: Boolean(forceRefresh),
-          }),
-        });
+        if (!silent) showConnectionError(liveError || 'The InterLink Service did not return any data.');
+        return;
       }
 
       if (res && Array.isArray(res.rows)) {
@@ -669,7 +656,9 @@
     const btn = $('#btn-oneclick-send-top'); if (!btn) return;
     const appNo = state.activeAppNo || $('#uf_application_no')?.value || '';
     const ok = !!appNo && state.syncedFor === appNo;
-    btn.disabled = !ok;
+    // not really disabled: a disabled button swallows the click and the user sees nothing. It looks dimmed, and a click says what to do first.
+    btn.disabled = false;
+    btn.classList.toggle('is-gated', !ok);
     btn.setAttribute('aria-disabled', ok ? 'false' : 'true');
     btn.title = ok ? `Send this synced report (${state.syncedLab || appNo}) to InterLink` : 'Sync NEXUS-L Data first: the report can only be sent after the form has been filled from NEXUS-L';
   };
@@ -961,6 +950,7 @@
     $('#il-view-upload')?.classList.add('hidden');
     $('#il-view-normal')?.classList.add('hidden');
     $('#il-view-search')?.classList.remove('hidden');
+    if (window.nxLoadSentReports) window.nxLoadSentReports();   // back on the home list: the status of the report just sent
 
     const urlInput = $('#il-url-input');
     if (urlInput) {
@@ -979,7 +969,7 @@
     renderSearchGrid();
     updateNavButtons();
     // coming back to the grid reads the live page at once (no need to press Live Refresh)
-    if (hasGridSender() && !state.searchMode) setTimeout(() => fetchLiveInterlinkPage(state.currentPage || 1, state.pageSize || 15, false, false), 150);
+    if (serviceReady() && !state.searchMode) setTimeout(() => fetchLiveInterlinkPage(state.currentPage || 1, state.pageSize || 15, false, false), 150);
   };
 
   const updateNavButtons = () => {
@@ -1255,6 +1245,18 @@
   // =========================================================================
   // 4. EXECUTE FORM FILL & 1-CLICK LIVE REPORT SEND
   // =========================================================================
+  // Queues the report in the NexusInterlinkService. Throws an Error with the reason when it cannot be queued (for example: the report is not
+  // approved yet, the same Report No. is already used in InterLink, or the service is not running).
+  const sendReportToService = async (appNo, fields, labRef, mode) => {
+    const j = await apiFetch('interlink/service/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ application_no: appNo, lab_ref_no: labRef || '', fields: fields || undefined, mode: mode === 'add' ? 'add' : 'edit', pdf_name: window.nxPdfName ? window.nxPdfName(appNo, labRef) : '' }),
+    });
+    if (window.nxSvcWatch) window.nxSvcWatch();      // the toast for the final answer appears wherever the user is in NEXUS-L
+    return j;
+  };
+
   const executeSync = async (sendLive = false, override = null) => {
     const confirmBtn = $('#btn-confirm-sync');
     const liveBtn = $('#btn-confirm-and-send-live');
@@ -1293,6 +1295,14 @@
       const runBot = Boolean($('#sync-run-playwright')?.checked) || sendLive;
       const targetUrl = $('#il-url-input')?.value || '';
 
+      // The report goes to InterLink through the NexusInterlinkService (nothing opens in the user's browser). This is asked FIRST: when it
+      // cannot be queued (not approved, service not reachable ...) the reason is shown and nothing is recorded as sent.
+      let queued = null;
+      if (sendLive) {
+        showToast(`Sending ${appNo} to InterLink in the background...`);
+        queued = await sendReportToService(appNo, fieldsToSync, currentLabRef(), modeFor(appNo) === 'add' ? 'add' : 'edit');
+      }
+
       const res = await apiFetch('interlink/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1306,8 +1316,7 @@
         }),
       });
 
-      // Sending is done by the person responsible, in their own browser: show the helper that fills the InterLink form
-      if (sendLive && window.nxFillHelper) window.nxFillHelper(appNo, fieldsToSync, currentLabRef(), modeFor(appNo) === 'add' ? 'add' : 'edit');   // the Lab Reference chosen in the dialog: its samples and test items go with the send
+      if (sendLive && window.nxLoadSentReports) window.nxLoadSentReports();   // it is in the list under the main grid at once
 
       // Fill every selected field into UploadForm.aspx (Tab 1 + Tab 2) with visual highlight (not when sending the form as it stands)
       if (!override) Object.keys(fieldsToSync).forEach((key) => {
@@ -1364,8 +1373,11 @@
       closeSyncDialog();
 
       if (sendLive) {
-        // Also switch to Tab 2 (Upload Result) briefly or highlight completion
-        showToast(`1-Click Report Sent! Synced ${Object.keys(fieldsToSync).length} fields + Sample & Test Readings for ${appNo} (${fieldsToSync.report_no || ''}) to InterLink 2.0!`);
+        // it is queued, not yet in InterLink: the final answer (submitted / failed + why) comes by toast, Synology and the list under the main grid
+        const ahead = queued && Number(queued.ahead) > 0 ? `: ${queued.ahead} report${queued.ahead > 1 ? 's' : ''} before it` : ' and is next';
+        showToast(`${appNo} is in the queue${ahead}. Its status is in the list "Reports sent from NEXUS-L" under the main list.`);
+        const back = $('#il-btn-home');
+        if (back && state.currentView !== 'search') back.click();   // back to the home list, where the status shows
       } else {
         showToast(`✓ Synced ${Object.keys(fieldsToSync).length} fields from NEXUS-L into UploadForm.aspx (${appNo})!`);
       }
@@ -1636,6 +1648,7 @@
       } else renderSearchGrid();
       return;
     }
+    if (!(await checkService(false))) { showConnectionError(); return; }
     if (!state.searchMode) state.liveReturnPage = state.currentPage;
     state.searchMode = true;
     const seq = ++searchSeq;
@@ -1720,7 +1733,8 @@
     if (toggle && toggle.checked) {
       state.autoSyncTimer = setInterval(() => {
         if (state.currentView === 'search' && !document.hidden && !state.searchMode) {   // never over a search's results
-          fetchLiveInterlinkPage(state.currentPage, state.pageSize, false, true);
+          if (state.conn && !state.conn.ok) fetchLiveInterlinkPage(state.currentPage || 1, state.pageSize || 15, true, false);   // keep trying until the service is connected
+          else fetchLiveInterlinkPage(state.currentPage, state.pageSize, false, true);
         }
       }, 15000);
     }
@@ -1904,7 +1918,7 @@
     wrap?.querySelector('.uf-sync-tag')?.classList.remove('hidden');
     wrap?.classList.add('uf-field-synced');
     const kb = Math.max(1, Math.round((pdf.b64.length * 3) / 4 / 1024));
-    if ($('#uf-att-info')) $('#uf-att-info').textContent = `${pdf.approved ? 'Signed by ' + pdf.approved_by : (pdf.source === 'generated' ? 'Generated from Lab Ref ' + pdf.lab_ref_no : 'Selected file')} · ${kb} KB`;
+    if ($('#uf-att-info')) $('#uf-att-info').textContent = `${pdf.replaced ? 'Your own file replaces the signed report (approved by ' + pdf.approved_by + ')' : (pdf.approved ? 'Signed by ' + pdf.approved_by : (pdf.source === 'generated' ? 'Generated from Lab Ref ' + pdf.lab_ref_no : 'Selected file'))} · ${kb} KB`;
     $('#uf-att-meta')?.classList.remove('hidden');
     if (!pdf.approved) checkApproval(pdf.lab_ref_no);
   };
@@ -2037,7 +2051,12 @@
     return cleanPdfName(String(state.pdfNameFmt || '{app}').replace(/\{(\w+)\}/g, (m, k) => (k in v ? v[k] : '')) || app);
   };
   const labrefRow = (labRef) => state.labrefs.find((l) => l.lab_ref_no === labRef) || { lab_ref_no: labRef };
-  window.nxPdfName = (app, labRef) => fileNameFor(app, labrefRow(labRef));
+  window.nxPdfName = (app, labRef) => {
+    // the file the user chose / renamed by hand keeps its own name; every other report gets the name from the user's format
+    const cur = window.nxAttachedPdf;
+    if (cur && cur.name && (cur.replaced || cur.nameByHand) && ((labRef && cur.lab_ref_no === labRef) || (app && cur.app === app))) return cleanPdfName(cur.name);
+    return fileNameFor(app, labrefRow(labRef));
+  };
   const showNameFmt = () => {
     if ($('#uf-namefmt-cur')) $('#uf-namefmt-cur').textContent = state.pdfNameFmt;
     const app = state.activeAppNo || $('#uf_application_no')?.value || 'A005953693';
@@ -2071,6 +2090,7 @@
     const box = $('#uf-apv');
     if (!box) return;
     box.classList.remove('hidden', 'is-approved', 'is-rejected');
+    $('#uf-apv-use-signed')?.classList.add('hidden');
     $('#uf-apv-qr-wrap')?.classList.add('hidden');
     const req = $('#uf-apv-request');
     if (req) { req.classList.remove('hidden'); req.disabled = false; }
@@ -2089,7 +2109,11 @@
     if (a.status === 'approved') {
       box.classList.add('is-approved');
       req?.classList.add('hidden');
-      $('#uf-apv-status').textContent = `Approved by ${a.decided_name} (${a.decided_title}) · ${a.decided_at}. The signed report is attached.`;
+      const own = a.user_file
+        ? ` Your own file (${a.user_file_name}) replaces the signed report and is the one sent; a copy is kept in NEXUS-L (${a.user_file_by}, ${a.user_file_at}).`
+        : ' The signed report is attached. Browse... to send a different file for this approved report.';
+      $('#uf-apv-status').textContent = `Approved by ${a.decided_name} (${a.decided_title}) · ${a.decided_at}.${own}`;
+      $('#uf-apv-use-signed')?.classList.toggle('hidden', !a.user_file);
       return;
     }
     if (a.status === 'rejected') {
@@ -2121,8 +2145,15 @@
   };
   // the signed PDF of an approved report becomes the attachment
   const attachSigned = async (a) => {
-    const b64 = await pdfAsB64('dtr/approval/file/' + ((String(a.file || '').match(/[a-f0-9]{40}/) || [])[0] || a.token));   // the file key; the live link token is never sent for a decided report
+    const fileKey = (String(a.file || '').match(/[a-f0-9]{40}/) || [])[0] || a.token;   // the file key; the live link token is never sent for a decided report
     const app = a.application_no || state.activeAppNo || '';
+    if (a.user_file) {
+      // the user changed the file of this approved report: their own file (kept in NEXUS-L) is the attachment, not the signed copy
+      const own = await pdfAsB64('dtr/approval/file/' + fileKey + '?v=user');
+      setAttachedPdf({ app, lab_ref_no: a.lab_ref_no, name: a.user_file_name || fileNameFor(app, labrefRow(a.lab_ref_no)), nameByHand: true, b64: own, source: 'file', approved: true, approved_by: a.decided_name, replaced: true });
+      return;
+    }
+    const b64 = await pdfAsB64('dtr/approval/file/' + fileKey);
     setAttachedPdf({ app, lab_ref_no: a.lab_ref_no, name: fileNameFor(app, labrefRow(a.lab_ref_no)), b64, source: 'generated', approved: true, approved_by: a.decided_name });
   };
   const checkApproval = async (labRef, quiet) => {
@@ -2201,6 +2232,18 @@
       btn.disabled = false;
     }
   });
+  // back to the signed report: the user's own file is no longer the one sent (the copy stays on file in NEXUS-L)
+  $('#uf-apv-use-signed')?.addEventListener('click', async () => {
+    const cur = window.nxAttachedPdf;
+    const labRef = (cur && cur.lab_ref_no) || currentLabRef();
+    if (!labRef) return;
+    try {
+      await apiFetch('dtr/approval/replace-file', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lab_ref: labRef, application_no: (cur && cur.app) || state.activeAppNo || '', clear: 1 }) });
+      window.nxAttachedPdf = null;
+      await checkApproval(labRef);              // the signed report is attached again
+      showToast('The signed report is attached again and is the one sent.');
+    } catch (err) { showToast(err.message, true); }
+  });
   // a different temporary link every time: the previous QR code / link stops working
   $('#uf-apv-new')?.addEventListener('click', () => { const b = $('#uf-apv-request'); b?.classList.remove('hidden'); b?.click(); });
   $('#uf-apv-copy')?.addEventListener('click', () => {
@@ -2264,14 +2307,31 @@
       return;
     }
     const rd = new FileReader();
-    rd.onload = () => {
-      setAttachedPdf({
-        app: state.activeAppNo || $('#uf_application_no')?.value || '',
-        lab_ref_no: currentLabRef(),
-        name: file.name,
-        b64: String(rd.result).split(',')[1] || '',
-        source: 'file',
-      });
+    rd.onload = async () => {
+      const b64 = String(rd.result).split(',')[1] || '';
+      const app = state.activeAppNo || $('#uf_application_no')?.value || '';
+      const labRef = currentLabRef();
+      // A report that already carries the APPROVED flag may still have its file changed. The chosen file is copied into NEXUS-L (we keep it)
+      // and it is that copy that is sent to InterLink; the page must not put the signed copy back over it.
+      let approved = null;
+      try {
+        if (labRef) {
+          const st = await apiFetch(`dtr/approval/status?lab_ref=${encodeURIComponent(labRef)}&application_no=${encodeURIComponent(app)}`);
+          if (st.approval && st.approval.status === 'approved') approved = st.approval;
+        }
+      } catch (err) { /* not known: treated as a file for a report that is not approved yet */ }
+      if (approved) {
+        try {
+          const j = await apiFetch('dtr/approval/replace-file', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lab_ref: labRef, application_no: app, name: file.name, pdf_b64: b64 }) });
+          setAttachedPdf({ app, lab_ref_no: labRef, name: file.name, nameByHand: true, b64, source: 'file', approved: true, approved_by: approved.decided_name, replaced: true });
+          showApproval(j.approval, 1);
+          showToast(`${file.name} replaces the signed report. A copy was saved in NEXUS-L and it is the file sent to InterLink.`);
+        } catch (err) {
+          showToast('The file could not be saved in NEXUS-L, so it was not attached: ' + err.message, true);
+        }
+        return;
+      }
+      setAttachedPdf({ app, lab_ref_no: labRef, name: file.name, b64, source: 'file' });
       showToast(`Selected PDF attachment: ${file.name}`);
     };
     rd.readAsDataURL(file);
@@ -2300,6 +2360,37 @@
       if (link) { link.textContent = link.dataset.label || 'Download'; link.style.opacity = ''; delete link.dataset.busy; }
     }
   });
+
+  // ---- Reports sent from NEXUS-L: the list under the main grid, so the status (and the reason of a failure) is seen after sending ----
+  const SENT_LABEL = { queued: 'Waiting in queue', running: 'Submitting...', done: 'Submitted', failed: 'Failed', 'signin-required': 'InterLink sign-in needed' };
+  let sentTimer = null;
+  const loadSentReports = async () => {
+    const tb = $('#itk-sent-tbody');
+    if (!tb) return false;
+    try {
+      const j = await apiFetch('interlink/service/report-jobs');
+      const rows = j.rows || [];
+      tb.innerHTML = rows.length ? rows.map((r) => `<tr>
+        <td>#${escHtml(r.id)}</td><td><b>${escHtml(r.application_no)}</b></td><td>${escHtml(r.lab_ref_no || '-')}</td><td>${escHtml(r.report_no || '-')}</td>
+        <td>${r.mode === 'add' ? 'new report' : 'edit report'}</td>
+        <td><span class="itk-chip ${escHtml(r.status)}">${escHtml(SENT_LABEL[r.status] || r.status)}</span>${(r.status === 'failed' || r.status === 'signin-required') && r.message ? `<span class="itk-sent-err">${escHtml(r.message)}</span>` : ''}</td>
+        <td>${escHtml(r.user_name || '')}</td><td>${escHtml(r.finished_at || r.started_at || r.created_at || '')}</td></tr>`).join('')
+        : '<tr><td colspan="8" class="itk-sent-muted">No report was sent from NEXUS-L yet.</td></tr>';
+      const note = $('#itk-sent-note');
+      if (note) note.textContent = Number(j.active) > 0 ? `${j.active} in progress - this list updates by itself` : '';
+      return rows.some((r) => r.live);
+    } catch (e) { return false; }
+  };
+  const pollSent = async () => {
+    clearTimeout(sentTimer);
+    if (document.hidden || state.currentView !== 'search') { sentTimer = setTimeout(pollSent, 8000); return; }
+    const live = await loadSentReports();
+    sentTimer = setTimeout(pollSent, live ? 3000 : 30000);          // quick while something is being sent, slow otherwise
+  };
+  window.nxLoadSentReports = () => { clearTimeout(sentTimer); pollSent(); };
+  window.addEventListener('nxl:interlink-service', () => window.nxLoadSentReports());   // the service finished a job
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) window.nxLoadSentReports(); });
+  pollSent();
 
   // Open Pre-Sync Confirmation Dialog
   $('#btn-open-sync-dialog')?.addEventListener('click', openSyncDialog);
@@ -2422,7 +2513,7 @@
   // Initial render + immediate live sync of Page 1 (15 rows out of 517 pages / 7,749 items) + start 15s auto-sync
   renderSearchGrid();
   // opening the view reads the live page straight away when the sender is installed (the saved copy shows meanwhile / if it is not)
-  setTimeout(() => fetchLiveInterlinkPage(1, 15, false, !hasGridSender()), 500);
+  setTimeout(() => fetchLiveInterlinkPage(1, 15, true, false), 500);
   startOrStopAutoSync();
 })();
 

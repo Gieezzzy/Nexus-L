@@ -40,7 +40,10 @@
 
     <script src="<?= nx_asset('js/ux.js') ?>" defer></script>
     <script src="<?= nx_asset('js/app.js') ?>" defer></script>
+<?php $nxSeg = strtolower((string) service('uri')->getSegment(1)); ?>
+<?php if (in_array($nxSeg, ['', 'dashboard', 'analytics', 'quality-insights', 'calendar-monitoring', 'calendar', 'dtr', 'test-summary', 'tests-summary', 'test-results'], true)): ?>
     <script src="<?= nx_asset('js/nxchart.js') ?>" defer></script>
+<?php endif ?>
     <script src="<?= nx_asset('js/bot.js') ?>" defer></script>
     <?php foreach ((array) ($withJs ?? []) as $js): ?><script src="<?= nx_asset('js/' . $js) ?>" defer></script><?php endforeach ?>
 </body>

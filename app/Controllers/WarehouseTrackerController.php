@@ -471,7 +471,8 @@ class WarehouseTrackerController extends BaseController
     public function rt()
     {
         $user = $this->auth->user();
-        $uid  = (string) ((int) ($user['id'] ?? 0));
+        $isGuest = ! empty($user['is_guest']);
+        $uid  = $isGuest ? ('guest_' . substr(md5((string) session_id()), 0, 8)) : (string) ((int) ($user['id'] ?? 0));
         if ($uid === '0') {
             return $this->response->setStatusCode(401)->setJSON(['ok' => false]);
         }

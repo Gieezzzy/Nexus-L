@@ -72,69 +72,73 @@ class QualityInsightsController extends BaseController
     public function lineMap(): ResponseInterface
     {
         [$from, $to] = $this->period();
-        $db = $this->db();
+        $payload = \App\Libraries\DataCache::remember("qi_linemap_{$from}_{$to}", 120, function () use ($from, $to) {
+            $db = $this->db();
 
-        // every line the lab has ever collected from, grouped by building
-        $lines = [];
-        foreach ($db->query('SELECT DISTINCT Building b, `LineNo` l FROM tbl_dtr_bondingtracker WHERE `LineNo` <> ""')->getResultArray() as $r) {
-            $l = strtoupper(trim((string) $r['l']));
-            $l = preg_match('/^[A-Z]/', $l) ? $l : strtoupper(trim((string) $r['b'])) . $l;
-            if ($l !== '') {
-                $lines[$l] = true;
-            }
-        }
-        $tile = static fn (string $l) => ['line' => $l, 'tested' => 0, 'pass' => 0, 'tolerable' => 0, 'fail' => 0, 'pending' => 0, 'color' => 'grey', 'fail_refs' => [], 'tol_refs' => []];
-        $tiles = [];
-        foreach (array_keys($lines) as $l) {
-            $tiles[$l] = $tile($l);
-        }
-
-        foreach ((new CalendarMonitoringController())->records($from, $to) as $r) {
-            if ($r['domain'] !== 'bonding' || stripos($r['lab_ref_no'], 'TRIAL') !== false) {
-                continue;
-            }
-            $l = self::lineOf($r['lab_ref_no']);
-            if ($l === '') {
-                continue;
-            }
-            $tiles[$l] ??= $tile($l);
-            if ($r['status'] === 'completed') {
-                $tiles[$l]['tested']++;
-                if ($r['result'] === 'PASS') {
-                    $tiles[$l]['pass']++;
-                } elseif ($r['result'] === 'FAIL') {
-                    $tiles[$l]['fail']++;
-                    $tiles[$l]['fail_refs'][] = $r['lab_ref_no'];
-                } elseif ($r['result'] === 'TOLERABLE') {
-                    $tiles[$l]['tolerable']++;
-                    $tiles[$l]['tol_refs'][] = $r['lab_ref_no'];
+            // every line the lab has ever collected from, grouped by building
+            $lines = [];
+            foreach ($db->query('SELECT DISTINCT Building b, `LineNo` l FROM tbl_dtr_bondingtracker WHERE `LineNo` <> ""')->getResultArray() as $r) {
+                $l = strtoupper(trim((string) $r['l']));
+                $l = preg_match('/^[A-Z]/', $l) ? $l : strtoupper(trim((string) $r['b'])) . $l;
+                if ($l !== '') {
+                    $lines[$l] = true;
                 }
-            } else {
-                $tiles[$l]['pending']++;      // collected from the line, not tested yet
             }
-        }
+            $tile = static fn (string $l) => ['line' => $l, 'tested' => 0, 'pass' => 0, 'tolerable' => 0, 'fail' => 0, 'pending' => 0, 'color' => 'grey', 'fail_refs' => [], 'tol_refs' => []];
+            $tiles = [];
+            foreach (array_keys($lines) as $l) {
+                $tiles[$l] = $tile($l);
+            }
 
-        $tot = ['tested' => 0, 'pass' => 0, 'tolerable' => 0, 'fail' => 0, 'pending' => 0, 'lines_red' => 0, 'lines_amber' => 0, 'lines_green' => 0];
-        $byB = [];
-        foreach ($tiles as $l => &$t) {
-            $t['color'] = $t['fail'] > 0 ? 'red' : (($t['tolerable'] > 0 || $t['pending'] > 0) ? 'amber' : ($t['tested'] > 0 ? 'green' : 'grey'));
-            foreach (['tested', 'pass', 'tolerable', 'fail', 'pending'] as $k) {
-                $tot[$k] += $t[$k];
+            foreach ((new CalendarMonitoringController())->records($from, $to) as $r) {
+                if ($r['domain'] !== 'bonding' || stripos($r['lab_ref_no'], 'TRIAL') !== false) {
+                    continue;
+                }
+                $l = self::lineOf($r['lab_ref_no']);
+                if ($l === '') {
+                    continue;
+                }
+                $tiles[$l] ??= $tile($l);
+                if ($r['status'] === 'completed') {
+                    $tiles[$l]['tested']++;
+                    if ($r['result'] === 'PASS') {
+                        $tiles[$l]['pass']++;
+                    } elseif ($r['result'] === 'FAIL') {
+                        $tiles[$l]['fail']++;
+                        $tiles[$l]['fail_refs'][] = $r['lab_ref_no'];
+                    } elseif ($r['result'] === 'TOLERABLE') {
+                        $tiles[$l]['tolerable']++;
+                        $tiles[$l]['tol_refs'][] = $r['lab_ref_no'];
+                    }
+                } else {
+                    $tiles[$l]['pending']++;      // collected from the line, not tested yet
+                }
             }
-            if ($t['color'] !== 'grey') {
-                $tot['lines_' . $t['color']]++;
-            }
-            $byB[substr($l, 0, 1)][] = $t;
-        }
-        unset($t);
-        ksort($byB);
-        $buildings = [];
-        foreach ($byB as $b => $ls) {
-            usort($ls, static fn ($x, $y) => self::natural($x['line'], $y['line']));
-            $buildings[] = ['building' => $b, 'lines' => $ls];
-        }
 
-        return $this->response->setJSON(['ok' => true, 'from' => $from, 'to' => $to, 'buildings' => $buildings, 'totals' => $tot]);
+            $tot = ['tested' => 0, 'pass' => 0, 'tolerable' => 0, 'fail' => 0, 'pending' => 0, 'lines_red' => 0, 'lines_amber' => 0, 'lines_green' => 0];
+            $byB = [];
+            foreach ($tiles as $l => &$t) {
+                $t['color'] = $t['fail'] > 0 ? 'red' : (($t['tolerable'] > 0 || $t['pending'] > 0) ? 'amber' : ($t['tested'] > 0 ? 'green' : 'grey'));
+                foreach (['tested', 'pass', 'tolerable', 'fail', 'pending'] as $k) {
+                    $tot[$k] += $t[$k];
+                }
+                if ($t['color'] !== 'grey') {
+                    $tot['lines_' . $t['color']]++;
+                }
+                $byB[substr($l, 0, 1)][] = $t;
+            }
+            unset($t);
+            ksort($byB);
+            $buildings = [];
+            foreach ($byB as $b => $ls) {
+                usort($ls, static fn ($x, $y) => self::natural($x['line'], $y['line']));
+                $buildings[] = ['building' => $b, 'lines' => $ls];
+            }
+
+            return ['ok' => true, 'from' => $from, 'to' => $to, 'buildings' => $buildings, 'totals' => $tot];
+        });
+
+        return $this->response->setJSON($payload);
     }
 
     /** GET quality-insights/line-details?from=&to=&line=A4: the tests of that line in the period (same shape as the Calendar day panel) */
@@ -178,53 +182,57 @@ class QualityInsightsController extends BaseController
         $to    = self::date($this->request->getGet('to'), date('Y-m-d'));
         $from  = self::date($this->request->getGet('from'), date('Y-m-d', strtotime($to . ' -29 days')));
         $group = in_array($this->request->getGet('group'), ['line', 'cement', 'style', 'mode'], true) ? (string) $this->request->getGet('group') : 'line';
-        $rows  = $this->bondingRows($from, $to);
 
-        $groups = [];
-        $modes  = [];
-        $tested = 0;
-        $bad    = 0;
-        foreach ($rows as $r) {
-            if ($r['result'] === '') {
-                continue;
+        $payload = \App\Libraries\DataCache::remember("qi_fail_{$from}_{$to}_{$group}", 120, function () use ($from, $to, $group) {
+            $rows   = $this->bondingRows($from, $to);
+            $groups = [];
+            $modes  = [];
+            $tested = 0;
+            $bad    = 0;
+            foreach ($rows as $r) {
+                if ($r['result'] === '') {
+                    continue;
+                }
+                $tested++;
+                $key = $group === 'mode' ? ($r['result'] === 'PASS' ? '' : ($r['mode'] !== '' ? $r['mode'] : 'Not recorded')) : ($r[$group] !== '' ? $r[$group] : 'Unknown');
+                if ($key === '') {
+                    continue;
+                }
+                $g = &$groups[$key];
+                $g ??= ['key' => $key, 'tested' => 0, 'pass' => 0, 'tolerable' => 0, 'fail' => 0, 'modes' => []];
+                $g['tested']++;
+                $g[strtolower($r['result']) === 'pass' ? 'pass' : (strtolower($r['result']) === 'fail' ? 'fail' : 'tolerable')]++;
+                if ($r['result'] !== 'PASS') {
+                    $m = $r['mode'] !== '' ? $r['mode'] : 'Not recorded';
+                    $g['modes'][$m] = ($g['modes'][$m] ?? 0) + 1;
+                }
+                unset($g);
+                if ($r['result'] !== 'PASS') {
+                    $bad++;
+                    $m = $r['mode'] !== '' ? $r['mode'] : 'Not recorded';
+                    $modes[$m] = ($modes[$m] ?? 0) + 1;
+                }
             }
-            $tested++;
-            $key = $group === 'mode' ? ($r['result'] === 'PASS' ? '' : ($r['mode'] !== '' ? $r['mode'] : 'Not recorded')) : ($r[$group] !== '' ? $r[$group] : 'Unknown');
-            if ($key === '') {
-                continue;                                    // by failure mode only the bad results count
-            }
-            $g = &$groups[$key];
-            $g ??= ['key' => $key, 'tested' => 0, 'pass' => 0, 'tolerable' => 0, 'fail' => 0, 'modes' => []];
-            $g['tested']++;
-            $g[strtolower($r['result']) === 'pass' ? 'pass' : (strtolower($r['result']) === 'fail' ? 'fail' : 'tolerable')]++;
-            if ($r['result'] !== 'PASS') {
-                $m = $r['mode'] !== '' ? $r['mode'] : 'Not recorded';
-                $g['modes'][$m] = ($g['modes'][$m] ?? 0) + 1;
+            foreach ($groups as &$g) {
+                $g['fail_rate'] = $g['tested'] ? round($g['fail'] * 100 / $g['tested'], 1) : 0;
+                arsort($g['modes']);
+                $g['top_mode'] = $g['modes'] ? (string) array_key_first($g['modes']) : '';
+                unset($g['modes']);
             }
             unset($g);
-            if ($r['result'] !== 'PASS') {
-                $bad++;
-                $m = $r['mode'] !== '' ? $r['mode'] : 'Not recorded';
-                $modes[$m] = ($modes[$m] ?? 0) + 1;
+            $list = array_values($groups);
+            usort($list, static fn ($a, $b) => [$b['fail'] + $b['tolerable'], $b['fail_rate']] <=> [$a['fail'] + $a['tolerable'], $a['fail_rate']]);
+            arsort($modes);
+            $mlist = [];
+            foreach ($modes as $m => $n) {
+                $mlist[] = ['mode' => $m, 'count' => $n, 'share' => $bad ? round($n * 100 / $bad, 1) : 0];
             }
-        }
-        foreach ($groups as &$g) {
-            $g['fail_rate'] = $g['tested'] ? round($g['fail'] * 100 / $g['tested'], 1) : 0;
-            arsort($g['modes']);
-            $g['top_mode'] = $g['modes'] ? (string) array_key_first($g['modes']) : '';
-            unset($g['modes']);
-        }
-        unset($g);
-        $list = array_values($groups);
-        usort($list, static fn ($a, $b) => [$b['fail'] + $b['tolerable'], $b['fail_rate']] <=> [$a['fail'] + $a['tolerable'], $a['fail_rate']]);
-        arsort($modes);
-        $mlist = [];
-        foreach ($modes as $m => $n) {
-            $mlist[] = ['mode' => $m, 'count' => $n, 'share' => $bad ? round($n * 100 / $bad, 1) : 0];
-        }
 
-        return $this->response->setJSON(['ok' => true, 'from' => $from, 'to' => $to, 'group' => $group, 'tested' => $tested, 'bad' => $bad,
-            'recorded' => $bad - ($modes['Not recorded'] ?? 0), 'groups' => $list, 'modes' => $mlist]);
+            return ['ok' => true, 'from' => $from, 'to' => $to, 'group' => $group, 'tested' => $tested, 'bad' => $bad,
+                'recorded' => $bad - ($modes['Not recorded'] ?? 0), 'groups' => $list, 'modes' => $mlist];
+        });
+
+        return $this->response->setJSON($payload);
     }
 
     /** GET quality-insights/failure-details?from=&to=&group=&key= : the failed / tolerable tests behind one row of the table */
@@ -310,28 +318,33 @@ class QualityInsightsController extends BaseController
     public function suppliers(): ResponseInterface
     {
         [$from, $to] = $this->period();
-        $min  = max(1, min(50, (int) ($this->request->getGet('min') ?: 5)));
-        $g    = [];
-        $skip = 0;
-        foreach ($this->supplierRows($from, $to) as $r) {
-            if ($r['supplier'] === '') {
-                $skip++;
-                continue;
-            }
-            $k = $r['supplier'] . '|' . $r['material'];
-            $g[$k] ??= ['supplier' => $r['supplier'], 'material' => $r['material'], 'tested' => 0, 'pass' => 0, 'tolerable' => 0, 'fail' => 0];
-            $g[$k]['tested']++;
-            $g[$k][strtolower($r['result']) === 'pass' ? 'pass' : (strtolower($r['result']) === 'fail' ? 'fail' : 'tolerable')]++;
-        }
-        $list = array_values($g);
-        foreach ($list as &$x) {
-            $x['pass_rate'] = round($x['pass'] * 100 / $x['tested'], 1);
-            $x['low_sample'] = $x['tested'] < $min;
-        }
-        unset($x);
-        usort($list, static fn ($a, $b) => [$a['low_sample'], $a['pass_rate'], -$a['tested']] <=> [$b['low_sample'], $b['pass_rate'], -$b['tested']]);
+        $min = max(1, min(50, (int) ($this->request->getGet('min') ?: 5)));
 
-        return $this->response->setJSON(['ok' => true, 'from' => $from, 'to' => $to, 'min' => $min, 'rows' => $list, 'without_supplier' => $skip]);
+        $payload = \App\Libraries\DataCache::remember("qi_sup_{$from}_{$to}_{$min}", 120, function () use ($from, $to, $min) {
+            $g    = [];
+            $skip = 0;
+            foreach ($this->supplierRows($from, $to) as $r) {
+                if ($r['supplier'] === '') {
+                    $skip++;
+                    continue;
+                }
+                $k = $r['supplier'] . '|' . $r['material'];
+                $g[$k] ??= ['supplier' => $r['supplier'], 'material' => $r['material'], 'tested' => 0, 'pass' => 0, 'tolerable' => 0, 'fail' => 0];
+                $g[$k]['tested']++;
+                $g[$k][strtolower($r['result']) === 'pass' ? 'pass' : (strtolower($r['result']) === 'fail' ? 'fail' : 'tolerable')]++;
+            }
+            $list = array_values($g);
+            foreach ($list as &$x) {
+                $x['pass_rate'] = round($x['pass'] * 100 / $x['tested'], 1);
+                $x['low_sample'] = $x['tested'] < $min;
+            }
+            unset($x);
+            usort($list, static fn ($a, $b) => [$a['low_sample'], $a['pass_rate'], -$a['tested']] <=> [$b['low_sample'], $b['pass_rate'], -$b['tested']]);
+
+            return ['ok' => true, 'from' => $from, 'to' => $to, 'min' => $min, 'rows' => $list, 'without_supplier' => $skip];
+        });
+
+        return $this->response->setJSON($payload);
     }
 
     /** GET quality-insights/supplier-details?from=&to=&supplier=&material= : the failed / tolerable tests of one supplier */

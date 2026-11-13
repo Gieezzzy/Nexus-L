@@ -1,17 +1,17 @@
-# Graph Report - NEXUS-L  (2026-11-08)
+# Graph Report - NEXUS-L  (2026-11-10)
 
 ## Corpus Check
-- 1392 files · ~153,575,502 words
+- 1439 files · ~153,736,879 words
 - Verdict: corpus is large enough that graph structure adds value.
-- Unclassified: 549 file(s) not represented in the graph (top: .xls 258, .htm 94, .doc 37)
+- Unclassified: 564 file(s) not represented in the graph (top: .xls 258, .htm 94, .css 40)
 
 ## Summary
-- 8049 nodes · 10823 edges · 1215 communities (355 shown, 860 thin omitted)
-- Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 537 edges (avg confidence: 0.86)
+- 10516 nodes · 16727 edges · 1273 communities (389 shown, 884 thin omitted)
+- Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 894 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `e68fbf5a`
+- Built from commit: `71469471`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -41,7 +41,7 @@
 - interlink-bot.js
 - Kint.php
 - Routes.php
-- Database
+- Brain
 - Config/Validation.php
 - 6418_a57a07dc.md
 - 3944_083ff928.md
@@ -61,7 +61,7 @@
 - min/js/labdocs-collab.js
 - background.js
 - 6426_e54fbae8.md
-- e
+- tn
 - 6427_706e54b8.md
 - MachineFileReader
 - DtrController
@@ -81,19 +81,20 @@
 - CreateInterlinkSyncCenter
 - WstController
 - ExampleMigration
+- Lt
 - L
 - labdocs.py
 - agent.py
 - JobRequest
 - 4160_07d9e859.md
 - a
-- .mod
-- sys
+- .fromArray
+- json
 - CreateReportApprovals
 - ApprovalLinksExpire
 - ApprovalRequiredSigner
-- os
-- K
+- Ce
+- min/js/avatar-factory.js
 - access-report-layout.ps1
 - report_templates/README.md
 - Session.php
@@ -107,7 +108,7 @@
 - 4748_560c61dc.md
 - 5524_0d6949a1.md
 - 5949_096a2ea8.md
-- Brain
+- ws
 - BotArtifacts
 - 4241_e98f5696.md
 - 5522_924bd009.md
@@ -137,8 +138,8 @@
 - pipeline.py
 - BrainLearn
 - train_lexus.py
-- config.py
-- redact
+- memory.py
+- assets/js/warehouse-3d.js
 - lab103_convert.py
 - .get
 - 5472_6c6bc308.md
@@ -155,8 +156,8 @@
 - 4277_92f492a1.md
 - 4278_7a6e0656.md
 - 5950_c52eaa56.md
-- textutil.py
-- pathlib
+- min/js/asylum-minigame.js
+- constructor
 - InterlinkServiceController
 - DashboardController
 - 4206_a47df597.md
@@ -168,7 +169,7 @@
 - 6405_ffc72c67.md
 - 6725_b8b96236.md
 - assets/js/labdocs-collab.js
-- BotSessions
+- .date
 - CodeIgniter\Model
 - 3938_d913531f.md
 - 3939_f8268e35.md
@@ -184,8 +185,8 @@
 - 5905_90d5cfe5.md
 - 5948_ffcd2fe8.md
 - store.py
-- json
-- Brain
+- vt
+- textutil.py
 - FcmService
 - 4201_bc761299.md
 - 4722_921fb1fd.md
@@ -195,7 +196,7 @@
 - 5514_b349034f.md
 - 5633_670df625.md
 - 6241_7066f29e.md
-- lexus_bench.py
+- assets/js/avatar-factory.js
 - ChatStore.php
 - FileLogger
 - 3601_0cfe0b63.md
@@ -213,7 +214,7 @@
 - AnalyticsController
 - OrderSummaryService
 - InterlinkLovController
-- LogForm
+- lab_thumbs.py
 - 3943_f17f0df1.md
 - 6161_d109b32e.md
 - 6162_5da21128.md
@@ -226,8 +227,8 @@
 - 6377_2c81c9f9.md
 - 6406_4662e109.md
 - 6786_43b89960.md
-- HistoryLine
-- SynologyChat
+- us
+- .approvalReminderIntent
 - DashboardController.php
 - ExampleDatabaseTest.php
 - 1916_9c7333ad.md
@@ -269,9 +270,9 @@
 - 6156_2826f158.md
 - 6172_943cbc2f.md
 - 6468_50549e51.md
-- .date
+- jt
 - DtrLabrefIndex
-- TrainBulk.php
+- Database
 - 1893_d91ed6f0.md
 - 3259_684e6600.md
 - 3934_cbc35c5a.md
@@ -283,7 +284,7 @@
 - 6731_0583cc62.md
 - 6853_6ccb6614.md
 - Roles
-- BotArtifacts.php
+- CodeIgniter\HTTP\RequestInterface
 - 1894_d7e63362.md
 - 1895_e0cf63b2.md
 - 1905_628a32ea.md
@@ -308,7 +309,7 @@
 - 6796_b2ff1182.md
 - assets/js/labdocs-files.js
 - .config
-- .run
+- TrainBulk
 - 1897_501e3d79.md
 - 1901_e6ae62d0.md
 - 1906_c3eba79c.md
@@ -449,11 +450,12 @@
 - List of Test Methods_282e48b8.md
 - List of Test Methods_819b3ae6.md
 - assets/js/labdocs-preview.js
+- assets/js/labdocs-zoom.js
 - min/js/labdocs-preview.js
 - lab_import_all.sh
 - lab_run_batch.sh
 - lab_run_other.sh
-- ApprovalController.php
+- sn
 - 2106_d1a1a897.md
 - 3047_5272d7d2.md
 - 3255_0242237e.md
@@ -1099,37 +1101,78 @@
 - Material Specification Amendment Record Sheet_ad1d7f3b.md
 - vf test method side sticker_90a38908.md
 - vf test method side sticker_c9d69f20.md
+- min/js/warehouse-3d.js
 - assets/js/labdocs-fileview.js
-- min/js/labdocs-fileview.js
-- TrainBulk
+- .constructor
+- ls
 - TrainNight
-- .log
+- nl
+- .pullInterlinkGridPage
 - LabDocRoles
-- LearnGraphDocs
+- ko
+- Auth
 - setup
+- ml
 - min/js/labdocs-files.js
-- Format.php
-- Images.php
-- Logger.php
+- SynologyChat
+- qc
 - CreateCompleteInterlinkSchemaInDbNexus
 - AddUserProfileColumns
-- Phase 190 - InterLink 2.0 Integration & Digital Test Report (QC Lab) Suite Migration (2026-10-27)
-- NEXUS-L - Codebase Index
-- assets/js/labdocs-search.js
+- xc
+- eh
+- St
+- AuthController
 - m
-- dtr-photo.js
+- three.min.js
+- Lc
+- .date
+- assets/js/calendar-monitoring.js
+- At
+- jc
+- pt
+- min/js/calendar-monitoring.js
+- assets/js/asylum-world.js
+- min/js/asylum-world.js
+- yc
+- .run
+- assets/js/asylum-minigame.js
+- update
+- yt
+- be
+- assets/js/warehouse-multi.js
+- min/js/warehouse-multi.js
+- NotifierController
+- nc
+- assets/js/labdocs-search.js
+- WarehouseTrackerController
+- assets/js/quality-insights.js
+- F
+- yo
+- enterAsylum
+- BrainTrainerController
+- tts_server.py
+- activate
+- wo
+- startFloorCountdown
+- Tt
+- e
+- assets/js/dtr.js
+- LearnGraphDocs
+- sc
+- P
+- .copy
 
 ## God Nodes (most connected - your core abstractions)
-1. `BotController` - 75 edges
-2. `ChatStore` - 75 edges
-3. `InterlinkController` - 60 edges
-4. `LabDocsController` - 56 edges
-5. `InboxController` - 43 edges
-6. `DtrController` - 38 edges
-7. `ApprovalController` - 34 edges
-8. `SettingsController` - 32 edges
-9. `JobRequest` - 32 edges
-10. `InterlinkRunner` - 30 edges
+1. `Lt` - 135 edges
+2. `vt` - 90 edges
+3. `copy()` - 81 edges
+4. `BotController` - 75 edges
+5. `ChatStore` - 75 edges
+6. `tn` - 65 edges
+7. `InterlinkController` - 60 edges
+8. `St` - 60 edges
+9. `Ce` - 59 edges
+10. `LabDocsController` - 56 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `1. Final sync, then the sync is retired` --references--> `DeployCheck`  [INFERRED]
@@ -1140,13 +1183,13 @@
   _docs/ICM_CHANGELOG.md → app/Controllers/InterlinkServiceController.php
 - `Endpoints (header `X-Service-Key`)` --references--> `InterlinkServiceController`  [INFERRED]
   tools/interlink-service/README.md → app/Controllers/InterlinkServiceController.php
-- `Phase 200 - AI Assistant & Bot Engine Web Settings & Live Switching (2026-10-31)` --references--> `SystemSettings`  [INFERRED]
-  _docs/ICM_CHANGELOG.md → app/Libraries/SystemSettings.php
+- `Two brains, the reranker, calibration, training and the Universe` --references--> `shadow()`  [INFERRED]
+  ai-service/README.md → public/assets/js/avatar-factory.js
 
 ## Import Cycles
 - None detected.
 
-## Communities (1215 total, 860 thin omitted)
+## Communities (1273 total, 884 thin omitted)
 
 ### Community 0 - "InboxController"
 Cohesion: 0.11
@@ -1154,7 +1197,7 @@ Nodes (22): {closure#10}(), {closure#11}(), {closure#12}(), {closure#13}(), {clo
 
 ### Community 1 - "Auth"
 Cohesion: 0.11
-Nodes (5): Auth, Auth, AuthLogModel, RememberTokenModel, UserModel
+Nodes (6): Auth, AuthLogModel, RememberTokenModel, UserModel, WstTestModel, WstTestResultModel
 
 ### Community 3 - "RmsStore"
 Cohesion: 0.09
@@ -1165,8 +1208,8 @@ Cohesion: 0.06
 Nodes (31): autoload, autoload-dev, psr-4, exclude-from-classmap, psr-4, config, optimize-autoloader, preferred-install (+23 more)
 
 ### Community 7 - "CodeIgniter\Config\BaseConfig"
-Cohesion: 0.11
-Nodes (13): ContentSecurityPolicy, Cookie, Cors, CURLRequest, Email, Encryption, Feature, Generators (+5 more)
+Cohesion: 0.07
+Nodes (16): ContentSecurityPolicy, Cookie, Cors, CURLRequest, Email, Encryption, Feature, Format (+8 more)
 
 ### Community 9 - "App"
 Cohesion: 0.23
@@ -1177,8 +1220,8 @@ Cohesion: 0.08
 Nodes (25): author, dependencies, exceljs, luckyexcel, luckysheet, description, devDependencies, tailwindcss (+17 more)
 
 ### Community 12 - "PhotoLinkController"
-Cohesion: 0.07
-Nodes (7): ErpAgentController, LabMonitoringController, PhotoLinkController, ErpMonitor, EtrfAppNos, QrPng, Phase 206 - ERP Finish Monitoring, ERP Agent, phone camera links, report approval messages (2026-11-08)
+Cohesion: 0.06
+Nodes (8): ErpAgentController, LabMonitoringController, PhotoLinkController, ErpAgent, ErpMonitor, EtrfAppNos, QrPng, Phase 206 - ERP Finish Monitoring, ERP Agent, phone camera links, report approval messages (2026-11-08)
 
 ### Community 16 - "Running Application Tests"
 Cohesion: 0.18
@@ -1196,9 +1239,9 @@ Nodes (4): getFirstChildWithTagName(), getHash(), init(), showTab()
 Cohesion: 0.53
 Nodes (3): {closure#1}(), {closure#2}(), {closure#3}()
 
-### Community 27 - "Database"
-Cohesion: 0.16
-Nodes (3): Database, VfDataEnricher, WorkflowKnowledgeSeeder
+### Community 27 - "Brain"
+Cohesion: 0.06
+Nodes (12): BrainMaintain, BrainSeed, DeployCheck, SystemTaskTrainingSet, TrainSystemTasks, TrainVfMethods, VfDataTrainingSet, {closure#13}() (+4 more)
 
 ### Community 29 - "6418_a57a07dc.md"
 Cohesion: 0.01
@@ -1210,15 +1253,15 @@ Nodes (70): Sheet: ADDEN ACHACOSO 065, Sheet:  ADORACION ADVINCULA  006, Sheet: 
 
 ### Community 32 - "BrainTrain.php"
 Cohesion: 0.04
-Nodes (12): BrainTrain, BrainSeed12, BrainSeed2, BrainSeed3, BrainSeed4, BrainSeed5, BrainSeed6, BrainSeed7 (+4 more)
+Nodes (15): BrainTrain, TrainNewFeatures, BrainSeed10, BrainSeed11, BrainSeed12, BrainSeed2, BrainSeed3, BrainSeed4 (+7 more)
 
 ### Community 75 - "sidebar.php"
-Cohesion: 0.29
-Nodes (4): {closure#1}(), {closure#2}(), renderAll(), updateGroup()
+Cohesion: 0.09
+Nodes (8): {closure#1}(), HelpController, HelpContent, {closure#1}(), {closure#4}(), {closure#5}(), renderAll(), updateGroup()
 
 ### Community 78 - "min/js/labdocs-collab.js"
-Cohesion: 0.16
-Nodes (15): renderFormSketch(), rotateSpotsToStart(), scheduleFormSketch(), A(), b(), H(), N(), o() (+7 more)
+Cohesion: 0.19
+Nodes (13): u(), A(), b(), H(), N(), o(), q(), d() (+5 more)
 
 ### Community 79 - "background.js"
 Cohesion: 0.13
@@ -1228,9 +1271,9 @@ Nodes (31): adoptPopup(), approvalProblem(), askNexus(), bounded(), checkNormalF
 Cohesion: 0.03
 Nodes (70): Sheet: ADDEN ACHACOSO 065, Sheet:  ADORACION ADVINCULA  006, Sheet: AERA J ACABA 076, Sheet: AILA MAREE DE JESUS 026, Sheet: ANDREW V. ENRIQUEZ 036, Sheet: ANGELA NICOLE CALMA 032, Sheet: ANGELICA REYES  017, Sheet: ANNAMARIE O. BAUTE 027 (+62 more)
 
-### Community 82 - "e"
-Cohesion: 0.20
-Nodes (4): Ao(), as(), oa(), e()
+### Community 82 - "tn"
+Cohesion: 0.03
+Nodes (17): _a, cs, Do, $e(), fl, fo(), gl, go (+9 more)
 
 ### Community 83 - "6427_706e54b8.md"
 Cohesion: 0.03
@@ -1240,9 +1283,13 @@ Nodes (70): Sheet: ADDEN ACHACOSO 065, Sheet:  ADORACION ADVINCULA  006, Sheet: 
 Cohesion: 0.20
 Nodes (9): background, service_worker, content_scripts, description, host_permissions, manifest_version, name, permissions (+1 more)
 
+### Community 88 - "ApprovalController"
+Cohesion: 0.07
+Nodes (6): ApprovalController, {closure#1}(), {closure#3}(), {closure#4}(), {closure#3}(), ReportPdf
+
 ### Community 89 - "CodeIgniter\CLI\BaseCommand"
-Cohesion: 0.06
-Nodes (15): BotIntents, BrainAsk, BrainBenchmark, BrainLearn, CheckSummary, DeployCheck, DsrSync, ErpImport (+7 more)
+Cohesion: 0.05
+Nodes (16): AiExport, BotIntents, BrainAsk, BrainBenchmark, BrainLearn, CheckSummary, DsrSync, ErpImport (+8 more)
 
 ### Community 93 - "CodeIgniter\Database\Migration"
 Cohesion: 0.19
@@ -1253,20 +1300,24 @@ Cohesion: 0.06
 Nodes (10): LabDocsImport, LabDocOffice, {closure#3}(), {closure#4}(), LabDocXlsx, VfmHtml, {closure#1}(), {closure#4}() (+2 more)
 
 ### Community 101 - "WstController"
-Cohesion: 0.13
+Cohesion: 0.12
 Nodes (4): WstController, TestCatalog, MaterialTestModel, MaterialTestResultModel
+
+### Community 108 - "Lt"
+Cohesion: 0.02
+Nodes (19): as(), copy(), ec, S(), y(), A(), hs, ht() (+11 more)
 
 ### Community 114 - "L"
 Cohesion: 0.27
-Nodes (7): A(), k(), L(), R(), t(), w(), x()
+Nodes (9): A(), k(), L(), R(), t(), w(), x(), M() (+1 more)
 
 ### Community 116 - "labdocs.py"
 Cohesion: 0.07
-Nodes (33): answer(), _authority(), choose(), clean_question(), _cover(), _embed_text(), _en(), _english() (+25 more)
+Nodes (34): answer(), _authority(), choose(), clean_question(), _cover(), _embed_text(), _en(), _english() (+26 more)
 
 ### Community 118 - "agent.py"
-Cohesion: 0.07
-Nodes (30): abstain_node(), boosts(), build_graph(), context_node(), decide(), _dense_norm(), _doc_payload(), documents_node() (+22 more)
+Cohesion: 0.09
+Nodes (28): abstain_node(), boosts(), build_graph(), context_node(), decide(), _dense_norm(), _doc_payload(), documents_node() (+20 more)
 
 ### Community 119 - "JobRequest"
 Cohesion: 0.06
@@ -1277,20 +1328,28 @@ Cohesion: 0.04
 Nodes (56): Sheet: 09-06, Sheet: CPSIA CRD APRIL (2), Sheet: CPSIA CRD APRIL (3), Sheet: CPSIA CRD MARCH-APRIL, Sheet: CRD12-12-22 SHP, Sheet: CRD 01-11, Sheet: CRD 01-18, Sheet: CRD 02-15-2024 (+48 more)
 
 ### Community 123 - "a"
-Cohesion: 0.24
-Nodes (6): M(), v(), a(), o(), done(), start()
+Cohesion: 0.20
+Nodes (6): r, c(), l(), a(), o(), start()
 
-### Community 128 - "sys"
-Cohesion: 0.16
-Nodes (6): main(), thumb_img(), thumb_pdf(), main(), parse_page(), vrules()
+### Community 127 - ".fromArray"
+Cohesion: 0.07
+Nodes (4): dl, ia, la, ta
 
-### Community 132 - "os"
-Cohesion: 0.29
-Nodes (4): collect(), main(), pids(), worker()
+### Community 128 - "json"
+Cohesion: 0.10
+Nodes (21): Settings, _doc_text(), index_corrections(), index_docs(), _is_stub(), load_knowledge(), _split(), counts() (+13 more)
+
+### Community 132 - "Ce"
+Cohesion: 0.03
+Nodes (23): Ce, ci, dispose(), fi(), hh, pi(), p(), V() (+15 more)
+
+### Community 133 - "min/js/avatar-factory.js"
+Cohesion: 0.13
+Nodes (23): J(), P(), q(), t0(), V(), W(), X(), z() (+15 more)
 
 ### Community 137 - "ICM Record: NEXUS-L"
-Cohesion: 0.07
-Nodes (28): 1. Approval before InterLink, 1. Approval gate in the sender extension (v1.4.0), 1. Bonding PASS / TOLERABLE / FAIL now matches Access exactly, 1. Final sync, then the sync is retired, 1. "Generate Report" button beside Browse (Tab 2 · Report Attachment, `JOB_DUMMY_004`), 1. Vector/Raster Shoe Contour Sketch Diagram with Spot Readings & Leader Lines, 2. Fix: wrong DTR record opened for the report PDF, 2. InterLink sender extension 1.3.x (+20 more)
+Cohesion: 0.06
+Nodes (32): 1. Approval gate in the sender extension (v1.4.0), 1. Bonding PASS / TOLERABLE / FAIL now matches Access exactly, 1. Final sync, then the sync is retired, 1. "Generate Report" button beside Browse (Tab 2 · Report Attachment, `JOB_DUMMY_004`), 1. Intertek InterLink 2.0 Full Integration & Live Parity, 1. Vector/Raster Shoe Contour Sketch Diagram with Spot Readings & Leader Lines, 2. Complete Database Migration (#Digital Test Report &rarr; MySQL `dbnexus`), 2. Fix: wrong DTR record opened for the report PDF (+24 more)
 
 ### Community 138 - "4184_542af02e.md"
 Cohesion: 0.04
@@ -1302,11 +1361,11 @@ Nodes (52): Sheet: automatic washing, Sheet: bally, Sheet: Bench Drilling, Sheet
 
 ### Community 145 - "main.py"
 Cohesion: 0.09
-Nodes (34): AdminIn, ask(), AskIn, auth(), corrections(), decide(), DecideIn, derive_ui() (+26 more)
+Nodes (35): AdminIn, ask(), AskIn, auth(), corrections(), decide(), DecideIn, derive_ui() (+27 more)
 
 ### Community 146 - "SettingsForm"
-Cohesion: 0.07
-Nodes (12): ActivityForm, AppSettings, ApiKey, FilePath, Headless, ListenIp, NexusBaseUrl, Port (+4 more)
+Cohesion: 0.06
+Nodes (13): ActivityForm, AppSettings, ApiKey, FilePath, Headless, ListenIp, NexusBaseUrl, Port (+5 more)
 
 ### Community 147 - "4202_97b51671.md"
 Cohesion: 0.05
@@ -1328,12 +1387,12 @@ Nodes (42): Sheet: A1, Sheet: A10, Sheet: A11, Sheet: A12, Sheet: A13, Sheet: A1
 Cohesion: 0.05
 Nodes (42): Sheet: ASKER A, Sheet: ASKER A (2), Sheet: ASKER A New, Sheet: ASKER C, Sheet: ASKER C (2), Sheet: ASKER F), Sheet: Bally Leather Flexing, Sheet: Bench Drilling Machine (+34 more)
 
-### Community 152 - "Brain"
-Cohesion: 0.12
-Nodes (5): SystemTaskTrainingSet, TrainSystemTasks, TrainVfMethods, VfDataTrainingSet, SystemWorkflowSeeder
+### Community 152 - "ws"
+Cohesion: 0.04
+Nodes (62): bi(), bs, ds(), F(), G(), k(), V(), z() (+54 more)
 
 ### Community 153 - "BotArtifacts"
-Cohesion: 0.10
+Cohesion: 0.11
 Nodes (4): Cache, BotArtifacts, LabReferenceParser, LexusReportEngine
 
 ### Community 154 - "4241_e98f5696.md"
@@ -1357,8 +1416,8 @@ Cohesion: 0.05
 Nodes (37): Sheet: 9 STEP, Sheet: abrasive cloth, Sheet: acetone, Sheet: aluminum foil, Sheet: blotting paper, Sheet: crockmeter, Sheet: detergent, Sheet: din abrasion paper (+29 more)
 
 ### Community 159 - "re"
-Cohesion: 0.13
-Nodes (21): answer(), _by_words(), describe(), _methods(), norm(), _rows_for(), _scope(), answer() (+13 more)
+Cohesion: 0.08
+Nodes (24): answer(), answer(), _by_words(), describe(), _methods(), norm(), _rows_for(), _scope() (+16 more)
 
 ### Community 160 - "5461_cc7987ff.md"
 Cohesion: 0.06
@@ -1373,12 +1432,12 @@ Cohesion: 0.06
 Nodes (31): Sheet: Ball Pen, Sheet: BAR CODE PAPER ROLL, Sheet: Black Marker, Sheet: Bond Paper, Sheet: CARTON BOX, Sheet: Cutter Blade, Sheet: Double Sided Adhesive Tape, Sheet: EVA,RUBBER,SPONGE,FOAM (+23 more)
 
 ### Community 164 - "InterlinkRunner"
-Cohesion: 0.20
-Nodes (4): BrowserLauncher, InterlinkRunner, LovPicker, SignInRequiredException
+Cohesion: 0.19
+Nodes (3): InterlinkRunner, LovPicker, SignInRequiredException
 
 ### Community 167 - "min/js/labdocs.js"
-Cohesion: 0.13
-Nodes (20): ae(), be(), C(), Ce(), Ee(), ge(), he(), ke() (+12 more)
+Cohesion: 0.17
+Nodes (19): ae(), be(), C(), Ce(), Ee(), ge(), he(), ke() (+11 more)
 
 ### Community 168 - "assets/js/labdocs-book.js"
 Cohesion: 0.14
@@ -1420,21 +1479,25 @@ Nodes (18): chunks(), clean(), main(), ocr_image_bytes(), _ocr_media(), ocr_png(
 Cohesion: 0.12
 Nodes (3): ThirdPartyController, QimaImporter, SimpleZip
 
+### Community 178 - "NexusInterlinkService"
+Cohesion: 0.07
+Nodes (15): NexusInterlinkService, BrowserLauncher, HistoryLine, ApplicationNo, FinishedAt, JobUid, LabRefNo, Message (+7 more)
+
 ### Community 179 - "pipeline.py"
 Cohesion: 0.17
 Nodes (14): breakdown(), build_eval_set(), evaluate(), gate(), _pick_threshold(), replay(), _replay_mode(), run() (+6 more)
 
 ### Community 181 - "train_lexus.py"
-Cohesion: 0.19
-Nodes (14): fit(), predict(), vector(), current_w(), generate(), good_for(), main(), matrix() (+6 more)
-
-### Community 182 - "config.py"
 Cohesion: 0.12
-Nodes (10): Settings, _config(), forget_correction(), mem(), recall(), remember(), _supports_filters(), _supports_filters_getall() (+2 more)
+Nodes (17): fit(), predict(), vector(), _encoder(), scores(), current_w(), fetch(), generate() (+9 more)
 
-### Community 183 - "redact"
-Cohesion: 0.14
-Nodes (12): _doc_text(), index_corrections(), index_docs(), _is_stub(), load_knowledge(), _split(), counts(), label() (+4 more)
+### Community 182 - "memory.py"
+Cohesion: 0.30
+Nodes (7): _config(), forget_correction(), mem(), recall(), remember(), _supports_filters(), _supports_filters_getall()
+
+### Community 183 - "assets/js/warehouse-3d.js"
+Cohesion: 0.06
+Nodes (93): animate(), animateCameraTo(), applyLights(), applyMood(), askLexusAI(), bindEvents(), brainHtml(), buildBulbs() (+85 more)
 
 ### Community 184 - "lab103_convert.py"
 Cohesion: 0.18
@@ -1442,7 +1505,7 @@ Nodes (14): build_table(), cell_html(), convert_spec(), hexcol(), idx(), main(),
 
 ### Community 185 - ".get"
 Cohesion: 0.11
-Nodes (6): {closure#1}(), ProblemKnowledgeSeeder2, ProblemKnowledgeSeeder, SystemSettings, Phase 199 - Settings Page (Admin only) (2026-10-30), Phase 201 - Bot Read-Only Database Queries, Synology Signatory Reminders & 200 QC Problem Knowledge (2026-10-31)
+Nodes (5): {closure#1}(), ProblemKnowledgeSeeder2, ProblemKnowledgeSeeder, SystemSettings, Phase 201 - Bot Read-Only Database Queries, Synology Signatory Reminders & 200 QC Problem Knowledge (2026-10-31)
 
 ### Community 186 - "5472_6c6bc308.md"
 Cohesion: 0.08
@@ -1454,7 +1517,7 @@ Nodes (23): Sheet: APRIL 2024, Sheet: AUGUST 2024, Sheet: dec.2021, Sheet: DTP, 
 
 ### Community 188 - "min/js/labdocs-book.js"
 Cohesion: 0.15
-Nodes (20): be(), C(), de(), $e(), Fe(), Ge(), Je(), Ke() (+12 more)
+Nodes (21): be(), C(), de(), $e(), Fe(), Ge(), Je(), Ke() (+13 more)
 
 ### Community 189 - "3953_f1a23da6.md"
 Cohesion: 0.09
@@ -1465,16 +1528,16 @@ Cohesion: 0.17
 Nodes (19): be(), n(), ce(), de(), E(), Ee(), ge(), H() (+11 more)
 
 ### Community 191 - "ServiceHost"
-Cohesion: 0.18
-Nodes (6): Program, ServiceHost, LastError, Queue, Running, SignIn
+Cohesion: 0.19
+Nodes (5): ServiceHost, LastError, Queue, Running, SignIn
 
 ### Community 192 - "time"
-Cohesion: 0.23
-Nodes (12): main(), main(), arg(), cycle(), evaluate(), healthy(), log(), main() (+4 more)
+Cohesion: 0.08
+Nodes (30): main(), main(), collect(), main(), pids(), worker(), check(), forms() (+22 more)
 
 ### Community 193 - "NEXUS-L assistant service (local, system-only)"
-Cohesion: 0.10
-Nodes (19): Admin corrections, Confidence and the threshold, Endpoints (header `X-AI-Key`), NEXUS-L assistant service (local, system-only), Run, Two brains, the reranker, calibration, training and the Universe, 1. Unified architecture, 2.1 Settings, state and Phoenix tracing (+11 more)
+Cohesion: 0.09
+Nodes (20): Admin corrections, Confidence and the threshold, Endpoints (header `X-AI-Key`), Known limits, NEXUS-L assistant service (local, system-only), Run, Two brains, the reranker, calibration, training and the Universe, 1. Unified architecture (+12 more)
 
 ### Community 195 - "db.py"
 Cohesion: 0.16
@@ -1492,13 +1555,13 @@ Nodes (19): Sheet: ABUNDO, RONAN KIAN 090, Sheet: AGBUYA, DANICA 084, Sheet: AQU
 Cohesion: 0.10
 Nodes (19): Sheet: aging, Sheet: aging (2), Sheet: Bursting machine 1, Sheet:  Bursting machine 2, Sheet: Caliper 1, Sheet: density, Sheet: Digital Balance, Sheet: din (+11 more)
 
-### Community 200 - "textutil.py"
-Cohesion: 0.15
-Nodes (8): casual_expand(), clean_history(), is_followup(), load_history(), resolve(), topic_of(), _lev1(), norm()
+### Community 200 - "min/js/asylum-minigame.js"
+Cohesion: 0.07
+Nodes (78): activate(), addFloatKey(), addPickup(), blast(), buildSecretWarehouseDoor(), caught(), checkSecretCorner(), clearGhostTimers() (+70 more)
 
-### Community 201 - "pathlib"
-Cohesion: 0.13
-Nodes (6): good(), main(), score(), rank(), fix(), strip()
+### Community 201 - "constructor"
+Cohesion: 0.04
+Nodes (42): ca, cl, constructor(), d(), u(), Da, v(), i() (+34 more)
 
 ### Community 204 - "4206_a47df597.md"
 Cohesion: 0.11
@@ -1535,10 +1598,6 @@ Nodes (17): Sheet: Conditioned Environment Failure, Sheet: DOC009 Calibration Re
 ### Community 212 - "assets/js/labdocs-collab.js"
 Cohesion: 0.24
 Nodes (15): ask(), csrf(), dot(), drawCursors(), el(), initials(), loop(), notice() (+7 more)
-
-### Community 215 - "CodeIgniter\Model"
-Cohesion: 0.09
-Nodes (3): InterlinkReportModel, WstTestModel, WstTestResultModel
 
 ### Community 216 - "3938_d913531f.md"
 Cohesion: 0.12
@@ -1596,13 +1655,13 @@ Nodes (16): Sheet: aging, Sheet: aging (2), Sheet: bm 1, Sheet:  Bursting mchine
 Cohesion: 0.23
 Nodes (8): client(), count(), delete_missing(), embed(), embedder(), point_id(), search(), upsert()
 
-### Community 230 - "json"
-Cohesion: 0.33
-Nodes (9): backup(), do_eval(), do_knowledge(), do_models(), do_tf(), do_version(), main(), say() (+1 more)
+### Community 230 - "vt"
+Cohesion: 0.04
+Nodes (5): bl, dc, mc(), Mh, vt
 
-### Community 231 - "Brain"
-Cohesion: 0.11
-Nodes (7): BrainMaintain, BrainSeed, VfMethodsSeed, {closure#13}(), {closure#19}(), {closure#20}(), Brain
+### Community 231 - "textutil.py"
+Cohesion: 0.18
+Nodes (7): casual_expand(), clean_history(), is_followup(), load_history(), resolve(), topic_of(), norm()
 
 ### Community 233 - "4201_bc761299.md"
 Cohesion: 0.12
@@ -1636,9 +1695,9 @@ Nodes (14): Sheet: april 28, Sheet: aug 10, Sheet: aug 7, Sheet: dec01, Sheet: j
 Cohesion: 0.13
 Nodes (14): Sheet: APR., Sheet: AUG., Sheet: DEC., Sheet: DEC. (2), Sheet: DEC. (3), Sheet: FEB., Sheet: JAN., Sheet: JULY (+6 more)
 
-### Community 241 - "lexus_bench.py"
-Cohesion: 0.27
-Nodes (11): check(), forms(), g_database(), g_methods(), g_standards(), g_text(), main(), run_ai() (+3 more)
+### Community 241 - "assets/js/avatar-factory.js"
+Cohesion: 0.36
+Nodes (10): addAccessories(), addHair(), build(), buildHuman(), buildQuad(), buildSnake(), newRig(), normalize() (+2 more)
 
 ### Community 242 - "ChatStore.php"
 Cohesion: 0.18
@@ -1661,8 +1720,8 @@ Cohesion: 0.14
 Nodes (13): background, scripts, browser_specific_settings, gecko, content_scripts, description, id, strict_min_version (+5 more)
 
 ### Community 248 - "BaseController"
-Cohesion: 0.09
-Nodes (7): View, BaseController, HelpController, Home, MaterialsController, AuthFilter, GuestFilter
+Cohesion: 0.14
+Nodes (4): View, BaseController, Home, MaterialsController
 
 ### Community 249 - "4204_b047c1e2.md"
 Cohesion: 0.15
@@ -1691,6 +1750,10 @@ Nodes (12): Sheet: 2022, Sheet: April 2019, Sheet: AUGUST, Sheet: DECEMBER, Shee
 ### Community 256 - "6425_b96c8779.md"
 Cohesion: 0.15
 Nodes (12): Sheet: Alex, Sheet: Arvee, Sheet: Bryan, Sheet: Christine Mae, Sheet: Jessa, Sheet: Jessica, Sheet: Katherine, Sheet: Larina (+4 more)
+
+### Community 260 - "lab_thumbs.py"
+Cohesion: 0.15
+Nodes (6): main(), thumb_img(), thumb_pdf(), main(), parse_page(), vrules()
 
 ### Community 261 - "3943_f17f0df1.md"
 Cohesion: 0.17
@@ -1740,17 +1803,13 @@ Nodes (11): Sheet: APRIL, Sheet: AUGUST, Sheet: FEB., Sheet: JAN., Sheet: JULY, 
 Cohesion: 0.17
 Nodes (11): Sheet: 2015, Sheet: 2016, Sheet: 2016-1, Sheet: 2017, Sheet: 2018, Sheet: 2019, Sheet: 2020, Sheet: 2022 (+3 more)
 
-### Community 273 - "HistoryLine"
-Cohesion: 0.17
-Nodes (12): HistoryLine, ApplicationNo, FinishedAt, JobUid, LabRefNo, Message, Mode, ReceivedAt (+4 more)
+### Community 273 - "us"
+Cohesion: 0.04
+Nodes (23): _allocateTargets(), Et, fs, gs, Jl, kl, Kn, mi() (+15 more)
 
-### Community 274 - "SynologyChat"
-Cohesion: 0.11
-Nodes (4): Services, Synology, BotApprovals, SynologyChat
-
-### Community 275 - "DashboardController.php"
-Cohesion: 0.10
-Nodes (3): {closure#1}(), {closure#8}(), {closure#5}()
+### Community 274 - ".approvalReminderIntent"
+Cohesion: 0.22
+Nodes (6): BotApprovals, Database Architecture (`dbnexus` on `192.168.32.43`), Machine Data Folders (`\\192.168.32.45\OUTDATA\`), Main Controllers & Components, NEXUS-L - Codebase Index, Status (2026-11-08)
 
 ### Community 276 - "ExampleDatabaseTest.php"
 Cohesion: 0.25
@@ -1841,7 +1900,7 @@ Cohesion: 0.47
 Nodes (9): ask(), end(), esc(), build(), el(), layoutChanged(), mark(), show() (+1 more)
 
 ### Community 298 - "NEXUS-L InterLink background service (C#)"
-Cohesion: 0.20
+Cohesion: 0.22
 Nodes (8): Building it, Endpoints (header `X-Service-Key`), First time on a computer, Is it really saved? (proof and pictures), NEXUS-L InterLink background service (C#), Several users at once: the queue (first in, first out), The program (installed by `NexusInterlinkService-Setup-<version>.exe`, e.g. `E:\desktop\MaterialTest\NexusInterlinkService`), Two kinds of job
 
 ### Community 299 - "1900_abf9bbce.md"
@@ -1912,13 +1971,13 @@ Nodes (8): Sheet: 5 Whys, Sheet: AUDIT.Checklist, Sheet: CAP, Sheet: COVER PAGE,
 Cohesion: 0.22
 Nodes (8): Sheet: April 2024, Sheet: August 2024, Sheet: February 2024, Sheet: January 2024, Sheet: July 2024, Sheet: June 2024, Sheet: March 2024, Sheet: May 2024
 
-### Community 316 - ".date"
-Cohesion: 0.21
-Nodes (3): LabDocsImportFiles, SettingsTransfer, {closure#1}()
+### Community 316 - "jt"
+Cohesion: 0.23
+Nodes (10): io(), l(), jt(), i(), n(), r(), Ke(), Kt() (+2 more)
 
-### Community 318 - "TrainBulk.php"
-Cohesion: 0.11
-Nodes (4): {closure#2}(), TrainNewFeatures, BrainSeed10, BrainSeed11
+### Community 318 - "Database"
+Cohesion: 0.15
+Nodes (3): Database, VfDataEnricher, WorkflowKnowledgeSeeder
 
 ### Community 319 - "1893_d91ed6f0.md"
 Cohesion: 0.25
@@ -1959,6 +2018,14 @@ Nodes (7): Sheet: GOTECH Calibration 2025, Sheet: GOTECH Calibration 2025 (2), S
 ### Community 328 - "6853_6ccb6614.md"
 Cohesion: 0.25
 Nodes (7): Sheet: DTP-QC-001 TENSILE, Sheet: DTP-QC-002 TENSILE, Sheet: DTP-QC-003 DENSITY, Sheet: DTP-QC-004 DIN, Sheet: DTP-QC-005 FLEXING 1, Sheet: DTP-QC-009 AGING-1, Sheet: DTP-QC-010 UV LIGHT
+
+### Community 329 - "Roles"
+Cohesion: 0.16
+Nodes (3): AccountController, {closure#1}(), Roles
+
+### Community 330 - "CodeIgniter\HTTP\RequestInterface"
+Cohesion: 0.22
+Nodes (3): AuthFilter, GuestFilter, PayloadRouting
 
 ### Community 331 - "1894_d7e63362.md"
 Cohesion: 0.29
@@ -2051,6 +2118,10 @@ Nodes (6): Sheet: Audit Results, Sheet: Chart, Sheet: Instructions, Sheet: Logge
 ### Community 353 - "assets/js/labdocs-files.js"
 Cohesion: 0.43
 Nodes (5): csrf(), dialog(), el(), send(), status()
+
+### Community 354 - ".config"
+Cohesion: 0.18
+Nodes (3): MailRelayController, MailOutbox, Phase 207 - Outlook Email Relay: web settings, safe queue, Handler fallback (2026-11-10)
 
 ### Community 356 - "1897_501e3d79.md"
 Cohesion: 0.33
@@ -2532,61 +2603,169 @@ Nodes (3): Sheet: DTP LAB 2025, Sheet: DTP LAB Accreditation List, Sheet: VF FOO
 Cohesion: 0.50
 Nodes (3): Sheet: DTP LAB 2025, Sheet: DTP LAB Accreditation List, Sheet: VF FOOTWEAR TEST METHOD
 
-### Community 497 - "min/js/labdocs-preview.js"
-Cohesion: 0.67
-Nodes (3): d(), f(), s()
+### Community 501 - "sn"
+Cohesion: 0.05
+Nodes (12): ac, an, cn, dn, fn, hn, ln, on (+4 more)
 
-### Community 501 - "ApprovalController.php"
-Cohesion: 0.18
-Nodes (5): {closure#1}(), {closure#3}(), {closure#4}(), {closure#3}(), ReportPdf
+### Community 1171 - "min/js/warehouse-3d.js"
+Cohesion: 0.12
+Nodes (35): locker(), ao(), Dt(), $e(), Ee(), eo(), et(), Ft() (+27 more)
 
 ### Community 1172 - "assets/js/labdocs-fileview.js"
 Cohesion: 0.21
 Nodes (6): addPdfStamp(), loadSlideToEditor(), makeDraggable(), renderBulletEditorItems(), renderEditorThumbs(), saveCurrentEditorState()
 
+### Community 1183 - ".constructor"
+Cohesion: 0.09
+Nodes (39): MapControls, OrbitControls, dollyIn(), dollyOut(), getZoomScale(), handleKeyDown(), handleMouseDownDolly(), handleMouseDownPan() (+31 more)
+
+### Community 1184 - "ls"
+Cohesion: 0.05
+Nodes (6): ai, Ea(), en, Ga, ls(), os()
+
+### Community 1186 - "nl"
+Cohesion: 0.04
+Nodes (11): bo, r(), clone(), n(), nl, parseShapes(), parseSkeletons(), Rl (+3 more)
+
+### Community 1187 - ".pullInterlinkGridPage"
+Cohesion: 0.24
+Nodes (3): 1. Approval before InterLink, 2. InterLink sender extension 1.3.x, Phase 194 - Report Sign-off (QR Approval) and the InterLink Sender Extension (2026-10-28)
+
+### Community 1190 - "ko"
+Cohesion: 0.21
+Nodes (20): A(), Ae(), bo(), Ce(), co(), Fe(), fo(), Ge() (+12 more)
+
 ### Community 1192 - "setup"
 Cohesion: 0.43
 Nodes (4): setup(), closeZoom(), openZoom(), startCap()
+
+### Community 1193 - "ml"
+Cohesion: 0.08
+Nodes (4): Al, el, ml, pl
 
 ### Community 1195 - "min/js/labdocs-files.js"
 Cohesion: 0.53
 Nodes (4): b(), l(), S(), T()
 
-### Community 1203 - "Phase 190 - InterLink 2.0 Integration & Digital Test Report (QC Lab) Suite Migration (2026-10-27)"
-Cohesion: 0.50
-Nodes (4): 1. Intertek InterLink 2.0 Full Integration & Live Parity, 2. Complete Database Migration (#Digital Test Report &rarr; MySQL `dbnexus`), 3. QC Lab Digital Test Reports Web Suite (`/dtr`), Phase 190 - InterLink 2.0 Integration & Digital Test Report (QC Lab) Suite Migration (2026-10-27)
+### Community 1196 - "SynologyChat"
+Cohesion: 0.14
+Nodes (3): Services, Synology, SynologyChat
 
-### Community 1204 - "NEXUS-L - Codebase Index"
-Cohesion: 0.50
-Nodes (4): Database Architecture (`dbnexus` on `192.168.32.43`), Machine Data Folders (`\\192.168.32.45\OUTDATA\`), NEXUS-L - Codebase Index, Status (2026-11-08)
-
-### Community 1205 - "assets/js/labdocs-search.js"
-Cohesion: 0.83
-Nodes (3): clear(), go(), run()
+### Community 1203 - "eh"
+Cohesion: 0.05
+Nodes (4): eh, jt(), mo(), po
 
 ### Community 1206 - "m"
 Cohesion: 0.83
 Nodes (3): g(), m(), y()
 
+### Community 1207 - "three.min.js"
+Cohesion: 0.02
+Nodes (88): closeOverlay(), paintOverlay(), Ah, ao(), _applyPMREM(), Ba, bind(), bindSkeletons() (+80 more)
+
+### Community 1215 - "Lc"
+Cohesion: 0.09
+Nodes (3): bc, getInput(), Lc
+
+### Community 1217 - "assets/js/calendar-monitoring.js"
+Cohesion: 0.18
+Nodes (29): bindEvents(), closeDrawer(), drawerSkeleton(), drawView(), escapeHtml(), fetchDay(), fetchRange(), fmtDate() (+21 more)
+
+### Community 1221 - "min/js/calendar-monitoring.js"
+Cohesion: 0.14
+Nodes (28): qrPolynomial(), _this, A(), B(), ce(), de(), F(), G() (+20 more)
+
+### Community 1222 - "assets/js/asylum-world.js"
+Cohesion: 0.09
+Nodes (6): build(), W, buildFloor(), buildStairMesh(), layoutStairs(), skeleton()
+
+### Community 1223 - "min/js/asylum-world.js"
+Cohesion: 0.11
+Nodes (13): xt(), bed(), couch(), freezer(), Ft(), Ht(), sink(), _t() (+5 more)
+
+### Community 1226 - "assets/js/asylum-minigame.js"
+Cohesion: 0.14
+Nodes (18): buildSecretWarehouseDoor(), checkSecretCorner(), getCtx(), init(), isBlocked(), playBeam(), playDoorCreak(), playDoorUnlock() (+10 more)
+
+### Community 1227 - "update"
+Cohesion: 0.13
+Nodes (22): caught(), doTransform(), endTransform(), enterHide(), exitHide(), groundAt(), handleKey(), hasLineOfSight() (+14 more)
+
+### Community 1228 - "yt"
+Cohesion: 0.04
+Nodes (11): Aa, bt, ct(), es(), li(), ns(), Ra, vi() (+3 more)
+
+### Community 1229 - "be"
+Cohesion: 0.25
+Nodes (9): It(), be(), ho(), Le(), lo(), Nt(), pe(), qe() (+1 more)
+
+### Community 1230 - "assets/js/warehouse-multi.js"
+Cohesion: 0.19
+Nodes (20): addChat(), applyLook(), applyUsers(), buildChat(), buildStudio(), closeStudio(), createRemote(), frameRemotes() (+12 more)
+
+### Community 1231 - "min/js/warehouse-multi.js"
+Cohesion: 0.19
+Nodes (20): A(), ae(), B(), ce(), D(), de(), E(), ie() (+12 more)
+
+### Community 1234 - "assets/js/labdocs-search.js"
+Cohesion: 0.83
+Nodes (3): clear(), go(), run()
+
+### Community 1236 - "assets/js/quality-insights.js"
+Cohesion: 0.28
+Nodes (16): drawFail(), drawItems(), drawLines(), drawSup(), failParams(), get(), loadFail(), loadLines() (+8 more)
+
+### Community 1237 - "F"
+Cohesion: 0.21
+Nodes (5): ghostPickTarget(), ghostWalk(), updateClones(), updateGhostAI(), F
+
+### Community 1241 - "enterAsylum"
+Cohesion: 0.17
+Nodes (12): addFloatKey(), addPickup(), doClones(), enterAsylum(), padFloorLights(), placeKeys(), relocatePower(), setupBoss() (+4 more)
+
+### Community 1244 - "activate"
+Cohesion: 0.26
+Nodes (11): activate(), blast(), fireKamehameha(), fireLaser(), fireMissile(), flash(), killClone(), rayLength() (+3 more)
+
+### Community 1245 - "wo"
+Cohesion: 0.20
+Nodes (3): jo, wo, xo
+
+### Community 1247 - "startFloorCountdown"
+Cohesion: 0.22
+Nodes (11): clearGhostTimers(), farSpot(), makeGhostMesh(), newGhost(), placeBoss(), resetSecretDoor(), returnToWarehouse(), setStatus() (+3 more)
+
+### Community 1251 - "e"
+Cohesion: 0.23
+Nodes (7): _a(), fi(), ka(), Sa(), Ta(), us(), e()
+
+### Community 1252 - "assets/js/dtr.js"
+Cohesion: 0.46
+Nodes (7): bondingIsLeft(), renderFormSketch(), rotateBoxesToArrow(), rotateSpotsToStart(), scheduleFormSketch(), startMarkerHtml(), startOnSpotOne()
+
+### Community 1256 - "P"
+Cohesion: 0.40
+Nodes (3): P(), H(), v()
+
 ## Knowledge Gaps
 - **63 isolated node(s):** `PYTHONIOENCODING`, `PYTHONIOENCODING`, `@tailwindcss/cli`, `tailwindcss`, `exceljs` (+58 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 5351 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **860 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 5947 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **884 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `1. Unified architecture` connect `NEXUS-L assistant service (local, system-only)` to `pipeline.py`, `BotController`?**
-  _High betweenness centrality (0.059) - this node is a cross-community bridge._
-- **Are the 4 inferred relationships involving `InterlinkController` (e.g. with `.run()` and `.submit()`) actually correct?**
-  _`InterlinkController` has 4 INFERRED edges - model-reasoned connections that need verification._
+  _High betweenness centrality (0.028) - this node is a cross-community bridge._
 - **What connects `PYTHONIOENCODING`, `PYTHONIOENCODING`, `@tailwindcss/cli` to the rest of the system?**
   _63 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `InboxController` be split into smaller, more focused modules?**
   _Cohesion score 0.11470985155195682 - nodes in this community are weakly interconnected._
-- **Why does `UiState` connect `pipeline.py` to `main.py`, `NEXUS-L assistant service (local, system-only)`, `agent.py`, `redact`?**
-  _High betweenness centrality (0.058) - this node is a cross-community bridge._
+- **Why does `UiState` connect `pipeline.py` to `json`, `main.py`, `NEXUS-L assistant service (local, system-only)`, `agent.py`?**
+  _High betweenness centrality (0.028) - this node is a cross-community bridge._
 - **Should `Auth` be split into smaller, more focused modules?**
-  _Cohesion score 0.11428571428571428 - nodes in this community are weakly interconnected._
-- **Why does `BotController` connect `BotController` to `BotController.php`, `.ask`, `.log`, `.date`, `SynologyChat`, `MachineFileReader`, `BotSessions`, `BaseController`, `BotArtifacts`?**
-  _High betweenness centrality (0.036) - this node is a cross-community bridge._
+  _Cohesion score 0.11264367816091954 - nodes in this community are weakly interconnected._
+- **Why does `BaseController` connect `BaseController` to `AnalyticsController`, `InterlinkLovController`, `LabDocsController`, `InterlinkController`, `PhotoLinkController`, `DesignerController`, `BotController`, `.date`, `InboxController`, `QimaImporter`, `AuthController`, `.date`, `SettingsController`, `Roles`, `InterlinkServiceController`, `DashboardController`, `sidebar.php`, `NotifierController`, `WarehouseTrackerController`, `DtrController`, `ApprovalController`, `BrainTrainerController`, `.config`, `WstController`?**
+  _High betweenness centrality (0.021) - this node is a cross-community bridge._
+- **Should `ChatStore` be split into smaller, more focused modules?**
+  _Cohesion score 0.10163170163170163 - nodes in this community are weakly interconnected._

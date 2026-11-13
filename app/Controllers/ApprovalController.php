@@ -82,7 +82,57 @@ class ApprovalController extends BaseController
             'expired' => $a['status'] === 'pending' && ! $live, 'expires_at' => $a['expires_at'], 'expires_in' => $live ? strtotime((string) $a['expires_at']) - time() : 0,
             'url' => $live ? site_url('approve/' . $a['token']) : null, // only a live link is ever handed out
             'file' => site_url('dtr/approval/file/' . ($a['file_key'] ?: $a['token'])),
+            // the user's own file that replaces the signed one for sending (a copy is kept in NEXUS-L)
+            'user_file' => \App\Libraries\ApprovalFiles::userPath($a) !== '', 'user_file_name' => (string) ($a['user_file_name'] ?? ''),
+            'user_file_by' => (string) ($a['user_file_by'] ?? ''), 'user_file_at' => (string) ($a['user_file_at'] ?? ''),
         ];
+    }
+
+    /**
+     * POST dtr/approval/replace-file {lab_ref, application_no, name, pdf_b64} or {lab_ref, application_no, clear: 1}
+     * A report that carries the approved flag may still have its attached file changed by the user. The chosen file is copied into NEXUS-L
+     * and is the one sent to InterLink; "clear" goes back to the signed report. The approval itself (who signed, when) is not touched.
+     */
+    public function replaceFile()
+    {
+        \App\Libraries\ApprovalFiles::ensureColumns();
+        $p   = $this->request->getJSON(true) ?? [];
+        $lab = trim((string) ($p['lab_ref'] ?? ''));
+        $app = preg_replace('/[^A-Za-z0-9_-]/', '', (string) ($p['application_no'] ?? ''));
+        $q   = $this->db()->table('tbl_dtr_report_approvals')->where('lab_ref_no', $lab)->where('status', 'approved');
+        $q->groupStart()->where('application_no', $app)->orWhere('application_no', '')->orWhere('application_no IS NULL')->groupEnd();
+        $a = $lab !== '' ? $q->orderBy('id', 'DESC')->get()->getRowArray() : null;
+        if (! $a) {
+            return $this->json(['ok' => false, 'error' => 'This report is not approved, so there is nothing to replace. Use Request approval for the file you chose.'], 409);
+        }
+        $me  = $this->me();
+        $now = date('Y-m-d H:i:s');
+        if (! empty($p['clear'])) {
+            $this->db()->table('tbl_dtr_report_approvals')->where('id', $a['id'])->update(['user_file' => null, 'user_file_name' => null, 'user_file_by' => null, 'user_file_at' => null, 'updated_at' => $now]);
+            log_message('info', "[Approval] {$lab}: {$app} goes back to the signed report (" . ($me['name'] ?? '') . ').');
+
+            return $this->json(['ok' => true, 'approval' => $this->publicRow($this->db()->table('tbl_dtr_report_approvals')->where('id', $a['id'])->get()->getRowArray())]);
+        }
+        $pdf = base64_decode((string) ($p['pdf_b64'] ?? ''), true);
+        if ($pdf === false || ! str_starts_with($pdf, '%PDF') || strlen($pdf) < 500 || strlen($pdf) > 20 * 1024 * 1024) {
+            return $this->json(['ok' => false, 'error' => 'That is not a usable PDF file (it must be a PDF of at most 20 MB).'], 422);
+        }
+        $key  = (string) ($a['file_key'] ?: $a['token']);
+        $file = $key . '_user_' . date('YmdHis') . '.pdf';
+        if (@file_put_contents(\App\Libraries\ApprovalFiles::dir() . $file, $pdf) === false) {
+            return $this->json(['ok' => false, 'error' => 'The file could not be saved in NEXUS-L.'], 500);
+        }
+        $name = trim((string) preg_replace('/[\\\\\/:*?"<>|\x00-\x1f]+/', '_', (string) ($p['name'] ?? '')));
+        $name = mb_substr($name !== '' ? $name : 'report.pdf', 0, 150);
+        if (! preg_match('/\.pdf$/i', $name)) {
+            $name .= '.pdf';
+        }
+        $this->db()->table('tbl_dtr_report_approvals')->where('id', $a['id'])->update([
+            'user_file' => $file, 'user_file_name' => $name, 'user_file_by' => (string) ($me['name'] ?? $me['username'] ?? ''), 'user_file_at' => $now, 'updated_at' => $now,
+        ]);
+        log_message('info', "[Approval] {$lab} ({$app}): file replaced by " . ($me['name'] ?? '') . " -> {$file} ({$name}, " . strlen($pdf) . ' bytes, sha256 ' . hash('sha256', $pdf) . ').');
+
+        return $this->json(['ok' => true, 'sha256' => hash('sha256', $pdf), 'approval' => $this->publicRow($this->db()->table('tbl_dtr_report_approvals')->where('id', $a['id'])->get()->getRowArray())]);
     }
 
     /** The request behind a link that can still be used (pending, not expired), else null. */
@@ -291,12 +341,15 @@ class ApprovalController extends BaseController
             $byApp = $this->db()->table('tbl_dtr_report_approvals')->where('application_no', $app)->where('status', 'approved')->orderBy('id', 'DESC')->get()->getRowArray();
             $a     = $byApp ?: $a;
         }
-        $signed = $a && $a['status'] === 'approved' ? $this->dir() . ($a['file_key'] ?: $a['token']) . '_signed.pdf' : '';
+        \App\Libraries\ApprovalFiles::ensureColumns();
+        $pick   = $a && $a['status'] === 'approved' ? \App\Libraries\ApprovalFiles::chosen($a) : ['path' => '', 'replaced' => false];
+        $signed = $pick['path'];
         if ($signed === '' || ! is_file($signed)) {
             return $this->json(['ok' => true, 'approved' => false, 'status' => $a['status'] ?? 'none']);
         }
 
-        return $this->json(['ok' => true, 'approved' => true, 'sha256' => hash_file('sha256', $signed), 'by' => $a['decided_name'], 'at' => $a['decided_at']]);
+        // sha256 is the hash of the file that will be sent: the signed report, or the user's own file that replaces it
+        return $this->json(['ok' => true, 'approved' => true, 'replaced' => $pick['replaced'], 'sha256' => hash_file('sha256', $signed), 'by' => $a['decided_name'], 'at' => $a['decided_at']]);
     }
 
     /** POST dtr/approval/pdf-pages {pdf_b64}: the report as page images, for the report view (no PDF viewer needed) */
@@ -318,6 +371,15 @@ class ApprovalController extends BaseController
         $a = preg_match('/^[a-f0-9]{40}$/', $key) ? $this->db()->table('tbl_dtr_report_approvals')->where('file_key', $key)->get()->getRowArray() : null;
         if (! $a) {
             return $this->response->setStatusCode(404)->setBody('Not found.');
+        }
+        // ?v=user: the user's own file that replaces the signed report (only for an approved report)
+        if ($a['status'] === 'approved' && $this->request->getGet('v') === 'user') {
+            $up = \App\Libraries\ApprovalFiles::userPath($a);
+            if ($up !== '') {
+                return $this->response->setHeader('Content-Type', 'application/pdf')
+                    ->setHeader('Content-Disposition', 'inline; filename="' . preg_replace('/[^A-Za-z0-9_. -]/', '', (string) ($a['user_file_name'] ?: 'report.pdf')) . '"')
+                    ->setBody((string) file_get_contents($up));
+            }
         }
 
         return $this->sendPdf($a, $a['status'] === 'approved');

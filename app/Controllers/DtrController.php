@@ -376,11 +376,54 @@ class DtrController extends BaseController
         $this->wsReportTable();   // makes sure tbl_dtr_wholeshoe_reports exists (the list reads the Technician saved in a report)
         // Whole Shoe Collection = every recorded test type (one row each) from tbl_dtr_WholeshoeTracker
         $wholeShoes = $db->table('tbl_dtr_WholeshoeTracker')
-            ->select("TrackerID, LabRefNo, WholeshoeLabRefNo, ProductionCode AS ProdCode, Style AS StyleNo, Colorway, MTL, Building, `LineNo`, Side, NoOfShoes, TestType AS TestTypes, CollectionDate, ProductionDate AS IntakeProductionDate, EncodedBy, Status, FinalResult, Findings, TimeStarted, TimeCompleted, COALESCE(NULLIF(Technician, ''), (SELECT JSON_VALUE(rp.ReportData, '$.technician') FROM tbl_dtr_wholeshoe_reports rp WHERE rp.LabRefNo COLLATE utf8mb4_general_ci IN (tbl_dtr_WholeshoeTracker.LabRefNo COLLATE utf8mb4_general_ci, tbl_dtr_WholeshoeTracker.WholeshoeLabRefNo COLLATE utf8mb4_general_ci) ORDER BY rp.ReportID DESC LIMIT 1)) AS Technician, MachineCode, DurationOfTest, ActualDuration, BoxNo, SourceSystem", false)
+            ->select("TrackerID, LabRefNo, WholeshoeLabRefNo, ProductionCode AS ProdCode, Style AS StyleNo, Colorway, MTL, Building, `LineNo`, Side, NoOfShoes, TestType AS TestTypes, CollectionDate, ProductionDate AS IntakeProductionDate, EncodedBy, Status, FinalResult, Findings, TimeStarted, TimeCompleted, Technician, MachineCode, DurationOfTest, ActualDuration, BoxNo, SourceSystem", false)
             ->orderBy("COALESCE(NULLIF(LEFT(CollectionDate, 10), ''), NULLIF(LEFT(ProductionDate, 10), ''), LEFT(TimeStarted, 10), '1970-01-01') DESC, TrackerID DESC", '', false)
             ->limit(200)
             ->get()
             ->getResultArray();
+        if ($wholeShoes) {
+            $wsRefs = [];
+            foreach ($wholeShoes as $wsRow) {
+                if (trim((string) ($wsRow['Technician'] ?? '')) !== '') {
+                    continue;
+                }
+                foreach (['LabRefNo', 'WholeshoeLabRefNo'] as $rk) {
+                    $rv = trim((string) ($wsRow[$rk] ?? ''));
+                    if ($rv !== '') {
+                        $wsRefs[$rv] = true;
+                    }
+                }
+            }
+            if ($wsRefs) {
+                $wsTechByRef = [];
+                $rpRows = $db->table('tbl_dtr_wholeshoe_reports')
+                    ->select('LabRefNo, ReportData')
+                    ->whereIn('LabRefNo', array_keys($wsRefs))
+                    ->orderBy('ReportID', 'ASC')
+                    ->get()
+                    ->getResultArray();
+                foreach ($rpRows as $rp) {
+                    $rd = json_decode((string) ($rp['ReportData'] ?? ''), true);
+                    $tech = is_array($rd) ? trim((string) ($rd['technician'] ?? '')) : '';
+                    if ($tech !== '') {
+                        $wsTechByRef[strtoupper(trim((string) $rp['LabRefNo']))] = $tech;
+                    }
+                }
+                foreach ($wholeShoes as &$wsRow) {
+                    if (trim((string) ($wsRow['Technician'] ?? '')) !== '') {
+                        continue;
+                    }
+                    foreach (['LabRefNo', 'WholeshoeLabRefNo'] as $rk) {
+                        $uk = strtoupper(trim((string) ($wsRow[$rk] ?? '')));
+                        if ($uk !== '' && isset($wsTechByRef[$uk])) {
+                            $wsRow['Technician'] = $wsTechByRef[$uk];
+                            break;
+                        }
+                    }
+                }
+                unset($wsRow);
+            }
+        }
 
         $benchTotal  = $db->tableExists('tbl_dtr_material_bench_log') ? $db->table('tbl_dtr_material_bench_log')->countAllResults() : 0;
         $erpTotal    = $db->tableExists('tbl_erp_test_orders') ? $db->table('tbl_erp_test_orders')->countAllResults() : 0;
@@ -2038,6 +2081,9 @@ class DtrController extends BaseController
             \App\Libraries\DtrLabrefIndex::upsertWholeShoe($db, (int) $db->insertID());   // the new whole shoe is a Lab Reference of the InterLink picker at once
             $saved++;
         }
+        if ($saved > 0) {
+            \App\Libraries\DataCache::bump();
+        }
         $msg = "Saved {$saved} whole shoe(s).";
         if ($skipped) {
             $msg .= ' Skipped (Test Type Lab Ref No already exists): ' . implode(', ', $skipped) . '.';
@@ -2494,6 +2540,9 @@ class DtrController extends BaseController
             }
         }
 
+        if ($saved > 0 || $down > 0 || $lack > 0) {
+            \App\Libraries\DataCache::bump();
+        }
         $msg = "Saved {$saved} specimen(s) for Building {$building}.";
         if ($lack) {
             $msg .= " {$lack} line(s) marked LACKING.";
@@ -2519,7 +2568,7 @@ class DtrController extends BaseController
      */
     public function loadMachine()
     {
-        $payload  = $this->request->getJSON(true) ?? $this->request->getPost();
+        $payload  = $this->bodyJson() ?? $this->request->getPost();
         $slug     = trim((string) ($payload['slug'] ?? 'fabric'));
         $labRefNo = trim((string) ($payload['lab_ref_no'] ?? ''));
 
@@ -2795,7 +2844,7 @@ class DtrController extends BaseController
     public function save()
     {
         $db      = \Config\Database::connect();
-        $payload = $this->request->getJSON(true) ?? $this->request->getPost();
+        $payload = $this->bodyJson() ?? $this->request->getPost();
         $slug    = trim((string) ($payload['slug'] ?? 'fabric'));
         $fields  = (array) ($payload['fields'] ?? []);
 
@@ -2886,6 +2935,7 @@ class DtrController extends BaseController
         if ($labRefNo !== '') {
             \App\Libraries\DtrLabrefIndex::upsert($db, $slug, $recordId, $saveData + $fields);
         }
+        \App\Libraries\DataCache::bump();
 
         return $this->response->setJSON([
             'ok'       => true,
@@ -3383,6 +3433,7 @@ class DtrController extends BaseController
         $user = (string) (service('auth')->user()['name'] ?? '');
         $json = json_encode($clean, JSON_UNESCAPED_UNICODE);
         $db->query('INSERT INTO tbl_dtr_wholeshoe_reports (LabRefNo, ReportData, UpdatedBy, UpdatedAt) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE ReportData = VALUES(ReportData), UpdatedBy = VALUES(UpdatedBy), UpdatedAt = VALUES(UpdatedAt)', [$ref, $json, $user, date('Y-m-d H:i:s')]);
+        \App\Libraries\DataCache::bump();
 
         return $this->response->setJSON(['ok' => true, 'message' => "Saved Whole Shoe report {$ref}.", 'csrf' => csrf_hash()]);
     }
@@ -3506,7 +3557,7 @@ class DtrController extends BaseController
      */
     public function sheetPdf()
     {
-        $p    = $this->request->getJSON(true) ?? $this->request->getPost();
+        $p    = $this->bodyJson() ?? $this->request->getPost();
         $html = (string) ($p['html'] ?? '');
         if ($html === '' || strlen($html) > 2000000) {
             return $this->response->setStatusCode(422)->setBody('No report to convert.');
@@ -3606,6 +3657,21 @@ class DtrController extends BaseController
         return $this->response->setStatusCode(500)->setBody('The Access PDF could not be created for report #' . (int) $id . ' (Microsoft Access must be installed on the server and this report must exist in the Access file). Please close this tab and use "Print Report / Save as PDF" instead.');
     }
 
+    /** the JSON body of the request, or null when the request is not JSON (CodeIgniter 4.7 throws on a form / multipart body) */
+    private function bodyJson(): ?array
+    {
+        if (! str_contains(strtolower($this->request->getHeaderLine('Content-Type')), 'json')) {
+            return null;
+        }
+        try {
+            $j = $this->request->getJSON(true);
+
+            return is_array($j) ? $j : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
     /**
      * POST /dtr/send-synology
      * Send report notification & optional image attachment to Synology Chat channel.
@@ -3613,7 +3679,15 @@ class DtrController extends BaseController
     public function sendSynology()
     {
         $text = trim((string) ($this->request->getPost('text') ?? ''));
-        $json = $this->request->getJSON(true);
+        // a form post (text + picture) is multipart: only a JSON body is read as JSON (CodeIgniter 4.7 throws on anything else)
+        $json = [];
+        if (str_contains(strtolower($this->request->getHeaderLine('Content-Type')), 'json')) {
+            try {
+                $json = (array) $this->request->getJSON(true);
+            } catch (\Throwable $e) {
+                $json = [];
+            }
+        }
         if ($text === '' && ! empty($json['text'])) {
             $text = trim((string) $json['text']);
         }
@@ -3682,7 +3756,7 @@ class DtrController extends BaseController
      */
     public function sendEmail()
     {
-        $json = $this->request->getJSON(true) ?? [];
+        $json = $this->bodyJson() ?? [];
         $to = trim((string) ($this->request->getPost('to') ?? ($json['to'] ?? '')));
         $subject = trim((string) ($this->request->getPost('subject') ?? ($json['subject'] ?? 'Shoe Bonding Test Report')));
         $message = trim((string) ($this->request->getPost('message') ?? ($json['message'] ?? '')));

@@ -95,6 +95,7 @@ class Auth
             'username'    => $user['Username'],
             'name'        => $user['FullName'],
             'role'        => $user['Role'],
+            'is_guest'    => false,
             'fingerprint' => $this->fingerprint(),
             'login_at'    => time(),
             'last_seen'   => time(),
@@ -102,11 +103,39 @@ class Auth
         ]);
     }
 
+    /** Establish a read-only Guest session controlled by Settings > Guest access & the Guest role matrix. */
+    public function loginGuest(): void
+    {
+        $session = session();
+        $session->regenerate(true);
+        $name = trim((string) SystemSettings::get('guest.display_name', 'Guest Visitor')) ?: 'Guest Visitor';
+
+        $session->set(self::SESSION_KEY, [
+            'id'          => 0,
+            'username'    => 'guest',
+            'name'        => $name,
+            'role'        => 'Guest',
+            'is_guest'    => true,
+            'fingerprint' => $this->fingerprint(),
+            'login_at'    => time(),
+            'last_seen'   => time(),
+            'verified_at' => time(),
+            'pwd_changed' => null,
+        ]);
+    }
+
+    public function isGuestSession(): bool
+    {
+        $u = $this->user();
+
+        return is_array($u) && ! empty($u['is_guest']);
+    }
+
     public function logout(): void
     {
         $id = $this->id();
         $this->forgetRememberToken();
-        if ($id !== null) {
+        if ($id !== null && $id > 0) {
             $this->logs->record('logout', true, $id);
         }
         session()->remove(self::SESSION_KEY);
@@ -143,17 +172,28 @@ class Auth
             return $this->loginFromRememberCookie();
         }
 
-        // Re-validate account against DB at most once per minute.
+        // Re-validate account / Guest setting against DB at most once per minute.
         if (time() - ($data['verified_at'] ?? 0) > 60) {
-            $user = $this->users->find($data['id']);
-            if ($user === null || (int) $user['IsActive'] !== 1 || ($user['PasswordChangedAt'] ?? null) !== $data['pwd_changed']) {
-                $this->logout();
+            if (! empty($data['is_guest'])) {
+                if (! SystemSettings::bool('guest.enabled', true)) {
+                    $this->logout();
 
-                return false;
+                    return false;
+                }
+                $data['verified_at'] = time();
+                $data['role']        = 'Guest';
+                $data['name']        = trim((string) SystemSettings::get('guest.display_name', 'Guest Visitor')) ?: 'Guest Visitor';
+            } else {
+                $user = $this->users->find($data['id']);
+                if ($user === null || (int) $user['IsActive'] !== 1 || ($user['PasswordChangedAt'] ?? null) !== $data['pwd_changed']) {
+                    $this->logout();
+
+                    return false;
+                }
+                $data['verified_at'] = time();
+                $data['role']        = (string) $user['Role'];        // a role the Admin just changed applies within a minute, no new sign-in
+                $data['name']        = (string) $user['FullName'];
             }
-            $data['verified_at'] = time();
-            $data['role']        = (string) $user['Role'];        // a role the Admin just changed applies within a minute, no new sign-in
-            $data['name']        = (string) $user['FullName'];
         }
 
         $data['last_seen'] = time();

@@ -99,6 +99,34 @@ class AuthController extends BaseController
         return redirect()->route('login')->with('success', 'Account created. You can now sign in.');
     }
 
+    public function guestLogin()
+    {
+        if (! \App\Libraries\SystemSettings::bool('guest.enabled', true)) {
+            return redirect()->route('login')->with('error', 'Guest sign-in is disabled by the administrator.');
+        }
+        $this->auth->loginGuest();
+        model(AuthLogModel::class)->record('login_guest', true, null, 'guest');
+
+        $landing = trim((string) \App\Libraries\SystemSettings::get('guest.landing', 'dashboard'));
+        $allowed = ['dashboard', 'dtr', 'analytics', 'test-summary', 'calendar-monitoring'];
+        if (! in_array($landing, $allowed, true)) {
+            $landing = 'dashboard';
+        }
+        $mod = \App\Libraries\Roles::moduleOfPath($landing);
+        if ($mod !== '' && ! \App\Libraries\Roles::can('Guest', $mod, 1)) {
+            $landing = 'dashboard';
+            foreach ($allowed as $cand) {
+                $cm = \App\Libraries\Roles::moduleOfPath($cand);
+                if ($cm === '' || \App\Libraries\Roles::can('Guest', $cm, 1)) {
+                    $landing = $cand;
+                    break;
+                }
+            }
+        }
+
+        return redirect()->to(site_url($landing))->withCookies()->with('success', 'Signed in as ' . esc($this->auth->user()['name']) . ' (view-only Guest access).');
+    }
+
     public function logout()
     {
         $this->auth->logout();

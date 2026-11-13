@@ -179,7 +179,12 @@ async function advanceNormalFormSubmitStep() {
   const visible = (el) => !!el && el.offsetParent !== null && el.getBoundingClientRect().width > 0;
   const text = (el) => String(el.value || el.textContent || '').replace(/\s+/g, ' ').trim();
   const body = () => (document.body && document.body.innerText) || '';
-  const appNoOf = () => (body() + ' ' + location.href).match(/\b(A\d{8,12})\b/);
+  // the number printed next to the words "Application No" (THANK YOU page, or the "Application No.: A... - Draft" header) comes first:
+  // a copied form can also mention the Application it was copied from
+  const appNoOf = () => {
+    const b = body();
+    return b.match(/Application\s*No\.?\s*:?\s*(A\d{8,12})\b/i) || (b + ' ' + location.href).match(/\b(A\d{8,12})\b/);
+  };
 
   if (/THANK\s*YOU/i.test(body())) { const m = appNoOf(); return { state: 'thank-you', appNo: m ? m[1] : '' }; }
 
@@ -187,9 +192,19 @@ async function advanceNormalFormSubmitStep() {
     .filter((e) => visible(e) && text(e) && text(e) !== '*' && /missing|required|invalid|cannot|error/i.test(text(e)));
   if (errs.length) return { state: 'error', message: errs.map(text).slice(0, 4).join('; ') };
 
+  // InterLink refuses a Print & Submit with a small toast ("VF eTRF - Product: - Factory ID is missing!"): that is an error, not a view to wait on
+  const toast = [...document.querySelectorAll('div,span,td,li,p')].filter(visible)
+    .find((e) => !e.querySelector('div,span,td,li,p') && /\b(is|are) (missing|required)\b|must be (entered|selected|filled)/i.test(text(e)) && text(e).length < 250);
+  if (toast && !/certify|I hereby/i.test(text(toast))) return { state: 'error', message: 'InterLink refused the eTRF: ' + text(toast) };
+
   // 1. the confirmation check box: an unticked box whose surrounding text is a confirmation / agreement
   const confirmRe = /confirm|agree|accept|declare|certify|acknowledg|terms|understand|read and/i;
-  const formUp = !!document.getElementById('PH1_NormalFormSelector1_NF1_EGVNF') && [...document.querySelectorAll('[id*="TpEdr_"]')].some(visible);
+  const formUp = !!(document.getElementById('PH1_NormalFormSelector1_NF1_EGVNF') || document.getElementById('NormalFormSelector1_NF1_EGVNF')) && [...document.querySelectorAll('[id*="TpEdr_"]')].some(visible);
+  // a refusal toast ("... Factory ID is missing!") may be gone again after a few seconds: the page script keeps what it saw (see fillNormalFormEtrf)
+  let storedRefusals = []; try { storedRefusals = JSON.parse(sessionStorage.getItem('__nxRefusals') || '[]'); } catch (e) { /* no storage */ }
+  const lastRefusal = [...storedRefusals, ...(window.__nxRefusals || [])].filter((t) => !/certify|I hereby/i.test(t)).slice(-1)[0];
+  if (formUp && lastRefusal) return { state: 'error', message: 'InterLink refused the eTRF: ' + lastRefusal };
+  const draftNo = () => { const m = body().match(/Application\s*No\.?\s*:?\s*(A\d{8,12})\b/i); return m ? m[1] : ''; };
   const boxes = [
     ...[...document.querySelectorAll('input[type="checkbox"]')].filter((b) => !b.checked).map((b) => ({ el: b, hit: b })),
     ...[...document.querySelectorAll('span.dxWeb_edtCheckBoxUnchecked,span.dxICheckBox')].filter((b) => /Unchecked/i.test(b.className)).map((b) => ({ el: b, hit: b })),
@@ -203,18 +218,254 @@ async function advanceNormalFormSubmitStep() {
     }
   }
 
+  // 1b. InterLink's "I hereby certify that I have read and understood the terms and conditions" box is a DevExpress
+  //     ASPxCheckBox (no <input type=checkbox>), so tick it through the client API, falling back to clicking its box.
+  if (!ticked && /certify|read and understood/i.test(body())) {
+    try {
+      if (typeof ASPxClientControl !== 'undefined' && ASPxClientControl.GetControlCollection) {
+        ASPxClientControl.GetControlCollection().ForEachControl((c) => {
+          if (ticked || !c || typeof c.GetChecked !== 'function' || typeof c.SetChecked !== 'function') return;
+          const el = c.GetMainElement ? c.GetMainElement() : null;
+          if (el && !visible(el)) return;
+          if (!c.GetChecked()) { c.SetChecked(true); if (c.CheckedChanged && c.CheckedChanged.FireEvent) c.CheckedChanged.FireEvent(c, {}); ticked = true; }
+          else ticked = true;
+        });
+      }
+    } catch (e) { /* fall through to the click */ }
+    if (!ticked) {
+      const lbl = [...document.querySelectorAll('span,td,div,label')].filter(visible).find((e) => /certify/i.test(e.textContent || '') && (e.textContent || '').length < 200 && !e.querySelector('table'));
+      const box = lbl && [...(lbl.parentElement ? lbl.parentElement.querySelectorAll('span,input,td,img,div') : [])].filter(visible).find((e) => e !== lbl && !/certify/i.test(e.textContent || '') && e.getBoundingClientRect().width > 8 && e.getBoundingClientRect().width < 60);
+      if (box) { box.click(); ticked = true; }
+    }
+    if (ticked) await sleep(500);
+  }
+
   // 2. the button that moves on (never Print & Submit / Save again)
   const buttons = [...document.querySelectorAll('input[type=submit],input[type=button],button,a,div.dxbButton,span.dxb')]
     .filter((b) => visible(b) && text(b) && text(b).length < 40);
   const next = buttons.find((b) => /^(next|confirm|proceed|continue|submit|ok|yes)$/i.test(text(b)))
     || buttons.find((b) => /^next\b|confirm/i.test(text(b)));
   if (next && (ticked || !boxes.length) && !/print\s*&\s*submit|^save/i.test(text(next))) {
-    if (!ticked && formUp) return { state: 'waiting', buttons: buttons.map(text).slice(0, 10) };   // the form itself is still up: not a confirmation view
+    if (!ticked && formUp) return { state: 'waiting', buttons: buttons.map(text).slice(0, 10), appNo: draftNo() };   // the form itself is still up: not a confirmation view
     const label = text(next);
     next.click();
     await sleep(600);
     const m = appNoOf();
     return { state: 'advanced', clicked: label, appNo: m ? m[1] : '' };
   }
-  return { state: 'waiting', buttons: buttons.map(text).slice(0, 10), boxes: boxes.length };
+  return { state: 'waiting', buttons: buttons.map(text).slice(0, 10), boxes: boxes.length, appNo: draftNo() };
+}
+async function inhouseGridSetPageSize() {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const gridId = 'PH1_SF1_GVBUILDER_BuilderGridView';
+  for (let i = 0; i < 20 && !document.getElementById(gridId); i++) await sleep(300);
+  if (!document.getElementById(gridId)) return { state: 'error', message: 'The Inhouse & 3rd party search grid was not found.' };
+  const before = document.querySelectorAll('tr.dxgvDataRow').length;
+  // a plain <select> in the pager ("Page size: 15")
+  const sel = [...document.querySelectorAll('select')].find((s) => /page\s*size/i.test((s.parentElement && s.parentElement.innerText) || '') || [...s.options].every((o) => /^\d+$/.test(o.value || o.text)) && s.options.length >= 3 && s.closest('[id*="Pager"],[class*="Pager"],td'));
+  let via = '';
+  if (sel) {
+    const opts = [...sel.options].map((o) => ({ v: o.value, n: parseInt(o.value || o.text, 10) })).filter((o) => o.n > 0);
+    const best = opts.sort((a, b) => b.n - a.n)[0];
+    if (best) { sel.value = best.v; sel.dispatchEvent(new Event('change', { bubbles: true })); via = 'select ' + best.n; }
+  }
+  // a DevExpress ASPxComboBox in the pager
+  if (!via && typeof ASPxClientControl !== 'undefined' && ASPxClientControl.GetControlCollection) {
+    let done = false;
+    ASPxClientControl.GetControlCollection().ForEachControl((c) => {
+      if (done || !c.GetItemCount || !c.SetSelectedIndex) return;
+      const n = c.GetItemCount();
+      const nums = []; for (let i = 0; i < n; i++) nums.push(parseInt(c.GetItem(i).text, 10));
+      if (n >= 3 && nums.every((x) => x > 0) && nums.includes(15)) {
+        const idx = nums.indexOf(Math.max(...nums));
+        c.SetSelectedIndex(idx);
+        if (c.RaiseValueChanged) c.RaiseValueChanged();
+        via = 'combo ' + nums[idx]; done = true;
+      }
+    });
+  }
+  if (via) await sleep(2500);
+  return { state: 'ok', via, rowsBefore: before, rowsAfter: document.querySelectorAll('tr.dxgvDataRow').length };
+}
+async function inhouseGridReadPage(wantedJson) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const gridId = 'PH1_SF1_GVBUILDER_BuilderGridView';
+  for (let i = 0; i < 20 && !document.getElementById(gridId); i++) await sleep(300);
+  const tbl = document.getElementById(gridId);
+  if (!tbl) return { state: 'error', message: 'Search grid not found.' };
+  const wanted = JSON.parse(wantedJson || '[]').map((w) => String(w).toLowerCase());
+  const hdrRow = tbl.querySelector('tr[id*="DXHeadersRow"], tr.dxgvHeader');
+  const headers = hdrRow ? [...hdrRow.children].map((td) => (td.innerText || '').replace(/\s+/g, ' ').trim()) : [];
+  const pkgIdx = headers.findIndex((h) => /test\s*package/i.test(h));
+  const all = [...tbl.querySelectorAll('tr.dxgvDataRow')].map((tr) => [...tr.children].map((td) => (td.innerText || '').replace(/\s+/g, ' ').trim()));
+  const rows = (pkgIdx >= 0 && wanted.length)
+    ? all.filter((r) => wanted.some((w) => String(r[pkgIdx] || '').toLowerCase().includes(w.replace(/\s*package$/, '').replace(/^gb - full.*/, 'gb')) || String(r[pkgIdx] || '').toLowerCase().includes(w)))
+    : all;
+  const pagerText = ((document.querySelector('[id*="Pager"],[class*="PagerBottom"],[class*="pagerBottom"]') || {}).innerText || document.body.innerText.match(/Page\s+\d+\s+of\s+\d+\s*\(\d+\s*items?\)/i)?.[0] || '');
+  const pm = String(pagerText).match(/Page\s+(\d+)\s+of\s+(\d+)\s*\((\d+)\s*items?\)/i);
+  return { state: 'ok', headers, pkgIdx, rows, scanned: all.length, page: pm ? +pm[1] : 0, pages: pm ? +pm[2] : 0, items: pm ? +pm[3] : 0, firstKey: all[0] ? all[0].join('|').slice(0, 120) : '' };
+}
+async function inhouseGridGoToPage(pageIndex, previousFirstKey) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const gridId = 'PH1_SF1_GVBUILDER_BuilderGridView';
+  try { ASPx.GVPagerOnClick(gridId, 'PN' + pageIndex); } catch (e) { return { state: 'error', message: 'The grid pager could not be used: ' + e.message }; }
+  for (let i = 0; i < 40; i++) {
+    await sleep(400);
+    const first = document.querySelector('tr.dxgvDataRow');
+    const key = first ? [...first.children].map((td) => (td.innerText || '').replace(/\s+/g, ' ').trim()).join('|').slice(0, 120) : '';
+    if (key && key !== previousFirstKey) return { state: 'ok' };
+  }
+  return { state: 'unchanged' };
+}
+/** On Home.aspx: navigates to "VF - Test Request/Report Search (Applicant)". */
+function goToApplicantGridFromHome() {
+  const links = [...document.querySelectorAll('a')];
+  const target = links.find((x) => /Test\s*Request\/Report\s*Search\s*\(\s*Applicant\s*\)/i.test(x.textContent || '') && /SearchFormWithHeader/i.test(x.getAttribute('href') || ''))
+    || links.find((x) => /Applicant/i.test(x.textContent || '') && /SearchFormWithHeader/i.test(x.getAttribute('href') || '') && !/Inhouse/i.test(x.textContent || ''));
+  if (!target) return { ok: false };
+  const href = target.getAttribute('href') || '';
+  const m = href.match(/window\.location\.href\s*=\s*'([^']+)'/i);
+  location.href = m ? m[1] : href;
+  return { ok: true };
+}
+
+/** Finds a grid column filter box by column header label and sets its value + Enter. */
+async function filterApplicantGridColumn(headerLabel, value) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const visible = (el) => !!el && el.offsetParent !== null && el.getBoundingClientRect().width > 0;
+  const header = [...document.querySelectorAll('td.dxgvHeader, tr.dxgvHeader td, *')]
+    .find((el) => visible(el) && el.innerText && el.innerText.replace(/\s+/g, ' ').trim().toLowerCase() === String(headerLabel).toLowerCase());
+  if (!header) return false;
+  const hr = header.getBoundingClientRect();
+  const inp = [...document.querySelectorAll('input[type=text]')].filter(visible).reduce((best, f) => {
+    const r = f.getBoundingClientRect();
+    if (r.top <= hr.top) return best;
+    const dx = Math.abs(r.left - hr.left);
+    return (dx < 50 && (!best || dx < best.dx)) ? { f, dx } : best;
+  }, null);
+  if (!inp) return false;
+  const el = inp.f;
+  // what the grid shows now (pager text + first rows): the filter is applied when this changes
+  const sig = () => ((document.body.innerText.match(/Page \d+ of \d+ \([\d,]+ items?\)|No data to display|\(0 items\)/) || [''])[0]) + '|'
+    + [...document.querySelectorAll('tr.dxgvDataRow')].slice(0, 3).map((t) => t.innerText.slice(0, 60)).join('/');
+  const before = sig();
+  el.focus();
+  el.value = value;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  ['keydown', 'keypress', 'keyup'].forEach((t) => el.dispatchEvent(new KeyboardEvent(t, { bubbles: true, key: 'Enter', keyCode: 13, which: 13 })));
+  for (let i = 0; i < 30; i++) { await sleep(500); if (sig() !== before) break; }   // up to 15 s for InterLink to answer
+  await sleep(1500);                                                                  // then let the rows finish drawing
+  return true;
+}
+
+/** Opens the Application No. popup from the Applicant Search Grid (clicks the Application No. link in row). */
+async function openApplicationPopup(appNo, testPackage) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const visible = (el) => !!el && el.offsetParent !== null && el.getBoundingClientRect().width > 0;
+  for (let i = 0; i < 20 && !document.getElementById('PH1_SF1_GVBUILDER_BuilderGridView'); i++) await sleep(300);
+  if (!document.getElementById('PH1_SF1_GVBUILDER_BuilderGridView')) {
+    return { state: 'error', message: 'Applicant search grid not loaded.' };
+  }
+  let link = null;
+  let filterOk = null;
+  for (let attempt = 0; attempt < 3 && !link; attempt++) {
+    if (appNo) filterOk = await filterApplicantGridColumn('Application No.', appNo);
+    else if (testPackage) filterOk = await filterApplicantGridColumn('Test Package(s)', testPackage);
+    for (let w = 0; w < 16 && !link; w++) {
+      await sleep(500);
+      const rows = [...document.querySelectorAll('tr.dxgvDataRow')];
+      for (const r of rows) {
+        if (appNo && !(r.innerText || '').includes(appNo)) continue;
+        const eapp = r.querySelector('input[id*="imgBtnEApp"], input[title="Online eApplication"]');
+        if (eapp && visible(eapp)) { link = eapp; link.__app = ((r.innerText || '').match(/\bA\d{8,12}\b/) || [''])[0]; break; }
+        const a = [...r.querySelectorAll('a')].find((x) => /^A\d{6,}$/i.test((x.textContent || '').trim()) || (appNo && (x.textContent || '').includes(appNo)));
+        if (a && visible(a)) { link = a; break; }
+      }
+    }
+  }
+  if (!link) {
+    const hdr = [...document.querySelectorAll('tr.dxgvHeader td, td.dxgvHeader')].map((td) => (td.innerText || '').replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 14).join(' | ');
+    const first = ((document.querySelector('tr.dxgvDataRow') || {}).innerText || '').replace(/\s+/g, ' ').slice(0, 90);
+    const diag = ` [filter ${filterOk === true ? 'was typed' : 'could not find its box'}; ${document.querySelectorAll('tr.dxgvDataRow').length} row(s) shown, first: ${first}; columns: ${hdr}]`;
+    return { state: 'error', message: (appNo ? `Application ${appNo} not found on Applicant Search Grid.` : `No rows found for Test Package ${testPackage}.`) + diag };
+  }
+  const chosenApp = link.__app || (link.textContent || '').trim();
+  link.click();
+  return { state: 'clicked', applicationNo: chosenApp };
+}
+
+/** Reads visible grid rows on VF - Test Request/Report Search (Applicant) filtered by package label. */
+async function scrapeApplicantPackageRows(testPackage) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  for (let i = 0; i < 20 && !document.getElementById('PH1_SF1_GVBUILDER_BuilderGridView'); i++) await sleep(300);
+  if (!document.getElementById('PH1_SF1_GVBUILDER_BuilderGridView')) return { state: 'error', message: 'Search grid not found.' };
+  if (testPackage) {
+    await filterApplicantGridColumn('Test Package(s)', testPackage);
+    await sleep(1200);
+  }
+  const tbl = document.getElementById('PH1_SF1_GVBUILDER_BuilderGridView');
+  const hdrRow = tbl.querySelector('tr.dxgvHeader, tr[id*="DXHeadersRow"]');
+  const headers = hdrRow ? [...hdrRow.children].map((td) => (td.innerText || '').replace(/\s+/g, ' ').trim()) : [];
+  const dataRows = [...tbl.querySelectorAll('tr.dxgvDataRow')].map((tr) =>
+    [...tr.children].map((td) => (td.innerText || '').replace(/\s+/g, ' ').trim())
+  );
+  return { state: 'ok', headers, rows: dataRows };
+}
+
+/** Inside an opened VF eTRF - Product view popup: clicks "Copy as New". */
+function clickCopyAsNewButton() {
+  const visible = (el) => !!el && el.offsetParent !== null && el.getBoundingClientRect().width > 0;
+  const textOf = (el) => String(el.value || el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+  const btn = [...document.querySelectorAll('input[type="button"],input[type="submit"],button,a,div.dxbButton')]
+    .find((b) => visible(b) && /^copy\s+as\s+new$/i.test(textOf(b)));
+  if (!btn) return { state: 'waiting' };
+  btn.click();
+  return { state: 'clicked' };
+}
+
+/** Inside an opened submitted Application No. popup: clicks the "Print" button (never "Print & Submit"). */
+function clickPrintButton() {
+  const visible = (el) => !!el && el.offsetParent !== null && el.getBoundingClientRect().width > 0;
+  const textOf = (el) => String(el.value || el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+  const btn = [...document.querySelectorAll('input[type="button"],input[type="submit"],button,a,div.dxbButton')]
+    .find((b) => visible(b) && /^print$/i.test(textOf(b)));
+  if (!btn) return { state: 'waiting' };
+  btn.click();
+  return { state: 'clicked' };
+}
+async function inhouseGridHtml() {
+  const gridId = 'PH1_SF1_GVBUILDER_BuilderGridView';
+  const el = document.getElementById(gridId);
+  if (!el) return { state: 'error', message: 'Search grid not found.' };
+  const clone = document.documentElement.cloneNode(true);
+  clone.querySelectorAll('script,style,link,noscript,img[src^="data:"]').forEach((n) => n.remove());
+  const first = document.querySelector('tr.dxgvDataRow');
+  const key = first ? [...first.children].map((td) => (td.innerText || '').replace(/\s+/g, ' ').trim()).join('|').slice(0, 120) : '';
+  return { state: 'ok', html: '<html>' + clone.innerHTML + '</html>', firstKey: key };
+}
+
+/** The Factory ID of the bonding template is empty until a row is picked in the Vendor lookup ("Factory ID is missing!"). Picks it the way a person does. */
+async function ensureVendorFactory(vendorId) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const boxOf = () => {
+    const lab = [...document.querySelectorAll('label')].find((l) => l.textContent.replace(/[*\s]/g, '').toLowerCase() === 'factoryid');
+    return lab && lab.htmlFor ? document.getElementById(lab.htmlFor) : null;
+  };
+  let box = boxOf();
+  if (!box) return { state: 'skip', message: 'this form has no Factory ID box' };
+  if (String(box.value || '').trim()) return { state: 'ok', factoryId: box.value, via: 'already filled' };
+  let via = '';
+  const btn = document.querySelector('img[id*="TRPT_SUPPLIER_NAME"][id$="btPick_0"]');
+  if (btn) {
+    try { const r = await lovPick(btn.id, vendorId || '0000507450', 0); via = 'lookup: ' + (r && r.state) + (r && r.message ? ' ' + r.message : ''); } catch (e) { via = 'lookup failed: ' + (e && e.message); }
+    await sleep(1500);
+    box = boxOf() || box;
+  }
+  if (!String(box.value || '').trim() && vendorId) {
+    const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+    desc.set.call(box, '0000507452');
+    ['input', 'change', 'blur'].forEach((ev) => box.dispatchEvent(new Event(ev, { bubbles: true })));
+    via += ' | value set directly';
+  }
+  return { state: 'ok', factoryId: box.value, via };
 }

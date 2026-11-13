@@ -9,6 +9,23 @@ namespace NexusInterlinkService;
 /// </summary>
 public static class SignIn
 {
+    /// <summary>Loads a session exported from a browser that is already signed in (the NEXUS-L InterLink Sender extension, "Export InterLink session")
+    /// and saves it as the session of the chosen account. Accepts the extension's file or a Playwright storage-state file.</summary>
+    public static string ImportSession(IConfiguration cfg, string account, string path)
+    {
+        var root = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path));
+        var cookies = root is System.Text.Json.Nodes.JsonArray a ? a : root?["cookies"] as System.Text.Json.Nodes.JsonArray;
+        if (cookies == null || cookies.Count == 0) throw new InvalidOperationException("That file has no cookies. Use the file saved by the extension's 'Export InterLink session' button.");
+        if (!cookies.Any(c => ((string?)c?["domain"] ?? "").Contains("intertek", StringComparison.OrdinalIgnoreCase) || ((string?)c?["domain"] ?? "").Contains("microsoftonline", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("The file has no InterLink / Microsoft sign-in cookies. Export it while signed in to InterLink.");
+        var state = new System.Text.Json.Nodes.JsonObject { ["cookies"] = System.Text.Json.Nodes.JsonNode.Parse(cookies.ToJsonString()), ["origins"] = new System.Text.Json.Nodes.JsonArray() };
+        var norm = InterlinkRunner.NormalizeAccount(account);
+        var file = InterlinkRunner.SessionFile(cfg, norm);
+        File.WriteAllText(file, state.ToJsonString());
+        try { File.Copy(file, InterlinkRunner.SessionFile(cfg, null), true); } catch { }
+        return file;
+    }
+
     public static async Task<int> RunAsync(IConfiguration cfg, string? account = null)
     {
         try

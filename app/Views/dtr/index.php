@@ -784,12 +784,12 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
         ?>
         <div id="dtr-sheet-<?= $lfSlug ?>" class="vf-sheet lf-sheet" hidden>
             <div class="vf-tpl-head">
-                <img class="vf-tpl-logo" src="<?= base_url('assets/images/vf-logo.webp') ?>" alt="VF">
+                <img class="vf-tpl-logo" src="<?= base_url('assets/images/vf-logo.webp') ?>" alt="VF" loading="lazy" decoding="async">
                 <div class="vf-tpl-title">
                     <div class="vf-tpl-title-en"><?= $lfTitleEn ?></div>
                     <div class="vf-tpl-title-cn"><?= $lfTitleCn ?></div>
                 </div>
-                <img class="vf-tpl-satra" src="<?= base_url('assets/images/satra-accredited.png') ?>" alt="SATRA Accredited Laboratory">
+                <img class="vf-tpl-satra" src="<?= base_url('assets/images/satra-accredited.png') ?>" alt="SATRA Accredited Laboratory" loading="lazy" decoding="async">
             </div>
 
             <div class="vf-tpl-ids">
@@ -1374,14 +1374,14 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                 <!-- VF-F01 "paper sheet" layout — mirrors the official PRODUCTION bonding template.xlsx -->
                 <div class="vf-sheet">
                     <div class="vf-tpl-head">
-                        <img class="vf-tpl-logo" src="<?= base_url('assets/images/vf-logo.webp') ?>" alt="VF">
+                        <img class="vf-tpl-logo" src="<?= base_url('assets/images/vf-logo.webp') ?>" alt="VF" loading="lazy" decoding="async">
                         <div class="vf-tpl-title">
                             <div class="vf-tpl-title-en">Bonding Test Results</div>
                             <div class="vf-tpl-title-cn">胶着力测试</div>
                         </div>
                         <div class="vf-tpl-right">
                             <div class="vf-tpl-result"><label for="bf_Result">* Overall Result</label><input type="text" name="Result" id="bf_Result" class="bold mono dtr-rate-inp" readonly></div>
-                            <img class="vf-tpl-satra" src="<?= base_url('assets/images/satra-accredited.png') ?>" alt="SATRA Accredited Laboratory">
+                            <img class="vf-tpl-satra" src="<?= base_url('assets/images/satra-accredited.png') ?>" alt="SATRA Accredited Laboratory" loading="lazy" decoding="async">
                         </div>
                     </div>
 
@@ -1560,12 +1560,12 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                         <div class="vf-diag-note-r">1.Outside Value:Fabric / PU / EVA kgf/cm<br>2.Inside Value:</div>
                     </div>
                     <div class="vf-diag-row">
-                        <div id="vf-diag-left" class="vf-shoe-card vf-diag-card"><img src="<?= base_url('assets/images/bonding_sketches/blank.png') ?>" class="vf-shoe-img" style="left:12%;top:8%;width:76%;height:84%" alt="Left shoe"></div>
+                        <div id="vf-diag-left" class="vf-shoe-card vf-diag-card"><img src="<?= base_url('assets/images/bonding_sketches/blank.png') ?>" class="vf-shoe-img" style="left:12%;top:8%;width:76%;height:84%" alt="Left shoe" loading="lazy" decoding="async"></div>
                         <div class="vf-diag-strips">
                             <div><span class="vf-diag-lbl is-active">Left</span><div class="vf-diag-strip is-active"><?= str_repeat('<i class="vf-diag-line"></i>', 6) ?></div></div>
                             <div><span class="vf-diag-lbl">Right</span><div class="vf-diag-strip"><?= str_repeat('<i class="vf-diag-line"></i>', 6) ?></div></div>
                         </div>
-                        <div id="vf-diag-right" class="vf-shoe-card vf-diag-card"><img src="<?= base_url('assets/images/bonding_sketches/blank.png') ?>" class="vf-shoe-img" style="left:12%;top:8%;width:76%;height:84%" alt="Right shoe"></div>
+                        <div id="vf-diag-right" class="vf-shoe-card vf-diag-card"><img src="<?= base_url('assets/images/bonding_sketches/blank.png') ?>" class="vf-shoe-img" style="left:12%;top:8%;width:76%;height:84%" alt="Right shoe" loading="lazy" decoding="async"></div>
                     </div>
                 </div>
 
@@ -1721,12 +1721,12 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
             <input type="hidden" name="ID" id="pf_ID" value="">
             <div class="vf-sheet pf-sheet">
                 <div class="vf-tpl-head">
-                    <img class="vf-tpl-logo" src="<?= base_url('assets/images/vf-logo.webp') ?>" alt="VF">
+                    <img class="vf-tpl-logo" src="<?= base_url('assets/images/vf-logo.webp') ?>" alt="VF" loading="lazy" decoding="async">
                     <div class="vf-tpl-title">
                         <div class="vf-tpl-title-en">Pull Footwear Test Results</div>
                         <div class="vf-tpl-title-cn">整鞋部件拉力测试</div>
                     </div>
-                    <img class="vf-tpl-satra" src="<?= base_url('assets/images/satra-accredited.png') ?>" alt="SATRA Accredited Laboratory">
+                    <img class="vf-tpl-satra" src="<?= base_url('assets/images/satra-accredited.png') ?>" alt="SATRA Accredited Laboratory" loading="lazy" decoding="async">
                 </div>
 
                 <div class="vf-tpl-ids">
@@ -1844,9 +1844,9 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
     <div class="card glass dtr-section-card">
         <div class="wsf">
             <div class="wsf-head">
-                <img src="<?= base_url('assets/images/vf-logo.webp') ?>" class="wsf-vf" alt="VF">
+                <img src="<?= base_url('assets/images/vf-logo.webp') ?>" class="wsf-vf" alt="VF" loading="lazy" decoding="async">
                 <div class="wsf-title"><h2>Whole Footwear Test Results</h2><h3>整鞋测试报告</h3></div>
-                <img src="<?= base_url('assets/images/satra-accredited.png') ?>" class="wsf-satra" alt="SATRA Accredited Laboratory">
+                <img src="<?= base_url('assets/images/satra-accredited.png') ?>" class="wsf-satra" alt="SATRA Accredited Laboratory" loading="lazy" decoding="async">
             </div>
             <table class="wsf-t wsf-ref"><tr><td class="wsf-frm">Form # : Lab VF 002</td><td class="wsf-rf"><div>ETRF. No :</div><div class="wsf-lr">Lab Ref. No : <input type="text" id="ws-labref" readonly tabindex="-1" aria-label="Lab Ref No" placeholder="Open a Lab Ref from the Lab Tracker"></div></td></tr></table>
             <table class="wsf-t wsf-info">
@@ -2149,9 +2149,9 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                 <button type="button" class="bimg-btn" id="bimg-z100">100%</button>
             </span>
             <span class="bimg-sep"></span>
-            <button type="button" class="bimg-stamp" data-stamp="PASS"><img src="<?= base_url('assets/images/stamps/pass.png') ?>" alt="PASS"></button>
-            <button type="button" class="bimg-stamp" data-stamp="FAILED"><img src="<?= base_url('assets/images/stamps/failed.png') ?>" alt="FAILED"></button>
-            <button type="button" class="bimg-stamp" data-stamp="TOLERABLE"><img src="<?= base_url('assets/images/stamps/tolerable.png') ?>" alt="TOLERABLE"></button>
+            <button type="button" class="bimg-stamp" data-stamp="PASS"><img src="<?= base_url('assets/images/stamps/pass.png') ?>" alt="PASS" loading="lazy" decoding="async"></button>
+            <button type="button" class="bimg-stamp" data-stamp="FAILED"><img src="<?= base_url('assets/images/stamps/failed.png') ?>" alt="FAILED" loading="lazy" decoding="async"></button>
+            <button type="button" class="bimg-stamp" data-stamp="TOLERABLE"><img src="<?= base_url('assets/images/stamps/tolerable.png') ?>" alt="TOLERABLE" loading="lazy" decoding="async"></button>
             <label class="bimg-size" title="Size of the selected stamp">Size <input type="range" id="bimg-size" min="8" max="70" value="28"></label>
             <button type="button" class="bimg-btn" id="bimg-del" title="Delete the selected item (Delete key)">Delete</button>
             <button type="button" class="bimg-btn" id="bimg-undo">Undo</button>

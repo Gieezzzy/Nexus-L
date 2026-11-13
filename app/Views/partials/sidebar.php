@@ -11,8 +11,9 @@ $menu = [
     ['label' => 'Calendar Monitoring', 'url' => site_url('calendar-monitoring'), 'match' => ['calendar-monitoring', 'calendar'], 'icon' => 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z'],
     ['label' => 'Quality Insights', 'url' => site_url('quality-insights'), 'match' => ['quality-insights'], 'icon' => 'M3 3v18h18M7 14l3-3 3 3 5-6M18 8h-3v3'],
     ['label' => 'InterLink', 'url' => url_to('interlink'), 'match' => ['interlink'], 'icon' => 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15', 'children' => [
-        ['label' => 'VF eTRF', 'url' => site_url('interlink/etrf'), 'etrf' => true],
-        ['label' => 'Report Submission', 'url' => url_to('interlink'), 'etrf' => false],
+        ['label' => 'VF - Test Request', 'url' => site_url('interlink/vf-test-request'), 'seg2' => 'vf-test-request'],
+        ['label' => 'VF eTRF', 'url' => site_url('interlink/etrf'), 'seg2' => 'etrf'],
+        ['label' => 'Report Submission', 'url' => url_to('interlink'), 'seg2' => ''],
     ]],
     ['label' => 'Analytics', 'url' => url_to('analytics'), 'match' => ['analytics'], 'icon' => 'M3 3v18h18M7 15l4-4 3 3 5-6', 'children' => [
         'bonding'   => 'Shoe Bonding',
@@ -68,7 +69,7 @@ $inArchives = ($segment === 'dtr' && $activeTabParam === 'labtracker' && in_arra
                     <div class="nav-group-items" <?= $grpOpen ? '' : 'hidden' ?> style="margin:2px 0 4px 18px;padding-left:8px;border-left:1px solid rgba(148,163,184,0.25)">
                         <?php foreach ($item['children'] as $ck => $cl): ?>
                             <?php if (is_array($cl)): // a child with its own page ?>
-                                <a href="<?= esc($cl['url'], 'attr') ?>" class="nav-link <?= (array_key_exists('active', $cl) ? $cl['active'] : ($grpOpen && (($seg2 === 'etrf') === (bool) $cl['etrf']))) ? 'active' : '' ?>" style="padding:6px 12px;font-size:12.5px"><?= esc($cl['label']) ?></a>
+                                <a href="<?= esc($cl['url'], 'attr') ?>" class="nav-link <?= (array_key_exists('active', $cl) ? $cl['active'] : ($grpOpen && (isset($cl['seg2']) ? $seg2 === $cl['seg2'] : (($seg2 === 'etrf') === (bool) ($cl['etrf'] ?? false))))) ? 'active' : '' ?>" style="padding:6px 12px;font-size:12.5px"><?= esc($cl['label']) ?></a>
                             <?php else: ?>
                             <a href="<?= esc($item['url'] . '?tab=' . $ck, 'attr') ?>" class="nav-link <?= ($grpOpen && $grpTab === $ck) ? 'active' : '' ?>" style="padding:6px 12px;font-size:12.5px"><?= esc($cl) ?></a>
                             <?php endif ?>
@@ -121,15 +122,23 @@ $inArchives = ($segment === 'dtr' && $activeTabParam === 'labtracker' && in_arra
                 Lab Tracker
             </a>
             <?php endif ?>
+            <?php if ($can('dtr')): ?>
             <a href="<?= site_url('warehouse-tracker') ?>" class="nav-link <?= in_array((string) $segment, ['warehouse-tracker', 'warehouse'], true) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
                 <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
                 Warehouse 3D Tracker
             </a>
+            <?php endif ?>
 
             <?php if ($can('erpfinish')): ?>
-            <a href="<?= site_url('lab-monitoring/erp-finish') ?>" class="nav-link <?= $segment === 'lab-monitoring' ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
+            <a href="<?= site_url('lab-monitoring/erp-finish') ?>" class="nav-link <?= ($segment === 'lab-monitoring' && (service('uri')->getSegments()[1] ?? '') !== 'vf-requests') ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
                 <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 ERP Finish Monitoring
+            </a>
+            <?php endif ?>
+            <?php if ($can('erpfinish') || $can('interlink')): ?>
+            <a href="<?= site_url('lab-monitoring/vf-requests') ?>" class="nav-link <?= ($segment === 'lab-monitoring' && (service('uri')->getSegments()[1] ?? '') === 'vf-requests') ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
+                <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                VF Test Monitoring
             </a>
             <?php endif ?>
             <?php if ($can('thirdparty')): ?>
@@ -222,7 +231,7 @@ $inArchives = ($segment === 'dtr' && $activeTabParam === 'labtracker' && in_arra
             return $t;
         };
         ?>
-        <?php if (! empty($labGroups['lab']['regs']) || ! empty($labGroups['other']['regs'])): ?>
+        <?php if ($can('labdocs') && (! empty($labGroups['lab']['regs']) || ! empty($labGroups['other']['regs']))): ?>
         <div class="side-doc-search-wrap" style="margin:10px 10px 4px 10px">
             <div class="side-doc-search-box" style="position:relative;display:flex;align-items:center;width:100%">
                 <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="position:absolute;left:8px;width:13px;height:13px;color:var(--muted,#64748b);pointer-events:none;opacity:.75" aria-hidden="true">

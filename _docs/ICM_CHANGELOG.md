@@ -4,6 +4,31 @@
 
 ---
 
+## Phase 211 - VF Test Monitoring: tree of e-mail batches, tick rows, reply e-mail with the eTRF PDFs (2026-11-12)
+- **VF Test Request page:** Incoming Requested Items grouped by e-mail (tree), every request shown with its processing status (waiting / sending / submitted / already in InterLink / history / completed) and a Show filter; Copy as New dialog got a past-Application picker (`GET interlink/vf-test-request/past-apps`). The duplicate check ignores `HISTORY` rows.
+- **VF Test Monitoring (`labmonitor/vf_requests`):** "Email Request Batches & Outgoing PDF Notifications" is a tree (batch = parent, requests = children) with a check box per request and a select-all in the header row. **Send Batch PDF Email** opens a dialog (To / CC / Subject, reply tick box, attachment list, message preview). `POST lab-monitoring/vf-requests/email-preview` and `send-email` take `request_ids`.
+- **Mail:** `VfTestRequestService::buildBatchEmail()` builds the reply (layout of the CPSIA reply: greeting, "eleven (11) new CPSIA items", signature block, file names `Application No - MTL# - CPSIA TEST.PDF`). Recipients per Test Package come from Settings > VF "Who the eTRF PDF e-mail is sent to"; signature, greeting and logo are settings too. `tbl_email_outbox` got `reply_to_message_id` / `reply_to_subject`.
+- **NexusOutlookRelay 1.1.0:** when `reply_to_message_id` is set, it finds the original mail (Internet Message-ID, Inbox tree + Sent Items of every mailbox) and answers it with `Reply()` (same thread, original quoted); not found = new mail with RE: subject and the in-reply-to id set. The Server HTML Handler (SMTP) does not thread.
+- Verified: PHP lint, a spark test of the preview with a temporary batch (removed), Relay build. Not verified: a real reply through Outlook, the new pages on screen.
+
+---
+## Phase 210 - VF Test Request: InterLink service async reads, saved list copy, configurable e-mail sources (2026-11-12)
+- **NexusInterlinkService 1.3.6 -> 1.3.13:** Copy as New works end to end (popup form ids without PH1_, certify check box + Continue, success only on the THANK YOU page, PDF taken from the printed eTRF; only real %PDF files > 5 KB are accepted). `JobQueue`: loading/filtering modes (`vf_grid`, `grid_html`, `lov`) run in parallel (max 3, start gap 1.5 s, 60 s pause after 3 failures, identical requests shared, 60 s result cache, one load per user); submissions stay FIFO one at a time.
+- **Saved list copy:** `tbl_vf_grid_cache` + `App\Libraries\VfGridCache`, `GET interlink/vf-test-request/grid`. One refresh per (package, search, page) key at a time; only the job claimed for a key fills it; a result for another page is not saved.
+- **Page layout:** submitted requests leave "Incoming Requested Items" and appear in "Requests sent from NEXUS-L" below the InterLink list (status follows the e-mail: waiting / sent / in transit / received / completed).
+- **Configurable e-mail sources:** `tbl_vf_email_sources` (senders, subject keywords, default package, column-name map, skip pattern) managed from the VF Test Request page (E-mail sources). `VfTestRequestService::findSourceFor()`, per-source column map, all table columns kept in `tbl_vf_test_requests.extra_json`, `source_id` on batches and requests. djc_lab is only the seeded first source.
+- **Outlook Attachment Sync 1.1.0:** client chooses PC 45 or PC 43 with automatic failover; admin app runs on both (Internet Message-ID lock against double saves, secret.key check at start). NEXUS-L marks the Outlook sync stale after 6 h.
+- Verified: PHP lint, a spark test with a temporary second sender (wildcard match, custom columns, forced package, extra columns stored, then removed), SQL claim test. Not verified live with real mail or several users.
+
+---
+## Phase 209 - Warehouse: real AppSheet box ledger imported and placed in the 3D Tracker (2026-11-10)
+- **Source found:** MySQL already had the full legacy AppSheet data in database `dbappsheet` (`sample_boxes_bonding` 2059 rows, `sample_boxes_flexing_uv` 320, `sample_boxes_aging` 107, `sample_boxes_washing` 191, `sample_boxes_hydrolysis` 217) - no re-export from Google Sheets needed.
+- **`dbnexus.tbl_warehouse_box_items`** (new): the content ledger - 2,843 rows (box_name, test_type, lab_reference, tested_date, production_date, po_or_tr, style, mtl, colorway, box_code). Import script: `E:\New folder (2)\scratch\import_warehouse_boxes.php` (idempotent upsert).
+- **Placed in the 3D Warehouse Tracker:** 60 real physical boxes created in `tbl_warehouse_boxes` (box_code `WH-BOND-*` / `WH-WS-*`) and linked back to their items. Whole-shoe box names are shared across flexing/UV, aging, washing and hydrolysis (same physical box, several test types) - 43 distinct Bonding boxes + 17 distinct Whole-Shoe boxes = 60, matching the 60 distinct box names found.
+- **4 new racks** added to `WarehouseTrackerController::racks()` (`RACK-ARCH-B1/B2/B3` on the open west wall for Bonding, `RACK-ARCH-WS` on the south wall away from the door for Whole Shoe), each 5 tiers x 4 slots = 20, matching the admin form's existing tier/slot clamp. Added to both rack `<select>` dropdowns and the `$rackNames` map in `app/Views/warehouse/index.php`. Placement script: `E:\New folder (2)\scratch\place_warehouse_boxes.php` (idempotent - only places a box_name once).
+- Verified by direct SQL and PHP syntax check only; not checked with a live authenticated screenshot (no session available in this session). Ask the user to open Warehouse 3D Tracker and confirm the 4 new archive racks look right (west wall, south wall) with no overlap.
+
+---
 ## Phase 208 - Email Designer app, e-mail designs in NEXUS-L, Relay repository (2026-11-10)
 - **NEXUS-L Email Designer (`E:\desktop\MaterialTest\NexusEmailDesigner`, `NexusEmailDesigner.exe`, C# .NET Framework 4.8 WinForms, Newtonsoft.Json):** drag-and-drop e-mail builder. Toolbox of 15 elements (header band, heading, text, picture, picture-from-NEXUS-L slot, button, facts table, highlight box, bullet list, columns 2/3 with nested drop, divider, space, link row, footer, raw HTML); owner-drawn `DesignCanvas` (drag to move, insertion line, auto-scroll, selection, double-click to edit text, Ctrl+Z/Y/D/Up/Down); property panel filtered per element (`FilteredView`); undo/redo; autosave to `%AppData%\NexusEmailDesigner\project.json`; `.nxemails` project file.
   - **Five formats (slots):** `report_sent`, `approval_request`, `test_alert`, `daily_summary`, `general_notice`, each with a starter design and its variables (`{{title}}`, `{{message}}`, `{{lab_ref}}`, `{{images_html}}`, `{{qr_img}}` ...).
@@ -352,3 +377,21 @@
 
 ## Phase 180 - FCM Web Token Isolation (2026-10-26)
 - Prefixed mirrored web FCM tokens with `NEXUS_WEB:`. Added defense-in-depth filtering in service worker to reject RMS manufacturing alerts.
+
+## Phase 212 - VF Test Monitoring live refresh + Inbox notice on sent e-mail
+- vf_requests.js polls the data endpoint every 6 s (tab visible, no dialog open); ticks are kept; toasts on mail sent/failed, PDF arrived, Application No. arrived.
+- tbl_vf_email_batches.notify_user_id (sender); VfTestRequestService::notifyMailSent posts to Inbox thread interlink_etrf when the Hub reports "sent"; MailRelayController status callback calls reconcileOutbox immediately for source "NEXUS-L VF-Request".
+
+## Phase 213 - eTRF creation (bonding) + Application No. hardening (service 1.3.22 - 1.3.31)
+- Grids: Report Submission (U form, data and documents) and the eTRF Application No. lookup use "Inhouse & 3rd party Lab Upload"; Copy as New, the printed PDF and the VF list sync use "Applicant". Both grids list a new Application; the eTRF lookup compares the grid before/after (new row for the SKU), never the newest row blindly.
+- Print & Submit: InterLink validates on the SERVER, reloads the form and shows a short toast ("... is missing!"); every page now records such toasts in sessionStorage (init script) and the job fails with "InterLink said: ..." instead of waiting. Wait is 150 s (was ~35 s); a submit that never reaches THANK YOU and is not in the grid FAILS (never "done" without a number).
+- Fixes found by running the service scripts on the live form: Factory ID filled via the Vendor lookup (lovPick) ; table Season drop-down chosen by option TEXT (7 = S27); Style No. is the style CODE (VN00114V = SKU minus colour code), derived in InterlinkController; Lab Location chosen from its list at the end of the fill (typing it = "Invalid"). Generic lovPick for all pick-lists was tried and reverted (it blanked other boxes).
+- Link: EtrfAppNos::linkToLabRef() writes tbl_dtr_unified_labrefs.tr_no + etrf_<key>_app (+hist) + DTR form TR/ETRFNo; used by the service callback. DTP20261111SHB4-L linked to A006036440 (created in the browser pane).
+- Notifications: toast/Inbox/Synology show only a real A-number ("not read" otherwise), never the lab reference. VF Test Monitoring polls every 6 s; Inbox message when the Hub reports the reply e-mail sent.
+- Outlook Attachment Sync 1.2.5 / 1.1.5: one retry on COM "RPC unavailable". Extension 1.8.0: Export InterLink session; service 1.3.21+: Import session.
+
+## Phase 214 - Report Submission: change the file of an APPROVED report
+- Cause: the page re-attached the signed copy over a browsed file (setAttachedPdf -> checkApproval -> attachSigned), and the service submit always read <file_key>_signed.pdf from the server, so a browsed file never went to InterLink.
+- ApprovalController::replaceFile (POST dtr/approval/replace-file): for a report with status approved, stores the chosen PDF as writable/approvals/<file_key>_user_<time>.pdf (older copies kept), records user_file / user_file_name / user_file_by / user_file_at on tbl_dtr_report_approvals (migration 2026-11-13-000001 + lazy ensure); {clear:1} returns to the signed report. The approval (who signed, when) is untouched.
+- App\Libraries\ApprovalFiles::chosen(): user's file if present, else the signed copy. Used by InterlinkServiceController::submit (the file sent + its name), service verify and ApprovalController::verify (sha256 of the file that is sent). GET dtr/approval/file/<key>?v=user serves it.
+- interlink.js: Browse on an approved report uploads the copy and attaches it (flag replaced); attachSigned/restoreApproval restore it after a reload; "Use the signed report again" button (#uf-apv-use-signed); nxPdfName keeps the user's file name. interlink_center.js extension path fetches ?v=user when set.

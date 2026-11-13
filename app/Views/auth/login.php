@@ -18,4 +18,12 @@
     <button type="submit" class="btn">Sign in</button>
 <?= form_close() ?>
 
+<?php if (\App\Libraries\SystemSettings::bool('guest.enabled', true)): ?>
+    <?= form_open(url_to('login.guest'), ['id' => 'guest-login-form', 'autocomplete' => 'off', 'style' => 'margin-top:10px']) ?>
+        <button type="submit" class="btn" style="background:rgba(15,23,42,0.06);color:#0f172a;border:1px solid rgba(100,116,139,0.35)">
+            Continue as Guest (View-only)
+        </button>
+    <?= form_close() ?>
+<?php endif ?>
+
 <p class="foot">No account yet? <a href="<?= url_to('register') ?>">Create one</a></p>

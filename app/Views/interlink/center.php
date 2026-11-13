@@ -37,40 +37,12 @@
 @media (max-width:640px){.sc{padding:16px!important}.sc-head .sc-btn,.sc-send{width:100%}.sc-row>input,.sc-row>select{flex:1 1 100%}}
 </style>
 
-<div class="card glass sc" id="sc-root">
-    <div class="sc-head">
-        <div>
-            <h3>Send a report to InterLink</h3>
-            <p class="muted sm">The person in charge (PIC) signs in to InterLink with their own account and submits the report themselves.</p>
-        </div>
-        <a class="sc-btn primary" id="sc-open" href="<?= esc($openUrl ?? 'https://interlink2.intertek.com/', 'attr') ?>" target="_blank" rel="noopener">Open InterLink (sign in with your account)</a>
-    </div>
-    <p class="sc-note">NEXUS-L does not log in to InterLink and keeps nobody's InterLink login. It prepares the values of a Lab Reference; you fill the InterLink form in your own browser and press Save / Submit yourself.</p>
-    <!-- the one thing NEXUS-L can honestly show: whether the sender extension is present in THIS browser. Whether you are
-         currently signed in to InterLink itself can never be shown here - NEXUS-L stores nobody's InterLink session - so
-         1-Click Send always opens InterLink fresh and lets InterLink itself ask you to sign in if you are not already. -->
-    <div class="sc-status" id="sc-status">
-        <span class="sc-dot" id="sc-status-dot"></span>
-        <span id="sc-status-text">Checking the NEXUS-L InterLink Sender extension…</span>
-        <button type="button" class="sc-btn" id="sc-status-install" hidden>Install the sender</button>
-    </div>
-
-    <div class="sc-steps">
-    <div class="sc-box">
-        <h5><span class="sc-n" aria-hidden="true">1</span>Pick the application and the Lab Reference</h5>
-        <div class="sc-row">
-            <input type="text" id="sc-app" list="sc-app-list" placeholder="Application No. (e.g. A005953693)" style="min-width:220px">
-            <datalist id="sc-app-list"><?php foreach (($reports ?? []) as $r): ?><option value="<?= esc($r['application_no'] ?? '') ?>"><?php endforeach ?></datalist>
-            <input type="text" id="sc-q" placeholder="Search Lab Ref / TR / material / style" style="flex:1;min-width:180px">
-            <select id="sc-cat"><option value="all">All types</option></select>
-        </div>
-        <div class="sc-list"><table><thead><tr><th></th><th>Lab Ref</th><th>Type</th><th>Material / style</th><th>Result</th></tr></thead><tbody id="sc-labrefs" data-nx-load><tr><td colspan="5" class="muted">Loading…</td></tr></tbody></table></div>
-        <div class="sc-row" style="margin:14px 0 0"><span class="sc-n" aria-hidden="true">2</span><button type="button" class="sc-btn primary sc-send" id="sc-fill" disabled>Send to InterLink (1 click)</button><span id="sc-msg" class="muted sm"></span></div>
-    </div>
-
-    <div class="sc-box" id="sc-etrf-box">
-        <h5 style="margin:0 0 4px">eTRF requests moved</h5>
-        <p class="muted sm" style="margin:0;line-height:1.5">Creating a new request or test in InterLink (VF eTRF - Material, Product, PULLTESTTemplate, bonding, Product WHOLE SHOE TEST) is now in the sidebar: <a href="<?= site_url('interlink/etrf') ?>"><b>InterLink &rarr; VF eTRF</b></a>.</p>
-    </div>
+<div class="card glass sc" id="sc-moved">
+    <h3>Sending to InterLink moved</h3>
+    <p class="muted sm" style="line-height:1.6">The browser-extension sender (which opened an InterLink tab) was removed. Every submission now goes through the NexusInterlinkService, which works in its own browser, so no new tab opens here.</p>
+    <div class="sc-row" style="margin-top:12px">
+        <a class="sc-btn primary" href="<?= site_url('interlink/etrf') ?>">VF eTRF (send a report)</a>
+        <a class="sc-btn" href="<?= site_url('interlink/vf-test-request') ?>">VF - Test Request</a>
+        <a class="sc-btn" href="<?= site_url('lab-monitoring/vf-requests') ?>">VF Test Monitoring</a>
     </div>
 </div>

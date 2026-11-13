@@ -129,7 +129,7 @@ public sealed class ServiceHost
                 ApplicationNo = (string?)o["application_no"] ?? "",
                 LabRefNo = (string?)o["lab_ref_no"] ?? "",
                 ReportNo = (string?)o["report_no"] ?? "",
-                Mode = (string?)o["mode"] is "etrf" or "lov" ? (string)o["mode"]! : ((string?)o["mode"] == "add" ? "add" : "edit"),
+                Mode = (string?)o["mode"] is "etrf" or "lov" or "vf_copy" or "vf_grid" or "grid_html" or "vf_pdf" ? (string)o["mode"]! : ((string?)o["mode"] == "add" ? "add" : "edit"),
                 Account = (string?)o["account"] ?? "",
                 UserName = (string?)o["user_name"] ?? "",
                 VerifyUrl = (string?)o["verify_url"] ?? "",

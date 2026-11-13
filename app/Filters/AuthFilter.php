@@ -42,9 +42,16 @@ class AuthFilter implements FilterInterface
             }
         }
         // a page of a module the user's roles give no access to (the matrix is under Settings > Users & roles)
-        $module = \App\Libraries\Roles::moduleOfPath((string) $request->getUri()->getPath());
+        $path   = trim((string) uri_string(), '/');
+        if ($path === '') {
+            $path = trim((string) $request->getUri()->getPath(), '/');
+        }
+        $module = \App\Libraries\Roles::moduleOfPath($path);
         if ($module !== '' && ! \App\Libraries\Roles::can($role, $module, 1)) {
             return $this->refuse($request, 'Your role does not have access to ' . (\App\Libraries\Roles::MODULES[$module] ?? 'that page') . '.');
+        }
+        if (in_array(strtoupper($request->getMethod()), ['POST', 'PUT', 'PATCH', 'DELETE'], true) && ! \App\Libraries\Roles::canMutate($role, $module, $path)) {
+            return $this->refuse($request, 'Your role has View-only access to ' . (\App\Libraries\Roles::MODULES[$module] ?? 'that page') . ' and cannot make changes.');
         }
 
         return null;
@@ -56,7 +63,9 @@ class AuthFilter implements FilterInterface
             return service('response')->setStatusCode(403)->setJSON(['ok' => false, 'error' => $msg]);
         }
 
-        return redirect()->route('dashboard')->with('error', $msg);
+        $target = \App\Libraries\Roles::can((string) (service('auth')->user()['role'] ?? ''), 'dashboard', 1) ? 'dashboard' : 'account';
+
+        return redirect()->route($target)->with('error', $msg);
     }
 
     public function after(RequestInterface $request, ResponseInterface $response, $arguments = null)

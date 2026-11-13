@@ -45,10 +45,11 @@ class DashboardController extends BaseController
         // the lab figures change a few times an hour: every section is kept for 90 seconds per period, so many people opening
         // the dashboard (and the 2-minute refresh) cost the database one query set, not one each; ?fresh=1 skips it
         $cache = cache();
+        $ver   = \App\Libraries\DataCache::version();
         $out   = ['ok' => true, 'days' => $days, 'from' => $from, 'to' => $to];
         $db    = null;
         foreach ($want as $name => $methods) {
-            $key = "labdash_{$name}_{$days}_" . $to;
+            $key = "labdash_v{$ver}_{$name}_{$days}_" . $to;
             $sec = $this->request->getGet('fresh') ? null : $cache->get($key);
             if (! is_array($sec)) {
                 $db ??= \Config\Database::connect();
@@ -173,10 +174,57 @@ class DashboardController extends BaseController
     /** Pull / eyelet / rivet tensile tests (machine pulls) in the period. */
     private function pullTests($db, string $from, string $to): array
     {
-        return $this->q($db, "SELECT TRIM(REPLACE(i.Method, '  ', ' ')) method, i.EquipmentCode machine, COUNT(DISTINCT i.PullInfoID) samples, COUNT(t.PullTestID) pulls,
-                ROUND(AVG(t.PeakKgf), 2) avg_peak, ROUND(MIN(t.PeakKgf), 2) min_peak, ROUND(MAX(t.PeakKgf), 2) max_peak, MAX(i.TestedDate) last_test
-            FROM tbl_dtr_pull_info i LEFT JOIN tbl_dtr_pull_tests t ON t.PullInfoID = i.PullInfoID
-            WHERE i.TestedDate BETWEEN ? AND ? GROUP BY method, machine ORDER BY pulls DESC", [$from, $to]);
+        if ($db->tableExists('tbl_dtr_pull_info')) {
+            return $this->q($db, "SELECT TRIM(REPLACE(i.Method, '  ', ' ')) method, i.EquipmentCode machine, COUNT(DISTINCT i.PullInfoID) samples, COUNT(t.PullTestID) pulls,
+                    ROUND(AVG(t.PeakKgf), 2) avg_peak, ROUND(MIN(t.PeakKgf), 2) min_peak, ROUND(MAX(t.PeakKgf), 2) max_peak, MAX(i.TestedDate) last_test
+                FROM tbl_dtr_pull_info i LEFT JOIN tbl_dtr_pull_tests t ON t.PullInfoID = i.PullInfoID
+                WHERE i.TestedDate BETWEEN ? AND ? GROUP BY method, machine ORDER BY pulls DESC", [$from, $to]);
+        }
+        if (! $db->tableExists('tbl_dtr_pull_tests')) {
+            return [];
+        }
+        $rows = $this->q($db, 'SELECT * FROM tbl_dtr_pull_tests WHERE TestedDate BETWEEN ? AND ?', [$from, $to]);
+        $agg  = [];
+        foreach ($rows as $r) {
+            $method  = trim(preg_replace('/\s+/', ' ', (string) ($r['Method'] ?? '')));
+            $machine = trim((string) ($r['EquipmentCode'] ?? ''));
+            $k       = $method . '|' . $machine;
+            $agg[$k] ??= ['method' => $method, 'machine' => $machine, 'samples' => 0, 'pulls' => 0, 'sum' => 0.0, 'cnt' => 0, 'min' => null, 'max' => null, 'last_test' => ''];
+            $agg[$k]['samples']++;
+            $td = (string) ($r['TestedDate'] ?? '');
+            if ($td > $agg[$k]['last_test']) {
+                $agg[$k]['last_test'] = $td;
+            }
+            $rowPulls = 0;
+            for ($i = 1; $i <= 30; $i++) {
+                $pv = $r["Peak{$i}"] ?? null;
+                if ($pv !== null && $pv !== '' && is_numeric($pv)) {
+                    $v = (float) $pv;
+                    $agg[$k]['sum'] += $v;
+                    $agg[$k]['cnt']++;
+                    $agg[$k]['min'] = $agg[$k]['min'] === null ? $v : min($agg[$k]['min'], $v);
+                    $agg[$k]['max'] = $agg[$k]['max'] === null ? $v : max($agg[$k]['max'], $v);
+                    $rowPulls++;
+                }
+            }
+            $agg[$k]['pulls'] += $rowPulls ?: (int) ($r['TestCount'] ?? 0);
+        }
+        $out = [];
+        foreach ($agg as $g) {
+            $out[] = [
+                'method'    => $g['method'],
+                'machine'   => $g['machine'],
+                'samples'   => $g['samples'],
+                'pulls'     => $g['pulls'],
+                'avg_peak'  => $g['cnt'] > 0 ? round($g['sum'] / $g['cnt'], 2) : null,
+                'min_peak'  => $g['min'] !== null ? round($g['min'], 2) : null,
+                'max_peak'  => $g['max'] !== null ? round($g['max'], 2) : null,
+                'last_test' => $g['last_test'],
+            ];
+        }
+        usort($out, static fn ($a, $b) => $b['pulls'] <=> $a['pulls']);
+
+        return $out;
     }
 
     /** Flex / abrasion testers and how far each running test is. */

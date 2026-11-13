@@ -124,9 +124,74 @@ class InterlinkController extends BaseController
      */
     public function pullGridHtml()
     {
-        // {pages: [html...], firstPage, page, pageSize}: one or more consecutive InterLink grid pages (InterLink pages hold 15
-        // rows) that together cover the NEXUS-L view page `page` of `pageSize` rows. {html} alone (older senders) = one page.
-        $payload  = $this->request->getJSON(true) ?? $this->request->getPost();
+        return $this->processGridPayload($this->request->getJSON(true) ?? $this->request->getPost());
+    }
+
+    /**
+     * POST /interlink/service-grid {page, pageSize}: reads the InterLink Inhouse & 3rd party grid pages that cover the view page
+     * through the NexusInterlinkService (its own browser - no tab opens for the user), then parses/saves them like pullGridHtml.
+     */
+    public function serviceGrid()
+    {
+        @set_time_limit(190);
+        $p        = $this->request->getJSON(true) ?? $this->request->getPost();
+        $page     = max(1, (int) ($p['page'] ?? 1));
+        $pageSize = in_array((int) ($p['pageSize'] ?? 15), [10, 15, 20, 50, 100], true) ? (int) $p['pageSize'] : 15;
+        $start    = ($page - 1) * $pageSize;
+        $first    = intdiv($start, 15) + 1;
+        $count    = min(10, intdiv($start + $pageSize - 1, 15) + 1 - $first + 1);
+
+        $baseUrl = \App\Libraries\SystemSettings::serviceUrl();
+        $key     = (string) \App\Libraries\SystemSettings::get('interlink.service.key', '');
+        if (! \App\Libraries\SystemSettings::bool('interlink.service.enabled', true) || $baseUrl === '' || strlen($key) < 16) {
+            return $this->response->setStatusCode(503)->setJSON(['ok' => false, 'error' => 'The InterLink background service is not set up (Settings > InterLink service).', 'csrf' => csrf_hash()]);
+        }
+        $db  = \Config\Database::connect();
+        $uid = bin2hex(random_bytes(12));
+        $me  = (array) service('auth')->user();
+        $db->table('tbl_interlink_service_jobs')->insert(['job_uid' => $uid, 'application_no' => 'GRID-PAGE', 'report_no' => 'Grid page ' . $first, 'mode' => 'grid_html', 'user_id' => (int) ($me['id'] ?? 0), 'user_name' => (string) ($me['name'] ?? ''), 'status' => 'queued', 'created_at' => date('Y-m-d H:i:s')]);
+        try {
+            $res  = service('curlrequest')->post($baseUrl . '/jobs', ['headers' => ['X-Service-Key' => $key], 'json' => [
+                'job_uid' => $uid, 'application_no' => 'GRID-PAGE', 'report_no' => 'Grid page ' . $first, 'mode' => 'grid_html',
+                'account' => 'dtp_qcasst@dtshoes.com', 'user_name' => (string) ($me['name'] ?? ''),
+                'callback_url' => site_url('interlink/service/callback'), 'job' => ['first_page' => $first, 'count' => $count],
+            ], 'timeout' => 20, 'http_errors' => false]);
+            $body = json_decode((string) $res->getBody(), true) ?: [];
+            if ($res->getStatusCode() !== 200 || empty($body['ok'])) {
+                throw new \RuntimeException($res->getStatusCode() >= 500 ? 'The InterLink service answered HTTP ' . $res->getStatusCode() . ' - it is probably an old version without grid reading. Install NexusInterlinkService 1.3.0 or newer and check http://<service>:5077/health shows that version.' : (string) ($body['error'] ?? 'Service HTTP ' . $res->getStatusCode()));
+            }
+        } catch (\Throwable $e) {
+            $db->table('tbl_interlink_service_jobs')->where('job_uid', $uid)->update(['status' => 'failed', 'message' => mb_substr($e->getMessage(), 0, 480), 'finished_at' => date('Y-m-d H:i:s')]);
+
+            return $this->response->setStatusCode(502)->setJSON(['ok' => false, 'error' => 'Could not reach the InterLink service: ' . $e->getMessage(), 'csrf' => csrf_hash()]);
+        }
+        $deadline = time() + 170;
+        while (time() < $deadline) {
+            $row = $db->table('tbl_interlink_service_jobs')->where('job_uid', $uid)->get(1)->getRowArray();
+            if ($row && in_array($row['status'], ['done', 'failed', 'signin-required'], true)) {
+                if ($row['status'] === 'signin-required') {
+                    return $this->response->setStatusCode(409)->setJSON(['ok' => false, 'signin' => true, 'error' => 'InterLink needs a sign-in in the service. Open the VF - Test Request page (it offers the sign-in) or the service tray menu.', 'csrf' => csrf_hash()]);
+                }
+                if ($row['status'] === 'failed') {
+                    return $this->response->setStatusCode(502)->setJSON(['ok' => false, 'error' => (string) ($row['message'] ?: 'The InterLink service could not read the grid.'), 'csrf' => csrf_hash()]);
+                }
+                $out = json_decode((string) ($row['result_json'] ?? ''), true);
+                if (! is_array($out['pages'] ?? null) || ! $out['pages']) {
+                    return $this->response->setStatusCode(502)->setJSON(['ok' => false, 'error' => 'The service returned no grid pages.', 'csrf' => csrf_hash()]);
+                }
+                $db->table('tbl_interlink_service_jobs')->where('job_uid', $uid)->update(['result_json' => null]);
+
+                return $this->processGridPayload(['pages' => $out['pages'], 'firstPage' => $first, 'page' => $page, 'pageSize' => $pageSize]);
+            }
+            sleep(1);
+        }
+
+        return $this->response->setStatusCode(504)->setJSON(['ok' => false, 'error' => 'The InterLink service took too long to answer.', 'csrf' => csrf_hash()]);
+    }
+
+    private function processGridPayload(array $payload)
+    {
+        // {pages: [html...], firstPage, page, pageSize}: consecutive InterLink grid pages (15 rows each) that cover the view page `page` of `pageSize` rows
         $pages    = is_array($payload['pages'] ?? null) ? array_values($payload['pages']) : [(string) ($payload['html'] ?? '')];
         $allRows  = [];
         $first    = null;
@@ -153,6 +218,9 @@ class InterlinkController extends BaseController
             $rows = array_slice($rows, $skip, $viewSize);
         } else {
             $viewSize = $first['pageSize'];
+        }
+        if ((int) $first['totalItems'] > 0) {
+            \App\Libraries\SystemSettings::set('interlink.grid_total_items', (string) (int) $first['totalItems'], 'grid-sync');
         }
         $totalPages = max(1, (int) ceil($first['totalItems'] / $viewSize));
 
@@ -912,7 +980,7 @@ JS;
             'message'     => 'Showing cached NEXUS-L records (InterLink session offline or unreachable).',
             'currentPage' => $page,
             'totalPages'  => max(517, (int) ceil($totalLocal / $pageSize)),
-            'totalItems'  => max(7749, $totalLocal),
+            'totalItems'  => max((int) \App\Libraries\SystemSettings::get('interlink.grid_total_items', '7749'), $totalLocal),
             'pageSize'    => $pageSize,
             'rows'        => $localRows,
             'changedApps' => [],
@@ -1020,7 +1088,7 @@ JS;
         $result = [
             'currentPage' => 1,
             'totalPages'  => 517,
-            'totalItems'  => 7749,
+            'totalItems'  => max((int) \App\Libraries\SystemSettings::get('interlink.grid_total_items', '7749'), 1),
             'pageSize'    => 15,
             'rows'        => [],
         ];
@@ -2543,6 +2611,24 @@ JS;
         if ($styleNo === '' && ! $isMaterial && $styleColorNo !== '') {
             $styleNo = $styleColorNo;
         }
+        // InterLink's Style No. is the style CODE (VN00114V), not the style name ("UY VERO LS V"): a name there is refused with "Style Information is
+        // missing!". The code is the style colour number without its colour code (VN00114V7WM - 7WM).
+        $styleCodeOf = static function (string $styleNo, string $styleColorNo, string $colorCode): string {
+            $styleNo = trim($styleNo);
+            $sc      = strtoupper(trim($styleColorNo));
+            $cc      = strtoupper(trim($colorCode));
+            if ($sc === '' || ($styleNo !== '' && ! preg_match('/\s/', $styleNo) && preg_match('/^[A-Za-z0-9]{6,12}$/', $styleNo))) {
+                return $styleNo;                          // already a code (or nothing to derive it from)
+            }
+            if ($cc !== '' && strlen($sc) > strlen($cc) && str_ends_with($sc, $cc)) {
+                return substr($sc, 0, -strlen($cc));
+            }
+
+            return preg_match('/^VN[A-Z0-9]{9}$/', $sc) ? substr($sc, 0, 8) : $styleNo;
+        };
+        if (! $isMaterial) {
+            $styleNo = $styleCodeOf($styleNo, $styleColorNo, $colorCode);
+        }
 
         $matCode      = $pick(['material_code', 'MaterialCode', 'Material Code', 'VFMaterialCode_DSR'], '');
         $matDesc      = $pick(['material_name', 'material_description', 'Material Description', 'MaterialDescription'], $productName);
@@ -2771,6 +2857,7 @@ JS;
         foreach ($rows as &$row) {                                     // a product/material row also carries the InterLink column codes the page fills by
             if (! $isMaterial) {
                 $row += ['season' => $season, 'size_category' => $sizeCat];
+                $row['style_no']  = $styleCodeOf((string) ($row['style_no'] ?? ''), (string) ($row['style_color_no'] ?? ''), (string) ($row['color_code'] ?? ''));
                 $row['REF_FLD16'] = (string) ($row['style_no'] ?? '');
                 $row['REF_FLD23'] = (string) ($row['product_name'] ?? '');
                 $row['REF_FLD19'] = (string) ($row['style_color_no'] ?? '');

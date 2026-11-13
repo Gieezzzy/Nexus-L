@@ -104,6 +104,40 @@ class EtrfAppNos
         return $rows !== [];
     }
 
+    /**
+     * Links a Lab Reference to the Application No. InterLink gave it: tbl_dtr_unified_labrefs.tr_no, the per-type column (etrf_<key>_app, the
+     * earlier ones to _hist) and the TR / ETRFNo column of the DTR form the Lab Reference came from.
+     *
+     * @return int how many unified Lab Reference rows were linked
+     */
+    public static function linkToLabRef(string $labRef, string $type, string $appNo): int
+    {
+        $labRef = trim($labRef);
+        $appNo  = strtoupper(trim($appNo));
+        if ($labRef === '' || ! preg_match('/^A\d{6,}(-REV\d+)?$/', $appNo)) {
+            return 0;
+        }
+        $db = self::db();
+        $db->table('tbl_dtr_unified_labrefs')->where('lab_ref_no', $labRef)->update(['tr_no' => $appNo]);
+        self::record($labRef, $type, $appNo);
+        $n = 0;
+        foreach ($db->table('tbl_dtr_unified_labrefs')->where('lab_ref_no', $labRef)->get()->getResultArray() as $ur) {
+            $n++;
+            $slug = (string) ($ur['form_slug'] ?? '');
+            $sid  = (int) ($ur['source_id'] ?? 0);
+            $cfg  = $slug !== '' ? (\App\Controllers\DtrController::FORM_CONFIG[$slug] ?? null) : null;
+            if ($cfg && $sid > 0 && $db->tableExists($cfg['table'])) {
+                if ($db->fieldExists('TR', $cfg['table'])) {
+                    $db->table($cfg['table'])->where($cfg['pk'], $sid)->update(['TR' => $appNo]);
+                } elseif ($db->fieldExists('ETRFNo', $cfg['table'])) {
+                    $db->table($cfg['table'])->where($cfg['pk'], $sid)->update(['ETRFNo' => $appNo]);
+                }
+            }
+        }
+
+        return $n;
+    }
+
     /** fills the columns from the submissions already saved in tbl_interlink_etrf_requests (oldest first, so the latest ends as current) */
     public static function backfill(): int
     {

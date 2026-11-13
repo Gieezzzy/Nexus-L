@@ -255,52 +255,55 @@ class CalendarMonitoringController extends BaseController
             $end = date('Y-m-d', strtotime($start . ' +62 days'));
         }
 
-        $days = [];
-        for ($t = strtotime($start); $t <= strtotime($end); $t = strtotime('+1 day', $t)) {
-            $days[date('Y-m-d', $t)] = self::blankDay(date('Y-m-d', $t));
-        }
-
-        $items = [];
-        foreach ($this->records($start, $end) as $r) {
-            $d = $r['test_date'];
-            if (! isset($days[$d])) {
-                continue;
+        $payload = \App\Libraries\DataCache::remember("cal_ev_{$start}_{$end}", 120, function () use ($start, $end) {
+            $days = [];
+            for ($t = strtotime($start); $t <= strtotime($end); $t = strtotime('+1 day', $t)) {
+                $days[date('Y-m-d', $t)] = self::blankDay(date('Y-m-d', $t));
             }
-            $dom = $r['domain'];
-            $st  = $r['status'];
-            foreach ([&$days[$d][$dom], &$days[$d]] as &$bucket) {
-                $bucket['total']++;
-                $bucket[$st]++;
-                if ($r['result'] === 'PASS') {
-                    $bucket[isset($bucket['pass']) ? 'pass' : 'passed']++;
-                } elseif ($r['result'] === 'FAIL') {
-                    $bucket[isset($bucket['fail']) ? 'fail' : 'failed']++;
-                } elseif ($r['result'] === 'TOLERABLE') {
-                    $bucket['tolerable']++;
+
+            $items = [];
+            foreach ($this->records($start, $end) as $r) {
+                $d = $r['test_date'];
+                if (! isset($days[$d])) {
+                    continue;
                 }
+                $dom = $r['domain'];
+                $st  = $r['status'];
+                foreach ([&$days[$d][$dom], &$days[$d]] as &$bucket) {
+                    $bucket['total']++;
+                    $bucket[$st]++;
+                    if ($r['result'] === 'PASS') {
+                        $bucket[isset($bucket['pass']) ? 'pass' : 'passed']++;
+                    } elseif ($r['result'] === 'FAIL') {
+                        $bucket[isset($bucket['fail']) ? 'fail' : 'failed']++;
+                    } elseif ($r['result'] === 'TOLERABLE') {
+                        $bucket['tolerable']++;
+                    }
+                }
+                unset($bucket);
+                if (count($days[$d]['preview_events']) < 4) {
+                    $days[$d]['preview_events'][] = ['id' => $r['id'], 'domain' => $dom, 'test_type' => $r['test_type'], 'lab_ref' => $r['lab_ref_no'], 'style' => $r['style'],
+                        'status' => $st, 'result' => $r['result'], 'time_slot' => $r['time_slot']];
+                }
+                $items[] = ['id' => $r['id'], 'domain' => $dom, 'test_type' => $r['test_type'], 'lab_ref' => $r['lab_ref_no'], 'style' => $r['style'], 'colorway' => $r['color'],
+                    'test_date' => $r['test_date'], 'prod_date' => $r['prod_date'], 'result' => $r['result'], 'status' => $st, 'technician' => $r['technician'],
+                    'time_slot' => $r['time_slot'], 'date_key' => $d];
             }
-            unset($bucket);
-            if (count($days[$d]['preview_events']) < 4) {
-                $days[$d]['preview_events'][] = ['id' => $r['id'], 'domain' => $dom, 'test_type' => $r['test_type'], 'lab_ref' => $r['lab_ref_no'], 'style' => $r['style'],
-                    'status' => $st, 'result' => $r['result'], 'time_slot' => $r['time_slot']];
-            }
-            // the week view lists the tests themselves
-            $items[] = ['id' => $r['id'], 'domain' => $dom, 'test_type' => $r['test_type'], 'lab_ref' => $r['lab_ref_no'], 'style' => $r['style'], 'colorway' => $r['color'],
-                'test_date' => $r['test_date'], 'prod_date' => $r['prod_date'], 'result' => $r['result'], 'status' => $st, 'technician' => $r['technician'],
-                'time_slot' => $r['time_slot'], 'date_key' => $d];
-        }
 
-        $sum = static fn (string $k) => array_sum(array_column($days, $k));
+            $sum = static fn (string $k) => array_sum(array_column($days, $k));
 
-        return $this->response->setJSON([
-            'ok'         => true,
-            'start'      => $start,
-            'end'        => $end,
-            'days'       => $days,
-            'week_items' => array_slice($items, 0, 1500),
-            'kpis'       => ['total_tests' => $sum('total'), 'ongoing' => $sum('ongoing'), 'pending' => $sum('pending'), 'completed' => $sum('completed'),
-                'passed' => $sum('passed'), 'failed' => $sum('failed'), 'tolerable' => $sum('tolerable')],
-        ]);
+            return [
+                'ok'         => true,
+                'start'      => $start,
+                'end'        => $end,
+                'days'       => $days,
+                'week_items' => array_slice($items, 0, 1500),
+                'kpis'       => ['total_tests' => $sum('total'), 'ongoing' => $sum('ongoing'), 'pending' => $sum('pending'), 'completed' => $sum('completed'),
+                    'passed' => $sum('passed'), 'failed' => $sum('failed'), 'tolerable' => $sum('tolerable')],
+            ];
+        });
+
+        return $this->response->setJSON($payload);
     }
 
     /** GET /calendar-monitoring/day-details?date=YYYY-MM-DD: every test of that day with status, result, Lab Ref, test and production date ... */
@@ -336,11 +339,15 @@ class CalendarMonitoringController extends BaseController
     /** Quick stats for badges */
     public function quickStats(): ResponseInterface
     {
-        $db = $this->db();
-        $n  = (int) $db->table('tbl_dtr_bondingtracker')->where('Lacking', 1)->countAllResults()
-            + (int) $db->table('tbl_material_tests')->where('status', 'RUNNING')->countAllResults()
-            + (int) $db->table('tbl_dtr_wholeshoetracker')->where('Status', 'RUNNING')->countAllResults();
+        $payload = \App\Libraries\DataCache::remember('cal_quick', 30, function () {
+            $db = $this->db();
+            $n  = (int) $db->table('tbl_dtr_bondingtracker')->where('Lacking', 1)->countAllResults()
+                + (int) $db->table('tbl_material_tests')->where('status', 'RUNNING')->countAllResults()
+                + (int) $db->table('tbl_dtr_wholeshoetracker')->where('Status', 'RUNNING')->countAllResults();
 
-        return $this->response->setJSON(['ok' => true, 'today' => date('Y-m-d'), 'ongoing' => $n]);
+            return ['ok' => true, 'today' => date('Y-m-d'), 'ongoing' => $n];
+        });
+
+        return $this->response->setJSON($payload);
     }
 }

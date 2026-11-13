@@ -25,6 +25,17 @@ public sealed class JobRequest
     public DateTime ReceivedAt { get; set; } = DateTime.UtcNow;
     /// <summary>how many times a start was made (a start that never ended, because the program stopped, is tried once more)</summary>
     public int Attempts { get; set; }
+
+    /// <summary>set when the job's own account has no valid session and another signed-in account is used instead</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? BorrowedAccount { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? PdfName { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? PdfBase64 { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? ResultJson { get; set; }
 }
 
 public sealed class JobStatus

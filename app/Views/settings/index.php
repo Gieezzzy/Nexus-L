@@ -44,9 +44,11 @@ $field = static function (array $r): string {
     </header>
     <nav class="st-nav" id="st-nav" aria-label="Settings sections">
         <a href="#su-root">Users &amp; roles</a>
+        <a href="#st-guest">Guest access</a>
         <a href="#st-ai">AI assistant</a>
         <a href="#st-mail">E-mail</a>
         <a href="#st-routing">Payload routing</a>
+        <a href="#st-vf">VF Test Request</a>
         <a href="#st-service">InterLink service</a>
         <a href="#st-db">Database</a>
         <a href="#st-transfer">Transfer</a>
@@ -64,7 +66,7 @@ $field = static function (array $r): string {
         <div class="su-head">
             <div>
                 <h3>Users &amp; roles</h3>
-                <p class="muted sm">Seven roles decide who can open what. A person can have several and gets the highest access any of them gives. A user with no role yet keeps the old open access until one is given. Changes apply within a minute, no new sign-in.</p>
+                <p class="muted sm">Eight roles (including Guest) decide who can open what. A person can have several and gets the highest access any of them gives. A user with no role yet keeps the old open access until one is given. Changes apply within a minute, no new sign-in.</p>
             </div>
             <button type="button" class="nx-btn nx-primary" id="su-add">+ New user</button>
         </div>
@@ -109,6 +111,14 @@ $field = static function (array $r): string {
         </dialog>
     </div>
 
+    <!-- Guest access -->
+    <div class="card glass" id="st-guest">
+        <h3><?= esc($categories['guest'] ?? 'Guest access') ?></h3>
+        <p class="muted sm">Control one-click Guest sign-in from the login page. Page permissions (None / View / Edit) for both named Guest users and one-click Guests come from the <b>Guest</b> column under <b>Users &amp; roles &rarr; Access of each role</b> above.</p>
+        <?php foreach ($byCat['guest'] ?? [] as $r) echo $field($r); ?>
+        <div class="st-actions"><button type="button" class="nx-btn nx-primary" data-save="st-guest">Save</button><span class="st-msg"></span></div>
+    </div>
+
     <!-- AI Assistant & Bot Engine -->
     <div class="card glass" id="st-ai">
         <h3><?= esc($categories['ai'] ?? 'AI Assistant & Bot Engine') ?> <small class="muted">(LangGraph, Rasa NLU, Mem0 &amp; Phoenix stack)</small></h3>
@@ -147,6 +157,13 @@ $field = static function (array $r): string {
             <button type="button" class="nx-btn" id="st-git-push">Push to Git</button>
             <span class="st-msg" id="st-ai-msg"></span>
         </div>
+    </div>
+
+    <!-- VF Test Request defaults -->
+    <div class="card glass" id="st-vf">
+        <h3><?= esc($categories['vf'] ?? 'VF Test Request') ?></h3>
+        <?php foreach ($byCat['vf'] ?? [] as $r) { echo $field($r); } ?>
+        <div class="st-actions"><button type="button" class="nx-btn nx-primary" data-save="st-vf">Save</button> <span class="st-msg" id="st-vf-msg"></span></div>
     </div>
 
     <!-- Payload routing: which PC (.43 / .45) sends e-mail and alerts -->

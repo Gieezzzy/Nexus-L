@@ -42,13 +42,14 @@ class AnalyticsController extends BaseController
         $v    = (string) $this->request->getGet('view');
         $view = ($tab === 'bonding' && in_array($v, ['result', 'monthly'], true)) ? $v : 'analytics';
 
-        $data = match (true) {
+        $cacheKey = 'analytics_' . md5("{$tab}|{$view}|{$this->group}|{$this->from}|{$this->to}");
+        $data = \App\Libraries\DataCache::remember($cacheKey, 120, fn () => match (true) {
             $tab === 'wholeshoe' => $this->wholeShoe($db),
             $tab === 'materials' => $this->materials($db),
             $view === 'result'   => $this->bondingResult($db),
             $view === 'monthly'  => $this->bondingMonthly($db),
             default              => $this->bonding($db),
-        };
+        });
 
         return $this->render('analytics/index', ['title' => 'Analytics'] + $data + ['tab' => $tab, 'view' => $view, 'group' => $this->group, 'from' => $this->from, 'to' => $this->to]);
     }
