@@ -257,6 +257,12 @@ class VfTestRequestService
             ['tbl_vf_test_requests', 'lab_order_no', 'ADD COLUMN lab_order_no VARCHAR(120) NOT NULL DEFAULT "" AFTER lab_report_no'],
             ['tbl_vf_test_requests', 'sample_send_date', 'ADD COLUMN sample_send_date DATE NULL AFTER lab_order_no'],
             ['tbl_vf_test_requests', 'notification_date', 'ADD COLUMN notification_date DATE NULL AFTER sample_send_date'],
+            ['tbl_vf_test_requests', 'shipment_id', 'ADD COLUMN shipment_id BIGINT UNSIGNED NULL'],
+            ['tbl_vf_test_requests', 'expected_due_remark', 'ADD COLUMN expected_due_remark VARCHAR(500) NOT NULL DEFAULT ""'],
+            ['tbl_vf_test_requests', 'follow_up_at', 'ADD COLUMN follow_up_at DATETIME NULL'],
+            ['tbl_vf_test_requests', 'cert_email_subject', 'ADD COLUMN cert_email_subject VARCHAR(300) NOT NULL DEFAULT ""'],
+            ['tbl_vf_test_requests', 'cert_email_body', 'ADD COLUMN cert_email_body MEDIUMTEXT NULL'],
+            ['tbl_vf_test_requests', 'cert_email_at', 'ADD COLUMN cert_email_at DATETIME NULL'],
         ];
         foreach ($alters as [$tbl, $col, $ddl]) {
             $exists = $db->query("SHOW COLUMNS FROM `{$tbl}` LIKE ?", [$col])->getRowArray();
@@ -939,7 +945,7 @@ class VfTestRequestService
     }
 
     /** Integer to lowercase English word for email phrasing ("eleven (11)"). */
-    private static function countPhrase(int $n): string
+    public static function countPhrase(int $n): string
     {
         $words = [1 => 'one', 2 => 'two', 3 => 'three', 4 => 'four', 5 => 'five', 6 => 'six', 7 => 'seven', 8 => 'eight', 9 => 'nine', 10 => 'ten', 11 => 'eleven', 12 => 'twelve', 13 => 'thirteen', 14 => 'fourteen', 15 => 'fifteen', 16 => 'sixteen', 17 => 'seventeen', 18 => 'eighteen', 19 => 'nineteen', 20 => 'twenty'];
 
@@ -1026,7 +1032,7 @@ class VfTestRequestService
                     $index = [];
                     foreach ($reader->fetchRecentEmails(200) as $em) {
                         foreach ((array) $em['attachments'] as $att) {
-                            $fn = (string) ($att['OriginalFileName'] ?? $att['FileName'] ?? $att['file_name'] ?? '');
+                            $fn = (string) ($att['OriginalFileName'] ?? $att['FileName'] ?? $att['file_name'] ?? $att['filename'] ?? $att['stored_filename'] ?? '');
                             if (preg_match('/^(A\d{8,12}(?:-REV\d+)?)\b.*\.pdf$/i', $fn, $m) && ! isset($index[strtoupper($m[1])])) {
                                 $index[strtoupper($m[1])] = $att;
                             }
@@ -1163,6 +1169,16 @@ class VfTestRequestService
             . '</div>';
 
         $reply = array_key_exists('reply', $opts) ? ! empty($opts['reply']) : true;
+
+        // KC Test: a different message, and the Invoice + Packing List (built from the batch's saved sheet data) go with the eTRF PDFs
+        if (VfKcService::isKcPackage($pkg)) {
+            $kcFiles = (new VfKcService())->files($batchId);
+            foreach ($kcFiles as $kf) {
+                $attachments[] = ['filename' => $kf['filename'], 'data_base64' => base64_encode($kf['data'])];
+                $files[]       = ['request_id' => 0, 'filename' => $kf['filename'], 'bytes' => strlen($kf['data']), 'ok' => true];
+            }
+            $body = VfKcService::requestBody($n, $kcFiles !== []);
+        }
 
         return [
             'ok' => true, 'batch_id' => $batchId, 'to' => $to, 'cc' => $cc, 'subject' => $subject, 'body' => $body, 'attachments' => $attachments, 'files' => $files,
@@ -1399,6 +1415,47 @@ class VfTestRequestService
     }
 
     /** Syncs incoming Outlook emails (Stage D Certs -> Stage C Lab Received -> Stage B Transit Container -> Stage A Requests). */
+    /**
+     * Reads the Outlook e-mails right away when the sync client has stored a new one since the last read (a cheap check, so the monitor
+     * pages can call it every few seconds): a new e-mail shows up without waiting for the scheduled task.
+     */
+    public function syncIfNew(): ?array
+    {
+        try {
+            $db  = $this->db();
+            $max = (string) ($db->query('SELECT CONCAT(COALESCE(MAX(id),0), ":", COUNT(*)) AS m FROM outlook_attachment_sync.email_records')->getRowArray()['m'] ?? '');
+            // small internal markers (not user settings): kept straight in the settings table
+            $get = static fn (string $k): string => (string) ($db->table('tbl_system_settings')->select('svalue')->where('skey', $k)->get()->getRowArray()['svalue'] ?? '');
+            $put = static function (string $k, string $v) use ($db): void {
+                $row = $db->table('tbl_system_settings')->where('skey', $k)->get()->getRowArray();
+                $d   = ['svalue' => $v, 'category' => 'vf', 'updated_by' => 'vf:auto', 'updated_at' => date('Y-m-d H:i:s')];
+                $row ? $db->table('tbl_system_settings')->where('id', $row['id'])->update($d) : $db->table('tbl_system_settings')->insert($d + ['skey' => $k]);
+            };
+            if ($max === '' || $max === $get('vf.last_seen_records')) {
+                return null;
+            }
+            $busy = (int) strtotime($get('vf.sync_running'));
+            if ($busy > 0 && time() - $busy < 120) {
+                return null;                              // another request is reading them right now
+            }
+            $put('vf.sync_running', date('Y-m-d H:i:s'));
+            try {
+                $res = $this->syncFromOutlook();
+                if (! empty($res['ok'])) {
+                    $put('vf.last_seen_records', $max);
+                }
+            } finally {
+                $put('vf.sync_running', '');
+            }
+
+            return $res;
+        } catch (\Throwable $e) {
+            log_message('warning', 'VF syncIfNew: ' . $e->getMessage());
+
+            return null;
+        }
+    }
+
     public function syncFromOutlook(): array
     {
         $this->ensureTables();
@@ -1407,6 +1464,7 @@ class VfTestRequestService
             return ['ok' => false, 'error' => 'OutlookAttachmentSync secret key not found.'];
         }
 
+        $pushSince = date('Y-m-d H:i:s', time() - 2);
         $emails = $reader->fetchRecentEmails(120);
         // Process oldest -> newest so Stages A -> B -> C -> D apply in chronological order!
         $emails = array_reverse($emails);
@@ -1431,13 +1489,37 @@ class VfTestRequestService
             $atts    = (array) $em['attachments'];
 
             // 1. Check Stage D: Final PDF certificate attachment (SGS / KOTITI report)
-            $pdfAtts = array_values(array_filter($atts, static fn ($a) => str_ends_with(strtolower((string) ($a['OriginalFileName'] ?? $a['FileName'] ?? $a['file_name'] ?? '')), '.pdf')));
-            if ($pdfAtts && (str_contains($sender, 'sgs.com') || str_contains($sender, 'kotiti') || preg_match('/\b(SL\d{10,}FW|822\d-\d+-\d+|(?:SGS|KOTITI|Test)\s+Report)\b/i', $subject . ' ' . $text))) {
+            $pdfAtts = array_values(array_filter($atts, static fn ($a) => str_ends_with(strtolower((string) ($a['OriginalFileName'] ?? $a['FileName'] ?? $a['file_name'] ?? $a['filename'] ?? $a['stored_filename'] ?? '')), '.pdf')));
+            // a report forwarded / re-sent by a colleague (not the lab's own address) is still the report: its PDF is named after a Report No. we already
+            // hold, or the message says the report was issued
+            $pdfIsReport = false;
+            if ($pdfAtts) {
+                foreach ($pdfAtts as $pa) {
+                    $stem = strtoupper(pathinfo((string) ($pa['OriginalFileName'] ?? $pa['FileName'] ?? $pa['file_name'] ?? $pa['filename'] ?? $pa['stored_filename'] ?? ''), PATHINFO_FILENAME));
+                    if ($stem !== '' && $db->table('tbl_vf_test_requests')->groupStart()->where('lab_report_no', $stem)->orWhere('lab_order_no', $stem)->groupEnd()->countAllResults() > 0) {
+                        $pdfIsReport = true;
+                        break;
+                    }
+                }
+                if (! $pdfIsReport && preg_match('/(report\s+issued|find\s+the\s+report|issued\s+report|已出具的正式报告)/iu', $subject . ' ' . $text . ' ' . strip_tags($html))) {
+                    $pdfIsReport = true;
+                }
+            }
+            if ($pdfAtts && ($pdfIsReport || str_contains($sender, 'sgs.com') || str_contains($sender, 'kotiti') || preg_match('/\b(SL\d{10,}FW|822\d-\d+-\d+|(?:SGS|KOTITI|Test)\s+Report)\b/i', $subject . ' ' . $text))) {
                 $saved = $this->applyCertificateEmail($em, $pdfAtts, $reader);
                 $stats['certificates_saved'] += $saved;
                 if ($saved > 0) {
                     continue;
                 }
+            }
+
+            // 2a. "The samples were sent, the tracking number is SF..." (+ a table with MTL# / TR#): one shipment, linked to its requests, checked every 3 hours.
+            //     The same forwarded e-mail can also carry a lab message (below), so this does not end the e-mail.
+            $transitDone = false;
+            if (preg_match(VfTransitService::trackingRegex(), $subject . ' ' . $text . ' ' . strip_tags($html))) {
+                $linkedRows = (new VfTransitService())->applyEmail($em);
+                $stats['transit_updates'] += $linkedRows;
+                $transitDone = $linkedRows > 0;
             }
 
             // 2. Check Stage C: Lab Received (Expect Due Date + Report No.)
@@ -1447,6 +1529,9 @@ class VfTestRequestService
                 if ($upd > 0) {
                     continue;
                 }
+            }
+            if ($transitDone) {
+                continue;
             }
 
             // 3. Check Stage B BEFORE Stage A using ONLY the unquoted top message (so quoted Need-to-test tables don't hijack transit replies!)
@@ -1461,7 +1546,27 @@ class VfTestRequestService
 
             // 4. Check Stage A: Incoming Test Request HTML Table from djc_lab@dtshoes.com (or containing request table columns)
             $src = $this->findSourceFor($sender, $subject);
-            if ($src || preg_match('/指令編號|Need\s+to\s+test|DTP交期|TR\s*No/i', $html . ' ' . $text)) {
+            // KC Test only: the request table may be a PICTURE in the mail (the sync client keeps large inline pictures for that category). No table
+            // rows in the text -> read the picture(s) with OCR and hand the rows to the normal request ingest as a table. CPSIA is not touched.
+            $ocrRows = [];
+            if (str_starts_with(strtoupper($uid), 'KC') && ! preg_match('/VSP\d{8}/i', strip_tags($html) . ' ' . $text) && $atts) {
+                $imgs = [];
+                foreach ($atts as $ia) {
+                    $in = strtolower((string) ($ia['file_name'] ?? $ia['filename'] ?? $ia['stored_filename'] ?? $ia['FileName'] ?? $ia['OriginalFileName'] ?? ''));
+                    if (preg_match('/\.(png|jpe?g|bmp|gif)$/', $in)) {
+                        $bytes = $reader->readAttachmentBytes($ia);
+                        if ($bytes !== null && $bytes !== '') {
+                            $imgs[] = $bytes;
+                        }
+                    }
+                }
+                $ocrRows = $imgs ? VfImageTable::rowsFromImages($imgs) : [];
+                if ($ocrRows) {
+                    $html = VfImageTable::toHtml($ocrRows) . $html;
+                    $stats['ocr_rows'] = ($stats['ocr_rows'] ?? 0) + count($ocrRows);
+                }
+            }
+            if ($src || ($ocrRows ?? []) || preg_match('/指令編號|Need\s+to\s+test|DTP交期|TR\s*No/i', $html . ' ' . $text)) {
                 $res = $this->ingestRequestEmail($em['subject'], $html !== '' ? $html : $text, $em['sender_email'], $em['sender_name'], '', $uid, (string) $em['internet_message_id'], (string) $em['received_at'], $src);
                 $stats['items_skipped'] += (int) ($res['skipped'] ?? 0);
                 if ($res['added'] > 0) {
@@ -1481,7 +1586,45 @@ class VfTestRequestService
             ]);
         }
 
+        $this->pushNews($pushSince);
+
         return ['ok' => true] + $stats;
+    }
+
+    /**
+     * Browser push (also with NEXUS-L closed) for what this sync found, and for shipments whose 3-hour check is due. Each event / due time is
+     * pushed once (WebPush dedupe key). Only people whose role may open ERP Finish / Lab Monitoring get it.
+     */
+    private function pushNews(string $since): void
+    {
+        try {
+            $db   = $this->db();
+            $map  = [
+                'EMAIL_REQUEST'      => ['New VF test request', 'lab-monitoring/vf-requests'],
+                'EMAIL_IN_TRANSIT'   => ['Samples are in transit', 'lab-monitoring/vf-requests'],
+                'EMAIL_LAB_RECEIVED' => ['The lab received the samples', 'lab-monitoring/vf-requests'],
+                'EMAIL_COMPLETED'    => ['Test report received', 'lab-monitoring/vf-requests'],
+            ];
+            $rows = $db->table('tbl_vf_test_events')->whereIn('event_type', array_keys($map))->where('created_at >=', $since)->orderBy('id')->get(8)->getResultArray();
+            foreach ($rows as $r) {
+                [$title, $url] = $map[$r['event_type']];
+                WebPush::notify($title, trim((string) $r['subject']), $url, ['module' => 'erpfinish', 'dedupe' => 'vf-event-' . $r['id'], 'tag' => 'vf-' . $r['event_type']]);
+            }
+            $now = date('Y-m-d H:i:s');
+            foreach ((new VfTransitService())->listShipments()['shipments'] as $sh) {
+                if (! empty($sh['at_lab']) || (int) $sh['delivered'] === 1) {
+                    continue;
+                }
+                $mtls = implode(', ', array_slice(array_unique(array_column($sh['items'] ?? [], 'mtl_no')), 0, 4));
+                if (! empty($sh['alarm'])) {
+                    WebPush::notify('Transit update: ' . $sh['tracking_no'], trim(($sh['last_status'] ?? '') . ' ' . $mtls), 'lab-monitoring/vf-requests', ['module' => 'erpfinish', 'dedupe' => 'vf-alarm-' . $sh['id'] . '-' . $sh['alarm_at'], 'tag' => 'vf-ship-' . $sh['id']]);
+                } elseif (! empty($sh['due']) && strtotime((string) $sh['next_check_at']) <= strtotime($now)) {
+                    WebPush::notify('Transit check due: ' . $sh['tracking_no'], 'Check the courier page and record the status. ' . $mtls, 'lab-monitoring/vf-requests', ['module' => 'erpfinish', 'dedupe' => 'vf-due-' . $sh['id'] . '-' . $sh['next_check_at'], 'tag' => 'vf-ship-' . $sh['id']]);
+                }
+            }
+        } catch (\Throwable $e) {
+            log_message('error', '[VF push] ' . $e->getMessage());
+        }
     }
 
     /** Parses HTML table or tab-delimited text into request items and persists batch + request rows. */
@@ -1580,8 +1723,29 @@ class VfTestRequestService
                 ->where('mtl_no', $mtlNo)
                 ->where('test_package', $pkg)
                 ->whereNotIn('stage', ['FAILED', 'HISTORY'])   // Excel history rows are records only: they must not hide a new request
-                ->countAllResults();
-            if ($dup > 0) {
+                ->get()->getResultArray();
+            if ($dup) {
+                // The test was only known from the Excel history import: this e-mail is its real request. The request (with everything it has
+                // already collected: transit, lab, report) moves under this e-mail so it shows in the monitor with its sender and e-mail.
+                $adopt = null;
+                foreach ($dup as $d) {
+                    $bch = (int) ($d['batch_id'] ?? 0) ? $db->table('tbl_vf_email_batches')->select('source_channel')->where('id', (int) $d['batch_id'])->get()->getRowArray() : null;
+                    if ($bch && ($bch['source_channel'] ?? '') === 'excel_import') {
+                        $adopt = $d;
+                        break;
+                    }
+                }
+                $others = array_filter($dup, static fn ($d) => ! $adopt || (int) $d['id'] !== (int) $adopt['id']);
+                if ($adopt && ! $others) {
+                    $db->table('tbl_vf_test_requests')->where('id', (int) $adopt['id'])->update([
+                        'batch_id'    => $batchId,
+                        'email_state' => $rowState !== '' ? $rowState : ($adopt['email_state'] ?: 'Need to test'),
+                        'tr_no'       => $rowTrNo !== '' ? $rowTrNo : $adopt['tr_no'],
+                        'updated_at'  => $now,
+                    ]);
+                    $added++;
+                    continue;
+                }
                 $skipped++;
                 continue;
             }
@@ -1870,7 +2034,7 @@ class VfTestRequestService
                 $f = 'style_no';
             } elseif (str_contains($l, 'mtl')) {
                 $f = 'mtl_no';
-            } elseif (str_contains($h, '顏色') || str_contains($l, 'color')) {
+            } elseif (str_contains($h, '顏色') || str_contains($h, '颜色') || str_contains($l, 'color')) {
                 $f = 'colorway_c';
             } elseif ($l === 'state' || $l === 'status') {
                 $f = 'state';
@@ -1887,7 +2051,7 @@ class VfTestRequestService
         return $map;
     }
 
-    private static function parseSafeDate(string $raw): ?string
+    public static function parseSafeDate(string $raw): ?string
     {
         $s = trim($raw);
         if ($s === '') {
@@ -1965,6 +2129,9 @@ class VfTestRequestService
             $dom = new \DOMDocument();
             @$dom->loadHTML('<?xml encoding="utf-8" ?>' . $html, LIBXML_NOERROR | LIBXML_NOWARNING);
             foreach ($dom->getElementsByTagName('table') as $tbl) {
+                if ($pairs) {
+                    break;               // only the FIRST report table counts: it is the newest message; the ones below it are older quoted mails of the chain
+                }
                 $trs = $tbl->getElementsByTagName('tr');
                 if ($trs->length < 2) {
                     continue;
@@ -1991,14 +2158,16 @@ class VfTestRequestService
                             $vals[] = trim(preg_replace('/\s+/', ' ', $c->textContent));
                         }
                     }
-                    $rep = trim((string) ($vals[$iRep] ?? ''));
+                    // cells of a mail can carry invisible object / replacement characters (a picture, a link): they are not part of the value
+                    $clean = static fn (string $s): string => trim((string) preg_replace('/^[\s\p{Z}]+|[\s\p{Z}]+$/u', '', (string) preg_replace('/[\x{FFFC}\x{FFFD}\x{200B}\x{FEFF}\p{C}]+/u', '', str_replace("\xC2\xA0", ' ', $s))));
+                    $rep = $clean((string) ($vals[$iRep] ?? ''));
                     if ($rep === '') {
                         continue;
                     }
                     $pairs[] = [
                         'report_no' => $rep,
-                        'ref'       => trim((string) ($vals[$iRef] ?? '')),
-                        'due_date'  => trim((string) ($vals[$iDue] ?? '')),
+                        'ref'       => $clean((string) ($vals[$iRef] ?? '')),
+                        'due_date'  => $clean((string) ($vals[$iDue] ?? '')),
                     ];
                 }
             }
@@ -2010,19 +2179,47 @@ class VfTestRequestService
         foreach ($pairs as $pr) {
             preg_match_all('/\b(VN[A-Z0-9]{9})\b/i', $pr['ref'] . ' ' . $em['subject'], $mtls);
             preg_match_all('/\b(A\d{8,12})\b/i', $pr['ref'] . ' ' . $em['subject'], $apps);
-            $targets = $this->findMatchingRequests($mtls[1] ?? [], [], $apps[1] ?? [], ['SUBMITTED_INTERLINK', 'EMAIL_SENT', 'IN_TRANSIT', 'LAB_RECEIVED'], $pkgHint);
+            $targets = $this->findMatchingRequests($mtls[1] ?? [], [], $apps[1] ?? [], ['SUBMITTED_INTERLINK', 'EMAIL_SENT', 'IN_TRANSIT', 'LAB_RECEIVED', 'FOLLOW_UP'], $pkgHint);
             $dueDate = self::parseSafeDate($pr['due_date']);
+            // The lab writes a REMARK in the Expect Due Date column when the test cannot go on ("Need additional sample; ...") and says in the
+            // text that the result failed: that is not a date, it is a request for follow-up, and the remark takes the place of the date.
+            $looksLikeDate = (bool) preg_match('/\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2}|\d{1,2}[-\/.]\d{1,2}[-\/.]\d{2,4}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}/', $pr['due_date']);
+            $remark = ! $looksLikeDate && preg_match('/\p{L}{3,}/u', $pr['due_date']) ? trim($pr['due_date']) : '';
+            if ($remark !== '') {
+                $dueDate = null;                          // words, not a date (a word such as "May" must not be read as one)
+            }
+            // a follow-up is decided by THIS row's remark (the words in its Expected Due Date cell), never by a sentence somewhere else in the e-mail; the
+            // sentence that says "failed" is only the reason that goes with such a row
+            $plainBody = trim(preg_replace('/\s+/u', ' ', $text . ' ' . strip_tags($html)));
+            $failedSentence = $remark !== '' && preg_match('/[^.!?]*\b(?:failed|fails|failure|not pass(?:ed)?)\b[^.!?]*[.!?]?/iu', $plainBody, $fm) ? trim($fm[0]) : '';
+            $followUp = $remark !== '';
             foreach ($targets as $t) {
                 $upd = [
-                    'lab_name'          => $lab,
+                    'lab_name'          => self::labFor($t, $lab),
                     'lab_report_no'     => $pr['report_no'],
                     'lab_order_no'      => $pr['report_no'],
                     'expected_due_date' => $dueDate,
+                    'expected_due_remark' => mb_substr($remark, 0, 495),
                     'lab_received_at'   => $now,
                     'updated_at'        => $now,
                 ];
+                if ($followUp) {
+                    $upd['fail_reason'] = mb_substr($failedSentence !== '' ? $failedSentence : $remark, 0, 900);
+                    $upd['follow_up_at'] = $now;
+                }
                 if ($t['stage'] !== 'COMPLETED') {
-                    $upd['stage'] = 'LAB_RECEIVED';
+                    $upd['stage'] = $followUp ? 'FOLLOW_UP' : 'LAB_RECEIVED';
+                }
+                // the parcel the lab is answering for: a tracking number in the lab's own message (the Report No. or the newest text, never the quoted
+                // older mails) that belongs to a known shipment becomes the request's tracking number
+                $topTxt = $pr['report_no'] . ' ' . trim(self::stripQuotedEmailText($text !== '' ? $text : strip_tags(self::stripQuotedEmailHtml($html))));
+                if (preg_match('/(SF\d{12,15})/i', $pr['report_no'], $tm) || preg_match(VfTransitService::trackingRegex(), $topTxt, $tm)) {
+                    $trk  = strtoupper($tm[1] ?? $tm[0]);
+                    $ship = $db->table('tbl_vf_shipments')->select('id')->where('tracking_no', $trk)->get(1)->getRowArray();
+                    if ($ship) {
+                        $upd['container_no'] = $trk;
+                        $upd['shipment_id']  = (int) $ship['id'];
+                    }
                 }
                 $db->table('tbl_vf_test_requests')->where('id', $t['id'])->update($upd);
                 $cnt++;
@@ -2129,9 +2326,15 @@ class VfTestRequestService
         $pkgHint = self::detectExplicitPackage((string) $em['subject']);
         $now  = date('Y-m-d H:i:s');
         $saved = 0;
+        // the body of the e-mail the report came in (without the quoted older mails), kept with the request so it can be read in Material Monitoring
+        $mailBody = trim(self::stripQuotedEmailText((string) ($em['body_text'] !== '' ? $em['body_text'] : strip_tags(self::stripQuotedEmailHtml((string) $em['body_html'])))));
+        $mailBody = mb_substr($mailBody !== '' ? $mailBody : trim(strip_tags((string) $em['body_html'])), 0, 12000);
+
+        // KOTITI sends its result list (xlsx) with the report PDFs: Pass/Fail and the KC Number per MTL# (its "Model Name" column)
+        $saved += $this->applyKotitiTracker($em, $reader, $mailBody);
 
         foreach ($pdfAtts as $att) {
-            $origName = (string) ($att['OriginalFileName'] ?? $att['FileName'] ?? $att['file_name'] ?? 'certificate.pdf');
+            $origName = (string) ($att['OriginalFileName'] ?? $att['FileName'] ?? $att['file_name'] ?? $att['filename'] ?? $att['stored_filename'] ?? 'certificate.pdf');
             $bytes    = $reader->readAttachmentBytes($att);
             if ($bytes === null || $bytes === '') {
                 continue;
@@ -2150,12 +2353,15 @@ class VfTestRequestService
             preg_match_all('/\b(A\d{8,12})\b/i', $haystack, $apps);
 
             $targets = [];
-            $keys = array_values(array_filter([$orderNo, $finalNo]));
+            $stemNo = strtoupper(pathinfo($origName, PATHINFO_FILENAME));      // the PDF is often named after the lab's Report No.
+            // KOTITI names its PDFs after the 14 digits of its number: 82261011108759_1_1_0.pdf = 8226-1011-108759
+            $kotiti = preg_match('/^(\d{4})(\d{4})(\d{6})(?:_|$)/', $stemNo, $km) ? $km[1] . '-' . $km[2] . '-' . $km[3] : '';
+            $keys = array_values(array_filter([$orderNo, $finalNo, $stemNo, $kotiti]));
             if ($keys) {
                 $targets = $db->table('tbl_vf_test_requests')->groupStart()->whereIn('lab_report_no', $keys)->orWhereIn('lab_order_no', $keys)->groupEnd()->where('stage !=', 'HISTORY')->orderBy('id', 'DESC')->get()->getResultArray();
             }
             if (! $targets) {
-                $targets = $this->findMatchingRequests($mtls[1] ?? [], [], $apps[1] ?? [], ['SUBMITTED_INTERLINK', 'EMAIL_SENT', 'IN_TRANSIT', 'LAB_RECEIVED'], $pkgHint);
+                $targets = $this->findMatchingRequests($mtls[1] ?? [], [], $apps[1] ?? [], ['SUBMITTED_INTERLINK', 'EMAIL_SENT', 'IN_TRANSIT', 'LAB_RECEIVED', 'FOLLOW_UP'], $pkgHint);
             }
             if (! $targets) {
                 continue;
@@ -2165,6 +2371,10 @@ class VfTestRequestService
             $result = self::evaluatePdfResult($pdfText, (string) $em['subject']);
 
             foreach ($targets as $t) {
+                // the same KOTITI number comes as two PDFs (_1 Korean certificate, _2 test report): the first one saved stays the request's certificate
+                if ($kotiti !== '' && str_starts_with((string) $t['certificate_pdf_name'], substr($stemNo, 0, 14)) && $t['certificate_pdf_name'] !== '') {
+                    continue;
+                }
                 $folderKey = preg_replace('/[^A-Za-z0-9_-]/', '_', (string) ($t['test_type_short'] ?: 'VF'));
                 $dir       = WRITEPATH . 'uploads' . DIRECTORY_SEPARATOR . 'vf_certificates' . DIRECTORY_SEPARATOR . $folderKey . DIRECTORY_SEPARATOR;
                 if (! is_dir($dir)) {
@@ -2174,6 +2384,7 @@ class VfTestRequestService
                 @file_put_contents($dir . $safeFile, $bytes);
 
                 $db->table('tbl_vf_test_requests')->where('id', $t['id'])->update([
+                    'lab_name'             => self::labFor($t, (string) ($t['lab_name'] ?? '')),   // KC Test -> KOTITI; every other package keeps what it had
                     'lab_report_no'        => $finalNo !== '' ? $finalNo : ($t['lab_report_no'] ?: $repNo),
                     'lab_order_no'         => $t['lab_order_no'] ?: $orderNo,
                     'test_result'          => $result,
@@ -2181,6 +2392,9 @@ class VfTestRequestService
                     'validity_date'        => date('Y-m-d', strtotime($issue . ' +' . max(1, (int) SystemSettings::get('vf.validity_months', '12')) . ' months')),
                     'certificate_pdf_name' => $safeFile,
                     'certificate_pdf_path' => $dir . $safeFile,
+                    'cert_email_subject'   => mb_substr((string) $em['subject'], 0, 295),
+                    'cert_email_body'      => $mailBody,
+                    'cert_email_at'        => $now,
                     'completed_at'         => $now,
                     'stage'                => 'COMPLETED',
                     'updated_at'           => $now,
@@ -2199,6 +2413,113 @@ class VfTestRequestService
         }
 
         return $saved;
+    }
+
+    /**
+     * The KOTITI result list in the e-mail (columns KOTITI Number / Pass/Fail / KC Number / Model Name): the row whose Model Name is the MTL# of a KC request
+     * gives that request its Report No. (the KOTITI number), result and KC Number. The report PDFs of the same e-mail are attached afterwards.
+     *
+     * @return int requests updated
+     */
+    private function applyKotitiTracker(array $em, OutlookSyncReader $reader, string $mailBody): int
+    {
+        $db  = $this->db();
+        $now = date('Y-m-d H:i:s');
+        $n   = 0;
+        foreach ((array) $em['attachments'] as $att) {
+            $name = (string) ($att['OriginalFileName'] ?? $att['FileName'] ?? $att['file_name'] ?? $att['filename'] ?? $att['stored_filename'] ?? '');
+            if (! preg_match('/\.xlsx$/i', $name)) {
+                continue;
+            }
+            $bytes = $reader->readAttachmentBytes($att);
+            if ($bytes === null || $bytes === '') {
+                continue;
+            }
+            $tmp = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'vf_trk_' . bin2hex(random_bytes(6)) . '.xlsx';
+            @file_put_contents($tmp, $bytes);
+            try {
+                $best = [];
+                foreach (array_keys(LabDocXlsx::sheetNames($tmp)) as $idx) {
+                    $rows = LabDocXlsx::read($tmp, $idx)['rows'];
+                    $col  = [];
+                    foreach ($rows as $cells) {
+                        foreach ($cells as $ci => $txt) {
+                            if (stripos(trim((string) $txt), 'KOTITI Number') === 0) {
+                                $col = ['k' => $ci];
+                            }
+                        }
+                        if ($col) {
+                            foreach ($cells as $ci => $txt) {
+                                $t = strtolower(trim((string) $txt));
+                                if ($t === 'pass/fail') {
+                                    $col['r'] = $ci;
+                                } elseif ($t === 'kc number') {
+                                    $col['kc'] = $ci;
+                                } elseif ($t === 'model name') {
+                                    $col['m'] = $ci;
+                                } elseif ($t === 'fail result') {
+                                    $col['f'] = $ci;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                    if (! isset($col['k'], $col['r'], $col['m'])) {
+                        continue;
+                    }
+                    foreach ($rows as $cells) {
+                        $model = strtoupper(trim((string) ($cells[$col['m']] ?? '')));
+                        $kno   = trim((string) ($cells[$col['k']] ?? ''));
+                        if (! preg_match('/^VN[A-Z0-9]{9}$/', $model) || $kno === '') {
+                            continue;
+                        }
+                        $kno = preg_match('/^\d{14}$/', $kno) ? substr($kno, 0, 4) . '-' . substr($kno, 4, 4) . '-' . substr($kno, 8) : $kno;
+                        $pf  = (string) ($cells[$col['r']] ?? '');
+                        $res = stripos($pf, 'pass') === 0 ? 'PASS' : (stripos($pf, 'fail') === 0 ? 'FAIL' : '');
+                        if ($res === '') {
+                            continue;
+                        }
+                        $kc   = trim((string) ($cells[$col['kc'] ?? 0] ?? ''));
+                        $fail = trim((string) ($cells[$col['f'] ?? 0] ?? ''));
+                        // the list keeps every old test of the model: the newest KOTITI number is the one just reported
+                        if (! isset($best[$model]) || strcmp(str_replace('-', '', $kno), str_replace('-', '', $best[$model]['kno'])) > 0) {
+                            $best[$model] = ['kno' => $kno, 'res' => $res, 'kc' => $kc, 'fail' => $fail];
+                        }
+                    }
+                }
+                foreach ($best as $model => $b) {
+                    $reqs = $db->table('tbl_vf_test_requests')->where('mtl_no', $model)->whereIn('stage', ['SUBMITTED_INTERLINK', 'EMAIL_SENT', 'IN_TRANSIT', 'LAB_RECEIVED', 'FOLLOW_UP'])->get()->getResultArray();
+                    foreach ($reqs as $r) {
+                        if (! preg_match('/(^|[^A-Za-z])KC([^A-Za-z]|$)/', (string) $r['test_package'])) {
+                            continue;
+                        }
+                        $issue = ! empty($em['received_at']) && ($ts = strtotime((string) $em['received_at'])) ? date('Y-m-d', $ts) : date('Y-m-d');
+                        $db->table('tbl_vf_test_requests')->where('id', $r['id'])->update([
+                            'lab_name' => 'KOTITI', 'lab_report_no' => $b['kno'], 'lab_order_no' => $b['kno'], 'test_result' => $b['res'],
+                            'fail_reason' => $b['res'] === 'FAIL' ? mb_substr($b['fail'] !== '' && $b['fail'] !== '-' ? $b['fail'] : 'KOTITI: failed', 0, 900) : '',
+                            'lab_received_at' => $r['lab_received_at'] ?: $now, 'issue_date' => $issue,
+                            'validity_date' => date('Y-m-d', strtotime($issue . ' +' . max(1, (int) SystemSettings::get('vf.validity_months', '12')) . ' months')),
+                            'cert_email_subject' => mb_substr((string) $em['subject'], 0, 295),
+                            'cert_email_body' => mb_substr(($b['kc'] !== '' && $b['kc'] !== '-' ? 'KC Number: ' . $b['kc'] . "\n\n" : '') . $mailBody, 0, 12000),
+                            'cert_email_at' => $now, 'completed_at' => $now, 'stage' => 'COMPLETED', 'updated_at' => $now,
+                        ]);
+                        $n++;
+                    }
+                }
+            } catch (\Throwable $e) {
+                log_message('error', '[VfTestRequestService] KOTITI tracker unreadable: ' . $e->getMessage());
+            } finally {
+                @unlink($tmp);
+            }
+        }
+
+        return $n;
+    }
+
+    /** The testing lab of a request: KC Test is tested by KOTITI (CPSIA and the rest keep the lab the e-mail came from, SGS by default) */
+    private static function labFor(array $request, string $fromMail): string
+    {
+        return preg_match('/(^|[^A-Za-z])KC([^A-Za-z]|$)/', (string) ($request['test_package'] ?? '')) ? 'KOTITI' : $fromMail;
     }
 
     private function findMatchingRequests(array $mtls, array $prods, array $apps, array $allowedStages = [], ?string $packageHint = null): array

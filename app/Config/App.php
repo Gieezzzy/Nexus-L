@@ -6,6 +6,16 @@ use CodeIgniter\Config\BaseConfig;
 
 class App extends BaseConfig
 {
+    public function __construct()
+    {
+        parent::__construct();
+        // Opened over HTTPS (port 9443, needed for browser notifications): links and redirects must stay on https. Only the server's own addresses are accepted.
+        $host = (string) ($_SERVER['HTTP_HOST'] ?? '');
+        if (! empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' && preg_match('/^(192\.168\.32\.43|localhost|127\.0\.0\.1)(:\d+)?$/', $host)) {
+            $this->baseURL = 'https://' . $host . '/NEXUS-L/';
+        }
+    }
+
     /**
      * --------------------------------------------------------------------------
      * Base Site URL

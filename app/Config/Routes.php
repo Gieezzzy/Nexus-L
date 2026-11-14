@@ -86,6 +86,8 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->post('account/password', 'AccountController::password');
     $routes->post('account/prefs', 'AccountController::prefs');
     $routes->post('account/signature', 'AccountController::signature');
+    $routes->post('account/avatar', 'AccountController::saveAvatar');
+    $routes->get('account/avatar/(:num)', 'AccountController::avatar/$1');
     $routes->get('settings', 'SettingsController::index', ['as' => 'settings']);
     $routes->get('/', static fn () => redirect()->route('dashboard'));
     $routes->post('logout', 'AuthController::logout', ['as' => 'logout']);
@@ -109,11 +111,26 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->get('inbox/chat-search/(:segment)', 'InboxController::chatSearch/$1');
     $routes->get('inbox/media/(:segment)', 'InboxController::media/$1');
     $routes->post('inbox/token', 'InboxController::saveToken');
+    // Browser push (arrives with NEXUS-L closed; HTTPS only)
+    $routes->get('push/key', 'PushController::key');
+    $routes->post('push/subscribe', 'PushController::subscribe');
+    $routes->post('push/unsubscribe', 'PushController::unsubscribe');
+    $routes->post('push/test', 'PushController::test');
     $routes->get('inbox/themes', 'InboxController::themes');
     $routes->post('inbox/group/create', 'InboxController::createGroup');
     $routes->post('inbox/group/approve/(:segment)', 'InboxController::approveGroup/$1');
+    $routes->post('inbox/group/rename/(:segment)', 'InboxController::renameGroup/$1');
+    $routes->post('inbox/group/photo/(:segment)', 'InboxController::updateGroupPhoto/$1');
+    $routes->get('inbox/group-avatar/(:segment)', 'InboxController::groupAvatar/$1');
+    $routes->post('inbox/group/members/add/(:segment)', 'InboxController::addGroupMembers/$1');
+    $routes->post('inbox/group/members/remove/(:segment)', 'InboxController::removeGroupMember/$1');
+    $routes->post('inbox/group/leave/(:segment)', 'InboxController::leaveGroup/$1');
     $routes->post('inbox/disappearing/(:segment)', 'InboxController::setDisappearing/$1');
     $routes->post('inbox/triggered/(:segment)/(:num)', 'InboxController::markTriggered/$1/$2');
+    $routes->post('inbox/unsend/(:segment)', 'InboxController::unsend/$1');
+    $routes->post('inbox/delete/(:segment)', 'InboxController::deleteMsg/$1');
+    $routes->post('inbox/mute/(:segment)', 'InboxController::toggleMute/$1');
+    $routes->post('inbox/block/(:segment)', 'InboxController::toggleBlock/$1');
 
     // Intertek InterLink 2.0 Report Automation & Sync
     // Lab Monitoring: ERP Finish Monitoring
@@ -121,11 +138,26 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->get('lab-monitoring/erp-finish', 'LabMonitoringController::erp');
     $routes->get('lab-monitoring/vf-requests', 'VfTestRequestController::monitoring', ['as' => 'lab-monitoring-vf']);
     $routes->get('lab-monitoring/vf-requests/data', 'VfTestRequestController::monitoringData');
+    $routes->get('lab-monitoring/vf-requests/export-summary', 'VfTestRequestController::exportSummary');
     $routes->post('lab-monitoring/vf-requests/send-email', 'VfTestRequestController::sendBatchEmail');
     $routes->post('lab-monitoring/vf-requests/email-preview', 'VfTestRequestController::emailPreview');
     $routes->post('lab-monitoring/vf-requests/fetch-pdfs', 'VfTestRequestController::fetchPdfs');
     $routes->post('lab-monitoring/vf-requests/toggle-auto', 'VfTestRequestController::toggleAutoEmail');
     $routes->post('lab-monitoring/vf-requests/update-row', 'VfTestRequestController::updateRow');
+    // Transit Monitoring (shipments of samples, checked every 3 hours) and Request Material Monitoring (overall status)
+    $routes->get('lab-monitoring/vf-requests/transit', 'VfTestRequestController::transitData');
+    $routes->post('lab-monitoring/vf-requests/transit/check', 'VfTestRequestController::transitCheck');
+    $routes->post('lab-monitoring/vf-requests/transit/ack', 'VfTestRequestController::transitAck');
+    $routes->post('lab-monitoring/vf-requests/transit/email-preview', 'VfTestRequestController::transitEmailPreview');
+    $routes->post('lab-monitoring/vf-requests/transit/send-email', 'VfTestRequestController::transitEmailSend');
+    // KC Test (KOTITI): invoice / packing list sheets, Proceed to transit, lab received
+    $routes->get('lab-monitoring/vf-requests/kc/docs/(:num)', 'VfTestRequestController::kcDocs/$1');
+    $routes->post('lab-monitoring/vf-requests/kc/docs-save', 'VfTestRequestController::kcDocsSave');
+    $routes->get('lab-monitoring/vf-requests/kc/xlsx/(:num)/(:segment)', 'VfTestRequestController::kcXlsx/$1/$2');
+    $routes->post('lab-monitoring/vf-requests/kc/proceed', 'VfTestRequestController::kcProceed');
+    $routes->post('lab-monitoring/vf-requests/kc/lab-received', 'VfTestRequestController::kcLabReceived');
+    $routes->get('lab-monitoring/vf-requests/material','VfTestRequestController::materialData');
+    $routes->get('lab-monitoring/vf-requests/completion-email/(:num)', 'VfTestRequestController::completionEmail/$1');
     $routes->get('lab-monitoring/vf-requests/pdf/(:segment)/(:num)', 'VfTestRequestController::pdf/$1/$2');
     $routes->get('lab-monitoring/data', 'LabMonitoringController::data');
     $routes->get('lab-monitoring/erp-log', 'LabMonitoringController::erpLog');
@@ -203,6 +235,7 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('dtr/shoe-lookup', 'DtrController::shoeLookup');
     $routes->get('dtr/shoe-search', 'DtrController::shoeSearch');
     $routes->get('dtr/erp-shoe-search', 'DtrController::erpShoeSearch');
+    $routes->get('dtr/erp-prod-materials', 'DtrController::erpProdMaterials');
     $routes->get('dtr/erp-po', 'DtrController::erpPo');
     $routes->get('dtr/shoe-list-search', 'DtrController::shoeListSearch');
     $routes->get('dtr/material-code-search', 'DtrController::materialCodeSearch');
@@ -234,6 +267,7 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('dtr/approval/feed', 'ApprovalController::feed');
     $routes->get('dtr/approval/name-format', 'ApprovalController::nameFormat');
     $routes->post('dtr/approval/name-format', 'ApprovalController::nameFormat');
+    $routes->post('approve/presence/(:num)', 'ApprovalController::presence/$1');   // one approver at a time (live)
     $routes->get('approve/(:segment)/pdf', 'ApprovalController::preview/$1');
     $routes->get('approve/(:segment)', 'ApprovalController::page/$1');
     $routes->post('approve/(:segment)', 'ApprovalController::decide/$1');
@@ -269,6 +303,7 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('labdocs/(:segment)/thumb/(:num)', 'LabDocsController::thumb/$1/$2');
     // a folder of files (Admin, Manager, Supervisor, Encoder): new folder, upload, refresh from the share, delete a file
     $routes->post('labdocs/(:segment)/files/folder', 'LabDocsController::newFolder/$1');
+    $routes->post('labdocs/(:segment)/files/op', 'LabDocsController::fileOp/$1');            // SATRA / Admin: rename, move, copy, paste, delete folders, new file
     $routes->post('labdocs/(:segment)/files/upload', 'LabDocsController::upload/$1');
     $routes->post('labdocs/(:segment)/files/refresh', 'LabDocsController::refresh/$1');
     $routes->post('labdocs/(:segment)/files/(:num)/delete', 'LabDocsController::deleteFile/$1/$2');
@@ -291,6 +326,7 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('calendar-monitoring/quick-stats', 'CalendarMonitoringController::quickStats');
 
     // Warehouse & Specimen Retain Tracker (3D Model & Location Guide)
+    $routes->get('activity-log', 'ActivityLogController::index', ['as' => 'activity-log']);   // Admin: every recorded action
     $routes->get('warehouse-tracker', 'WarehouseTrackerController::index', ['as' => 'warehouse-tracker']);
     $routes->get('warehouse', 'WarehouseTrackerController::index');
     $routes->get('warehouse-tracker/boxes', 'WarehouseTrackerController::boxes');

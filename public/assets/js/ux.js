@@ -190,6 +190,36 @@
     }
   };
 
+  // ---------------------------------------------------- leaving a page stops its work at once
+  // A click on another page (fast clicks through the sidebar) cancels the page's own data loads that are still running and stops its
+  // timers / polls, so the browser and the server only work on the page the user goes to now. Saves (POST) are never cancelled.
+  let nxNavCtl = new AbortController();
+  const nxIntervals = new Set();
+  const nativeSetInterval = window.setInterval.bind(window);
+  const nativeClearInterval = window.clearInterval.bind(window);
+  window.setInterval = (...a) => { const id = nativeSetInterval(...a); nxIntervals.add(id); return id; };
+  window.clearInterval = (id) => { nxIntervals.delete(id); nativeClearInterval(id); };
+  window.nxNavSignal = () => nxNavCtl.signal;
+  window.nxStopPage = () => {
+    if (window.nxLeaving) return;
+    window.nxLeaving = true;
+    try { nxNavCtl.abort(); } catch (_) {}
+    nxIntervals.forEach((id) => nativeClearInterval(id));
+    nxIntervals.clear();
+  };
+  // back from the browser cache (Back button): the page lives again
+  // back from the browser cache (Back button) after its work was stopped: load it fresh so its polls run again
+  window.addEventListener('pageshow', (ev) => { if (ev.persisted && window.nxLeaving) location.reload(); });
+  // the cancelled loads of a page being left must not flash error messages
+  let nxToastFn = window.nxToast;
+  try {
+    Object.defineProperty(window, 'nxToast', {
+      configurable: true,
+      get: () => (nxToastFn ? (...a) => ((window.nxLeaving || /abort/i.test(String(a[0] || ''))) ? null : nxToastFn(...a)) : nxToastFn),
+      set: (fn) => { nxToastFn = fn; },
+    });
+  } catch (_) {}
+
   document.addEventListener('click', (e) => {
     const a = e.target.closest('a[href]:not([target]):not([download])');
     if (!a || !a.href) return;
@@ -200,6 +230,7 @@
       const target = new URL(a.href, location.href);
       if (target.origin !== location.origin || target.pathname === location.pathname) return;
       leaving = false;
+      setTimeout(() => { if (!e.defaultPrevented) window.nxStopPage(); }, 0);   // the page really changes: stop this one now
       setTimeout(() => {
         if (e.defaultPrevented) return;           // a page script handled the click itself: nothing is loading
         window.nxProgress.start();
@@ -210,6 +241,7 @@
   });
   let leaving = false;
   window.addEventListener('beforeunload', () => { leaving = true; });
+  window.addEventListener('pagehide', () => window.nxStopPage());
   window.addEventListener('pageshow', () => { window.nxProgress?.done(); nxNavSkeleton(false); });
   // ---------------------------------------------------- a slow page change: the content area turns into grey shimmering blocks at once
   // (the server may need seconds to answer; the user sees that the click was received instead of a frozen page)
@@ -238,6 +270,13 @@
   // - frequent background polls are ignored so they never flash the bar
   const QUIET = /\/(bot\/(badge|thread|events|suggest)|brain\/(live|overview)|interlink\/(service\/status|feed))/;
   const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+  // when the user last typed in a search box or changed a filter (inputs, selects, date pickers)
+  let nxLastFilterAt = 0;
+  const nxFilterLoads = new Map();
+  ['input', 'change'].forEach((ev) => document.addEventListener(ev, (e) => {
+    const t = e.target;
+    if (t && /^(INPUT|SELECT)$/.test(t.tagName) && !/^(file|checkbox|radio|password|submit|button)$/i.test(t.type || '')) nxLastFilterAt = Date.now();
+  }, true));
   if (nativeFetch) {
     let pending = 0;
     let barTimer = 0;
@@ -283,9 +322,44 @@
           reqInit = Object.assign({}, init || {}, { headers: h });
         }
       }
+      if ((method === 'GET' || method === 'HEAD') && window.nxNavSignal) {   // a data load of this page ends when the user leaves it
+        const nav = window.nxNavSignal();
+        const own = (reqInit && reqInit.signal) || (input && typeof input === 'object' && input.signal) || null;
+        let sig = !own ? nav : (AbortSignal.any ? AbortSignal.any([own, nav]) : own);
+        // search box / filter: a newer search of the same list replaces the one still loading (only the latest answer counts)
+        if (AbortSignal.any && Date.now() - nxLastFilterAt < 2500) {
+          let key = '';
+          try { key = new URL(url, location.href).pathname; } catch (_) {}
+          if (key) {
+            const prev = nxFilterLoads.get(key);
+            if (prev && Date.now() - prev.at > 30) prev.ctl.abort();   // started in an earlier keystroke, not a parallel load of the same moment
+            const ctl = new AbortController();
+            const mine = { ctl, at: Date.now() };
+            nxFilterLoads.set(key, mine);
+            sig = AbortSignal.any([sig, ctl.signal]);
+            setTimeout(() => { if (nxFilterLoads.get(key) === mine) nxFilterLoads.delete(key); }, 60000);
+          }
+        }
+        reqInit = Object.assign({}, reqInit || {}, { signal: sig });
+      }
       const quiet = QUIET.test(url);
       const aborted = () => !!(reqInit && reqInit.signal && reqInit.signal.aborted);
-      const attempt = (n) => nativeFetch(input, reqInit).catch((err) => {
+      // The CSRF token of a page that stays open for hours expires (the cookie lives 2 hours): the save is then refused with
+      // "The action you requested is not allowed". Take a fresh token from the server and send the same request once more.
+      const postOnce = (inp, ri) => nativeFetch(inp, ri).then(async (res) => {
+        if (method === 'GET' || method === 'HEAD' || res.ok || ri._csrfRetried) return res;
+        const body = await res.clone().text().catch(() => '');
+        if (!/action you requested is not allowed/i.test(body)) return res;
+        try {
+          const page = await nativeFetch(location.href, { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+          const tok = new DOMParser().parseFromString(await page.text(), 'text/html').querySelector('meta[name="X-CSRF-TOKEN"]')?.content;
+          if (!tok) return res;
+          const cur = document.querySelector('meta[name="X-CSRF-TOKEN"]'); if (cur) cur.content = tok;
+          const h2 = new Headers(ri.headers || undefined); h2.set('X-CSRF-TOKEN', tok);
+          return nativeFetch(inp, Object.assign({}, ri, { headers: h2, _csrfRetried: true }));
+        } catch (e) { return res; }
+      });
+      const attempt = (n) => postOnce(input, reqInit || {}).catch((err) => {
         if (method === 'GET' && n < 2 && !aborted() && navigator.onLine !== false) {
           return new Promise((r) => setTimeout(r, 700 * (n + 1))).then(() => attempt(n + 1));
         }

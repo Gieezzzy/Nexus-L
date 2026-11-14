@@ -15,8 +15,12 @@ class AnalyticsController extends BaseController
     public function index(): string
     {
         $tab = (string) ($this->request->getGet('tab') ?? 'bonding');
-        $tab = in_array($tab, ['bonding', 'wholeshoe', 'materials'], true) ? $tab : 'bonding';
+        $tab = in_array($tab, ['daily', 'bonding', 'wholeshoe', 'materials'], true) ? $tab : 'bonding';
         $db  = \Config\Database::connect();
+
+        if ($tab === 'daily') {
+            return $this->render('analytics/daily', ['title' => 'Analytics'] + $this->dailyWorks($db) + ['tab' => 'daily']);
+        }
 
         // period filter: group = day | week | month | year (bucket size of the chart), from / to = custom date range (YYYY-MM-DD)
         $g = (string) ($this->request->getGet('group') ?? 'month');
@@ -38,9 +42,12 @@ class AnalyticsController extends BaseController
             [$this->from, $this->to] = [$this->to, $this->from];
         }
 
-        // Shoe Bonding has two sub-tabs: analytics (charts) and result (per cement supplier summary)
+        // Shoe Bonding sub-tabs: analytics (charts), monthly (monthly summary), daily (daily bonding matrix & insights), result (cement analytics)
         $v    = (string) $this->request->getGet('view');
-        $view = ($tab === 'bonding' && in_array($v, ['result', 'monthly'], true)) ? $v : 'analytics';
+        $view = ($tab === 'bonding' && in_array($v, ['result', 'monthly', 'daily'], true)) ? $v : 'analytics';
+        if ($tab === 'bonding' && $v === '') {
+            $view = 'daily';   // Shoe Bonding opens on the Daily Bonding tab (the other tabs have their own links)
+        }
 
         $cacheKey = 'analytics_' . md5("{$tab}|{$view}|{$this->group}|{$this->from}|{$this->to}");
         $data = \App\Libraries\DataCache::remember($cacheKey, 120, fn () => match (true) {
@@ -48,25 +55,43 @@ class AnalyticsController extends BaseController
             $tab === 'materials' => $this->materials($db),
             $view === 'result'   => $this->bondingResult($db),
             $view === 'monthly'  => $this->bondingMonthly($db),
+            $view === 'daily'    => $this->bondingDaily($db),
             default              => $this->bonding($db),
         });
 
         return $this->render('analytics/index', ['title' => 'Analytics'] + $data + ['tab' => $tab, 'view' => $view, 'group' => $this->group, 'from' => $this->from, 'to' => $this->to]);
     }
 
+    private const SHUTDOWN_ROW = "(COALESCE(LabRefNo, '') LIKE '%SHUTDOWN%' OR COALESCE(POLotNO, '') = 'SHUTDOWN' OR COALESCE(ModelStyle, '') = 'SHUTDOWN')";
+    private const BOND_DEDUP   = "(LabRefNo IS NULL OR LabRefNo = '' OR BondingTestID IN (SELECT keep_id FROM (SELECT COALESCE(MAX(CASE WHEN Result IS NOT NULL AND Result <> '' THEN BondingTestID END), MAX(BondingTestID)) AS keep_id FROM tbl_dtr_bonding_info WHERE LabRefNo IS NOT NULL AND LabRefNo <> '' GROUP BY LabRefNo) k))";
+    private const BOND_DATE    = "COALESCE((CASE WHEN ProductionDate REGEXP '^[0-9]{2}-[0-9]{2}-20[0-9]{2}' THEN CONCAT(SUBSTR(ProductionDate, 7, 4), '-', SUBSTR(ProductionDate, 1, 2), '-', SUBSTR(ProductionDate, 4, 2)) WHEN ProductionDate REGEXP '^20[0-9]{2}-[0-9]{2}-[0-9]{2}' THEN LEFT(ProductionDate, 10) WHEN LabRefNo REGEXP '^DTP20[0-9]{6}' THEN CONCAT(SUBSTR(LabRefNo, 4, 4), '-', SUBSTR(LabRefNo, 8, 2), '-', SUBSTR(LabRefNo, 10, 2)) END), LEFT(NULLIF(TestedDate, ''), 10), LEFT(NULLIF(ReceivedDate, ''), 10))";
+
+    private function bondingBaseWhere(string $dateCol = self::BOND_DATE): string
+    {
+        $w = 'NOT (' . self::SHUTDOWN_ROW . ") AND COALESCE(TestType, '') <> 'LACKING' AND " . self::BOND_DEDUP;
+        // Shoe Bonding counts only the reports that the unified Lab Ref index (tbl_dtr_unified_labrefs) lists as a bonding test (form_slug = 'bonding');
+        // a pull test or any other test of the index is not a bonding test, so it never shows here
+        $w .= " AND (LabRefNo IS NULL OR LabRefNo = '' OR EXISTS (SELECT 1 FROM tbl_dtr_unified_labrefs ul WHERE ul.form_slug = 'bonding' AND ul.lab_ref_no = LabRefNo))";
+        if ($this->from !== '' || $this->to !== '') {
+            $w .= ' AND ' . $this->dateWhere($dateCol);
+        }
+
+        return $w;
+    }
+
     /** Monthly Summary (by production date): daily tested / failed trend, status totals and failed count per line and day. */
     private function bondingMonthly($db): array
     {
-        // ProductionDate is stored as text: MM-DD-YYYY (or YYYY-MM-DD); normalise it to YYYY-MM-DD
-        $pd = "(CASE WHEN ProductionDate REGEXP '^[0-9]{2}-[0-9]{2}-20[0-9]{2}' THEN CONCAT(SUBSTR(ProductionDate, 7, 4), '-', SUBSTR(ProductionDate, 1, 2), '-', SUBSTR(ProductionDate, 4, 2)) WHEN ProductionDate REGEXP '^20[0-9]{2}-[0-9]{2}-[0-9]{2}' THEN LEFT(ProductionDate, 10) END)";
-        $w = $this->dateWhere($pd);
-        $days = $db->query("SELECT {$pd} AS d, COUNT(*) AS tested, SUM(Result LIKE 'FAIL%') AS failed FROM tbl_dtr_bonding_info WHERE {$w} GROUP BY d ORDER BY d")->getResultArray();
-        $st   = $db->query("SELECT COALESCE(SUM(Result = 'PASS'), 0) AS pass, COALESCE(SUM(Result LIKE 'FAIL%'), 0) AS fail, COALESCE(SUM(Result = 'TOLERABLE'), 0) AS tol FROM tbl_dtr_bonding_info WHERE {$w}")->getRowArray();
+        $pd   = self::BOND_DATE;
+        $base = $this->bondingBaseWhere($pd);
+        $wDay = $base . ' AND ' . $this->dateWhere($pd);
+        $days = $db->query("SELECT {$pd} AS d, COUNT(*) AS tested, SUM(UPPER(Result) LIKE 'FAIL%' OR UPPER(Result) = 'REJECTED') AS failed FROM tbl_dtr_bonding_info WHERE {$wDay} GROUP BY d ORDER BY d")->getResultArray();
+        $st   = $db->query("SELECT COUNT(*) AS total, COALESCE(SUM(UPPER(Result) LIKE 'PASS%'), 0) AS pass, COALESCE(SUM(UPPER(Result) LIKE 'FAIL%' OR UPPER(Result) = 'REJECTED'), 0) AS fail, COALESCE(SUM(UPPER(Result) LIKE 'TOL%'), 0) AS tol FROM tbl_dtr_bonding_info WHERE {$base}")->getRowArray();
 
         // failed specimens per building line and production date; the line comes from the Lab Ref No (DTP<date>SH<building><line>-<side>)
         $lines = ['A' => range(1, 12), 'B' => range(1, 14)];
         $cells = [];
-        foreach ($db->query("SELECT LabRefNo, {$pd} AS d FROM tbl_dtr_bonding_info WHERE {$w} AND Result LIKE 'FAIL%'")->getResultArray() as $r) {
+        foreach ($db->query("SELECT LabRefNo, {$pd} AS d FROM tbl_dtr_bonding_info WHERE {$wDay} AND (UPPER(Result) LIKE 'FAIL%' OR UPPER(Result) = 'REJECTED')")->getResultArray() as $r) {
             if (preg_match('/^DTP\d{8}[A-Z]{2}([A-Z])(\d+)/i', (string) $r['LabRefNo'], $m)) {
                 $b = strtoupper($m[1]); $n = (int) $m[2];
                 $cells[$b][$n][$r['d']] = ($cells[$b][$n][$r['d']] ?? 0) + 1;
@@ -83,11 +108,17 @@ class AnalyticsController extends BaseController
 
         // lines marked SHUTDOWN in the Specimen Intake (Active toggle off) for a production date
         $shut = [];
+        $shutCnt = 0;
         if ($db->tableExists('tbl_dtr_BondingTracker') && $db->fieldExists('Shutdown', 'tbl_dtr_BondingTracker')) {
-            foreach ($db->query('SELECT Building, `LineNo` AS ln, ProductionDate AS d FROM tbl_dtr_BondingTracker WHERE Shutdown = 1 AND ' . $this->dateWhere('ProductionDate'))->getResultArray() as $r) {
+            $sw = 'Shutdown = 1' . (($this->from !== '' || $this->to !== '') ? ' AND ' . $this->dateWhere('ProductionDate') : '');
+            foreach ($db->query("SELECT Building, `LineNo` AS ln, ProductionDate AS d FROM tbl_dtr_BondingTracker WHERE {$sw}")->getResultArray() as $r) {
                 $shut[strtoupper((string) $r['Building'])][(int) preg_replace('/\D/', '', (string) $r['ln'])][substr((string) $r['d'], 0, 10)] = true;
+                $shutCnt++;
             }
         }
+        $swB = self::SHUTDOWN_ROW . (($this->from !== '' || $this->to !== '') ? ' AND ' . $this->dateWhere('ProductionDate') : '');
+        $shutCnt += (int) $db->query("SELECT COUNT(*) AS c FROM tbl_dtr_bonding_info WHERE {$swB}")->getRow()->c;
+        $st['shut'] = $shutCnt;
 
         return ['days' => $days, 'shut' => $shut, 'status' => $st, 'lines' => $lines, 'cells' => $cells, 'kpis' => [], 'chartTitle' => '', 'months' => [], 'lists' => []];
     }
@@ -95,8 +126,8 @@ class AnalyticsController extends BaseController
     /** Bonding Result: pass / tolerable / failed counts per cement (adhesive) supplier, with a total row. */
     private function bondingResult($db): array
     {
-        $w = $this->dateWhere('TestedDate');
-        $rows = $db->query("SELECT UPPER(TRIM(AdhesiveSupplier)) AS name, COUNT(*) AS total, SUM(Result = 'PASS') AS pass, SUM(Result = 'TOLERABLE') AS tol, SUM(Result LIKE 'FAIL%') AS fail
+        $w = $this->bondingBaseWhere(self::BOND_DATE);
+        $rows = $db->query("SELECT UPPER(TRIM(AdhesiveSupplier)) AS name, COUNT(*) AS total, SUM(UPPER(Result) LIKE 'PASS%') AS pass, SUM(UPPER(Result) LIKE 'TOL%') AS tol, SUM(UPPER(Result) LIKE 'FAIL%' OR UPPER(Result) = 'REJECTED') AS fail
             FROM tbl_dtr_bonding_info WHERE {$w} AND AdhesiveSupplier IS NOT NULL AND TRIM(AdhesiveSupplier) <> '' GROUP BY name ORDER BY total DESC")->getResultArray();
 
         // the two regular cement suppliers always get a row + pie, even with no tests in the period
@@ -111,9 +142,534 @@ class AnalyticsController extends BaseController
         return ['suppliers' => $rows, 'kpis' => [], 'chartTitle' => '', 'months' => [], 'lists' => []];
     }
 
+    /** Daily Bonding: Left/Right daily matrix, building & line rankings, cement supplier fails, and portion/root-cause breakdown. */
+    private function bondingDaily($db): array
+    {
+        $pd   = self::BOND_DATE;
+        $base = $this->bondingBaseWhere($pd);
+        $rows = $db->query("SELECT LabRefNo, Side, Result, ModeOfFailure, PossibleCause, AdhesiveSupplier, TestedDate, {$pd} AS prod_date
+            FROM tbl_dtr_bonding_info
+            WHERE {$base}
+            ORDER BY prod_date ASC, BondingTestID ASC")->getResultArray();
+
+        $lines = ['A' => range(1, 12), 'B' => range(1, 14)];
+        $matrix = [];       // [prodDate][B][line][L|R] = 'PASS'|'FAIL'|'TOL'|'PEND'
+        $testedDates = [];  // [prodDate] => [testedDate => count]
+        $dayStats = [];     // [prodDate] => ['tested'=>0,'pass'=>0,'fail'=>0,'tol'=>0]
+        $lineStats = [];    // [B][line] => ['pass'=>0,'fail'=>0,'tol'=>0,'tested'=>0,'shut'=>0]
+        $bldgStats = [
+            'A' => ['tested' => 0, 'pass' => 0, 'fail' => 0, 'tol' => 0, 'shut' => 0],
+            'B' => ['tested' => 0, 'pass' => 0, 'fail' => 0, 'tol' => 0, 'shut' => 0],
+        ];
+        $overall = ['tested' => 0, 'pass' => 0, 'fail' => 0, 'tol' => 0, 'pend' => 0, 'shut' => 0];
+
+        $supMap = [
+            'NANPAO'  => ['name' => 'Nan Pao',  'specimens' => 0, 'pass' => 0, 'fail' => 0, 'tol' => 0],
+            'ZHONGBU' => ['name' => 'Zhong Bu', 'specimens' => 0, 'pass' => 0, 'fail' => 0, 'tol' => 0],
+        ];
+
+        $portionCounts = [
+            'Upper to Foxing'   => 0,
+            'Foxing to Outsole' => 0,
+            'Filler to Outsole' => 0,
+            'Unspecified'       => 0,
+        ];
+        $causeCounts = [];
+
+        $prio = ['FAIL' => 4, 'TOL' => 3, 'PASS' => 2, 'PEND' => 1];
+
+        foreach ($rows as $r) {
+            $d = substr((string) ($r['prod_date'] ?? ''), 0, 10);
+            if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) {
+                continue;
+            }
+            $resUp = strtoupper(trim((string) ($r['Result'] ?? '')));
+            $st = match (true) {
+                str_starts_with($resUp, 'FAIL') || $resUp === 'REJECTED' => 'FAIL',
+                str_starts_with($resUp, 'PASS')                         => 'PASS',
+                str_starts_with($resUp, 'TOL')                          => 'TOL',
+                default                                                 => 'PEND',
+            };
+
+            $overall['tested']++;
+            if ($st === 'PASS') {
+                $overall['pass']++;
+            } elseif ($st === 'FAIL') {
+                $overall['fail']++;
+            } elseif ($st === 'TOL') {
+                $overall['tol']++;
+            } else {
+                $overall['pend']++;
+            }
+
+            if (! isset($dayStats[$d])) {
+                $dayStats[$d] = ['tested' => 0, 'pass' => 0, 'fail' => 0, 'tol' => 0];
+            }
+            $dayStats[$d]['tested']++;
+            if ($st === 'PASS') {
+                $dayStats[$d]['pass']++;
+            } elseif ($st === 'FAIL') {
+                $dayStats[$d]['fail']++;
+            } elseif ($st === 'TOL') {
+                $dayStats[$d]['tol']++;
+            }
+
+            $td = substr(trim((string) ($r['TestedDate'] ?? '')), 0, 10);
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $td)) {
+                $testedDates[$d][$td] = ($testedDates[$d][$td] ?? 0) + 1;
+            }
+
+            // Building, Line & Side
+            $ref = (string) ($r['LabRefNo'] ?? '');
+            if (preg_match('/^DTP\d{8}[A-Z]{2}([A-Z])(\d+)/i', $ref, $m)) {
+                $b = strtoupper($m[1]);
+                $n = (int) $m[2];
+                if (! isset($lines[$b])) {
+                    $lines[$b] = [];
+                }
+                if (! in_array($n, $lines[$b], true)) {
+                    $lines[$b][] = $n;
+                }
+                if (! isset($bldgStats[$b])) {
+                    $bldgStats[$b] = ['tested' => 0, 'pass' => 0, 'fail' => 0, 'tol' => 0, 'shut' => 0];
+                }
+                $bldgStats[$b]['tested']++;
+                if ($st === 'PASS') {
+                    $bldgStats[$b]['pass']++;
+                } elseif ($st === 'FAIL') {
+                    $bldgStats[$b]['fail']++;
+                } elseif ($st === 'TOL') {
+                    $bldgStats[$b]['tol']++;
+                }
+
+                if (! isset($lineStats[$b][$n])) {
+                    $lineStats[$b][$n] = ['pass' => 0, 'fail' => 0, 'tol' => 0, 'tested' => 0, 'shut' => 0];
+                }
+                $lineStats[$b][$n]['tested']++;
+                if ($st === 'PASS') {
+                    $lineStats[$b][$n]['pass']++;
+                } elseif ($st === 'FAIL') {
+                    $lineStats[$b][$n]['fail']++;
+                } elseif ($st === 'TOL') {
+                    $lineStats[$b][$n]['tol']++;
+                }
+
+                $sideUp = strtoupper(trim((string) ($r['Side'] ?? '')));
+                $side = str_starts_with($sideUp, 'L') ? 'L' : (str_starts_with($sideUp, 'R') ? 'R' : '');
+                if ($side === '' && preg_match('/-(L|R)(?:-R?\d+)?$/i', $ref, $sm)) {
+                    $side = strtoupper($sm[1]);
+                }
+                if ($side === 'L' || $side === 'R') {
+                    $cur = $matrix[$d][$b][$n][$side] ?? '';
+                    if ($cur === '' || ($prio[$st] ?? 0) > ($prio[$cur] ?? 0)) {
+                        $matrix[$d][$b][$n][$side] = $st;
+                    }
+                }
+            }
+
+            // Cement supplier
+            $supRaw = strtoupper(preg_replace('/\s+/', '', (string) ($r['AdhesiveSupplier'] ?? '')));
+            if ($supRaw !== '') {
+                $supKey = match (true) {
+                    str_contains($supRaw, 'NAN')   => 'NANPAO',
+                    str_contains($supRaw, 'ZHONG') => 'ZHONGBU',
+                    default                        => $supRaw,
+                };
+                if (! isset($supMap[$supKey])) {
+                    $supMap[$supKey] = ['name' => ucwords(strtolower(trim((string) $r['AdhesiveSupplier']))), 'specimens' => 0, 'pass' => 0, 'fail' => 0, 'tol' => 0];
+                }
+                $supMap[$supKey]['specimens']++;
+                if ($st === 'PASS') {
+                    $supMap[$supKey]['pass']++;
+                } elseif ($st === 'FAIL') {
+                    $supMap[$supKey]['fail']++;
+                } elseif ($st === 'TOL') {
+                    $supMap[$supKey]['tol']++;
+                }
+            }
+
+            // Failure Portions & Root Causes (for FAILED specimens)
+            if ($st === 'FAIL') {
+                $rawFail = trim((string) ($r['ModeOfFailure'] ?: $r['PossibleCause'] ?: ''));
+                if ($rawFail === '') {
+                    $portionCounts['Unspecified']++;
+                } else {
+                    $up = strtoupper($rawFail);
+                    $hitPortion = false;
+                    if (str_contains($up, 'UPPER TO FOXING')) {
+                        $portionCounts['Upper to Foxing']++;
+                        $hitPortion = true;
+                    }
+                    if (str_contains($up, 'FOXING TO OUTSOLE')) {
+                        $portionCounts['Foxing to Outsole']++;
+                        $hitPortion = true;
+                    }
+                    if (str_contains($up, 'FILLER TO OUTSOLE')) {
+                        $portionCounts['Filler to Outsole']++;
+                        $hitPortion = true;
+                    }
+                    if (! $hitPortion) {
+                        $portionCounts['Unspecified']++;
+                    }
+
+                    $causePart = str_contains($rawFail, '-') ? trim((string) substr($rawFail, strpos($rawFail, '-') + 1)) : $rawFail;
+                    foreach (preg_split('/\s*[\/,;]+\s*/', $causePart) as $cItem) {
+                        $cClean = trim($cItem);
+                        if ($cClean === '') {
+                            continue;
+                        }
+                        $cUp = strtoupper($cClean);
+                        // Skip pure portion names if no dash separated them
+                        if (in_array($cUp, ['UPPER TO FOXING', 'FOXING TO OUTSOLE', 'FILLER TO OUTSOLE'], true)) {
+                            continue;
+                        }
+                        $cNorm = str_ireplace(['MATERAIL', 'CEMENTNG'], ['MATERIAL', 'CEMENTING'], $cUp);
+                        $cLabel = ucwords(strtolower($cNorm));
+                        $causeCounts[$cLabel] = ($causeCounts[$cLabel] ?? 0) + 1;
+                    }
+                }
+            }
+        }
+
+        // Shutdowns from tbl_dtr_BondingTracker + SHUTDOWN_ROW in tbl_dtr_bonding_info
+        $shut = [];
+        if ($db->tableExists('tbl_dtr_BondingTracker') && $db->fieldExists('Shutdown', 'tbl_dtr_BondingTracker')) {
+            $sw = 'Shutdown = 1' . (($this->from !== '' || $this->to !== '') ? ' AND ' . $this->dateWhere('ProductionDate') : '');
+            foreach ($db->query("SELECT Building, `LineNo` AS ln, ProductionDate AS d FROM tbl_dtr_BondingTracker WHERE {$sw}")->getResultArray() as $sr) {
+                $b = strtoupper(trim((string) $sr['Building']));
+                $n = (int) preg_replace('/\D/', '', (string) $sr['ln']);
+                $d = substr((string) $sr['d'], 0, 10);
+                if ($b !== '' && $n > 0 && preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) {
+                    $shut[$d][$b][$n] = true;
+                    if (! isset($dayStats[$d])) {
+                        $dayStats[$d] = ['tested' => 0, 'pass' => 0, 'fail' => 0, 'tol' => 0];
+                    }
+                    $overall['shut']++;
+                    if (isset($bldgStats[$b])) {
+                        $bldgStats[$b]['shut']++;
+                    }
+                    if (! isset($lineStats[$b][$n])) {
+                        $lineStats[$b][$n] = ['pass' => 0, 'fail' => 0, 'tol' => 0, 'tested' => 0, 'shut' => 0];
+                    }
+                    $lineStats[$b][$n]['shut']++;
+                }
+            }
+        }
+
+        foreach ($lines as &$ln) {
+            sort($ln);
+        }
+        unset($ln);
+        ksort($lines);
+
+        // Daily matrix rows + weekly aggregates
+        $allDates = array_keys($dayStats);
+        sort($allDates);
+
+        $weeklyAgg = [];
+        foreach ($allDates as $d) {
+            $wk = date('o-W', strtotime($d));
+            if (! isset($weeklyAgg[$wk])) {
+                $weeklyAgg[$wk] = ['failed' => 0, 'tested' => 0, 'lastDate' => $d];
+            }
+            $weeklyAgg[$wk]['failed'] += $dayStats[$d]['fail'];
+            $weeklyAgg[$wk]['tested'] += $dayStats[$d]['tested'];
+            $weeklyAgg[$wk]['lastDate'] = $d;
+        }
+
+        $dailyRows = [];
+        foreach ($allDates as $d) {
+            $ts = strtotime($d);
+            $wk = date('o-W', $ts);
+            $tdBest = '';
+            if (! empty($testedDates[$d])) {
+                arsort($testedDates[$d]);
+                $tdBest = (string) array_key_first($testedDates[$d]);
+            }
+            $dailyRows[] = [
+                'prodDate'     => $d,
+                'testedDate'   => $tdBest,
+                'dow'          => date('D', $ts),
+                'weekKey'      => $wk,
+                'isWeekEnd'    => ($weeklyAgg[$wk]['lastDate'] ?? '') === $d,
+                'weeklyFailed' => $weeklyAgg[$wk]['failed'] ?? 0,
+                'weeklyTested' => $weeklyAgg[$wk]['tested'] ?? 0,
+                'tested'       => $dayStats[$d]['tested'],
+                'pass'         => $dayStats[$d]['pass'],
+                'fail'         => $dayStats[$d]['fail'],
+                'tol'          => $dayStats[$d]['tol'],
+                'cells'        => $matrix[$d] ?? [],
+                'shut'         => $shut[$d] ?? [],
+            ];
+        }
+
+        // Line Rankings per Building
+        $rankings = [];
+        foreach (['A', 'B'] as $b) {
+            $list = [];
+            foreach ($lines[$b] ?? [] as $n) {
+                $ls = $lineStats[$b][$n] ?? ['pass' => 0, 'fail' => 0, 'tol' => 0, 'tested' => 0, 'shut' => 0];
+                $t  = $ls['tested'];
+                $score = $t > 0 ? round($ls['pass'] / $t * 100, 1) : null;
+                $list[] = [
+                    'line'    => $b . $n,
+                    'num'     => $n,
+                    'passed'  => $ls['pass'],
+                    'failed'  => $ls['fail'],
+                    'tol'     => $ls['tol'],
+                    'tested'  => $t,
+                    'shut'    => $ls['shut'],
+                    'score'   => $score,
+                    'failPct' => $t > 0 ? round($ls['fail'] / $t * 100, 1) : 0.0,
+                ];
+            }
+            // Rank active lines (tested > 0): higher pass score, then more passed, then fewer failed
+            $active = array_values(array_filter($list, static fn ($x) => $x['tested'] > 0));
+            usort($active, static function ($x, $y) {
+                if ($x['score'] !== $y['score']) {
+                    return $y['score'] <=> $x['score'];
+                }
+                if ($x['failed'] !== $y['failed']) {
+                    return $x['failed'] <=> $y['failed'];
+                }
+                return $y['passed'] <=> $x['passed'];
+            });
+            $rankMap = [];
+            foreach ($active as $idx => $item) {
+                $rankMap[$item['line']] = $idx + 1;
+            }
+            foreach ($list as &$item) {
+                $item['rank'] = $rankMap[$item['line']] ?? null;
+            }
+            unset($item);
+
+            $topLines = array_slice(array_values(array_filter($active, static fn ($x) => $x['failed'] === 0)), 0, 5);
+            if (! $topLines && $active) {
+                $topLines = array_slice($active, 0, 3);
+            }
+            $lowLines = array_values(array_filter($active, static fn ($x) => $x['failed'] > 0));
+            usort($lowLines, static function ($x, $y) {
+                if ($x['failed'] !== $y['failed']) {
+                    return $y['failed'] <=> $x['failed'];
+                }
+                return $x['score'] <=> $y['score'];
+            });
+
+            $rankings[$b] = [
+                'lines' => $list,
+                'top'   => $topLines,
+                'low'   => array_slice($lowLines, 0, 5),
+            ];
+        }
+
+        arsort($causeCounts);
+        $suppliers = array_values($supMap);
+        foreach ($suppliers as &$sp) {
+            $sp['failPct'] = $sp['specimens'] > 0 ? round($sp['fail'] / $sp['specimens'] * 100, 2) : 0.0;
+        }
+        unset($sp);
+
+        return [
+            'dailyRows'     => $dailyRows,
+            'lines'         => $lines,
+            'overall'       => $overall,
+            'bldgStats'     => $bldgStats,
+            'rankings'      => $rankings,
+            'suppliers'     => $suppliers,
+            'portionCounts' => $portionCounts,
+            'causeCounts'   => $causeCounts,
+            'kpis'          => [],
+            'chartTitle'    => '',
+            'months'        => [],
+            'lists'         => [],
+        ];
+    }
+
     private function pct(int $n, int $d): float
     {
         return $d > 0 ? round($n / $d * 100, 1) : 0.0;
+    }
+
+    /** Daily Works Monitoring: year of materials received vs encoded (+ by type) and the day-by-day lab workload with encoding progress. */
+    private function dailyWorks($db): array
+    {
+        $ok   = static fn ($d) => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $d) ? (string) $d : '';
+        $year = (int) ($this->request->getGet('year') ?: date('Y'));
+        $year = ($year >= 2020 && $year <= 2100) ? $year : (int) date('Y');
+        $asof = $ok($this->request->getGet('asof')) ?: date('Y-m-d');
+
+        // ---- A. materials received per month, encoded in INTERLINK, per material type ----
+        $types  = ['Fabric', 'Leather', 'Synthetic', 'Accessories', 'Rubber'];
+        $months = [];
+        for ($i = 1; $i <= 12; $i++) {
+            $months[$i] = ['recv' => 0, 'enc' => 0, 'types' => array_fill_keys($types, 0)];
+        }
+        // 1) All material test reports in tbl_dtr_unified_labrefs (covers Jan..Dec across all material categories)
+        $uMo = "CAST(COALESCE(
+            CASE WHEN lab_ref_no REGEXP '^DTP{$year}[0-1][0-9]' THEN SUBSTR(lab_ref_no, 8, 2) END,
+            MONTH(STR_TO_DATE(received_date, '%d %b %Y')),
+            MONTH(STR_TO_DATE(tested_date, '%d %b %Y')),
+            CASE WHEN received_date REGEXP '^{$year}-[0-9]{2}' THEN SUBSTR(received_date, 6, 2) END,
+            CASE WHEN tested_date REGEXP '^{$year}-[0-9]{2}' THEN SUBSTR(tested_date, 6, 2) END
+        ) AS UNSIGNED)";
+        $uTy = "CASE
+            WHEN UPPER(COALESCE(material_type,'')) LIKE '%SYNTHETIC%' OR UPPER(COALESCE(material_type,'')) LIKE '%SUEDE%' THEN 'Synthetic'
+            WHEN form_slug = 'leather' OR UPPER(COALESCE(material_type,'')) LIKE '%LEATHER%' THEN 'Leather'
+            WHEN form_slug = 'fabric' OR UPPER(COALESCE(material_type,'')) REGEXP 'FABRIC|LINING|MESH|CANVAS|TEXTILE' THEN 'Fabric'
+            WHEN form_slug IN ('rubber', 'fthl') OR UPPER(COALESCE(material_type,'')) REGEXP 'RUBBER|OUTSOLE|FOXING|SOLE|HEEL LOGO' THEN 'Rubber'
+            ELSE 'Accessories'
+        END";
+        $uEnc = "(COALESCE(overall_result,'') <> '' OR COALESCE(interlink_flag,'') <> '' OR COALESCE(status,'') IN ('Completed','Done','Pass','Passed','Fail','Failed'))";
+        if ($db->tableExists('tbl_dtr_unified_labrefs')) {
+            $uRows = $db->query("SELECT {$uMo} mo, {$uTy} tp, COUNT(*) n, SUM({$uEnc}) e
+                FROM tbl_dtr_unified_labrefs
+                WHERE form_slug NOT IN ('bonding', 'wholeshoe', 'pulltest')
+                  AND (lab_ref_no LIKE 'DTP{$year}%' OR received_date LIKE '%{$year}%' OR tested_date LIKE '%{$year}%')
+                GROUP BY mo, tp")->getResultArray();
+            foreach ($uRows as $r) {
+                $mo = (int) $r['mo'];
+                if ($mo < 1 || $mo > 12) {
+                    continue;
+                }
+                $months[$mo]['recv'] += (int) $r['n'];
+                $months[$mo]['enc']  += (int) $r['e'];
+                $months[$mo]['types'][$r['tp']] = ($months[$mo]['types'][$r['tp']] ?? 0) + (int) $r['n'];
+            }
+        }
+        // 2) Supplement with any months in tbl_dtr_materials_master that have additional IQC intake records not yet in unified_labrefs
+        $md  = "COALESCE(NULLIF(LEFT(m.MaterialDateReceivedInLab,10),'0000-00-00'), NULLIF(LEFT(c.DateReceivedInLab,10),'0000-00-00'), NULLIF(LEFT(m.MaterialDateArrived,10),'0000-00-00'), NULLIF(LEFT(c.DateArrived,10),'0000-00-00'))";
+        $ty  = "CASE WHEN UPPER(m.MaterialType) LIKE '%LEATHER%' THEN 'Leather' WHEN UPPER(m.MaterialType) REGEXP 'RUBBER|OUTSOLE|FOXING|SOLE' THEN 'Rubber' WHEN UPPER(m.MaterialType) LIKE '%SYNTHETIC%' OR UPPER(m.MaterialType) LIKE '%SUEDE%' THEN 'Synthetic' WHEN UPPER(m.MaterialType) REGEXP 'FABRIC|LINING|MESH|CANVAS|TEXTILE' THEN 'Fabric' ELSE 'Accessories' END";
+        $enc = "(UPPER(COALESCE(m.IQCERP,''))='OK' OR UPPER(COALESCE(m.FinalStatus,'')) IN ('PASS','TOLERABLE','FAILED') OR EXISTS (SELECT 1 FROM tbl_interlink_reports r WHERE r.synced_to_interlink=1 AND r.material_code<>'' AND r.material_code COLLATE utf8mb4_general_ci = m.MaterialCode COLLATE utf8mb4_general_ci))";
+        $rows = $db->query("SELECT CAST(SUBSTR({$md},6,2) AS UNSIGNED) mo, {$ty} tp, COUNT(*) n, SUM({$enc}) e
+            FROM tbl_dtr_materials_master m LEFT JOIN tbl_dtr_containers c ON c.ContainerID = m.ContainerID
+            WHERE {$md} BETWEEN '{$year}-01-01' AND '{$year}-12-31'
+              AND (m.LabReference IS NULL OR m.LabReference = '' OR NOT EXISTS (SELECT 1 FROM tbl_dtr_unified_labrefs u WHERE u.lab_ref_no COLLATE utf8mb4_general_ci = m.LabReference COLLATE utf8mb4_general_ci))
+            GROUP BY mo, tp")->getResultArray();
+        foreach ($rows as $r) {
+            $mo = (int) $r['mo'];
+            if ($mo < 1 || $mo > 12 || $months[$mo]['recv'] > 0) {
+                continue;
+            }
+            $months[$mo]['recv'] += (int) $r['n'];
+            $months[$mo]['enc']  += (int) $r['e'];
+            $months[$mo]['types'][$r['tp']] = ($months[$mo]['types'][$r['tp']] ?? 0) + (int) $r['n'];
+        }
+
+        // ---- B. day-by-day bonding workload (specimens collected that day) ----
+        $isPull = static fn (string $lab): bool => (bool) preg_match('/^DTP\d{8}(EY|DR|RVT|HP)/i', $lab);
+        $classify = static function (array $r): array {
+            $t = strtoupper((string) $r['TestType']); $lab = strtoupper((string) $r['LabRefNo']);
+            if (trim((string) $r['RetestOf']) !== '' || str_contains($t, 'RETEST') || preg_match('/-R\d+$/', $lab)) {
+                return ['retest', 'Daily Bonding'];
+            }
+            if (str_contains($t, 'SAMPLE')) {
+                if (preg_match('/STRIP|OSNA/', $lab)) { return ['sample', 'Rubber Strip Test']; }
+                if (str_contains($t, 'RIVET') || str_contains($lab, 'RIVET')) { return ['sample', 'Rivet']; }
+
+                return ['sample', 'Bonding Shoe'];
+            }
+            if (str_contains($t, 'RIVET')) { return ['sample', 'Rivet']; }
+            if (str_contains($t, 'FIRST')) { return ['first', 'Bonding Shoe']; }
+            if (str_contains($t, 'TRIAL')) { return ['trial', 'Bonding Shoe']; }
+            if (str_contains($t, 'LACKING')) { return ['daily', 'Daily Bonding Shoe (Lacking)']; }
+            if (str_contains($t, 'ADVANC')) { return ['daily', 'Daily Bonding Shoe (Advance)']; }
+
+            return ['daily', 'Daily Bonding Shoe'];
+        };
+        $sections = [
+            'daily'  => ['DAILY BONDING TEST', ['Daily Bonding Shoe', 'Daily Bonding Shoe (Advance)', 'Daily Bonding Shoe (Lacking)']],
+            'retest' => ['BONDING FAILED RE-TEST', ['Daily Bonding']],
+            'first'  => ['PRODUCTION FIRST ARTICLE', ['Bonding Shoe', 'Whole Shoe']],
+            'sample' => ['SAMPLE', ['Bonding Shoe', 'Rubber Strip Test', 'Rivet']],
+            'trial'  => ['TECH TRIAL', ['Bonding Shoe']],
+        ];
+        $dayExpr = "LEFT(COALESCE(NULLIF(ReceivedDate,''),NULLIF(TestedDate,''),NULLIF(ProductionDate,'')),10)";
+        $baseW   = 'NOT (' . self::SHUTDOWN_ROW . ') AND ' . self::BOND_DEDUP;
+        $hasTrk  = $db->tableExists('tbl_dtr_BondingTracker') && $db->fieldExists('Shutdown', 'tbl_dtr_BondingTracker');
+        $hasWs   = $db->tableExists('tbl_dtr_WholeshoeTracker');
+        $days    = [];
+        for ($k = 0; $k < 3; $k++) {
+            $d = date('Y-m-d', strtotime("{$asof} -{$k} day"));
+            $cells = [];
+            foreach ($sections as $sk => [$title, $labels]) {
+                foreach ($labels as $lb) {
+                    $cells[$sk][$lb] = ['q' => 0, 'f' => 0, 'prod' => '', 'test' => ''];
+                }
+            }
+            foreach ($db->query("SELECT LabRefNo, TestType, Result, RetestOf, ProductionDate, TestedDate FROM tbl_dtr_bonding_info WHERE {$baseW} AND {$dayExpr} = " . $db->escape($d))->getResultArray() as $r) {
+                if ($isPull((string) $r['LabRefNo'])) {
+                    continue;
+                }
+                [$sk, $lb] = $classify($r);
+                $c = &$cells[$sk][$lb];
+                $c['q']++;
+                $pd = substr((string) $r['ProductionDate'], 0, 10);
+                if ($pd > $c['prod']) { $c['prod'] = $pd; }
+                if (trim((string) $r['Result']) !== '') {
+                    $c['f']++;
+                    $td = substr((string) $r['TestedDate'], 0, 10);
+                    if ($td > $c['test']) { $c['test'] = $td; }
+                }
+                unset($c);
+            }
+            if ($hasWs) {
+                foreach ($db->query('SELECT Status, FinalResult, ProductionDate, TimeCompleted FROM tbl_dtr_WholeshoeTracker WHERE LEFT(CollectionDate,10) = ' . $db->escape($d))->getResultArray() as $r) {
+                    $c = &$cells['first']['Whole Shoe'];
+                    $c['q']++;
+                    $pd = substr((string) $r['ProductionDate'], 0, 10);
+                    if ($pd > $c['prod']) { $c['prod'] = $pd; }
+                    if (trim((string) $r['FinalResult']) !== '' || in_array(strtoupper((string) $r['Status']), ['COMPLETED', 'DONE', 'FINISHED', 'PASSED', 'FAILED'], true)) {
+                        $c['f']++;
+                        $td = substr((string) $r['TimeCompleted'], 0, 10) ?: $d;
+                        if ($td > $c['test']) { $c['test'] = $td; }
+                    }
+                    unset($c);
+                }
+            }
+            $shut = (int) $db->query('SELECT COUNT(*) c FROM tbl_dtr_bonding_info WHERE ' . self::SHUTDOWN_ROW . " AND {$dayExpr} = " . $db->escape($d))->getRow()->c;
+            if ($hasTrk) {
+                $e = $db->escape($d);
+                $shut += (int) $db->query("SELECT COUNT(*) c FROM tbl_dtr_BondingTracker WHERE Shutdown = 1 AND (LEFT(CollectionDate,10) = {$e} OR LEFT(ProductionDate,10) = {$e})")->getRow()->c;
+            }
+            $tot = ['q' => 0, 'f' => 0];
+            foreach ($cells as $sec) { foreach ($sec as $c) { $tot['q'] += $c['q']; $tot['f'] += $c['f']; } }
+            $days[] = ['date' => $d, 'cells' => $cells, 'total' => $tot, 'shut' => $shut];
+        }
+
+        // ---- C. test reports encoded as of the date (month to date): ETRF / INTERLINK / ERP ----
+        $m1 = date('Y-m-01', strtotime($asof));
+        $cat = ['Bonding' => ['q' => 0, 'etrf' => 0, 'il' => 0, 'erp' => 0], 'Pull Test' => ['q' => 0, 'etrf' => 0, 'il' => 0, 'erp' => 0],
+                'Re-Test' => ['q' => 0, 'etrf' => 0, 'il' => 0, 'erp' => 0], 'Whole Shoe' => ['q' => 0, 'etrf' => 0, 'il' => 0, 'erp' => 0]];
+        foreach ($db->query("SELECT LabRefNo, ETRFNo, TestType, RetestOf FROM tbl_dtr_bonding_info WHERE {$baseW} AND {$dayExpr} BETWEEN " . $db->escape($m1) . ' AND ' . $db->escape($asof))->getResultArray() as $r) {
+            $lab = (string) $r['LabRefNo'];
+            $k = trim((string) $r['RetestOf']) !== '' || preg_match('/-R\d+$/i', $lab) || stripos((string) $r['TestType'], 'RETEST') !== false ? 'Re-Test' : ($isPull($lab) ? 'Pull Test' : 'Bonding');
+            $cat[$k]['q']++;
+            if (trim((string) $r['ETRFNo']) !== '') { $cat[$k]['etrf']++; }
+        }
+        if ($hasWs) {
+            $cat['Whole Shoe']['q'] = (int) $db->query('SELECT COUNT(*) c FROM tbl_dtr_WholeshoeTracker WHERE LEFT(CollectionDate,10) BETWEEN ' . $db->escape($m1) . ' AND ' . $db->escape($asof))->getRow()->c;
+        }
+        if ($db->tableExists('tbl_dtr_pull_tests')) {
+            $cat['Pull Test']['q'] += (int) $db->query('SELECT COUNT(*) c FROM tbl_dtr_pull_tests WHERE LEFT(TestedDate,10) BETWEEN ' . $db->escape($m1) . ' AND ' . $db->escape($asof))->getRow()->c;
+        }
+        foreach ($db->query('SELECT test_packages, spec_package_code, is_retest, material_code, product_category FROM tbl_interlink_reports WHERE synced_to_interlink = 1 AND LEFT(created_at,10) BETWEEN ' . $db->escape($m1) . ' AND ' . $db->escape($asof))->getResultArray() as $r) {
+            $tp = strtoupper((string) $r['test_packages'] . ' ' . (string) $r['spec_package_code']);
+            if (trim((string) $r['material_code']) !== '') { continue; }
+            $k = strtoupper((string) $r['is_retest']) === 'YES' ? 'Re-Test' : (str_contains($tp, 'PULL') && ! str_contains($tp, 'BONDING') ? 'Pull Test' : (str_contains($tp, 'BONDING') ? 'Bonding' : 'Whole Shoe'));
+            $cat[$k]['il']++;
+        }
+        foreach ($db->query("SELECT DISTINCT lab_ref_no FROM tbl_erp_submissions WHERE status = 'submitted' AND LEFT(COALESCE(submitted_at, created_at),10) BETWEEN " . $db->escape($m1) . ' AND ' . $db->escape($asof))->getResultArray() as $r) {
+            $lab = (string) $r['lab_ref_no'];
+            $k = preg_match('/-R\d+$/i', $lab) ? 'Re-Test' : ($isPull($lab) ? 'Pull Test' : 'Bonding');
+            $cat[$k]['erp']++;
+        }
+        // materials of the month (received) and how many were encoded in each system
+        $mq = $db->query("SELECT COUNT(*) n, SUM({$enc}) e FROM tbl_dtr_materials_master m LEFT JOIN tbl_dtr_containers c ON c.ContainerID = m.ContainerID WHERE {$md} BETWEEN " . $db->escape($m1) . ' AND ' . $db->escape($asof))->getRowArray();
+        $matIl = (int) $db->query('SELECT COUNT(*) c FROM tbl_interlink_reports WHERE synced_to_interlink = 1 AND material_code <> \'\' AND LEFT(created_at,10) BETWEEN ' . $db->escape($m1) . ' AND ' . $db->escape($asof))->getRow()->c;
+        $materials = ['q' => (int) $mq['n'], 'etrf' => (int) $db->query("SELECT COUNT(*) c FROM tbl_interlink_etrf_requests WHERE status = 'submitted' AND material_code <> '' AND LEFT(COALESCE(submitted_at, created_at),10) BETWEEN " . $db->escape($m1) . ' AND ' . $db->escape($asof))->getRow()->c, 'il' => $matIl, 'erp' => 0];
+
+        return ['dw' => ['year' => $year, 'asof' => $asof, 'types' => $types, 'months' => $months, 'days' => $days, 'sections' => $sections, 'cat' => $cat, 'materials' => $materials, 'monthName' => date('F Y', strtotime($asof))],
+            'kpis' => [], 'chartTitle' => '', 'months' => [], 'lists' => []];
     }
 
     /** SQL condition: the column holds a real date and falls inside the chosen range. */
@@ -161,28 +717,30 @@ class AnalyticsController extends BaseController
 
     private function bonding($db): array
     {
-        $w = $this->dateWhere('TestedDate');
-        $t = $db->query("SELECT COUNT(*) AS total, SUM(Result = 'PASS') AS pass, SUM(Result = 'TOLERABLE') AS tol, SUM(Result LIKE 'FAIL%') AS fail FROM tbl_dtr_bonding_info WHERE {$w}")->getRowArray();
-        $n = max(1, (int) $t['total']);
-        $b = $this->bucket('TestedDate');
+        $pd = self::BOND_DATE;
+        $w  = $this->bondingBaseWhere($pd);
+        $wChart = $w . ' AND ' . $this->dateWhere($pd);
+        $t  = $db->query("SELECT COUNT(*) AS total, COALESCE(SUM(UPPER(Result) LIKE 'PASS%'), 0) AS pass, COALESCE(SUM(UPPER(Result) LIKE 'TOL%'), 0) AS tol, COALESCE(SUM(UPPER(Result) LIKE 'FAIL%' OR UPPER(Result) = 'REJECTED'), 0) AS fail FROM tbl_dtr_bonding_info WHERE {$w}")->getRowArray();
+        $n  = max(1, (int) $t['total']);
+        $b  = $this->bucket($pd);
 
         return [
             'kpis' => [
-                ['Tests recorded', number_format((int) $t['total']), 'with a tested date', ''],
-                ['Passed', number_format((int) $t['pass']), $this->pct((int) $t['pass'], $n) . '% pass rate', 'an-pass'],
-                ['Tolerable', number_format((int) $t['tol']), $this->pct((int) $t['tol'], $n) . '% of tests', 'an-tol'],
-                ['Failed', number_format((int) $t['fail']), $this->pct((int) $t['fail'], $n) . '% fail rate', 'an-fail'],
+                ['Total Lab Test Reports', number_format((int) $t['total']), 'Bonding Shoe Collection', ''],
+                ['Passed Reports', number_format((int) $t['pass']), $this->pct((int) $t['pass'], $n) . '% pass rate', 'an-pass'],
+                ['Tolerable / Data', number_format((int) $t['tol']), $this->pct((int) $t['tol'], $n) . '% of tests', 'an-tol'],
+                ['Failed Reports', number_format((int) $t['fail']), $this->pct((int) $t['fail'], $n) . '% fail rate', 'an-fail'],
             ],
             'chartTitle' => 'Tests per ' . $this->periodWord(),
-            'months'     => array_reverse($db->query("SELECT {$b} AS m, COUNT(*) AS total, SUM(Result = 'PASS') AS pass, SUM(Result = 'TOLERABLE') AS tol, SUM(Result LIKE 'FAIL%') AS fail
-                FROM tbl_dtr_bonding_info WHERE {$w} GROUP BY m ORDER BY m DESC LIMIT " . $this->bucketLimit())->getResultArray()),
+            'months'     => array_reverse($db->query("SELECT {$b} AS m, COUNT(*) AS total, SUM(UPPER(Result) LIKE 'PASS%') AS pass, SUM(UPPER(Result) LIKE 'TOL%') AS tol, SUM(UPPER(Result) LIKE 'FAIL%' OR UPPER(Result) = 'REJECTED') AS fail
+                FROM tbl_dtr_bonding_info WHERE {$wChart} GROUP BY m ORDER BY m DESC LIMIT " . $this->bucketLimit())->getResultArray()),
             'lists' => [
-                ['Styles with the most failures', 'ratio', $db->query("SELECT ModelStyle AS name, SUM(Result LIKE 'FAIL%') AS a, COUNT(*) AS b FROM tbl_dtr_bonding_info
+                ['Styles with the most failures', 'ratio', $db->query("SELECT ModelStyle AS name, SUM(UPPER(Result) LIKE 'FAIL%' OR UPPER(Result) = 'REJECTED') AS a, COUNT(*) AS b FROM tbl_dtr_bonding_info
                     WHERE {$w} AND ModelStyle IS NOT NULL AND ModelStyle <> '' GROUP BY ModelStyle HAVING a > 0 ORDER BY a DESC, b DESC LIMIT 8")->getResultArray()],
-                ['Technician workload (fails / tests)', 'ratio', $db->query("SELECT Technician AS name, SUM(Result LIKE 'FAIL%') AS a, COUNT(*) AS b FROM tbl_dtr_bonding_info
+                ['Technician workload (fails / tests)', 'ratio', $db->query("SELECT Technician AS name, SUM(UPPER(Result) LIKE 'FAIL%' OR UPPER(Result) = 'REJECTED') AS a, COUNT(*) AS b FROM tbl_dtr_bonding_info
                     WHERE {$w} AND Technician IS NOT NULL AND Technician <> '' GROUP BY Technician ORDER BY b DESC LIMIT 8")->getResultArray()],
                 ['Top modes of failure', 'count', $db->query("SELECT ModeOfFailure AS name, COUNT(*) AS a FROM tbl_dtr_bonding_info
-                    WHERE {$w} AND Result LIKE 'FAIL%' AND ModeOfFailure IS NOT NULL AND ModeOfFailure <> '' GROUP BY ModeOfFailure ORDER BY a DESC LIMIT 8")->getResultArray()],
+                    WHERE {$w} AND (UPPER(Result) LIKE 'FAIL%' OR UPPER(Result) = 'REJECTED') AND ModeOfFailure IS NOT NULL AND ModeOfFailure <> '' GROUP BY ModeOfFailure ORDER BY a DESC LIMIT 8")->getResultArray()],
             ],
         ];
     }

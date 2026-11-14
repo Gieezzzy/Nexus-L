@@ -145,7 +145,7 @@
     });
     const gTime = (g) => String((g.batch && g.batch.received_at) || (g.items[0] && g.items[0].created_at) || '');
     groups.sort((x, y) => gTime(y).localeCompare(gTime(x)));
-    if (!window.__vfrOpenInit) { window.__vfrOpenInit = true; window.__vfrOpen = new Set(groups.filter((g) => g.items.some((i) => !procLabel(i)[2])).slice(0, 3).map((g) => g.id)); }
+    if (!window.__vfrOpenInit) { window.__vfrOpenInit = true; window.__vfrOpen = new Set(); /* every e-mail group starts collapsed */ }
     const nDone = j.requests.filter((it) => procLabel(it)[2]).length;
     document.getElementById('vfr-req-count').textContent = `(${groups.length} e-mail(s), ${j.requests.length} request(s): ${j.requests.length - nDone} to do, ${nDone} finished)`;
 

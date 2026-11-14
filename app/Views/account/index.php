@@ -10,9 +10,16 @@ $initials = mb_substr($initials, 0, 2);
 $levelName = [0 => 'No access', 1 => 'View', 2 => 'View and edit'];
 $when = static fn ($d) => $d ? date('d M Y, H:i', strtotime((string) $d)) : '-';
 ?>
-<div class="ac" id="ac-root" data-tab="<?= esc($tab, 'attr') ?>" data-min="<?= (int) $minPwd ?>">
+<div class="ac" id="ac-root" data-tab="<?= esc($tab, 'attr') ?>" data-min="<?= (int) $minPwd ?>" data-initials="<?= esc($initials, 'attr') ?>">
     <div class="card glass ac-head">
-        <div class="ac-avatar"><?= esc($initials) ?></div>
+        <div class="ac-avatar-wrap" id="ac-head-avatar-trigger" title="<?= empty($isGuestSession) ? 'Click to change profile picture' : 'Profile picture' ?>" role="<?= empty($isGuestSession) ? 'button' : 'img' ?>" tabindex="<?= empty($isGuestSession) ? '0' : '-1' ?>">
+            <div class="ac-avatar" id="ac-head-avatar" style="<?= ! empty($avatarUrl) ? "background-image:url('" . esc($avatarUrl, 'attr') . "');background-size:cover;background-position:center;color:transparent" : '' ?>"><?= ! empty($avatarUrl) ? '' : esc($initials) ?></div>
+            <?php if (empty($isGuestSession)): ?>
+            <span class="ac-avatar-cam" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </span>
+            <?php endif ?>
+        </div>
         <div class="ac-who">
             <h2><?= esc($u['FullName']) ?></h2>
             <div class="muted">@<?= esc($u['Username']) ?><?= $u['JobTitle'] ? ' &middot; ' . esc($u['JobTitle']) : '' ?><?= $u['Department'] ? ' &middot; ' . esc($u['Department']) : '' ?></div>
@@ -35,6 +42,22 @@ $when = static fn ($d) => $d ? date('d M Y, H:i', strtotime((string) $d)) : '-';
 
     <!-- Profile -->
     <section class="card glass ac-pane" data-pane="profile">
+        <?php if (empty($isGuestSession)): ?>
+        <div class="ac-pic-box">
+            <div class="ac-avatar lg" id="ac-avatar-preview" style="<?= ! empty($avatarUrl) ? "background-image:url('" . esc($avatarUrl, 'attr') . "');background-size:cover;background-position:center;color:transparent" : '' ?>"><?= ! empty($avatarUrl) ? '' : esc($initials) ?></div>
+            <div class="ac-pic-meta">
+                <h3>Profile picture</h3>
+                <p class="muted sm">Visible to everyone in Inbox messages, group chats, and across NEXUS-L. Select a photo to crop, drag to reposition, zoom, rotate, or flip before saving.</p>
+                <div class="ac-actions" style="margin-top:8px">
+                    <input type="file" id="ac-avatar-file" accept="image/png,image/jpeg,image/webp" hidden>
+                    <button type="button" class="nx-btn nx-primary" id="ac-avatar-upload-btn">Upload &amp; crop picture</button>
+                    <button type="button" class="nx-btn" id="ac-avatar-remove-btn" <?= empty($avatarUrl) ? 'hidden' : '' ?>>Remove picture</button>
+                    <span class="ac-msg" id="ac-avatar-msg"></span>
+                </div>
+            </div>
+        </div>
+        <hr class="ac-sep">
+        <?php endif ?>
         <h3>Personal details</h3>
         <p class="muted sm"><?= ! empty($isGuestSession) ? 'Signed in via one-click Guest access (read-only session). Ask an Admin for a personal account or custom permissions.' : 'These details are used in reports, approvals, chat and the lists of people. The username and the role are set by an Admin.' ?></p>
         <div class="ac-grid">
@@ -120,4 +143,53 @@ $when = static fn ($d) => $d ? date('d M Y, H:i', strtotime((string) $d)) : '-';
         <div class="ac-actions"><button type="button" class="nx-btn nx-primary" id="g-save">Save signature</button><button type="button" class="nx-btn" id="g-clear">Clear drawing</button><?php if ($signature): ?><button type="button" class="nx-btn" id="g-remove">Remove saved signature</button><?php endif ?><span class="ac-msg" id="g-msg"></span></div>
     </section>
     <?php endif ?>
+
+    <!-- Interactive Crop / Rearrange / Rotate / Zoom Modal -->
+    <div class="ac-crop-backdrop" id="ac-crop-modal" hidden role="dialog" aria-modal="true" aria-labelledby="ac-crop-title">
+        <div class="ac-crop-dialog card glass">
+            <div class="ac-crop-head">
+                <div>
+                    <h3 id="ac-crop-title">Crop &amp; Adjust Profile Picture</h3>
+                    <p class="muted sm" style="margin:2px 0 0">Drag image to reposition &middot; Scroll or slide to zoom &middot; Rotate or flip as needed</p>
+                </div>
+                <button type="button" class="ac-crop-close" id="ac-crop-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="ac-crop-body">
+                <div class="ac-crop-stage-wrap">
+                    <canvas id="ac-crop-canvas" width="320" height="320"></canvas>
+                </div>
+                <div class="ac-crop-controls">
+                    <div class="ac-crop-preview-row">
+                        <canvas id="ac-crop-preview" width="76" height="76"></canvas>
+                        <div>
+                            <div style="font-weight:700;font-size:13px">Live Preview</div>
+                            <div class="muted sm">How your profile picture will appear to all users</div>
+                        </div>
+                    </div>
+                    <label class="ac-crop-slider">
+                        <span>Zoom <b id="ac-crop-zoom-val">100%</b></span>
+                        <input type="range" id="ac-crop-zoom" min="50" max="400" step="1" value="100">
+                    </label>
+                    <label class="ac-crop-slider">
+                        <span>Straighten / Angle <b id="ac-crop-angle-val">0&deg;</b></span>
+                        <input type="range" id="ac-crop-angle" min="-180" max="180" step="1" value="0">
+                    </label>
+                    <div class="ac-crop-tools">
+                        <button type="button" class="nx-btn" id="ac-crop-rot-l" title="Rotate 90° Left">&#8630; Rotate Left</button>
+                        <button type="button" class="nx-btn" id="ac-crop-rot-r" title="Rotate 90° Right">&#8631; Rotate Right</button>
+                        <button type="button" class="nx-btn" id="ac-crop-flip-h" title="Flip Horizontal">&#8596; Flip H</button>
+                        <button type="button" class="nx-btn" id="ac-crop-flip-v" title="Flip Vertical">&#8597; Flip V</button>
+                        <button type="button" class="nx-btn" id="ac-crop-reset" title="Reset adjustments">Reset</button>
+                    </div>
+                </div>
+            </div>
+            <div class="ac-crop-foot">
+                <button type="button" class="nx-btn" id="ac-crop-pick-another">Choose another photo</button>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <button type="button" class="nx-btn" id="ac-crop-cancel">Cancel</button>
+                    <button type="button" class="nx-btn nx-primary" id="ac-crop-save">Save profile picture</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>

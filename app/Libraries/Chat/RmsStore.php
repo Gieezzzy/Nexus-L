@@ -34,6 +34,11 @@ class RmsStore extends ChatStore
         return "OFFSET 0 ROWS FETCH NEXT {$n} ROWS ONLY";
     }
 
+    protected function memberMatchClause(string $col = 'members'): string
+    {
+        return "(';' + COALESCE({$col}, '') + ';') LIKE ?";
+    }
+
     protected function tables(): array
     {
         return ['{M}' => 'dbo.tbl_Messages', '{S}' => 'dbo.SingleUserMessage', '{G}' => 'dbo.tbl_GroupMessage'];
@@ -115,9 +120,12 @@ class RmsStore extends ChatStore
 
     private function shapePerson(array $r): array
     {
+        $id  = (string) $r['Id'];
+        $av  = \App\Models\UserModel::synologyAvatar($id) ?? RmsCrypto::profileUrl($r['ImagePath'] ?? null);
+
         return [
-            'id' => (string) $r['Id'], 'name' => (string) $r['Name'], 'username' => (string) ($r['UserName'] ?? ''),
-            'online' => (int) ($r['Online'] ?? 0) === 1, 'avatar' => RmsCrypto::profileUrl($r['ImagePath'] ?? null), 'src' => 'r',
+            'id' => $id, 'name' => (string) $r['Name'], 'username' => (string) ($r['UserName'] ?? ''),
+            'online' => (int) ($r['Online'] ?? 0) === 1, 'avatar' => $av, 'src' => 'r',
         ];
     }
 

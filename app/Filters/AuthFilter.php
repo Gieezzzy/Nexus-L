@@ -18,10 +18,25 @@ class AuthFilter implements FilterInterface
         $auth = service('auth');
 
         if (! $auth->check()) {
-            if ($request->isAJAX()) {
-                return service('response')->setStatusCode(401)->setJSON(['error' => 'Unauthenticated']);
+            $path = trim((string) uri_string(), '/');
+            if ($path === '') {
+                $path = trim((string) $request->getUri()->getPath(), '/');
             }
-            // Remember where the user wanted to go (same-site paths only).
+            $secMode = strtolower((string) $request->getHeaderLine('Sec-Fetch-Mode'));
+            $secDest = strtolower((string) $request->getHeaderLine('Sec-Fetch-Dest'));
+            $accept  = strtolower((string) $request->getHeaderLine('Accept'));
+            $isApiPath = (bool) preg_match('#^(bot/|push/|api/|inbox/(?!$)|account/(?!$)|dtr/approval/feed|interlink/.*feed)#i', $path);
+            $isNonNav  = $request->isAJAX()
+                || strtoupper($request->getMethod()) !== 'GET'
+                || str_contains($accept, 'application/json')
+                || ($secMode !== '' && $secMode !== 'navigate')
+                || ($secDest !== '' && $secDest !== 'document')
+                || $isApiPath;
+
+            if ($isNonNav) {
+                return service('response')->setStatusCode(401)->setJSON(['ok' => false, 'error' => 'Unauthenticated']);
+            }
+            // Remember where the user wanted to go (top-level GET page navigations only).
             session()->set('redirect_after_login', current_url());
 
             return redirect()->route('login')->withCookies()

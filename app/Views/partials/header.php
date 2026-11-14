@@ -29,7 +29,8 @@ $aiEnabled = \App\Libraries\SystemSettings::get('ai.enabled', '1') !== '0';
                 <b><?= esc($user['name'] ?? '') ?></b>
                 <span><?= esc($user['role'] ?? '') ?> · @<?= esc($user['username'] ?? '') ?></span>
             </div>
-            <div class="avatar"><?= esc($initials) ?></div>
+            <?php $topAv = $user['avatar'] ?? null; ?>
+            <div class="avatar" id="top-user-avatar" data-initials="<?= esc($initials, 'attr') ?>" style="<?= $topAv ? "background-image:url('" . esc($topAv, 'attr') . "');background-size:cover;background-position:center;color:transparent" : '' ?>"><?= $topAv ? '' : esc($initials) ?></div>
         </a>
     </div>
 </header>

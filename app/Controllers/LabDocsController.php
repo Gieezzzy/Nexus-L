@@ -194,6 +194,12 @@ class LabDocsController extends BaseController
         return \App\Libraries\LabDocRoles::canEdit((string) ($this->auth->user()['role'] ?? ''));
     }
 
+    /** full control (SATRA, Admin): rename, move, copy / cut / paste, delete folders, new file */
+    private function canManage(): bool
+    {
+        return \App\Libraries\LabDocRoles::canManage((string) ($this->auth->user()['role'] ?? ''));
+    }
+
     public function index(): ResponseInterface|string
     {
         $row = $this->db()->table('tbl_labdoc_registers')->where('is_active', 1)->orderBy('sort_order')->get(1)->getRowArray();
@@ -208,6 +214,7 @@ class LabDocsController extends BaseController
     {
         $reg = $this->register(rawurldecode($code));
         if (! $reg) {
+            \App\Filters\AuthFilter::reopenSession();
             return redirect()->to(site_url('labdocs'))->with('error', 'That register is not in the database.');
         }
         if (($reg['view_type'] ?? 'register') === 'methods') {
@@ -395,6 +402,7 @@ class LabDocsController extends BaseController
         $reg = $this->register(rawurldecode($code));
         $m   = $reg ? $this->vfm($reg, rawurldecode($vf)) : null;
         if (! $reg || ! $m) {
+            \App\Filters\AuthFilter::reopenSession();
             return redirect()->to(site_url('labdocs'))->with('error', 'That test method is not in the database.');
         }
         $base = site_url('labdocs/' . rawurlencode($reg['code']));
@@ -729,11 +737,12 @@ class LabDocsController extends BaseController
         }
         $fl = [];
         foreach ($folders as $name => $n) {
-            $fl[] = ['name' => $name, 'count' => $n, 'url' => $base . '?p=' . rawurlencode(($p === '' ? '' : $p . '/') . $name)];
+            $fl[] = ['name' => $name, 'count' => $n, 'url' => $base . '?p=' . rawurlencode(($p === '' ? '' : $p . '/') . $name), 'path' => ($p === '' ? '' : $p . '/') . $name];
         }
 
         return $this->render('labdocs/files', ['title' => $reg['code'] . ' ' . $reg['title'], 'withCss' => 'labdocs.css', 'withJs' => ['labdocs-collab.js', 'labdocs-preview.js', 'labdocs-files.js'],
             'reg' => $reg, 'folders' => $fl, 'files' => $files, 'crumbs' => $crumbs, 'q' => $q, 'base' => $base, 'canEdit' => $this->canEdit(), 'curPath' => $p,
+            'canManage' => $this->canManage(), 'pending' => \App\Libraries\ShareSync::pending((int) $reg['id']), 'workerAlive' => \App\Libraries\ShareSync::workerAlive(),
             'labCollab' => null, 'parent' => $q !== '' ? $base : $parent]);
     }
 
@@ -744,6 +753,7 @@ class LabDocsController extends BaseController
         $db  = $this->db();
         $f   = $reg ? $db->table('tbl_labdoc_files')->select('id, folder, name, ext, file_size, file_mtime, disk_path')->where(['id' => (int) $id, 'register_id' => $reg['id']])->get()->getRowArray() : null;
         if (! $f) {
+            \App\Filters\AuthFilter::reopenSession();
             return redirect()->to(site_url('labdocs'))->with('error', 'That file is not in the database.');
         }
         $base = site_url('labdocs/' . rawurlencode($reg['code']));
@@ -1115,10 +1125,11 @@ class LabDocsController extends BaseController
         if ($db->table('tbl_labdoc_folders')->where(['register_id' => $reg['id'], 'path' => $path])->countAllResults() === 0) {
             $db->table('tbl_labdoc_folders')->insert(['register_id' => $reg['id'], 'path' => $path, 'created_by' => $this->userName(), 'created_at' => date('Y-m-d H:i:s')]);
         }
-        $made = @mkdir(self::SHARE . '/' . $reg['folder_name'] . '/' . $path, 0775, true) || is_dir(self::SHARE . '/' . $reg['folder_name'] . '/' . $path);
-        $db->table('tbl_labdoc_log')->insert(['register_id' => $reg['id'], 'action' => 'new-folder', 'user_name' => $this->userName(), 'created_at' => date('Y-m-d H:i:s'), 'detail' => mb_substr($path . ($made ? '' : ' (not created on the share)'), 0, 490)]);
+        \App\Libraries\ShareSync::queue((int) $reg['id'], 'mkdir', '', \App\Libraries\ShareSync::path($reg['folder_name'], $path), 0, $this->userName());
+        $db->table('tbl_labdoc_log')->insert(['register_id' => $reg['id'], 'action' => 'new-folder', 'user_name' => $this->userName(), 'created_at' => date('Y-m-d H:i:s'), 'detail' => mb_substr($path, 0, 490)]);
+        \App\Libraries\ActivityLog::record('labdocs', 'new-folder', $reg['code'] . ': ' . $path);
 
-        return $this->response->setJSON(['ok' => true, 'onShare' => $made, 'csrf' => csrf_hash()]);
+        return $this->response->setJSON(['ok' => true, 'onShare' => true, 'csrf' => csrf_hash()]);
     }
 
     public function upload(string $code): ResponseInterface
@@ -1199,13 +1210,11 @@ class LabDocsController extends BaseController
             if ($thumb !== null) {
                 $db->table('tbl_labdoc_files')->where('id', $fid)->update(['thumb' => $thumb]);
             }
-            $target = self::SHARE . '/' . $reg['folder_name'] . '/' . ($dir === '' ? '' : $dir . '/');       // also onto the share, when it can be written
-            if ((is_dir($target) || @mkdir($target, 0775, true)) && @copy($tmp, $target . $name)) {
-                $done[] = $name;
-            } else {
-                $done[] = $name . ' (kept in NEXUS-L; not copied to the share)';
-            }
+            // onto the share too (done by the share worker within seconds)
+            \App\Libraries\ShareSync::queue((int) $reg['id'], 'put', '', \App\Libraries\ShareSync::path($reg['folder_name'], ($dir === '' ? '' : $dir . '/') . $name), $fid, $user);
+            $done[] = $name;
             $db->table('tbl_labdoc_log')->insert(['register_id' => $reg['id'], 'action' => $cur ? 'replace-file' : 'upload', 'user_name' => $user, 'created_at' => $now, 'detail' => mb_substr(($dir === '' ? '' : $dir . '/') . $name, 0, 490)]);
+            \App\Libraries\ActivityLog::record('labdocs', $cur ? 'replace-file' : 'upload', $reg['code'] . ': ' . ($dir === '' ? '' : $dir . '/') . $name, $up->getSize() . ' bytes');
         }
 
         return $this->response->setJSON(['ok' => $done !== [], 'done' => $done, 'bad' => $bad, 'message' => $done === [] ? 'Nothing was uploaded: ' . implode(', ', $bad) : '', 'csrf' => csrf_hash()]);
@@ -1242,11 +1251,367 @@ class LabDocsController extends BaseController
         if (! $f) {
             return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'File not found.', 'csrf' => csrf_hash()]);
         }
-        $user = $this->userName();
-        $this->db()->table('tbl_labdoc_files')->where('id', $f['id'])->update(['deleted_at' => date('Y-m-d H:i:s'), 'deleted_by' => $user]);
-        $this->db()->table('tbl_labdoc_log')->insert(['register_id' => $reg['id'], 'action' => 'delete-file', 'user_name' => $user, 'created_at' => date('Y-m-d H:i:s'), 'detail' => mb_substr(($f['folder'] === '' ? '' : $f['folder'] . '/') . $f['name'] . ' (the copy in the database is kept)', 0, 490)]);
+        $this->deleteFiles($reg, [$f]);
 
         return $this->response->setJSON(['ok' => true, 'csrf' => csrf_hash()]);
+    }
+
+    // ------------------------------------------------------------------------------------------------ full control (SATRA, Admin)
+
+    /** soft delete in NEXUS-L (the copy in the database stays) + delete on the share + both logs */
+    private function deleteFiles(array $reg, array $files, string $why = ''): void
+    {
+        $db   = $this->db();
+        $user = $this->userName();
+        $now  = date('Y-m-d H:i:s');
+        foreach ($files as $f) {
+            $rel = ($f['folder'] === '' ? '' : $f['folder'] . '/') . $f['name'];
+            $db->table('tbl_labdoc_files')->where('id', $f['id'])->update(['deleted_at' => $now, 'deleted_by' => $user]);
+            $db->table('tbl_labdoc_log')->insert(['register_id' => $reg['id'], 'action' => 'delete-file', 'user_name' => $user, 'created_at' => $now, 'detail' => mb_substr($rel . ' (the copy in the database is kept)', 0, 490)]);
+            if ($why === '') {   // a file inside a deleted folder goes with the folder on the share
+                \App\Libraries\ShareSync::queue((int) $reg['id'], 'delete', '', \App\Libraries\ShareSync::path($reg['folder_name'], $rel), 0, $user);
+            }
+            \App\Libraries\ActivityLog::deleted('labdocs', $reg['code'] . ': ' . $rel, 'Deleted in NEXUS-L and on \\\\192.168.32.130 (a copy stays in the NEXUS-L database).' . ($why !== '' ? ' ' . $why : ''));
+        }
+    }
+
+    /** a name that is free in a folder: "a.pdf", else "a (2).pdf", "a (3).pdf" ... */
+    private function freeName(int $regId, string $folder, string $name, int $exceptId = 0): string
+    {
+        $db   = $this->db();
+        $ext  = pathinfo($name, PATHINFO_EXTENSION);
+        $stem = $ext === '' ? $name : substr($name, 0, -strlen($ext) - 1);
+        for ($i = 1; $i < 500; $i++) {
+            $try = $i === 1 ? $name : $stem . ' (' . $i . ')' . ($ext === '' ? '' : '.' . $ext);
+            $qb  = $db->table('tbl_labdoc_files')->where(['register_id' => $regId, 'folder' => $folder, 'name' => $try, 'src_key' => '', 'deleted_at' => null]);
+            if ($exceptId > 0) {
+                $qb->where('id !=', $exceptId);
+            }
+            if ($qb->countAllResults() === 0) {
+                return $try;
+            }
+        }
+
+        return $stem . ' ' . date('His') . ($ext === '' ? '' : '.' . $ext);
+    }
+
+    /** every folder path a register knows (from its files and the folders made in NEXUS-L) */
+    private function folderPaths(int $regId): array
+    {
+        $db  = $this->db();
+        $out = [];
+        foreach ($db->table('tbl_labdoc_files')->select('folder')->distinct()->where(['register_id' => $regId, 'src_key' => '', 'deleted_at' => null])->get()->getResultArray() as $r) {
+            $acc = '';
+            foreach ($r['folder'] === '' ? [] : explode('/', $r['folder']) as $seg) {
+                $acc = $acc === '' ? $seg : $acc . '/' . $seg;
+                $out[$acc] = true;
+            }
+        }
+        foreach ($db->table('tbl_labdoc_folders')->select('path')->where('register_id', $regId)->get()->getResultArray() as $r) {
+            $out[$r['path']] = true;
+        }
+
+        return $out;
+    }
+
+    private function freeFolder(int $regId, string $parent, string $name): string
+    {
+        $all = $this->folderPaths($regId);
+        for ($i = 1; $i < 500; $i++) {
+            $try = $i === 1 ? $name : $name . ' (' . $i . ')';
+            if (! isset($all[($parent === '' ? '' : $parent . '/') . $try])) {
+                return $try;
+            }
+        }
+
+        return $name . ' ' . date('His');
+    }
+
+    /** the stored copy of a file into a new file record (copy / paste) */
+    private function storeFile(array $reg, int $fid, string $tmp, string $ext): void
+    {
+        $db = $this->db();
+        $db->table('tbl_labdoc_file_parts')->where('file_id', $fid)->delete();
+        if (($reg['grp'] ?? 'lab') === 'other') {
+            $rel = 'other/' . preg_replace('/[^A-Za-z0-9._-]+/', '-', $reg['code']) . '/' . $fid . ($ext !== '' ? '.' . $ext : '');
+            @mkdir(dirname(WRITEPATH . 'labdocs/' . $rel), 0775, true);
+            copy($tmp, WRITEPATH . 'labdocs/' . $rel);
+            $db->table('tbl_labdoc_files')->where('id', $fid)->update(['disk_path' => $rel]);
+
+            return;
+        }
+        $h = fopen($tmp, 'rb');
+        for ($i = 0; $h && ! feof($h); $i++) {
+            $piece = fread($h, 400000);
+            if ($piece === false || $piece === '') {
+                break;
+            }
+            $db->table('tbl_labdoc_file_parts')->insert(['file_id' => $fid, 'part' => $i, 'data' => $piece]);
+        }
+        if ($h) {
+            fclose($h);
+        }
+    }
+
+    private function copyOneFile(array $reg, array $f, string $toFolder, string $user): string
+    {
+        $db   = $this->db();
+        $name = $this->freeName((int) $reg['id'], $toFolder, $toFolder === $f['folder'] ? pathinfo($f['name'], PATHINFO_FILENAME) . ' - Copy' . ($f['ext'] !== '' ? '.' . $f['ext'] : '') : $f['name']);
+        $db->table('tbl_labdoc_files')->insert(['register_id' => $reg['id'], 'folder' => $toFolder, 'name' => $name, 'ext' => $f['ext'], 'file_size' => $f['file_size'], 'file_mtime' => date('Y-m-d H:i:s'), 'src_key' => '']);
+        $nid = (int) $db->insertID();
+        $tmp = tempnam(sys_get_temp_dir(), 'ldc');
+        if (\App\Libraries\ShareSync::exportFile((int) $f['id'], $tmp)) {
+            $this->storeFile($reg, $nid, $tmp, (string) $f['ext']);
+        }
+        @unlink($tmp);
+        $thumb = $db->table('tbl_labdoc_files')->select('thumb')->where('id', $f['id'])->get()->getRow('thumb');
+        if ($thumb !== null) {
+            $db->table('tbl_labdoc_files')->where('id', $nid)->update(['thumb' => $thumb]);
+        }
+        \App\Libraries\ShareSync::queue((int) $reg['id'], 'put', '', \App\Libraries\ShareSync::path($reg['folder_name'], ($toFolder === '' ? '' : $toFolder . '/') . $name), $nid, $user);
+
+        return $name;
+    }
+
+    /** a minimal, valid empty Word / Excel / text file */
+    private function blankFile(string $type, string $path): bool
+    {
+        if ($type === 'txt') {
+            return file_put_contents($path, '') !== false;
+        }
+        $z = new \ZipArchive();
+        if ($z->open($path, \ZipArchive::OVERWRITE | \ZipArchive::CREATE) !== true) {
+            return false;
+        }
+        $x = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+        if ($type === 'docx') {
+            $z->addFromString('[Content_Types].xml', $x . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
+            $z->addFromString('_rels/.rels', $x . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+            $z->addFromString('word/document.xml', $x . '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p/><w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>');
+        } else {
+            $z->addFromString('[Content_Types].xml', $x . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>');
+            $z->addFromString('_rels/.rels', $x . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
+            $z->addFromString('xl/workbook.xml', $x . '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>');
+            $z->addFromString('xl/_rels/workbook.xml.rels', $x . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>');
+            $z->addFromString('xl/worksheets/sheet1.xml', $x . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData/></worksheet>');
+        }
+
+        return $z->close();
+    }
+
+    /**
+     * POST labdocs/<code>/files/op {op, ...} (SATRA, Admin):
+     *   rename-file {id, name} | rename-folder {path, name} | delete {ids[], folders[]} | paste {mode: cut|copy, ids[], folders[], to}
+     *   | new-file {p, name, type: txt|docx|xlsx}
+     * Every change is made in NEXUS-L at once and on the .130 share by the share worker; every change is logged.
+     */
+    public function fileOp(string $code): ResponseInterface
+    {
+        $fail = fn (string $m, int $c = 422) => $this->response->setStatusCode($c)->setJSON(['ok' => false, 'message' => $m, 'csrf' => csrf_hash()]);
+        if (! $this->canManage()) {
+            return $fail('Only SATRA and Admin can rename, move, copy or delete folders here.', 403);
+        }
+        $reg = $this->register(rawurldecode($code));
+        if (! $reg || ($reg['view_type'] ?? '') !== 'files') {
+            return $fail('Folder register not found.', 404);
+        }
+        $in   = $this->request->getJSON(true) ?: [];
+        $op   = (string) ($in['op'] ?? '');
+        $db   = $this->db();
+        $rid  = (int) $reg['id'];
+        $user = $this->userName();
+        $S    = \App\Libraries\ShareSync::class;
+        $okName = static fn (string $n): bool => $n !== '' && $n !== '.' && $n !== '..' && mb_strlen($n) <= 120 && ! preg_match('/[\\\\\/<>:"|?*\x00-\x1f]/', $n) && ! preg_match('/[. ]$/', $n);
+        $fileRow = fn (int $id) => $db->table('tbl_labdoc_files')->select('id, folder, name, ext, file_size')->where(['id' => $id, 'register_id' => $rid, 'src_key' => '', 'deleted_at' => null])->get()->getRowArray();
+        $ids     = array_values(array_unique(array_map('intval', (array) ($in['ids'] ?? []))));
+        $folders = [];
+        foreach ((array) ($in['folders'] ?? []) as $fp) {
+            $c = $this->cleanPath((string) $fp);
+            if ($c === null || $c === '') {
+                return $fail('A folder path is not valid.');
+            }
+            $folders[] = $c;
+        }
+
+        try {
+            switch ($op) {
+                case 'rename-file': {
+                    $f    = $fileRow((int) ($in['id'] ?? 0));
+                    $name = trim((string) ($in['name'] ?? ''));
+                    if (! $f) {
+                        return $fail('File not found.', 404);
+                    }
+                    if (! $okName($name)) {
+                        return $fail('Give a name without \\ / : * ? " < > | (and not ending in a dot or space).');
+                    }
+                    if (pathinfo($name, PATHINFO_EXTENSION) === '' && $f['ext'] !== '') {
+                        $name .= '.' . $f['ext'];                     // the type stays when only the name was typed
+                    }
+                    $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+                    if (in_array($ext, self::BLOCKED, true)) {
+                        return $fail('That kind of file is not allowed.');
+                    }
+                    if ($name === $f['name']) {
+                        return $this->response->setJSON(['ok' => true, 'csrf' => csrf_hash()]);
+                    }
+                    if ($this->freeName($rid, $f['folder'], $name, (int) $f['id']) !== $name) {
+                        return $fail('A file named "' . $name . '" is already in this folder.');
+                    }
+                    $db->table('tbl_labdoc_files')->where('id', $f['id'])->update(['name' => $name, 'ext' => $ext]);
+                    $pre = $f['folder'] === '' ? '' : $f['folder'] . '/';
+                    $S::queue($rid, 'move', $S::path($reg['folder_name'], $pre . $f['name']), $S::path($reg['folder_name'], $pre . $name), 0, $user);
+                    \App\Libraries\ActivityLog::record('labdocs', 'rename-file', $reg['code'] . ': ' . $pre . $f['name'], 'to ' . $name);
+                    break;
+                }
+                case 'rename-folder': {
+                    $path = $folders ? $folders[0] : $this->cleanPath((string) ($in['path'] ?? ''));
+                    $name = trim((string) ($in['name'] ?? ''));
+                    if (! $path) {
+                        return $fail('Folder not found.', 404);
+                    }
+                    if (! $okName($name)) {
+                        return $fail('Give a name without \\ / : * ? " < > | (and not ending in a dot or space).');
+                    }
+                    $parent = str_contains($path, '/') ? substr($path, 0, (int) strrpos($path, '/')) : '';
+                    $new    = ($parent === '' ? '' : $parent . '/') . $name;
+                    if ($new === $path) {
+                        return $this->response->setJSON(['ok' => true, 'csrf' => csrf_hash()]);
+                    }
+                    if (isset($this->folderPaths($rid)[$new])) {
+                        return $fail('A folder named "' . $name . '" is already there.');
+                    }
+                    $this->moveFolderRecords($rid, $path, $new);
+                    $S::queue($rid, 'move', $S::path($reg['folder_name'], $path), $S::path($reg['folder_name'], $new), 0, $user);
+                    \App\Libraries\ActivityLog::record('labdocs', 'rename-folder', $reg['code'] . ': ' . $path, 'to ' . $new);
+                    break;
+                }
+                case 'delete': {
+                    $files = array_values(array_filter(array_map($fileRow, $ids)));
+                    if (! $files && ! $folders) {
+                        return $fail('Nothing to delete.');
+                    }
+                    $this->deleteFiles($reg, $files);
+                    foreach ($folders as $fp) {
+                        $inside = $db->table('tbl_labdoc_files')->select('id, folder, name')->where(['register_id' => $rid, 'src_key' => '', 'deleted_at' => null])
+                            ->groupStart()->where('folder', $fp)->orLike('folder', $fp . '/', 'after')->groupEnd()->get()->getResultArray();
+                        $this->deleteFiles($reg, $inside, '(inside the deleted folder ' . $fp . ')');
+                        $db->table('tbl_labdoc_folders')->where('register_id', $rid)->groupStart()->where('path', $fp)->orLike('path', $fp . '/', 'after')->groupEnd()->delete();
+                        $S::queue($rid, 'rmdir', '', $S::path($reg['folder_name'], $fp), 0, $user);
+                        \App\Libraries\ActivityLog::deleted('labdocs', $reg['code'] . ': folder ' . $fp, count($inside) . ' file(s) inside. Deleted in NEXUS-L and on \\\\192.168.32.130 (copies stay in the NEXUS-L database).');
+                    }
+                    break;
+                }
+                case 'paste': {
+                    $mode = (string) ($in['mode'] ?? '');
+                    $to   = $this->cleanPath((string) ($in['to'] ?? ''));
+                    if (! in_array($mode, ['cut', 'copy'], true) || $to === null) {
+                        return $fail('Nothing to paste here.');
+                    }
+                    if (($in['from_code'] ?? $reg['code']) !== $reg['code']) {
+                        return $fail('Paste into a folder of the same document register (' . ($in['from_code'] ?? '') . ').');
+                    }
+                    $moved = 0;
+                    foreach (array_values(array_filter(array_map($fileRow, $ids))) as $f) {
+                        $pre = $f['folder'] === '' ? '' : $f['folder'] . '/';
+                        if ($mode === 'cut') {
+                            if ($f['folder'] === $to) {
+                                continue;
+                            }
+                            $name = $this->freeName($rid, $to, $f['name']);
+                            $db->table('tbl_labdoc_files')->where('id', $f['id'])->update(['folder' => $to, 'name' => $name]);
+                            $S::queue($rid, 'move', $S::path($reg['folder_name'], $pre . $f['name']), $S::path($reg['folder_name'], ($to === '' ? '' : $to . '/') . $name), 0, $user);
+                            \App\Libraries\ActivityLog::record('labdocs', 'move-file', $reg['code'] . ': ' . $pre . $f['name'], 'to ' . ($to === '' ? '(top)' : $to) . '/' . $name);
+                        } else {
+                            $name = $this->copyOneFile($reg, $f, $to, $user);
+                            \App\Libraries\ActivityLog::record('labdocs', 'copy-file', $reg['code'] . ': ' . $pre . $f['name'], 'to ' . ($to === '' ? '(top)' : $to) . '/' . $name);
+                        }
+                        $moved++;
+                    }
+                    foreach ($folders as $fp) {
+                        if ($to === $fp || str_starts_with($to . '/', $fp . '/')) {
+                            return $fail('A folder cannot be put inside itself.');
+                        }
+                        $parent = str_contains($fp, '/') ? substr($fp, 0, (int) strrpos($fp, '/')) : '';
+                        $base   = basename($fp);
+                        if ($mode === 'cut' && $parent === $to) {
+                            continue;
+                        }
+                        $name = $this->freeFolder($rid, $to, $mode === 'copy' && $parent === $to ? $base . ' - Copy' : $base);
+                        $new  = ($to === '' ? '' : $to . '/') . $name;
+                        if ($mode === 'cut') {
+                            $this->moveFolderRecords($rid, $fp, $new);
+                            $S::queue($rid, 'move', $S::path($reg['folder_name'], $fp), $S::path($reg['folder_name'], $new), 0, $user);
+                            \App\Libraries\ActivityLog::record('labdocs', 'move-folder', $reg['code'] . ': ' . $fp, 'to ' . $new);
+                        } else {
+                            $S::queue($rid, 'mkdir', '', $S::path($reg['folder_name'], $new), 0, $user);
+                            $db->table('tbl_labdoc_folders')->insert(['register_id' => $rid, 'path' => $new, 'created_by' => $user, 'created_at' => date('Y-m-d H:i:s')]);
+                            foreach ($db->table('tbl_labdoc_folders')->select('path')->where('register_id', $rid)->like('path', $fp . '/', 'after')->get()->getResultArray() as $sub) {
+                                $np = $new . substr($sub['path'], strlen($fp));
+                                $db->table('tbl_labdoc_folders')->insert(['register_id' => $rid, 'path' => $np, 'created_by' => $user, 'created_at' => date('Y-m-d H:i:s')]);
+                                $S::queue($rid, 'mkdir', '', $S::path($reg['folder_name'], $np), 0, $user);
+                            }
+                            $inside = $db->table('tbl_labdoc_files')->select('id, folder, name, ext, file_size')->where(['register_id' => $rid, 'src_key' => '', 'deleted_at' => null])
+                                ->groupStart()->where('folder', $fp)->orLike('folder', $fp . '/', 'after')->groupEnd()->get()->getResultArray();
+                            foreach ($inside as $f) {
+                                $this->copyOneFile($reg, $f, $new . substr($f['folder'], strlen($fp)), $user);
+                            }
+                            \App\Libraries\ActivityLog::record('labdocs', 'copy-folder', $reg['code'] . ': ' . $fp, 'to ' . $new . ' (' . count($inside) . ' files)');
+                        }
+                        $moved++;
+                    }
+                    if ($moved === 0) {
+                        return $this->response->setJSON(['ok' => true, 'message' => 'Already in this folder.', 'csrf' => csrf_hash()]);
+                    }
+                    break;
+                }
+                case 'new-file': {
+                    $p    = $this->cleanPath((string) ($in['p'] ?? ''));
+                    $type = (string) ($in['type'] ?? 'txt');
+                    $name = trim((string) ($in['name'] ?? ''));
+                    if ($p === null || ! in_array($type, ['txt', 'docx', 'xlsx'], true) || ! $okName($name)) {
+                        return $fail('Give the file a name without \\ / : * ? " < > |');
+                    }
+                    if (strtolower(pathinfo($name, PATHINFO_EXTENSION)) !== $type) {
+                        $name .= '.' . $type;
+                    }
+                    $name = $this->freeName($rid, $p, $name);
+                    $tmp  = tempnam(sys_get_temp_dir(), 'ldn');
+                    if (! $this->blankFile($type, $tmp)) {
+                        @unlink($tmp);
+
+                        return $fail('The new file could not be made.', 500);
+                    }
+                    $db->table('tbl_labdoc_files')->insert(['register_id' => $rid, 'folder' => $p, 'name' => $name, 'ext' => $type, 'file_size' => (int) filesize($tmp), 'file_mtime' => date('Y-m-d H:i:s'), 'src_key' => '']);
+                    $nid = (int) $db->insertID();
+                    $this->storeFile($reg, $nid, $tmp, $type);
+                    @unlink($tmp);
+                    $S::queue($rid, 'put', '', $S::path($reg['folder_name'], ($p === '' ? '' : $p . '/') . $name), $nid, $user);
+                    \App\Libraries\ActivityLog::record('labdocs', 'new-file', $reg['code'] . ': ' . ($p === '' ? '' : $p . '/') . $name);
+                    break;
+                }
+                default:
+                    return $fail('Unknown action.');
+            }
+        } catch (\Throwable $e) {
+            log_message('error', '[LabDocs] fileOp ' . $op . ': ' . $e->getMessage());
+
+            return $fail('The change could not be made: ' . $e->getMessage(), 500);
+        }
+
+        return $this->response->setJSON(['ok' => true, 'pending' => \App\Libraries\ShareSync::pending($rid), 'csrf' => csrf_hash()]);
+    }
+
+    /** a folder and everything in it gets a new path in the database (files + folders made here) */
+    private function moveFolderRecords(int $rid, string $from, string $to): void
+    {
+        $db = $this->db();
+        $db->query("UPDATE tbl_labdoc_files SET folder = CONCAT(?, SUBSTRING(folder, ?)) WHERE register_id = ? AND (folder = ? OR folder LIKE ?)",
+            [$to, mb_strlen($from) + 1, $rid, $from, addcslashes($from, '%_\\') . '/%']);
+        $db->query("UPDATE tbl_labdoc_folders SET path = CONCAT(?, SUBSTRING(path, ?)) WHERE register_id = ? AND (path = ? OR path LIKE ?)",
+            [$to, mb_strlen($from) + 1, $rid, $from, addcslashes($from, '%_\\') . '/%']);
+        if ($db->table('tbl_labdoc_folders')->where(['register_id' => $rid, 'path' => $to])->countAllResults() === 0) {
+            $db->table('tbl_labdoc_folders')->insert(['register_id' => $rid, 'path' => $to, 'created_by' => $this->userName(), 'created_at' => date('Y-m-d H:i:s')]);
+        }
     }
 
     /** looks in the folder on the share for files that are new or changed and takes them in (no previews: those come from the import tools) */
@@ -1319,6 +1684,7 @@ class LabDocsController extends BaseController
             }
         }
         $db->table('tbl_labdoc_log')->insert(['register_id' => $reg['id'], 'action' => 'refresh', 'user_name' => $this->userName(), 'created_at' => date('Y-m-d H:i:s'), 'detail' => "{$new} new, {$changed} changed, {$skipped} too big"]);
+        \App\Libraries\ActivityLog::record('labdocs', 'refresh-from-share', $reg['code'], "{$new} new, {$changed} changed, {$skipped} too big");
 
         return $this->response->setJSON(['ok' => true, 'new' => $new, 'changed' => $changed, 'skipped' => $skipped, 'csrf' => csrf_hash()]);
     }
@@ -1498,6 +1864,7 @@ class LabDocsController extends BaseController
                 return redirect()->to(site_url('labdocs/' . rawurlencode($reg['code']) . '/v/' . $fm[1]));
             }
 
+            \App\Filters\AuthFilter::reopenSession();
             return redirect()->to(site_url('labdocs'))->with('error', 'That workbook is not in the database.');
         }
         $sheets = [];

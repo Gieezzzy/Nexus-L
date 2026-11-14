@@ -16,7 +16,7 @@
     count.textContent = n; none.hidden = n > 0;
     try { sessionStorage.setItem('vm-filter' + location.pathname, JSON.stringify({ q: search.value, s: series })); } catch (e) {}
   }
-  search.addEventListener('input', apply);
+  var applyT; search.addEventListener('input', function () { clearTimeout(applyT); applyT = setTimeout(apply, 120); });
   Array.prototype.forEach.call(chips, function (b) {
     b.addEventListener('click', function () {
       series = b.dataset.s;

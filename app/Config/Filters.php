@@ -36,6 +36,7 @@ class Filters extends BaseFilters
         'performance'   => PerformanceMetrics::class,
         'auth'          => \App\Filters\AuthFilter::class,
         'guest'         => \App\Filters\GuestFilter::class,
+        'requestlog'    => \App\Filters\RequestLog::class,
     ];
 
     /**
@@ -81,6 +82,7 @@ class Filters extends BaseFilters
         'after' => [
             'honeypot',
             'secureheaders',
+            'requestlog',   // one line per change (POST) in tbl_activity_log
         ],
     ];
 

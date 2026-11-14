@@ -21,8 +21,9 @@ $size = static function (int $b): string {
     return $b >= 1048576 ? round($b / 1048576, 1) . ' MB' : max(1, (int) round($b / 1024)) . ' KB';
 };
 ?>
-<?php $PAGE = 48; $canEdit = ! empty($canEdit); ?>
-<section class="ld vm" id="vm" data-base="<?= esc($base, 'attr') ?>" data-path="<?= esc($curPath ?? '', 'attr') ?>" data-page="<?= $PAGE ?>">
+<?php $PAGE = 48; $canEdit = ! empty($canEdit); $canManage = ! empty($canManage); ?>
+<section class="ld vm" id="vm" data-base="<?= esc($base, 'attr') ?>" data-path="<?= esc($curPath ?? '', 'attr') ?>" data-page="<?= $PAGE ?>"
+    data-code="<?= esc($reg['code'], 'attr') ?>" data-edit="<?= $canEdit ? '1' : '0' ?>" data-manage="<?= $canManage ? '1' : '0' ?>" data-search="<?= $q !== '' ? '1' : '0' ?>">
     <div class="ld-bar glass">
         <div class="ld-bar-l">
             <div class="ld-title"><?php if (! empty($parent)): ?><a class="vd-back fl-up" href="<?= esc($parent, 'attr') ?>" aria-label="Back">‹ Back</a><?php endif ?><b><?= esc($reg['code']) ?></b> <span><?= esc($reg['title']) ?></span></div>
@@ -36,6 +37,7 @@ $size = static function (int $b): string {
             <?php if ($canEdit && $q === ''): ?>
             <div class="ld-tools fl-tools">
                 <button type="button" class="ld-btn" id="fl-newfolder">New folder</button>
+                <?php if ($canManage): ?><button type="button" class="ld-btn" id="fl-newfile">New file</button><?php endif ?>
                 <button type="button" class="ld-btn ld-primary" id="fl-upload">Upload</button>
                 <button type="button" class="ld-btn" id="fl-refresh" title="Take in files that were added or changed in the folder on the share">Refresh from share</button>
                 <input type="file" id="fl-file" multiple hidden>
@@ -47,10 +49,14 @@ $size = static function (int $b): string {
         </div>
     </div>
 
+    <?php if ($canEdit && ! empty($pending)): ?>
+    <p class="ld-hint fl-sync" role="status"><?= (int) $pending ?> change<?= $pending == 1 ? '' : 's' ?> waiting to reach \192.168.32.130<?= empty($workerAlive) ? ' — the share worker is not running on the server PC (it starts when its user logs on).' : ' (a few seconds).' ?></p>
+    <?php endif ?>
+    <?php if ($canEdit && $q === ''): ?><p class="ld-hint fl-tip">Tip: right-click a file or folder for every action<?= $canManage ? ' (rename, cut, copy, paste, delete). Ctrl+click selects several; Ctrl+C / Ctrl+X / Ctrl+V, F2 and Delete work too.' : '.' ?></p><?php endif ?>
     <?php if ($folders): ?>
     <div class="vm-grid fl-folders" aria-label="Folders">
         <?php foreach ($folders as $f): ?>
-            <a class="vm-card fl-folder" style="--h:42" href="<?= esc($f['url'], 'attr') ?>">
+            <a class="vm-card fl-folder" style="--h:42" href="<?= esc($f['url'], 'attr') ?>" data-path="<?= esc($f['path'] ?? '', 'attr') ?>" data-name="<?= esc($f['name'], 'attr') ?>">
                 <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><path d="M3 6a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z" fill="hsl(42 55% 62%)" stroke="hsl(42 40% 38%)" stroke-width="1.2"/></svg>
                 <span class="vm-name"><?= esc($f['name']) ?></span>
                 <span class="vm-upd"><b><?= (int) $f['count'] ?></b> file<?= $f['count'] === 1 ? '' : 's' ?></span>
@@ -66,7 +72,7 @@ $size = static function (int $b): string {
             $k = $kind[$f['ext']] ?? strtoupper($f['ext'] ?: 'File');
             $isPic = in_array($f['ext'], ['pdf', 'jpg', 'jpeg', 'png', 'gif'], true);
             ?>
-            <article class="vm-card fl-card" data-id="<?= (int) $f['id'] ?>" data-name="<?= esc($f['name'], 'attr') ?>"<?= $fi >= $PAGE ? ' hidden' : '' ?> style="--h:<?= $hue[$f['ext']] ?? 215 ?>"<?php if ($f['thumb']): ?> data-prev="<?= esc($f['thumb'], 'attr') ?>"<?php endif ?>>
+            <article class="vm-card fl-card" data-id="<?= (int) $f['id'] ?>" data-name="<?= esc($f['name'], 'attr') ?>" data-folder="<?= esc($f['folder'], 'attr') ?>" data-url="<?= esc($f['url'], 'attr') ?>" data-size="<?= esc($size($f['size']), 'attr') ?>" data-date="<?= esc($f['date'], 'attr') ?>"<?= $fi >= $PAGE ? ' hidden' : '' ?> style="--h:<?= $hue[$f['ext']] ?? 215 ?>"<?php if ($f['thumb']): ?> data-prev="<?= esc($f['thumb'], 'attr') ?>"<?php endif ?>>
                 <a class="vm-main fl-main" href="<?= esc($f['url'], 'attr') ?>" aria-label="Open <?= esc($f['name'], 'attr') ?>">
                     <?php if ($f['thumb']): ?><span class="fl-thumb"><img src="<?= esc($f['thumb'], 'attr') ?>" alt="" loading="lazy"></span>
                     <?php else: ?><span class="fl-thumb fl-none"><b><?= esc($k) ?></b></span><?php endif ?>

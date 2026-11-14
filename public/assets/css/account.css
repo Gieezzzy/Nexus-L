@@ -65,4 +65,37 @@
 .ac-table thead th { position: sticky; top: 0; background: #f1f5f9; z-index: 1; font-size: 12px; }
 .ac-lv { min-width: 96px; text-align: center; }
 .ac-actions .nx-btn { min-height: 40px; }
+.ac-avatar-wrap { position: relative; cursor: pointer; flex: 0 0 auto; border-radius: 50%; }
+.ac-avatar-wrap:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.ac-avatar.lg { width: 84px; height: 84px; font-size: 28px; box-shadow: 0 4px 12px rgba(37,99,235,.18); }
+.ac-avatar-cam { position: absolute; right: -2px; bottom: -2px; width: 26px; height: 26px; border-radius: 50%; background: #2563eb; color: #fff; border: 2px solid #fff; display: grid; place-items: center; box-shadow: 0 2px 6px rgba(0,0,0,.22); transition: transform .15s; }
+.ac-avatar-wrap:hover .ac-avatar-cam { transform: scale(1.08); }
+.ac-pic-box { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 4px 0 10px; }
+.ac-pic-meta { flex: 1 1 240px; min-width: 0; }
+.ac-pic-meta h3 { margin: 0 0 4px; }
+.ac-sep { border: 0; border-top: 1px solid rgba(148,163,184,.3); margin: 14px 0 18px; }
+.ac-crop-backdrop { position: fixed; inset: 0; z-index: 9999; background: rgba(15,23,42,.62); backdrop-filter: blur(4px); display: grid; place-items: center; padding: 16px; }
+.ac-crop-backdrop[hidden] { display: none !important; }
+.ac-crop-dialog { width: 100%; max-width: 660px; background: #fff; border-radius: 16px; padding: 18px 20px; box-shadow: 0 20px 50px rgba(15,23,42,.35); max-height: 92vh; overflow-y: auto; }
+.ac-crop-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(148,163,184,.25); }
+.ac-crop-head h3 { margin: 0; font-size: 17px; }
+.ac-crop-close { border: 0; background: #f1f5f9; color: #334155; width: 32px; height: 32px; border-radius: 50%; font-size: 20px; line-height: 1; cursor: pointer; display: grid; place-items: center; }
+.ac-crop-close:hover { background: #e2e8f0; }
+.ac-crop-body { display: grid; grid-template-columns: 320px 1fr; gap: 18px; padding: 16px 0; align-items: start; }
+.ac-crop-stage-wrap { width: 320px; height: 320px; border-radius: 14px; overflow: hidden; background: #0f172a; box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); position: relative; margin: 0 auto; }
+#ac-crop-canvas { width: 320px; height: 320px; display: block; cursor: grab; touch-action: none; }
+#ac-crop-canvas:active { cursor: grabbing; }
+.ac-crop-controls { display: flex; flex-direction: column; gap: 14px; }
+.ac-crop-preview-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; }
+#ac-crop-preview { width: 68px; height: 68px; border-radius: 50%; border: 2px solid #2563eb; background: #0f172a; flex: 0 0 auto; }
+.ac-crop-slider { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; font-weight: 600; color: #334155; }
+.ac-crop-slider span { display: flex; justify-content: space-between; }
+.ac-crop-slider input[type="range"] { width: 100%; accent-color: #2563eb; cursor: pointer; }
+.ac-crop-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.ac-crop-tools .nx-btn { padding: 6px 10px; font-size: 12px; min-height: 34px; }
+.ac-crop-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid rgba(148,163,184,.25); }
+@media (max-width: 680px) {
+  .ac-crop-body { grid-template-columns: 1fr; }
+  .ac-crop-stage-wrap, #ac-crop-canvas { width: 280px; height: 280px; }
+}
 @media (prefers-reduced-motion: reduce) { .ac-sw span, .ac-sw span::after, .ac-strength i { transition: none; } }

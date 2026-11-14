@@ -117,7 +117,7 @@ class OutlookSyncReader
     /** Resolves an OutlookAttachmentSync stored attachment path (mapping UNC share onto local E:\ or D:\ when running on the file server). */
     public function readAttachmentBytes(array $attInfo): ?string
     {
-        $rawPath = trim((string) ($attInfo['StoredPath'] ?? $attInfo['stored_path'] ?? ''));
+        $rawPath = trim((string) ($attInfo['StoredPath'] ?? $attInfo['stored_path'] ?? $attInfo['file_path'] ?? $attInfo['FilePath'] ?? ''));
         if ($rawPath === '') {
             return null;
         }

@@ -16,6 +16,7 @@ $menu = [
         ['label' => 'Report Submission', 'url' => url_to('interlink'), 'seg2' => ''],
     ]],
     ['label' => 'Analytics', 'url' => url_to('analytics'), 'match' => ['analytics'], 'icon' => 'M3 3v18h18M7 15l4-4 3 3 5-6', 'children' => [
+        'daily'     => 'Daily Works Monitoring',
         'bonding'   => 'Shoe Bonding',
         'wholeshoe' => 'Whole Shoe',
         'materials' => 'Materials',
@@ -61,12 +62,12 @@ $inArchives = ($segment === 'dtr' && $activeTabParam === 'labtracker' && in_arra
             <?php if (! empty($item['children'])): ?>
                 <?php $grpOpen = in_array((string) $segment, $item['match'], true) || ! empty($item['openWhen']); $grpTab = (string) (service('request')->getGet('tab') ?? 'bonding'); $seg2 = (string) (service('uri')->getSegments()[1] ?? ''); ?>
                 <div class="nav-group" data-nav-group="<?= esc(strtolower($item['label']), 'attr') ?>">
-                    <button type="button" class="nav-link nav-group-toggle" data-current="<?= $grpOpen ? '1' : '0' ?>" aria-expanded="<?= $grpOpen ? 'true' : 'false' ?>" style="width:100%;background:none;border:0;text-align:left;font:inherit;cursor:pointer">
+                    <button type="button" class="nav-link nav-group-toggle" data-current="<?= $grpOpen ? '1' : '0' ?>" aria-expanded="false" style="width:100%;background:none;border:0;text-align:left;font:inherit;cursor:pointer">
                         <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="<?= esc($item['icon'], 'attr') ?>"/></svg>
                         <?= esc($item['label']) ?>
-                        <svg class="nav-chev" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="margin-left:auto;width:14px;height:14px;transition:transform .15s;<?= $grpOpen ? 'transform:rotate(90deg)' : '' ?>"><path d="M9 6l6 6-6 6"/></svg>
+                        <svg class="nav-chev" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="margin-left:auto;width:14px;height:14px;transition:transform .15s"><path d="M9 6l6 6-6 6"/></svg>
                     </button>
-                    <div class="nav-group-items" <?= $grpOpen ? '' : 'hidden' ?> style="margin:2px 0 4px 18px;padding-left:8px;border-left:1px solid rgba(148,163,184,0.25)">
+                    <div class="nav-group-items" hidden style="margin:2px 0 4px 18px;padding-left:8px;border-left:1px solid rgba(148,163,184,0.25)">
                         <?php foreach ($item['children'] as $ck => $cl): ?>
                             <?php if (is_array($cl)): // a child with its own page ?>
                                 <a href="<?= esc($cl['url'], 'attr') ?>" class="nav-link <?= (array_key_exists('active', $cl) ? $cl['active'] : ($grpOpen && (isset($cl['seg2']) ? $seg2 === $cl['seg2'] : (($seg2 === 'etrf') === (bool) ($cl['etrf'] ?? false))))) ? 'active' : '' ?>" style="padding:6px 12px;font-size:12.5px"><?= esc($cl['label']) ?></a>
@@ -90,7 +91,7 @@ $inArchives = ($segment === 'dtr' && $activeTabParam === 'labtracker' && in_arra
         <?php
         $testsOpen = in_array((string) $segment, ['materials', 'material-testing', 'wholeshoe', 'whole-shoe-test', 'test-summary', 'tests-summary', 'test-results'], true);
         ?>
-        <details class="side-group side-group-collapsible" data-grp="tests"<?= $testsOpen ? ' open data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
+        <details class="side-group side-group-collapsible" data-grp="tests"<?= $testsOpen ? ' data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
             <summary class="side-group-h" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer;list-style:none">
                 <span>Tests</span>
                 <svg class="side-group-c" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:14px;height:14px;transition:transform .15s ease-out" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
@@ -111,7 +112,7 @@ $inArchives = ($segment === 'dtr' && $activeTabParam === 'labtracker' && in_arra
 
         <!-- Lab Monitoring: Warehouse 3D Tracker & ERP Finish (Calendar Monitoring is in the main list above) -->
         <?php $monOpen = in_array((string) $segment, ['lab-monitoring', 'warehouse-tracker', 'warehouse'], true) || ($segment === 'dtr' && ($activeTabParam === 'tracker' || ($activeTabParam === 'labtracker' && ! $inArchives))) || $segment === 'thirdparty'; ?>
-        <details class="side-group side-group-collapsible" data-grp="labmon"<?= $monOpen ? ' open data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
+        <details class="side-group side-group-collapsible" data-grp="labmon"<?= $monOpen ? ' data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
             <summary class="side-group-h" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer;list-style:none">
                 <span>Lab Monitoring</span>
                 <svg class="side-group-c" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:14px;height:14px;transition:transform .15s ease-out" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
@@ -167,7 +168,7 @@ $inArchives = ($segment === 'dtr' && $activeTabParam === 'labtracker' && in_arra
         $labLinks = array_values(array_filter($labLinks, static fn ($l) => \App\Libraries\Roles::can($myRole, $labMod[$l['tab']] ?? 'dtr')));
         $labReportsOpen = ($segment === 'dtr' && ! in_array($activeTabParam, ['labtracker', 'tracker', 'calculators'], true));
         ?>
-        <details class="side-group side-group-collapsible" data-grp="labreports"<?= $labReportsOpen ? ' open data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
+        <details class="side-group side-group-collapsible" data-grp="labreports"<?= $labReportsOpen ? ' data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
             <summary class="side-group-h" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer;list-style:none">
                 <span>Lab Reports</span>
                 <svg class="side-group-c" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:14px;height:14px;transition:transform .15s ease-out" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
@@ -180,7 +181,7 @@ $inArchives = ($segment === 'dtr' && $activeTabParam === 'labtracker' && in_arra
             <?php endforeach ?>
         </details>
         <?php if ($can('dtr')): ?>
-        <details class="side-group side-group-collapsible" data-grp="archives"<?= $inArchives ? ' open data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
+        <details class="side-group side-group-collapsible" data-grp="archives"<?= $inArchives ? ' data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
             <summary class="side-group-h" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer;list-style:none">
                 <span>Archives</span>
                 <svg class="side-group-c" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:14px;height:14px;transition:transform .15s ease-out" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
@@ -251,7 +252,7 @@ $inArchives = ($segment === 'dtr' && $activeTabParam === 'labtracker' && in_arra
             $lgHere = $segment === 'labdocs' && ($labCode === '' ? $lgKey === 'lab' : in_array($labCode, array_column($lg['regs'], 'code'), true));
             $groupLimit = ($lgKey === 'other') ? $otherLimit : $labLimit;
         ?>
-        <details class="side-group" data-grp="<?= esc($lgKey, 'attr') ?>"<?= $lgHere ? ' open data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
+        <details class="side-group" data-grp="<?= esc($lgKey, 'attr') ?>"<?= $lgHere ? ' data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
             <summary class="side-group-h" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer;list-style:none">
                 <span><?= esc($lg['title']) ?> <span class="side-group-count" style="font-weight:600;opacity:.7">(<?= count($lg['regs']) ?>)</span></span>
                 <svg class="side-group-c" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:14px;height:14px;transition:transform .15s ease-out" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
@@ -290,18 +291,11 @@ $inArchives = ($segment === 'dtr' && $activeTabParam === 'labtracker' && in_arra
             html.side-collapsed .side-doc-no-match { display: none !important; }
         </style>
         <script>
-        /* each group opens and closes on its click and remembers it; the group of the page being viewed is always open */
+        /* All sidebar collapsible groups start collapsed on load */
         (function () {
           document.querySelectorAll('#sidebar .side-group').forEach(function (d) {
-            var k = 'nx.side.grp.' + d.dataset.grp, v = null;
-            try { v = localStorage.getItem(k); } catch (e) {}
-            if (!d.dataset.here) d.open = v === '1';
-            d.addEventListener('toggle', function () {
-              var sInput = document.getElementById('side-doc-search');
-              if (!sInput || !sInput.value.trim()) {
-                try { localStorage.setItem(k, d.open ? '1' : '0'); } catch (e) {}
-              }
-            });
+            try { localStorage.removeItem('nx.side.grp.' + d.dataset.grp); } catch (e) {}
+            d.open = false;
           });
         })();
 
@@ -503,16 +497,16 @@ $inArchives = ($segment === 'dtr' && $activeTabParam === 'labtracker' && in_arra
 })();
 </script>
 <script>
-// expandable sidebar groups (Analytics): the open / closed state is remembered per browser
+// expandable sidebar groups (InterLink, Analytics): always start collapsed
 document.querySelectorAll('.nav-group').forEach(function (g) {
   var btn = g.querySelector('.nav-group-toggle'), box = g.querySelector('.nav-group-items'), chev = g.querySelector('.nav-chev');
   var key = 'nav-group-' + g.dataset.navGroup;
+  try { localStorage.removeItem(key); } catch (e) {}
   var set = function (open) {
     box.hidden = !open; btn.setAttribute('aria-expanded', open ? 'true' : 'false');
     chev.style.transform = open ? 'rotate(90deg)' : '';
-    try { localStorage.setItem(key, open ? '1' : '0'); } catch (e) {}
   };
-  try { var saved = localStorage.getItem(key); if (saved !== null && btn.dataset.current !== '1') set(saved === '1'); } catch (e) {}
+  set(false);
   btn.addEventListener('click', function () { set(box.hidden); });
   // collapsed sidebar: the sub-menu is a flyout next to the icon
   var root = document.documentElement, t;

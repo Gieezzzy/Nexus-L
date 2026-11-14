@@ -87,3 +87,15 @@
   .apv-next { flex: 1 1 100%; justify-content: center; }
   .apv-sheet { padding: 8px; }
 }
+
+/* one approver at a time */
+.apv-lock{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:10px;margin:0 0 12px;font-size:13px;line-height:1.45}
+.apv-lock[hidden]{display:none}
+.apv-lock.holder{background:#ecfdf5;border:1px solid #6ee7b7;color:#065f46}
+.apv-lock.waiting{background:#fff7ed;border:1px solid #fdba74;color:#9a3412}
+.apv-lock-list{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.apv-lock-row{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff;border:1px solid #d1fae5;border-radius:8px;padding:6px 8px;color:#0f172a}
+.apv-lock-row small{color:#64748b}
+.apv-lock small{color:inherit;opacity:.85}
+.apv-sign.apv-locked .apv-pad{opacity:.45}
+.apv-sign.apv-locked .apv-actions{opacity:.5}

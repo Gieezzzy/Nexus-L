@@ -11,11 +11,17 @@ class WarehouseTrackerController extends BaseController
         return \Config\Database::connect();
     }
 
+    /** Admin or Warehouse PIC: everything in the warehouse (register, edit, transfer, dispose, delete boxes) */
+    private static function canManage(): bool
+    {
+        return \App\Libraries\Roles::canManage((string) (service('auth')->user()['role'] ?? ''), 'warehouse');
+    }
+
     /** Main 3D Warehouse Tracker View */
     public function index(): string
     {
         $user = service('auth')->user();
-        $isAdmin = \App\Libraries\Roles::isAdmin((string) ($user['role'] ?? ''));
+        $isAdmin = self::canManage();   // Admin or Warehouse PIC: register, edit, transfer, dispose and delete boxes
 
         return $this->render('warehouse/index', [
             'title'       => 'Warehouse 3D Tracker',
@@ -220,10 +226,10 @@ class WarehouseTrackerController extends BaseController
     public function saveBox(): ResponseInterface
     {
         $user = service('auth')->user();
-        if (! \App\Libraries\Roles::isAdmin((string) ($user['role'] ?? ''))) {
+        if (! self::canManage()) {
             return $this->response->setStatusCode(403)->setJSON([
                 'ok'    => false,
-                'error' => 'Permission denied. Only Administrators can add or edit warehouse boxes.',
+                'error' => 'Permission denied. Only the Warehouse PIC and Administrators can add or edit warehouse boxes.',
             ]);
         }
 
@@ -277,8 +283,23 @@ class WarehouseTrackerController extends BaseController
 
         $db = $this->db();
         if ($id > 0) {
+            $before = $db->table('tbl_warehouse_boxes')->where('id', $id)->get()->getRowArray();
+            if (! $before) {
+                return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'error' => 'That box no longer exists.']);
+            }
+            unset($data['created_by']);   // the person who registered the box stays
             $db->table('tbl_warehouse_boxes')->where('id', $id)->update($data);
             $msg = 'Box updated successfully.';
+            // what changed, in words: a new place is a transfer
+            $changes = [];
+            foreach ($data as $k => $v) {
+                if ((string) ($before[$k] ?? '') !== (string) $v) {
+                    $changes[] = $k . ': ' . ($before[$k] ?? '') . ' -> ' . $v;
+                }
+            }
+            $moved = ($before['rack_id'] ?? '') !== $data['rack_id'] || (int) ($before['tier_level'] ?? 0) !== $data['tier_level'] || (int) ($before['slot_index'] ?? 0) !== $data['slot_index'];
+            \App\Libraries\ActivityLog::record('warehouse', $moved ? 'transfer-box' : 'edit-box', $data['box_code'] . ' ' . $label,
+                ($moved ? 'From ' . ($before['rack_name'] ?? '') . ' tier ' . ($before['tier_level'] ?? '') . ' slot ' . ($before['slot_index'] ?? '') . ' to ' . $rackName . ' tier ' . $data['tier_level'] . ' slot ' . $data['slot_index'] . '. ' : '') . implode('; ', $changes));
         } else {
             $exists = $db->table('tbl_warehouse_boxes')->where('box_code', $boxCode)->countAllResults();
             if ($exists > 0) {
@@ -288,6 +309,7 @@ class WarehouseTrackerController extends BaseController
             $db->table('tbl_warehouse_boxes')->insert($data);
             $id = $db->insertID();
             $msg = 'New box added to warehouse successfully.';
+            \App\Libraries\ActivityLog::record('warehouse', 'register-box', $boxCode . ' ' . $label, $rackName . ' tier ' . $data['tier_level'] . ' slot ' . $data['slot_index'] . ', ' . $category . ', ' . $data['month_year']);
         }
 
         $saved = $db->table('tbl_warehouse_boxes')->where('id', $id)->get()->getRowArray();
@@ -302,26 +324,32 @@ class WarehouseTrackerController extends BaseController
     /** API: Delete or Dispose Box (Admin Only) */
     public function deleteBox(): ResponseInterface
     {
-        $user = service('auth')->user();
-        if (! \App\Libraries\Roles::isAdmin((string) ($user['role'] ?? ''))) {
+        if (! self::canManage()) {
             return $this->response->setStatusCode(403)->setJSON([
                 'ok'    => false,
-                'error' => 'Permission denied. Only Administrators can delete boxes.',
+                'error' => 'Permission denied. Only the Warehouse PIC and Administrators can remove or delete boxes.',
             ]);
         }
 
         $id = (int) ($this->request->getPost('id') ?? 0);
-        $hard = (bool) ($this->request->getPost('hard_delete') ?? false);
+        $hard = filter_var($this->request->getPost('hard_delete') ?? false, FILTER_VALIDATE_BOOLEAN);
 
         $db = $this->db();
+        $box = $db->table('tbl_warehouse_boxes')->where('id', $id)->get()->getRowArray();
+        if (! $box) {
+            return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'error' => 'That box no longer exists.']);
+        }
+        $what = ($box['box_code'] ?? '') . ' ' . ($box['label'] ?? '');
         if ($hard) {
             $db->table('tbl_warehouse_boxes')->where('id', $id)->delete();
             $msg = 'Box permanently removed.';
+            \App\Libraries\ActivityLog::deleted('warehouse', $what, 'Was at ' . ($box['rack_name'] ?? '') . ' tier ' . ($box['tier_level'] ?? '') . ' slot ' . ($box['slot_index'] ?? '') . '. Record: ' . json_encode($box, JSON_UNESCAPED_UNICODE), 'Warehouse box permanently deleted');
         } else {
             $db->table('tbl_warehouse_boxes')->where('id', $id)->update([
                 'status' => 'FOR_DISPOSAL',
             ]);
             $msg = 'Box marked as For Disposal.';
+            \App\Libraries\ActivityLog::record('warehouse', 'dispose-box', $what, 'Status ' . ($box['status'] ?? '') . ' -> FOR_DISPOSAL');
         }
 
         return $this->response->setJSON([

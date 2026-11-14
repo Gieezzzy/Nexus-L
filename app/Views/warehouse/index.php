@@ -55,7 +55,7 @@ $isAdmin = $isAdmin ?? false;
             <?php if ($isAdmin): ?>
                 <button type="button" class="wh-btn-admin" id="wh-btn-open-admin">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                    <span>Manage Boxes (Admin)</span>
+                    <span>Manage Boxes</span>
                 </button>
                 <button type="button" class="wh-btn-glass" id="wh-btn-hide-view" aria-pressed="false" title="Hide the 3D warehouse and encode the boxes right here: register a box and place it in the warehouse">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.9 17.9A10.9 10.9 0 0112 20c-7 0-11-8-11-8a18.5 18.5 0 015.1-5.9M9.9 4.2A9.1 9.1 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.2 3.2M1 1l22 22"/></svg>
@@ -464,7 +464,7 @@ $isAdmin = $isAdmin ?? false;
     <aside class="wh-glass wh-admin-drawer" id="wh-admin-drawer" role="dialog" aria-modal="true" aria-labelledby="wh-admin-drawer-title" aria-hidden="true">
         <header class="wh-ad-head">
             <div>
-                <span class="wh-ad-badge">Admin Controls</span>
+                <span class="wh-ad-badge">Warehouse PIC &amp; Admin</span>
                 <h3 id="wh-admin-drawer-title">Manage Retain Boxes &amp; Locations</h3>
                 <p>Insert, edit or re-assign specimen retention boxes across Racks 1–4</p>
             </div>

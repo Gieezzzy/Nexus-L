@@ -51,7 +51,7 @@ class VfTestRequestController extends BaseController
         return $this->render('labmonitor/vf_requests', [
             'title'    => 'VF Test Monitoring',
             'withCss'  => 'labmon.css',
-            'withJs'   => ['vf_requests.js'],
+            'withJs'   => ['vf_requests.js', 'vf_monitor_tabs.js'],
             'packages' => array_keys(VfTestRequestService::PACKAGES),
         ]);
     }
@@ -853,13 +853,17 @@ class VfTestRequestController extends BaseController
     public function monitoringData()
     {
         $this->svc()->ensureTables();
-        $link = $this->svc()->linkExistingApplications();   // tests that already exist in InterLink take their Application No. (and the PDF that was e-mailed earlier)
         $db    = $this->db();
         $pkg   = trim((string) ($this->request->getGet('package') ?? ''));
         $stage = trim((string) ($this->request->getGet('stage') ?? ''));
         $q     = trim((string) ($this->request->getGet('q') ?? ''));
-
-        $this->svc()->reconcileOutbox();
+        $link  = ['linked' => 0];
+        // the upkeep below runs on the plain list load / refresh, not on every search keystroke or filter change
+        if ($q === '' && $pkg === '' && $stage === '') {
+            $this->svc()->syncIfNew();                            // a new Outlook e-mail is read at once, not at the next scheduled run
+            $link = $this->svc()->linkExistingApplications();   // tests that already exist in InterLink take their Application No. (and the PDF that was e-mailed earlier)
+            $this->svc()->reconcileOutbox();
+        }
         \App\Libraries\MailOutbox::ensureTable();
         $qb = $db->table('tbl_vf_test_requests r')
             ->select('o.status AS outbox_status, o.last_error AS outbox_error, o.attempts AS outbox_attempts, r.*, b.source_channel AS source_channel, b.subject AS batch_subject, b.sender_email AS batch_sender, b.item_count AS batch_item_count, b.submitted_count AS batch_submitted_count, b.email_sent AS batch_email_sent, b.email_sent_at AS batch_email_sent_at, b.auto_send_email AS batch_auto_send')
@@ -882,9 +886,163 @@ class VfTestRequestController extends BaseController
                 ->groupEnd();
         }
         $rows = $qb->orderBy('r.id', 'DESC')->limit(1500)->get()->getResultArray();
-        $batches = $db->table('tbl_vf_email_batches')->where('source_channel !=', 'excel_import')->orderBy('id', 'DESC')->limit(50)->get()->getResultArray();
+        // every column but the e-mail's raw HTML (up to 2 MB for 50 e-mails, sent again on each keystroke); the mail view loads it by itself
+        $bcols   = array_values(array_diff($db->getFieldNames('tbl_vf_email_batches'), ['raw_html']));
+        $batches = $db->table('tbl_vf_email_batches')->select(implode(', ', $bcols))->where('source_channel !=', 'excel_import')->orderBy('id', 'DESC')->limit(50)->get()->getResultArray();
 
         return $this->json(['ok' => true, 'rows' => $rows, 'batches' => $batches, 'sync_health' => $this->syncHealth(), 'linked' => $link]);
+    }
+
+    // ---------------------------------------------------------------- Transit Monitoring / Request Material Monitoring
+
+    /** GET lab-monitoring/vf-requests/transit : the shipments (tracking numbers) with their requests, what is due and what changed */
+    public function transitData()
+    {
+        (new \App\Libraries\VfTestRequestService())->syncIfNew();
+        return $this->json(['ok' => true] + (new \App\Libraries\VfTransitService())->listShipments());
+    }
+
+    /** POST .../transit/check {shipment_id, status_text, event_at?, delivered?} : what the person saw on the SF page */
+    public function transitCheck()
+    {
+        $p   = $this->request->getJSON(true) ?? [];
+        $me  = (array) service('auth')->user();
+        $res = (new \App\Libraries\VfTransitService())->recordCheck((int) ($p['shipment_id'] ?? 0), (string) ($p['status_text'] ?? ''), (string) ($p['event_at'] ?? '') ?: null, ! empty($p['delivered']), (string) ($me['name'] ?? $me['username'] ?? ''));
+
+        return $this->json($res, ! empty($res['ok']) ? 200 : 422);
+    }
+
+    /** POST .../transit/ack {shipment_id} : the update was seen */
+    public function transitAck()
+    {
+        $p = $this->request->getJSON(true) ?? [];
+        (new \App\Libraries\VfTransitService())->acknowledge((int) ($p['shipment_id'] ?? 0));
+
+        return $this->json(['ok' => true]);
+    }
+
+    /** POST .../transit/email-preview {shipment_id, item_ids[], to?, cc?, subject?} */
+    public function transitEmailPreview()
+    {
+        $p   = $this->request->getJSON(true) ?? [];
+        $kc  = new \App\Libraries\VfKcService();
+        $sid = (int) ($p['shipment_id'] ?? 0);
+        if ($kc->isKcShipment($sid)) {
+            $res = $kc->transitMail($sid, (array) ($p['item_ids'] ?? []), $this->transitMailOpts($p), (array) ($p['extra_files'] ?? []));
+            unset($res['attachments']);
+
+            return $this->json($res, ! empty($res['ok']) ? 200 : 422);
+        }
+        $res = (new \App\Libraries\VfTransitService())->buildEmail($sid, (array) ($p['item_ids'] ?? []), $this->transitMailOpts($p));
+
+        return $this->json($res, ! empty($res['ok']) ? 200 : 422);
+    }
+
+    /** GET .../kc/docs/<batch id> : the editable data of the KC Invoice + Packing List */
+    public function kcDocs(int $batchId)
+    {
+        $kc = new \App\Libraries\VfKcService();
+
+        return $this->json(['ok' => true, 'docs' => $kc->docs($batchId), 'sample' => \App\Libraries\VfKcService::sampleLines('')]);
+    }
+
+    /** POST .../kc/docs-save {batch_id, invoice_no, date, lines[], ...} */
+    public function kcDocsSave()
+    {
+        $p   = $this->request->getJSON(true) ?? [];
+        $res = (new \App\Libraries\VfKcService())->save((int) ($p['batch_id'] ?? 0), $p);
+
+        return $this->json($res, ! empty($res['ok']) ? 200 : 422);
+    }
+
+    /** GET lab-monitoring/vf-requests/export-summary : the CPSIA / KC / RSL / GB summary workbook of every request */
+    public function exportSummary()
+    {
+        $x = \App\Libraries\VfSummaryExport::build();
+
+        return $this->response->setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . $x['filename'] . '"')->setBody($x['data']);
+    }
+
+    /** GET .../kc/xlsx/<batch id>/<invoice|packing> : the generated workbook (opens in Excel, formulas live) */
+    public function kcXlsx(int $batchId, string $kind)
+    {
+        foreach ((new \App\Libraries\VfKcService())->files($batchId) as $f) {
+            if ($f['kind'] === $kind) {
+                return $this->response->setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                    ->setHeader('Content-Disposition', 'attachment; filename="' . $f['filename'] . '"')->setBody($f['data']);
+            }
+        }
+
+        return $this->response->setStatusCode(404)->setBody('No such file.');
+    }
+
+    /** POST .../kc/proceed {batch_id, tracking_no?, request_ids?} : the receiver answered; the batch goes to Transit Monitoring */
+    public function kcProceed()
+    {
+        $p   = $this->request->getJSON(true) ?? [];
+        $res = (new \App\Libraries\VfKcService())->proceed((int) ($p['batch_id'] ?? 0), (string) ($p['tracking_no'] ?? ''), array_map('intval', (array) ($p['request_ids'] ?? [])));
+
+        return $this->json($res, ! empty($res['ok']) ? 200 : 422);
+    }
+
+    /** POST .../kc/lab-received {shipment_id} : trigger - KOTITI received the specimens */
+    public function kcLabReceived()
+    {
+        $p   = $this->request->getJSON(true) ?? [];
+        $me  = (array) service('auth')->user();
+        $res = (new \App\Libraries\VfKcService())->labReceived((int) ($p['shipment_id'] ?? 0), (string) ($me['name'] ?? $me['username'] ?? ''));
+
+        return $this->json($res, ! empty($res['ok']) ? 200 : 422);
+    }
+
+    /** POST .../transit/send-email {shipment_id, item_ids[], to, cc, subject} */
+    public function transitEmailSend()
+    {
+        $p   = $this->request->getJSON(true) ?? [];
+        $me  = (array) service('auth')->user();
+        $kc  = new \App\Libraries\VfKcService();
+        if ($kc->isKcShipment((int) ($p['shipment_id'] ?? 0))) {
+            $res = $kc->sendTransitMail((int) ($p['shipment_id'] ?? 0), (array) ($p['item_ids'] ?? []), $this->transitMailOpts($p), (array) ($p['extra_files'] ?? []));
+
+            return $this->json($res, ! empty($res['ok']) ? 200 : 422);
+        }
+        $res = (new \App\Libraries\VfTransitService())->sendEmail((int) ($p['shipment_id'] ?? 0), (array) ($p['item_ids'] ?? []), $this->transitMailOpts($p), (int) ($me['id'] ?? 0));
+
+        return $this->json($res, ! empty($res['ok']) ? 200 : 422);
+    }
+
+    private function transitMailOpts(array $p): array
+    {
+        $o = [];
+        foreach (['to', 'cc', 'subject', 'tracking_no'] as $k) {
+            if (array_key_exists($k, $p)) {
+                $o[$k] = trim((string) $p[$k]);
+            }
+        }
+
+        return $o;
+    }
+
+    /** GET lab-monitoring/vf-requests/material?status=&q=&package= : every request with its overall status */
+    public function materialData()
+    {
+        (new \App\Libraries\VfTestRequestService())->syncIfNew();
+        $svc = new \App\Libraries\VfTransitService();
+
+        return $this->json(['ok' => true] + $svc->materialRows(trim((string) $this->request->getGet('status')), trim((string) $this->request->getGet('q')), trim((string) $this->request->getGet('package'))));
+    }
+
+    /** GET lab-monitoring/vf-requests/completion-email/<request id> : the e-mail the report (certificate) came in */
+    public function completionEmail(int $id)
+    {
+        (new \App\Libraries\VfTransitService())->ensureTables();
+        $r = $this->db()->table('tbl_vf_test_requests')->select('prod_code, mtl_no, generated_application_no, lab_report_no, test_result, cert_email_subject, cert_email_body, cert_email_at, certificate_pdf_name, fail_reason, expected_due_remark')->where('id', $id)->get(1)->getRowArray();
+        if (! $r || ($r['cert_email_subject'] === '' && (string) $r['fail_reason'] === '')) {
+            return $this->json(['ok' => false, 'error' => 'No e-mail was kept for this request yet.'], 404);
+        }
+
+        return $this->json(['ok' => true, 'mail' => $r]);
     }
 
     /** POST lab-monitoring/vf-requests/send-email */

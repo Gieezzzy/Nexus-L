@@ -55,9 +55,40 @@ class NexusStore extends ChatStore
         return ['{M}' => 'tbl_Messages', '{S}' => 'SingleUserMessage', '{G}' => 'tbl_groupmessage'];
     }
 
+    protected function supportsNexusCols(): bool
+    {
+        return true;
+    }
+
+    protected function encryptForStore(string $plain, string $cv): string
+    {
+        return \App\Libraries\RmsCrypto::encryptNexus($plain, $cv);
+    }
+
+    protected function decryptFromStore(?string $text, string $cv): string
+    {
+        return (string) \App\Libraries\RmsCrypto::decryptAny($text, $cv);
+    }
+
+    protected function memberMatchClause(string $col = 'members'): string
+    {
+        return "CONCAT(';', COALESCE({$col}, ''), ';') LIKE ?";
+    }
+
+    public function touchPresence(string $me): void
+    {
+        if (ctype_digit($me)) {
+            try {
+                $this->exec('UPDATE tbl_users SET LastSeenAt = ? WHERE UserID = ?', [self::now(), (int) $me]);
+            } catch (\Throwable $e) {
+                // non-blocking
+            }
+        }
+    }
+
     protected function extraCols(): string
     {
-        return ', FileName, FileSize, FileType';
+        return ', FileName, FileSize, FileType, COALESCE(IsUnsent, 0) AS IsUnsent, ExpiresAt, DeletedFor';
     }
 
     protected function imageWhere(): string
@@ -72,24 +103,24 @@ class NexusStore extends ChatStore
 
     protected function insertSql(array $att): string
     {
-        return "INSERT INTO {M} (TargetReferenceID, SenderID, MessageContent, IsSyncedToSynology, ReceiverID, ConnectedID, IsGroup, SingleID, IsRead, DateSent, FilePath, FileName, FileSize, FileType)
-                VALUES ('WEB', ?, ?, 0, ?, '0', 'No', ?, 0, ?, ?, ?, ?, ?)";
+        return "INSERT INTO {M} (TargetReferenceID, SenderID, MessageContent, IsSyncedToSynology, ReceiverID, ConnectedID, IsGroup, SingleID, IsRead, DateSent, FilePath, FileName, FileSize, FileType, ExpiresAt)
+                VALUES ('WEB', ?, ?, 0, ?, '0', 'No', ?, 0, ?, ?, ?, ?, ?, ?)";
     }
 
     protected function insertParams(string $me, string $peer, string $cv, string $stored, array $att): array
     {
-        return [$me, $stored, $peer, $cv, self::now(), $att['path'] ?? null, $att['name'] ?? null, $att['size'] ?? null, $att['type'] ?? null];
+        return [$me, $stored, $peer, $cv, self::now(), $att['path'] ?? null, $att['name'] ?? null, $att['size'] ?? null, $att['type'] ?? null, $att['expiresAt'] ?? null];
     }
 
     protected function insertGroupSql(array $att): string
     {
-        return "INSERT INTO {M} (TargetReferenceID, SenderID, MessageContent, IsSyncedToSynology, ReceiverID, ConnectedID, IsGroup, GroupID, IsRead, DateSent, FilePath, FileName, FileSize, FileType)
-                VALUES ('WEB', ?, ?, 0, ?, '0', 'Yes', ?, 0, ?, ?, ?, ?, ?)";
+        return "INSERT INTO {M} (TargetReferenceID, SenderID, MessageContent, IsSyncedToSynology, ReceiverID, ConnectedID, IsGroup, GroupID, IsRead, DateSent, FilePath, FileName, FileSize, FileType, ExpiresAt)
+                VALUES ('WEB', ?, ?, 0, ?, '0', 'Yes', ?, 0, ?, ?, ?, ?, ?, ?)";
     }
 
     protected function insertGroupParams(string $me, string $groupId, string $stored, array $att): array
     {
-        return [$me, $stored, $groupId, $groupId, self::now(), $att['path'] ?? null, $att['name'] ?? null, $att['size'] ?? null, $att['type'] ?? null];
+        return [$me, $stored, $groupId, $groupId, self::now(), $att['path'] ?? null, $att['name'] ?? null, $att['size'] ?? null, $att['type'] ?? null, $att['expiresAt'] ?? null];
     }
 
     public function createGroupRecord(string $creator, string $name, array $members, string $policies, ?string $pic = null): int
@@ -131,9 +162,14 @@ class NexusStore extends ChatStore
 
     private function shapePerson(array $r): array
     {
+        $lastSeen = trim((string) ($r['LastSeenAt'] ?? ''));
+        $online   = $lastSeen !== '' && (time() - strtotime($lastSeen)) <= 120;
+        $uid      = (int) ($r['UserID'] ?? 0);
+        $avatar   = \App\Models\UserModel::avatarUrl($r['Avatar'] ?? null, $uid);
+
         return [
-            'id' => (string) $r['UserID'], 'name' => (string) $r['FullName'], 'username' => (string) $r['Username'],
-            'online' => false, 'avatar' => null, 'src' => 'n', 'dept' => (string) ($r['Department'] ?? ''), 'synologyId' => $r['SynologyID'] ?? null,
+            'id' => (string) $r['UserID'], 'name' => (string) $r['FullName'], 'username' => (string) ($r['Username'] ?? ''),
+            'online' => $online, 'avatar' => $avatar, 'src' => 'n', 'dept' => (string) ($r['Department'] ?? ''), 'synologyId' => $r['SynologyID'] ?? null,
         ];
     }
 
@@ -147,7 +183,7 @@ class NexusStore extends ChatStore
                 'online' => true, 'avatar' => null, 'src' => 'n', 'dept' => $b[1], 'synologyId' => null,
             ];
         }
-        $r = $this->run('SELECT UserID, FullName, Username, Department, SynologyID FROM tbl_users WHERE UserID = ? AND IsActive = 1', [(int) $id])[0] ?? null;
+        $r = $this->run('SELECT UserID, FullName, Username, Department, Avatar, SynologyID, LastSeenAt FROM tbl_users WHERE UserID = ? AND IsActive = 1', [(int) $id])[0] ?? null;
 
         return $r === null ? null : $this->shapePerson($r);
     }
@@ -157,7 +193,7 @@ class NexusStore extends ChatStore
         $like = '%' . addcslashes($q, '%_\\') . '%';
 
         return array_map([$this, 'shapePerson'], $this->run(
-            'SELECT UserID, FullName, Username, Department, SynologyID FROM tbl_users WHERE IsActive = 1 AND UserID <> ? AND (FullName LIKE ? OR Username LIKE ?) ORDER BY FullName LIMIT 10',
+            'SELECT UserID, FullName, Username, Department, Avatar, SynologyID, LastSeenAt FROM tbl_users WHERE IsActive = 1 AND UserID <> ? AND (FullName LIKE ? OR Username LIKE ?) ORDER BY FullName LIMIT 10',
             [(int) $me, $like, $like],
         ));
     }
@@ -174,7 +210,7 @@ class NexusStore extends ChatStore
         }
 
         return array_map([$this, 'shapePerson'], $this->run(
-            "SELECT UserID, FullName, Username, Department, SynologyID FROM tbl_users WHERE IsActive = 1 AND UserID <> ?{$where} ORDER BY FullName LIMIT {$limit}",
+            "SELECT UserID, FullName, Username, Department, Avatar, SynologyID, LastSeenAt FROM tbl_users WHERE IsActive = 1 AND UserID <> ?{$where} ORDER BY FullName LIMIT {$limit}",
             $params,
         ));
     }
@@ -192,7 +228,7 @@ class NexusStore extends ChatStore
             return $out;
         }
         $in = implode(',', $numIds);
-        foreach ($this->run("SELECT UserID, FullName, Username, Department, SynologyID FROM tbl_users WHERE UserID IN ({$in})") as $r) {
+        foreach ($this->run("SELECT UserID, FullName, Username, Department, Avatar, SynologyID, LastSeenAt FROM tbl_users WHERE UserID IN ({$in})") as $r) {
             $out[(string) $r['UserID']] = $this->shapePerson($r);
         }
 

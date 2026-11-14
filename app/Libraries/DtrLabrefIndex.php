@@ -88,6 +88,31 @@ class DtrLabrefIndex
         }
         $t   = $db->table('tbl_dtr_unified_labrefs');
         $has = $t->where('source_table', $data['source_table'])->where('source_id', $recordId)->get()->getRowArray();
+        if (! $has) {
+            // no row for this record id: reuse the row already indexed under the same Lab Ref No (never a second copy of one Lab Ref)
+            $has = $db->table('tbl_dtr_unified_labrefs')->where('source_table', $data['source_table'])->where('lab_ref_no', $data['lab_ref_no'])->orderBy('id', 'DESC')->get(1)->getRowArray();
+        }
+        $has ? $db->table('tbl_dtr_unified_labrefs')->where('id', $has['id'])->update($data) : $db->table('tbl_dtr_unified_labrefs')->insert($data);
+    }
+
+    /** Pull test (HP / EY / DR / RVT): its row of tbl_dtr_pull_tests as an index row, form_slug 'pulltest' (Pending until a result is recorded). */
+    public static function upsertPullTest($db, int $pullInfoId, array $r): void
+    {
+        $ref = trim((string) ($r['LabRefNo'] ?? ''));
+        if ($ref === '') {
+            return;
+        }
+        $res  = strtoupper(trim((string) ($r['Result'] ?? '')));
+        $data = [
+            'lab_ref_no' => $ref, 'tr_no' => '', 'form_category' => 'Pull Test', 'form_slug' => 'pulltest', 'interlink_sample_type' => '',
+            'source_table' => 'tbl_dtr_pull_tests', 'source_id' => $pullInfoId, 'material_type' => (string) ($r['TestType'] ?? ''), 'material_code' => '',
+            'material_description' => (string) ($r['TestType'] ?? ''), 'supplier' => '', 'model_style' => (string) ($r['ModelStyle'] ?? ''), 'color' => (string) ($r['Color'] ?? ''),
+            'po_lot_no' => (string) ($r['ProductionCode'] ?? ''), 'mtl_no' => (string) ($r['MTL'] ?? ''), 'received_date' => self::date($r['CollectionDate'] ?? ''),
+            'tested_date' => self::date($r['TestedDate'] ?? ''), 'finished_date' => '', 'technician' => (string) ($r['Technician'] ?? ''),
+            'status' => $res === '' ? 'Pending' : 'Complete',
+            'overall_result' => $res === '' ? '' : (str_starts_with($res, 'FAIL') ? 'Fail' : (str_starts_with($res, 'TOL') ? 'Tolerable' : 'Pass')),
+        ];
+        $has = $db->table('tbl_dtr_unified_labrefs')->where('source_table', 'tbl_dtr_pull_tests')->where('source_id', $pullInfoId)->get()->getRowArray();
         $has ? $db->table('tbl_dtr_unified_labrefs')->where('id', $has['id'])->update($data) : $db->table('tbl_dtr_unified_labrefs')->insert($data);
     }
 
@@ -140,6 +165,20 @@ class DtrLabrefIndex
         return $n;
     }
 
+    /** BondingTestID => Result of tbl_dtr_bonding_points, read once (the table has no index on BondingTestID). */
+    public static function pointsResults($db): array
+    {
+        static $map = null;
+        if ($map === null) {
+            $map = [];
+            foreach ($db->query("SELECT BondingTestID, Result FROM tbl_dtr_bonding_points WHERE Result IS NOT NULL AND Result <> ''")->getResultArray() as $p) {
+                $map[(int) $p['BondingTestID']] = (string) $p['Result'];
+            }
+        }
+
+        return $map;
+    }
+
     /** Index rows for reports that have none yet (records that arrived from Access). Returns how many were added. */
     public static function addMissing($db, bool $dry = false): int
     {
@@ -153,7 +192,7 @@ class DtrLabrefIndex
                 . '(SELECT 1 FROM tbl_dtr_unified_labrefs u WHERE u.source_table = ? AND u.source_id = r.`' . $pk . '`)', [$cfg['table']])->getResultArray();
             foreach ($rows as $r) {
                 if ($slug === 'bonding' && trim((string) ($r['Result'] ?? '')) === '') {
-                    $r['Result'] = $db->table('tbl_dtr_bonding_points')->select('Result')->where('BondingTestID', $r[$pk])->get()->getRow()->Result ?? '';
+                    $r['Result'] = self::pointsResults($db)[(int) $r[$pk]] ?? '';
                 }
                 $dry || self::upsert($db, $slug, (int) $r[$pk], $r);
                 $n++;

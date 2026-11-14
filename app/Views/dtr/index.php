@@ -37,7 +37,7 @@ $labThumb  = static function (string $tab, string $ref) use ($labImg): string {
         return '';
     }
 
-    return '<span class="bs-thumb-wrap" title="Open the report picture (circle / highlight / stamp)"><img class="bs-thumb" src="' . esc(site_url('dtr/bonding-image') . '?tab=' . $tab . '&lab_ref=' . rawurlencode($ref), 'attr') . '" data-lab-ref="' . esc($ref, 'attr') . '" data-tab="' . $tab . '" alt="" loading="lazy" onerror="this.parentNode.classList.add(\'none\')"><i class="bs-thumb-ph"></i></span> ';
+    return '<span class="bs-thumb-wrap" title="Open the report picture (circle / highlight / stamp)"><img class="bs-thumb" src="' . esc(site_url('dtr/bonding-image') . '?thumb=1&tab=' . $tab . '&lab_ref=' . rawurlencode($ref), 'attr') . '" data-lab-ref="' . esc($ref, 'attr') . '" data-tab="' . $tab . '" alt="" loading="lazy" onerror="window.bsThumbErr?window.bsThumbErr(this):this.parentNode.classList.add(\'none\')"><i class="bs-thumb-ph"></i></span> ';
 };
 $totalTol = $totalTol ?? 0;
 $standardMatTypes = $standardMatTypes ?? [];
@@ -120,6 +120,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
         <button type="button" id="btn-dtr-print-preview" class="dtr-btn dtr-btn-purple" title="View, print or save the official test report sheet">
             <svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg> Print / Preview Report
         </button>
+        <?= view('dtr/_send_menu') ?>
         <button type="button" id="btn-dtr-save" class="dtr-btn dtr-btn-primary">
             <svg class="ic" aria-hidden="true"><use href="#i-save"/></svg> Save Report to NEXUS-L
         </button>
@@ -130,34 +131,12 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
             <option value="pull">+ Pull Test Report</option>
         </select>
         <button type="button" id="btn-bond-recalc" class="dtr-btn dtr-btn-outline">
-            <svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg> <span id="btn-bond-recalc-txt">Recalculate Spots &amp; Result</span>
+            <svg class="ic" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> <span id="btn-bond-recalc-txt">Edit</span>
         </button>
         <button type="button" id="btn-bond-print-preview" class="dtr-btn dtr-btn-purple" title="View, print or save the official report sheet">
             <svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg> Print / Preview Report
         </button>
-        <div class="dtr-send-dropdown-wrap">
-            <button type="button" id="btn-bond-send-report" class="dtr-btn dtr-btn-outline dtr-send-btn" title="Send report via Synology Chat or Email">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-                <span>Send report</span>
-                <svg class="dtr-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-            </button>
-            <div class="dtr-send-dropdown-menu" id="dtr-send-menu">
-                <button type="button" class="dtr-send-dropdown-item" id="btn-open-synology-modal">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#0284c7"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                    <div>
-                        <strong>Send Synology</strong>
-                        <small>Send to Synology Chat channel with report image</small>
-                    </div>
-                </button>
-                <button type="button" class="dtr-send-dropdown-item" id="btn-open-email-modal">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#ea580c"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
-                    <div>
-                        <strong>Send Email</strong>
-                        <small>Send formal notification via email</small>
-                    </div>
-                </button>
-            </div>
-        </div>
+        <?= view('dtr/_send_menu') ?>
         <?php if (! empty($dtrIsAdmin)): ?>
         <a id="btn-bond-designer" class="dtr-btn dtr-btn-outline dtr-only-bonding" href="<?= site_url('designer') ?>?tab=diagram" title="Admin only: place the points on the shoe, hide or add fields">
             <svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg> Adjust shoe points / layout (admin)
@@ -171,6 +150,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
         <button type="button" id="btn-ws-preview" class="dtr-btn dtr-btn-purple" title="View, print or save the Whole Footwear Test Results sheet">
             <svg class="ic" aria-hidden="true"><use href="#i-printer"/></svg> Print / Preview Report
         </button>
+        <?= view('dtr/_send_menu') ?>
         <button type="button" id="btn-ws-save" class="dtr-btn dtr-btn-primary">
             <svg class="ic" aria-hidden="true"><use href="#i-save"/></svg> Save Report
         </button>
@@ -229,10 +209,9 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
 <section id="dtr-panel-labtracker" class="dtr-panel <?= $activeTab === 'labtracker' ? '' : 'hidden' ?>">
     <!-- IQC Container & Material Receiving Log (tbl_dtr_containers & tbl_dtr_materials_master) -->
     <?php
-    $subTab = in_array($subTab ?? '', ['containers', 'materials', 'bonding', 'shoes', 'bench', 'erp', 'cfa', 'schedule', 'failed'], true) ? $subTab : 'bonding';
+    $subTab = in_array($subTab ?? '', ['containers', 'materials', 'bonding', 'shoes', 'erp', 'cfa', 'schedule', 'failed'], true) ? $subTab : 'bonding';
     $archiveTitles = [
         'materials' => 'IQC Materials Master Queue',
-        'bench'     => 'Material Bench Log (' . number_format((int) ($benchTotal ?? 0)) . ')',
         'erp'       => 'ERP Test Orders (' . number_format((int) ($erpTotal ?? 0)) . ')',
         'cfa'       => 'CFA & CAP (' . number_format((int) ($cfaTotal ?? 0)) . ')',
         'schedule'  => 'Prod. Test Schedule (' . number_format((int) ($schedTotal ?? 0)) . ')',
@@ -256,20 +235,50 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
     <div class="dtr-subtabs" role="tablist">
         <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'bonding' ? 'active' : '' ?>" data-subtab="bonding"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> Bonding Shoe Collection</button>
         <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'shoes' ? 'active' : '' ?>" data-subtab="shoes"><svg class="ic" aria-hidden="true"><use href="#i-shoe"/></svg> Whole Shoe Collection</button>
-        <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'containers' ? 'active' : '' ?>" data-subtab="containers"><svg class="ic" aria-hidden="true"><use href="#i-box"/></svg> IQC Container Receiving Log</button>
+        <button type="button" role="tab" class="dtr-subtab <?= $subTab === 'containers' ? 'active' : '' ?>" data-subtab="containers"><svg class="ic" aria-hidden="true"><use href="#i-box"/></svg> Lab Material Test Collection</button>
         <div class="dtr-subtabs-right dtr-right-tools">
-            <div class="dtr-datefilter">
-                <button type="button" id="dtr-date-btn" class="dtr-btn dtr-btn-outline dtr-date-btn" title="Filter by date" aria-label="Filter by date" aria-haspopup="true" aria-expanded="false">
-                    <svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            <div class="dtr-datefilter" id="dtr-datefilter">
+                <button type="button" id="dtr-date-btn" class="dtr-btn dtr-btn-outline dtr-date-btn" title="Choose a specific week, month, or custom date range" aria-label="Filter by date" aria-haspopup="true" aria-expanded="false">
+                    <svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
                     <span id="dtr-date-label">All dates</span>
+                    <span id="dtr-date-clear" class="dtr-date-clear" hidden title="Reset to all dates" aria-label="Reset date filter">&times;</span>
+                    <svg class="ic dtr-date-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
                 </button>
-                <div id="dtr-date-pop" class="dtr-date-pop" hidden>
-                    <button type="button" data-range="all">All dates</button>
-                    <button type="button" data-range="today">Today</button>
-                    <button type="button" data-range="yesterday">Previous day</button>
-                    <button type="button" data-range="week">This week</button>
-                    <button type="button" data-range="month">This month</button>
-                    <label class="dtr-date-pick">Pick a day <input type="date" id="dtr-date-input"></label>
+                <div id="dtr-date-pop" class="dtr-date-pop dtr-dp2" hidden>
+                    <div class="dp-left">
+                        <h4>Quick Presets</h4>
+                        <div class="dp-quick">
+                            <button type="button" class="dp-chip" data-range="today">Today</button>
+                            <button type="button" class="dp-chip" data-range="yesterday">Yesterday</button>
+                            <button type="button" class="dp-chip" data-range="week">This Week</button>
+                            <button type="button" class="dp-chip" data-range="month">This Month</button>
+                        </div>
+                        <label class="dp-lbl" for="dtr-week-sel">By Week</label>
+                        <select id="dtr-week-sel" class="dp-sel" aria-label="Select week"></select>
+                        <label class="dp-lbl" for="dtr-month-sel">By Month</label>
+                        <select id="dtr-month-sel" class="dp-sel" aria-label="Select month"></select>
+                        <button type="button" class="dp-chip dp-custom-btn" id="dtr-dp-custom">Custom Range &rarr;</button>
+                        <a href="#" class="dp-all" data-range="all">Reset to all dates</a>
+                    </div>
+                    <div class="dp-right">
+                        <div class="dp-right-head">
+                            <h4>Custom Date Range</h4>
+                            <small class="dp-hint" id="dtr-dp-hint">Click a start date, then an end date</small>
+                        </div>
+                        <div class="dp-inputs">
+                            <div class="dp-in-box"><small>FROM</small><input type="text" id="dtr-dp-from" placeholder="YYYY-MM-DD" readonly aria-label="From"></div>
+                            <span class="dp-in-sep">&rarr;</span>
+                            <div class="dp-in-box"><small>TO</small><input type="text" id="dtr-dp-to" placeholder="YYYY-MM-DD" readonly aria-label="To"></div>
+                        </div>
+                        <div class="dp-cal">
+                            <div class="dp-cal-head"><button type="button" class="dp-nav" id="dtr-dp-prev" aria-label="Previous month">&#9664;</button><b id="dtr-dp-title"></b><button type="button" class="dp-nav" id="dtr-dp-next" aria-label="Next month">&#9654;</button></div>
+                            <div class="dp-grid" id="dtr-dp-grid"></div>
+                        </div>
+                        <div class="dp-actions">
+                            <button type="button" class="dp-clear-cal" id="dtr-dp-clear">Clear</button>
+                            <button type="button" class="dp-apply" id="dtr-dp-apply">Apply Filter</button>
+                        </div>
+                    </div>
                 </div>
             </div>
             <a href="<?= site_url('interlink') ?>" class="dtr-btn dtr-btn-outline">
@@ -280,64 +289,52 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
     <?php endif ?>
     <script>window.dtrEditLocked = <?= json_encode(array_values($editLocked ?? [])) ?>;</script>
     <div>
+        <!-- Lab Material Test Collection: the Material Bench Log (tbl_dtr_material_bench_log) -->
         <div class="card glass dtr-section-card dtr-subpanel <?= $subTab === 'containers' ? '' : 'hidden' ?>" data-subpanel="containers">
-            <div class="dtr-card-head">
-                <input type="search" class="dtr-list-search" placeholder="Search container no., date, encoder, remarks..." aria-label="Search the list">
-                <button type="button" class="dtr-btn dtr-btn-primary" data-add-record="containers">+ Material Receive</button>
+            <div class="dtr-card-head" style="gap:8px;flex-wrap:wrap;justify-content:flex-start">
+                <input type="search" class="dtr-list-search dtr-as-search" data-as-type="bench" style="margin:0 auto 0 0 !important;order:-1" placeholder="Search Lab Ref, material test, category, technician, machine..." aria-label="Search the Lab Material Test Collection">
+                <div class="dtr-subtabs-right muted sm" style="display:flex;align-items:center;gap:8px;margin-left:auto">
+                    <span id="as-count-bench">0 records</span>
+                    <button type="button" class="dtr-btn dtr-btn-outline dtr-as-prev" data-as-type="bench">&lsaquo; Prev</button>
+                    <span id="as-page-bench" class="mono">1</span>
+                    <button type="button" class="dtr-btn dtr-btn-outline dtr-as-next" data-as-type="bench">Next &rsaquo;</button>
+                    <button type="button" class="dtr-btn dtr-btn-primary" data-add-record="containers">+ Material Receive</button>
+                </div>
             </div>
-            <div class="dtr-table-wrap dtr-fill-wrap" style="max-height:290px">
-                <table class="dtr-table dtr-mat-log-table">
+            <div class="dtr-table-wrap dtr-fill-wrap" style="max-height:440px">
+                <table class="dtr-table">
                     <thead>
                         <tr>
-                            <th>Lab Reference</th>
-                            <th>Production Code</th>
-                            <th>Colorway</th>
-                            <th>Style</th>
-                            <th>MTL #</th>
+                            <th>Lab Ref No</th>
+                            <th>Category</th>
                             <th>Material Test</th>
-                            <th>Material</th>
+                            <th>Code</th>
+                            <th>Test Date</th>
+                            <th>Started / Finished</th>
+                            <th>Machine</th>
                             <th>Technician</th>
-                            <th>Machine Number</th>
                             <th>Result</th>
-                            <th>Test Start</th>
-                            <th>Test End</th>
-                            <th></th>
+                            <th>Other Details &amp; Bench Breakdown</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        <?php foreach ($containers as $c): ?>
-                            <?php
-                                $cName = trim((string) ($c['MaterialName'] ?? '')) !== '' ? $c['MaterialName'] : ($c['ReceiptName'] ?? '');
-                                $cMat  = trim((string) $cName) !== '' ? $cName : (string) ($c['MaterialCode'] ?? '');
-                                $cRes  = trim((string) ($c['Result'] ?? ''));
-                                $cRef  = trim((string) ($c['LabRef'] ?? ''));
-                            ?>
-                            <tr>
-                                <td class="mono"><?php if ($cRef !== ''): ?><?= $labThumb('containers', $cRef) ?><a href="#" class="dtr-labref-link" data-open-material="<?= esc($cRef, 'attr') ?>" title="Open in Material Tests"><b><?= esc($cRef) ?></b></a><?php endif ?></td>
-                                <td class="mono"><b><?= esc((string) (trim((string) ($c['ReceiptProd'] ?? '')) !== '' ? $c['ReceiptProd'] : ($c['MaterialProdCode'] ?? ''))) ?></b></td>
-                                <td><?= esc((string) ($c['ReceiptColor'] ?? '')) ?></td>
-                                <td><?= esc((string) ($c['ReceiptStyle'] ?? '')) ?></td>
-                                <td class="mono"><?= esc((string) ($c['ReceiptMTL'] ?? '')) ?></td>
-                                <td><?= esc((string) ($c['TestName'] ?? '')) ?></td>
-                                <td title="Container <?= esc((string) ($c['ContainerNo'] ?? ''), 'attr') ?>"><?= esc((string) $cMat) ?></td>
-                                <td><?= esc((string) ($c['Tech'] ?? '')) ?></td>
-                                <td class="mono"><?= esc((string) ($c['Machine'] ?? '')) ?></td>
-                                <td><?php if ($cRes !== ''): $fc = $resChip(strtoupper($cRes)); ?><?= str_contains($fc, 'res-chip') ? $fc : '<span class="badge b-ok">' . esc($cRes) . '</span>' ?><?php endif ?></td>
-                                <td><?= esc((string) ($c['TestStart'] ?? '')) ?></td>
-                                <td><?= esc((string) ($c['TestEnd'] ?? '')) ?></td>
-                                <td style="text-align:center"><button type="button" class="dtr-del-btn" data-del="<?= ! empty($c['MaterialID']) ? 'material' : 'container' ?>" data-id="<?= (int) (! empty($c['MaterialID']) ? $c['MaterialID'] : $c['ContainerID']) ?>" data-ref="<?= esc((string) ($c['ContainerNo'] ?? '') . ' / ' . ($c['MaterialCode'] ?? ''), 'attr') ?>" title="Delete this entry" aria-label="Delete this entry"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg></button></td>
-                            </tr>
-                        <?php endforeach ?>
+                    <tbody id="as-tbody-bench">
+                        <tr><td colspan="10" class="muted" style="text-align:center;padding:24px">Loading the Lab Material Test Collection...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
-
         <div class="card glass dtr-section-card dtr-subpanel <?= $subTab === 'materials' ? '' : 'hidden' ?>" data-subpanel="materials">
-            <div class="dtr-card-head">
-                <input type="search" class="dtr-list-search" placeholder="Search Lab Reference, material, code, supplier..." aria-label="Search the list">
+            <?php $matTot = (int) ($materialsTotal ?? count($materialsMaster ?? [])); $matPg = (int) ($materialsPage ?? 1); $matPages = max(1, (int) ceil($matTot / 15)); ?>
+            <div class="dtr-card-head" style="gap:8px;flex-wrap:wrap;justify-content:flex-start">
+                <input type="search" class="dtr-list-search" style="margin:0 auto 0 0 !important;order:-1" placeholder="Search Lab Reference, material, code, supplier..." aria-label="Search the list">
+                <div class="dtr-subtabs-right muted sm" style="display:flex;align-items:center;gap:8px;margin-left:auto">
+                    <span id="lt-count-materials" data-total="<?= $matTot ?>"><?= number_format($matTot) ?> record(s)</span>
+                    <button type="button" class="dtr-btn dtr-btn-outline dtr-lt-prev" data-lt-type="materials">&lsaquo; Prev</button>
+                    <span id="lt-page-materials" class="mono" data-page="<?= $matPg ?>" data-pages="<?= $matPages ?>"><?= $matPg ?> / <?= $matPages ?></span>
+                    <button type="button" class="dtr-btn dtr-btn-outline dtr-lt-next" data-lt-type="materials">Next &rsaquo;</button>
+                </div>
             </div>
-            <div class="dtr-table-wrap dtr-fill-wrap" style="max-height:290px">
+            <div class="dtr-table-wrap dtr-fill-wrap" style="max-height:420px">
                 <table class="dtr-table">
                     <thead>
                         <tr>
@@ -370,20 +367,27 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
         </div>
 
         <div class="card glass dtr-section-card dtr-subpanel <?= $subTab === 'bonding' ? '' : 'hidden' ?>" data-subpanel="bonding">
-            <div class="dtr-card-head">
-                <input type="search" class="dtr-list-search" placeholder="Search Lab Ref, Prod. Code, Style, Colorway, MTL..." aria-label="Search the list">
-                <button type="button" class="dtr-btn dtr-btn-primary" data-add-record="bonding">+ Bonding Shoe Collected</button>
+            <?php $bndTot = (int) ($bondingFilteredTotal ?? $bondingTotal ?? count($bondingShoes ?? [])); $bndPg = (int) ($bondingPage ?? 1); $bndPages = max(1, (int) ceil($bndTot / 15)); ?>
+            <div class="dtr-card-head" style="gap:8px;flex-wrap:wrap;justify-content:flex-start">
+                <input type="search" class="dtr-list-search" style="margin:0 auto 0 0 !important;order:-1" placeholder="Search Lab Ref, Prod. Code, Style, Colorway, MTL..." aria-label="Search the list">
+                <div class="dtr-subtabs-right muted sm" style="display:flex;align-items:center;gap:8px;margin-left:auto">
+                    <span id="lt-count-bonding" data-total="<?= $bndTot ?>"><?= number_format($bndTot) ?> record(s)</span>
+                    <button type="button" class="dtr-btn dtr-btn-outline dtr-lt-prev" data-lt-type="bonding">&lsaquo; Prev</button>
+                    <span id="lt-page-bonding" class="mono" data-page="<?= $bndPg ?>" data-pages="<?= $bndPages ?>"><?= $bndPg ?> / <?= $bndPages ?></span>
+                    <button type="button" class="dtr-btn dtr-btn-outline dtr-lt-next" data-lt-type="bonding">Next &rsaquo;</button>
+                    <button type="button" class="dtr-btn dtr-btn-primary" data-add-record="bonding">+ Bonding Shoe Collected</button>
+                </div>
             </div>
             <div class="dtr-table-wrap dtr-fill-wrap dtr-bshoe-wrap" style="max-height:420px">
                 <table class="dtr-table dtr-bshoe-table">
                     <thead>
                         <tr>
-                            <th>LabRefNo</th>
+                            <th>Bonding LabRef No</th>
+                            <th>Pull Test LabRefNo</th>
                             <th>Prod. Code</th>
-                            <th>Style No.</th>
+                            <th>Style</th>
                             <th>Colorway</th>
                             <th>MTL #</th>
-                            <th>Line</th>
                             <th>Prod. Date</th>
                             <th>Tested Date</th>
                             <th>Result</th>
@@ -394,19 +398,20 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                     </thead>
                     <tbody>
                         <?php foreach ($bondingShoes as $b): ?>
-                            <?php $bRes = strtoupper(trim((string) ($b['Result'] ?? ''))); ?>
-                            <tr class="<?= $rowTint($bRes) ?>">
-                                <td class="mono"><?= $labThumb('bonding', (string) ($b['LabRefNo'] ?? '')) ?> <a href="#" class="dtr-labref-link" data-open-bonding="<?= (int) ($b['BondingTestID'] ?? 0) ?>" title="Open in Shoe Bonding (U60)"><b><?= esc($b['LabRefNo'] ?? '') ?></b></a></td>
+                            <?php $bRes = strtoupper(trim((string) ($b['Result'] ?? ''))); $bPulls = (array) ($b['PullRefs'] ?? []); $bTint = $bPulls ? (string) ($b['RowResult'] ?? $bRes) : $bRes; ?>
+                            <tr class="<?= $rowTint($bTint) ?>">
+                                <?php $pOnly = ! empty($b['PullOnly']); ?>
+                                <td class="mono"><?php if ($pOnly): ?><span class="muted">-</span><?php else: ?><span class="dtr-ref-item"><?= $labThumb('bonding', (string) ($b['LabRefNo'] ?? '')) ?><a href="#" class="dtr-labref-link" data-open-bonding="<?= (int) ($b['BondingTestID'] ?? 0) ?>" title="Open in Shoe Bonding (U60)"><b><?= esc($b['LabRefNo'] ?? '') ?></b></a></span><?php endif ?></td>
+                                <td class="mono"><?php if ($pOnly): ?><span class="dtr-ref-item"><?= $labThumb('bonding', (string) ($b['LabRefNo'] ?? '')) ?><a href="#" class="dtr-labref-link" data-open-bonding="<?= (int) ($b['BondingTestID'] ?? 0) ?>" title="Pull test: open in Shoe Bonding (U60)"><b><?= esc($b['LabRefNo'] ?? '') ?></b></a></span><?php endif ?><?php if (! $bPulls && ! $pOnly): ?><span class="muted">-</span><?php endif ?><?php foreach ($bPulls as $bp): ?><span class="dtr-ref-item"><?= $labThumb('bonding', (string) $bp['ref']) ?><a href="#" class="dtr-labref-link" data-open-bonding="<?= (int) $bp['id'] ?>" title="Pull test: open in Shoe Bonding (U60)"><b><?= esc($bp['ref']) ?></b></a></span><?php endforeach ?></td>
                                 <td class="mono"><b><?= esc($b['POLotNO'] ?? '') ?></b></td>
                                 <td><?= esc($b['ModelStyle'] ?? '') ?></td>
                                 <td><?= esc($b['Color'] ?? '') ?></td>
                                 <td class="mono"><?= trim((string) ($b['MTL'] ?? '')) !== '' ? esc(trim((string) $b['MTL'])) : (preg_match('/MTL ([^;]+)/', (string) ($b['LabNotesComments'] ?? ''), $mm) ? esc(trim($mm[1])) : '') ?></td>
-                                <td><?= trim((string) ($b['TrackerLine'] ?? '')) !== '' ? esc(strtoupper(trim((string) $b['TrackerLine']))) : (preg_match('/^DTP\d{8}[A-Z]{2}([A-Z])(\d+)/i', (string) ($b['LabRefNo'] ?? ''), $lm) ? esc(strtoupper($lm[1]) . (int) $lm[2]) : '') ?></td>
                                 <td><?= esc(substr((string) ($b['ProductionDate'] ?? ''), 0, 10)) ?></td>
-                                <td><?= esc(substr((string) ($b['TestedDate'] ?? ''), 0, 10)) ?></td>
-                                <td><?= $bRes !== '' ? esc($bRes) : '-' ?></td>
-                                <td><?= $bRes !== '' ? '<span class="badge b-ok">Tested</span>' : '<span class="badge b-warn">Pending</span>' ?></td>
-                                <td><?= esc(trim((string) ($b['Technician'] ?? ''))) ?></td>
+                                <td><?= esc(substr((string) ($b['TestedDate'] ?? ''), 0, 10)) ?><?php foreach ($bPulls as $bp): ?><br><small class="muted">Pull: <?= esc((string) ($bp['tested'] ?? '') ?: '-') ?></small><?php endforeach ?></td>
+                                <td><?= $resChip($bRes) ?><?php foreach ($bPulls as $bp): ?><br><small class="muted">Pull: <?= $resChip((string) $bp['result']) ?></small><?php endforeach ?></td>
+                                <td><?= $bRes !== '' ? '<span class="badge b-ok">Tested</span>' : '<span class="badge b-warn">Pending</span>' ?><?php foreach ($bPulls as $bp): ?><br><small class="muted">Pull: <?= trim((string) $bp['result']) !== '' ? 'Tested' : 'Pending' ?></small><?php endforeach ?></td>
+                                <td><?= esc(trim((string) ($b['Technician'] ?? ''))) ?><?php foreach ($bPulls as $bp): ?><br><small class="muted">Pull: <?= esc((string) ($bp['tech'] ?? '') ?: '-') ?></small><?php endforeach ?></td>
                                 <td style="text-align:center"><button type="button" class="dtr-del-btn" data-del="<?= ! empty($b['IsLacking']) ? 'lacking' : 'bonding' ?>" data-id="<?= (int) (! empty($b['IsLacking']) ? $b['TrackerID'] : ($b['BondingTestID'] ?? 0)) ?>" data-ref="<?= esc((string) ($b['LabRefNo'] ?? ''), 'attr') ?>" title="Delete this entry" aria-label="Delete this entry"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg></button></td>
                             </tr>
                         <?php endforeach ?>
@@ -416,9 +421,16 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
         </div>
 
         <div class="card glass dtr-section-card dtr-subpanel <?= $subTab === 'shoes' ? '' : 'hidden' ?>" data-subpanel="shoes">
-            <div class="dtr-card-head">
-                <input type="search" class="dtr-list-search" placeholder="Search Lab Ref, Prod. Code, Style, Colorway, MTL..." aria-label="Search the list">
-                <button type="button" class="dtr-btn dtr-btn-primary" data-add-record="shoes">+ Whole Shoe Collected</button>
+            <?php $shoTot = (int) ($shoesFilteredTotal ?? $shoeTotal ?? count($wholeShoes ?? [])); $shoPg = (int) ($shoesPage ?? 1); $shoPages = max(1, (int) ceil($shoTot / 15)); ?>
+            <div class="dtr-card-head" style="gap:8px;flex-wrap:wrap;justify-content:flex-start">
+                <input type="search" class="dtr-list-search" style="margin:0 auto 0 0 !important;order:-1" placeholder="Search Lab Ref, Prod. Code, Style, Colorway, MTL..." aria-label="Search the list">
+                <div class="dtr-subtabs-right muted sm" style="display:flex;align-items:center;gap:8px;margin-left:auto">
+                    <span id="lt-count-shoes" data-total="<?= $shoTot ?>"><?= number_format($shoTot) ?> record(s)</span>
+                    <button type="button" class="dtr-btn dtr-btn-outline dtr-lt-prev" data-lt-type="shoes">&lsaquo; Prev</button>
+                    <span id="lt-page-shoes" class="mono" data-page="<?= $shoPg ?>" data-pages="<?= $shoPages ?>"><?= $shoPg ?> / <?= $shoPages ?></span>
+                    <button type="button" class="dtr-btn dtr-btn-outline dtr-lt-next" data-lt-type="shoes">Next &rsaquo;</button>
+                    <button type="button" class="dtr-btn dtr-btn-primary" data-add-record="shoes">+ Whole Shoe Collected</button>
+                </div>
             </div>
             <div class="dtr-table-wrap dtr-fill-wrap" style="max-height:420px">
                 <table class="dtr-table dtr-wlist-table">
@@ -452,7 +464,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                                 <td><?= esc($s['TestTypes'] ?? '') ?></td>
                                 <td><?= esc(substr((string) ($s['IntakeProductionDate'] ?? ''), 0, 10)) ?></td>
                                 <td><?= esc(substr((string) (($s['TimeCompleted'] ?? '') ?: ($s['TimeStarted'] ?? '')), 0, 10)) ?></td>
-                                <td><?= $wRes !== '' ? esc($wRes) : '-' ?></td>
+                                <td><?= $resChip($wRes) ?></td>
                                 <td><?= $wRes !== '' ? '<span class="badge b-ok">Tested</span>' : '<span class="badge b-warn">' . ($wStat !== '' ? esc(ucfirst(strtolower($wStat))) : 'Pending') . '</span>' ?></td>
                                 <td><?= esc(trim((string) ($s['Technician'] ?? ''))) ?></td>
                                 <td style="text-align:center"><button type="button" class="dtr-del-btn" data-del="wholeshoe" data-id="<?= (int) ($s['TrackerID'] ?? 0) ?>" data-ref="<?= esc((string) ($s['LabRefNo'] ?? ''), 'attr') ?>" title="Delete this entry" aria-label="Delete this entry"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg></button></td>
@@ -464,50 +476,14 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
         </div>
 
 
-        <!-- AppSheet Material Bench Log Sub-panel -->
-        <div class="card glass dtr-section-card dtr-subpanel <?= $subTab === 'bench' ? '' : 'hidden' ?>" data-subpanel="bench">
-            <div class="dtr-card-head" style="gap:8px;flex-wrap:wrap">
-                <input type="search" class="dtr-list-search dtr-as-search" data-as-type="bench" placeholder="Search Lab Ref, material test, category, technician, machine..." aria-label="Search material bench log">
-                <button type="button" class="dtr-btn dtr-btn-outline dtr-as-search-btn" data-as-type="bench">Search</button>
-                <div class="dtr-subtabs-right muted sm" style="display:flex;align-items:center;gap:8px">
-                    <span id="as-count-bench">0 records</span>
-                    <button type="button" class="dtr-btn dtr-btn-outline dtr-as-prev" data-as-type="bench">&lsaquo; Prev</button>
-                    <span id="as-page-bench" class="mono">1</span>
-                    <button type="button" class="dtr-btn dtr-btn-outline dtr-as-next" data-as-type="bench">Next &rsaquo;</button>
-                </div>
-            </div>
-            <div class="dtr-table-wrap dtr-fill-wrap" style="max-height:440px">
-                <table class="dtr-table">
-                    <thead>
-                        <tr>
-                            <th>Lab Ref No</th>
-                            <th>Category</th>
-                            <th>Material Test</th>
-                            <th>Code</th>
-                            <th>Test Date</th>
-                            <th>Started / Finished</th>
-                            <th>Machine</th>
-                            <th>Technician</th>
-                            <th>Result</th>
-                            <th>Other Details &amp; Bench Breakdown</th>
-                        </tr>
-                    </thead>
-                    <tbody id="as-tbody-bench">
-                        <tr><td colspan="10" class="muted" style="text-align:center;padding:24px">Select this tab or search to load Material Bench Log records...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
         <!-- AppSheet ERP Test Orders Sub-panel -->
         <div class="card glass dtr-section-card dtr-subpanel <?= $subTab === 'erp' ? '' : 'hidden' ?>" data-subpanel="erp">
-            <div class="dtr-card-head" style="gap:8px;flex-wrap:wrap">
-                <input type="search" class="dtr-list-search dtr-as-search" data-as-type="erp" placeholder="Search Lab Ref, VSP/PO, MTL, Style, Colorway, TR No..." aria-label="Search ERP test orders">
-                <button type="button" class="dtr-btn dtr-btn-outline dtr-as-search-btn" data-as-type="erp">Search</button>
-                <div class="dtr-subtabs-right muted sm" style="display:flex;align-items:center;gap:8px">
-                    <span id="as-count-erp">0 records</span>
+            <div class="dtr-card-head" style="gap:8px;flex-wrap:wrap;justify-content:flex-start">
+                <input type="search" class="dtr-list-search dtr-as-search" data-as-type="erp" style="margin:0 auto 0 0 !important;order:-1" placeholder="Search Lab Ref, VSP/PO, MTL, Style, Colorway, TR No..." aria-label="Search ERP test orders">
+                <div class="dtr-subtabs-right muted sm" style="display:flex;align-items:center;gap:8px;margin-left:auto">
+                    <span id="as-count-erp">0 record(s)</span>
                     <button type="button" class="dtr-btn dtr-btn-outline dtr-as-prev" data-as-type="erp">&lsaquo; Prev</button>
-                    <span id="as-page-erp" class="mono">1</span>
+                    <span id="as-page-erp" class="mono">1 / 1</span>
                     <button type="button" class="dtr-btn dtr-btn-outline dtr-as-next" data-as-type="erp">Next &rsaquo;</button>
                 </div>
             </div>
@@ -536,13 +512,12 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
 
         <!-- AppSheet CFA Reports & Bonding CAP Sub-panel -->
         <div class="card glass dtr-section-card dtr-subpanel <?= $subTab === 'cfa' ? '' : 'hidden' ?>" data-subpanel="cfa">
-            <div class="dtr-card-head" style="gap:8px;flex-wrap:wrap">
-                <input type="search" class="dtr-list-search dtr-as-search" data-as-type="cfa" placeholder="Search Lab Ref, Prod. Code, MTL, Style, Test Name, TR No..." aria-label="Search CFA reports">
-                <button type="button" class="dtr-btn dtr-btn-outline dtr-as-search-btn" data-as-type="cfa">Search</button>
-                <div class="dtr-subtabs-right muted sm" style="display:flex;align-items:center;gap:8px">
-                    <span id="as-count-cfa">0 records</span>
+            <div class="dtr-card-head" style="gap:8px;flex-wrap:wrap;justify-content:flex-start">
+                <input type="search" class="dtr-list-search dtr-as-search" data-as-type="cfa" style="margin:0 auto 0 0 !important;order:-1" placeholder="Search Lab Ref, Prod. Code, MTL, Style, Test Name, TR No..." aria-label="Search CFA reports">
+                <div class="dtr-subtabs-right muted sm" style="display:flex;align-items:center;gap:8px;margin-left:auto">
+                    <span id="as-count-cfa">0 record(s)</span>
                     <button type="button" class="dtr-btn dtr-btn-outline dtr-as-prev" data-as-type="cfa">&lsaquo; Prev</button>
-                    <span id="as-page-cfa" class="mono">1</span>
+                    <span id="as-page-cfa" class="mono">1 / 1</span>
                     <button type="button" class="dtr-btn dtr-btn-outline dtr-as-next" data-as-type="cfa">Next &rsaquo;</button>
                 </div>
             </div>
@@ -572,13 +547,12 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
 
         <!-- AppSheet Production Test Schedule Sub-panel -->
         <div class="card glass dtr-section-card dtr-subpanel <?= $subTab === 'schedule' ? '' : 'hidden' ?>" data-subpanel="schedule">
-            <div class="dtr-card-head" style="gap:8px;flex-wrap:wrap">
-                <input type="search" class="dtr-list-search dtr-as-search" data-as-type="schedule" placeholder="Search Lab Ref, Prod. Code, MTL, Style, Test Name, Machine..." aria-label="Search production test schedule">
-                <button type="button" class="dtr-btn dtr-btn-outline dtr-as-search-btn" data-as-type="schedule">Search</button>
-                <div class="dtr-subtabs-right muted sm" style="display:flex;align-items:center;gap:8px">
-                    <span id="as-count-schedule">0 records</span>
+            <div class="dtr-card-head" style="gap:8px;flex-wrap:wrap;justify-content:flex-start">
+                <input type="search" class="dtr-list-search dtr-as-search" data-as-type="schedule" style="margin:0 auto 0 0 !important;order:-1" placeholder="Search Lab Ref, Prod. Code, MTL, Style, Test Name, Machine..." aria-label="Search production test schedule">
+                <div class="dtr-subtabs-right muted sm" style="display:flex;align-items:center;gap:8px;margin-left:auto">
+                    <span id="as-count-schedule">0 record(s)</span>
                     <button type="button" class="dtr-btn dtr-btn-outline dtr-as-prev" data-as-type="schedule">&lsaquo; Prev</button>
-                    <span id="as-page-schedule" class="mono">1</span>
+                    <span id="as-page-schedule" class="mono">1 / 1</span>
                     <button type="button" class="dtr-btn dtr-btn-outline dtr-as-next" data-as-type="schedule">Next &rsaquo;</button>
                 </div>
             </div>
@@ -607,13 +581,12 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
 
         <!-- AppSheet Failed Samples Registry Sub-panel -->
         <div class="card glass dtr-section-card dtr-subpanel <?= $subTab === 'failed' ? '' : 'hidden' ?>" data-subpanel="failed">
-            <div class="dtr-card-head" style="gap:8px;flex-wrap:wrap">
-                <input type="search" class="dtr-list-search dtr-as-search" data-as-type="failed" placeholder="Search Sample ID, MTL, Style, Colorway, Test Failed..." aria-label="Search failed samples registry">
-                <button type="button" class="dtr-btn dtr-btn-outline dtr-as-search-btn" data-as-type="failed">Search</button>
-                <div class="dtr-subtabs-right muted sm" style="display:flex;align-items:center;gap:8px">
-                    <span id="as-count-failed">0 records</span>
+            <div class="dtr-card-head" style="gap:8px;flex-wrap:wrap;justify-content:flex-start">
+                <input type="search" class="dtr-list-search dtr-as-search" data-as-type="failed" style="margin:0 auto 0 0 !important;order:-1" placeholder="Search Sample ID, MTL, Style, Colorway, Test Failed..." aria-label="Search failed samples registry">
+                <div class="dtr-subtabs-right muted sm" style="display:flex;align-items:center;gap:8px;margin-left:auto">
+                    <span id="as-count-failed">0 record(s)</span>
                     <button type="button" class="dtr-btn dtr-btn-outline dtr-as-prev" data-as-type="failed">&lsaquo; Prev</button>
-                    <span id="as-page-failed" class="mono">1</span>
+                    <span id="as-page-failed" class="mono">1 / 1</span>
                     <button type="button" class="dtr-btn dtr-btn-outline dtr-as-next" data-as-type="failed">Next &rsaquo;</button>
                 </div>
             </div>
@@ -784,12 +757,12 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
         ?>
         <div id="dtr-sheet-<?= $lfSlug ?>" class="vf-sheet lf-sheet" hidden>
             <div class="vf-tpl-head">
-                <img class="vf-tpl-logo" src="<?= base_url('assets/images/vf-logo.webp') ?>" alt="VF" loading="lazy" decoding="async">
+                <img class="vf-tpl-logo" src="<?= base_url('assets/images/vf-logo.webp') ?>" alt="VF">
                 <div class="vf-tpl-title">
                     <div class="vf-tpl-title-en"><?= $lfTitleEn ?></div>
                     <div class="vf-tpl-title-cn"><?= $lfTitleCn ?></div>
                 </div>
-                <img class="vf-tpl-satra" src="<?= base_url('assets/images/satra-accredited.png') ?>" alt="SATRA Accredited Laboratory" loading="lazy" decoding="async">
+                <img class="vf-tpl-satra" src="<?= base_url('assets/images/satra-accredited.png') ?>" alt="SATRA Accredited Laboratory">
             </div>
 
             <div class="vf-tpl-ids">
@@ -1374,21 +1347,21 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                 <!-- VF-F01 "paper sheet" layout — mirrors the official PRODUCTION bonding template.xlsx -->
                 <div class="vf-sheet">
                     <div class="vf-tpl-head">
-                        <img class="vf-tpl-logo" src="<?= base_url('assets/images/vf-logo.webp') ?>" alt="VF" loading="lazy" decoding="async">
+                        <img class="vf-tpl-logo" src="<?= base_url('assets/images/vf-logo.webp') ?>" alt="VF">
                         <div class="vf-tpl-title">
                             <div class="vf-tpl-title-en">Bonding Test Results</div>
                             <div class="vf-tpl-title-cn">胶着力测试</div>
                         </div>
                         <div class="vf-tpl-right">
                             <div class="vf-tpl-result"><label for="bf_Result">* Overall Result</label><input type="text" name="Result" id="bf_Result" class="bold mono dtr-rate-inp" readonly></div>
-                            <img class="vf-tpl-satra" src="<?= base_url('assets/images/satra-accredited.png') ?>" alt="SATRA Accredited Laboratory" loading="lazy" decoding="async">
+                            <img class="vf-tpl-satra" src="<?= base_url('assets/images/satra-accredited.png') ?>" alt="SATRA Accredited Laboratory">
                         </div>
                     </div>
 
                     <div class="vf-tpl-ids">
                         <div class="vf-tpl-box vf-tpl-formno">Form # : Lab VF 001</div>
                         <div class="vf-tpl-box"><label for="bf_ETRFNo">ETRF No:</label><input type="text" name="ETRFNo" id="bf_ETRFNo" class="mono"></div>
-                        <div class="vf-tpl-box"><label for="bf_LabRefNo">* Lab Ref.No:</label><input type="text" name="LabRefNo" id="bf_LabRefNo" class="mono bold" list="bf_LabRefNo_list" autocomplete="off" placeholder="Select Lab Ref.No"><datalist id="bf_LabRefNo_list"></datalist></div>
+                        <div class="vf-tpl-box"><label for="bf_LabRefNo">* Lab Ref.No:</label><input type="text" name="LabRefNo" id="bf_LabRefNo" class="mono bold" autocomplete="off"></div>
                     </div>
 
                     <div class="vf-tpl-body">
@@ -1531,7 +1504,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                         <tr>
                             <td class="vf-res-part-cell">FILLER TO OUTSOLE <span class="vf-res-sub">(1..13)</span></td>
                             <td class="vf-res-c">VF-F01<br>(2019/05)</td>
-                            <td class="vf-res-c vf-res-std"><b>1.90</b></td>
+                            <td class="vf-res-c vf-res-std"><b>1.00</b></td>
                             <td><input type="text" id="bp_FiTOMin" readonly class="vf-res-inp"></td>
                             <td><input type="text" id="bp_FiTOMax" readonly class="vf-res-inp"></td>
                             <td><input type="text" id="bp_FiTOAverage" readonly class="vf-res-inp bold"></td>
@@ -1560,12 +1533,12 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                         <div class="vf-diag-note-r">1.Outside Value:Fabric / PU / EVA kgf/cm<br>2.Inside Value:</div>
                     </div>
                     <div class="vf-diag-row">
-                        <div id="vf-diag-left" class="vf-shoe-card vf-diag-card"><img src="<?= base_url('assets/images/bonding_sketches/blank.png') ?>" class="vf-shoe-img" style="left:12%;top:8%;width:76%;height:84%" alt="Left shoe" loading="lazy" decoding="async"></div>
+                        <div id="vf-diag-left" class="vf-shoe-card vf-diag-card"><img src="<?= base_url('assets/images/bonding_sketches/blank.png') ?>" class="vf-shoe-img" style="left:21%;top:8%;width:58%;height:84%" alt="Left shoe"></div>
                         <div class="vf-diag-strips">
-                            <div><span class="vf-diag-lbl is-active">Left</span><div class="vf-diag-strip is-active"><?= str_repeat('<i class="vf-diag-line"></i>', 6) ?></div></div>
-                            <div><span class="vf-diag-lbl">Right</span><div class="vf-diag-strip"><?= str_repeat('<i class="vf-diag-line"></i>', 6) ?></div></div>
+                            <div><span class="vf-diag-lbl is-active">Left</span><div class="vf-diag-strip is-active"><?= str_repeat('<div class="vf-diag-slot"><span class="vf-diag-val">&nbsp;</span><i class="vf-diag-line"></i></div>', 6) ?></div></div>
+                            <div><span class="vf-diag-lbl">Right</span><div class="vf-diag-strip"><?= str_repeat('<div class="vf-diag-slot"><span class="vf-diag-val">&nbsp;</span><i class="vf-diag-line"></i></div>', 6) ?></div></div>
                         </div>
-                        <div id="vf-diag-right" class="vf-shoe-card vf-diag-card"><img src="<?= base_url('assets/images/bonding_sketches/blank.png') ?>" class="vf-shoe-img" style="left:12%;top:8%;width:76%;height:84%" alt="Right shoe" loading="lazy" decoding="async"></div>
+                        <div id="vf-diag-right" class="vf-shoe-card vf-diag-card"><img src="<?= base_url('assets/images/bonding_sketches/blank.png') ?>" class="vf-shoe-img" style="left:21%;top:8%;width:58%;height:84%;transform:scaleX(-1)" alt="Right shoe"></div>
                     </div>
                 </div>
 
@@ -1635,7 +1608,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                             var base = meta ? meta.content.replace(/\/+$/, '') + '/' : location.origin + '/';
                             fetch(base + 'dtr/bonding-std?style=' + encodeURIComponent(s), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                                 .then(function (r) { return r.json(); })
-                                .then(function (j) { stdRange = (j && j.found) ? (j.failMax + ' - ' + j.passMin) : ''; showStd(); })
+                                .then(function (j) { stdRange = (j && j.found) ? String(j.passMin) : ''; showStd(); })
                                 .catch(function () { stdRange = ''; showStd(); });
                         }, 150);
                     }
@@ -1721,12 +1694,15 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
             <input type="hidden" name="ID" id="pf_ID" value="">
             <div class="vf-sheet pf-sheet">
                 <div class="vf-tpl-head">
-                    <img class="vf-tpl-logo" src="<?= base_url('assets/images/vf-logo.webp') ?>" alt="VF" loading="lazy" decoding="async">
+                    <img class="vf-tpl-logo" src="<?= base_url('assets/images/vf-logo.webp') ?>" alt="VF">
                     <div class="vf-tpl-title">
                         <div class="vf-tpl-title-en">Pull Footwear Test Results</div>
                         <div class="vf-tpl-title-cn">整鞋部件拉力测试</div>
                     </div>
-                    <img class="vf-tpl-satra" src="<?= base_url('assets/images/satra-accredited.png') ?>" alt="SATRA Accredited Laboratory" loading="lazy" decoding="async">
+                    <div class="vf-tpl-right">
+                        <div class="vf-tpl-result"><label for="pf_Result">* Overall Result</label><input type="text" name="Result" id="pf_Result" class="bold mono dtr-rate-inp" readonly></div>
+                        <img class="vf-tpl-satra" src="<?= base_url('assets/images/satra-accredited.png') ?>" alt="SATRA Accredited Laboratory">
+                    </div>
                 </div>
 
                 <div class="vf-tpl-ids">
@@ -1764,9 +1740,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                         <div class="vf-tpl-line"><label for="pf_ReceivedDate">Received Date 收到日期:</label><input type="text" name="ReceivedDate" id="pf_ReceivedDate"></div>
                         <div class="vf-tpl-line"><label for="pf_TestedDate">Tested Date 测试日期:</label><input type="text" name="TestedDate" id="pf_TestedDate"></div>
                         <div class="vf-tpl-line"><label for="pf_FinishedDate">Finished Date 完成日期:</label><input type="text" name="FinishedDate" id="pf_FinishedDate"></div>
-                        <div class="vf-tpl-line"><label for="pf_Technician">Technician 技术员:</label><input type="text" name="Technician" id="pf_Technician" list="dtr-tech-list" autocomplete="off"></div>
-                        <div class="vf-tpl-line pf-result"><label for="pf_Result">* Overall Result:</label><input type="text" name="Result" id="pf_Result" class="bold mono dtr-rate-inp" readonly></div>
-                    </div>
+                        <div class="vf-tpl-line"><label for="pf_Technician">Technician 技术员:</label><input type="text" name="Technician" id="pf_Technician" list="dtr-tech-list" autocomplete="off"></div>                    </div>
                 </div>
 
                 <div class="pf-section">Closures - Eyelet , D-ring , Hook , Webbing Pull Strength</div>
@@ -1778,13 +1752,12 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                             <th rowspan="2" class="pf-c-m">VF Test Method<br><span class="cn">测试方法</span></th>
                             <th rowspan="2" class="pf-c-u">Units<br><span class="cn">单位</span></th>
                             <th rowspan="2" class="pf-c-sk">Test Sketch<br><span class="cn">测试部位</span></th>
-                            <th colspan="2">Test Results<br><span class="cn">测试结果</span></th>
+                            <th rowspan="2" class="pf-c-res">Test Results<br><span class="cn">测试结果</span></th>
                             <th rowspan="2" class="pf-c-n">Maximum</th>
                             <th rowspan="2" class="pf-c-n">Standard<br><span class="cn">标准</span></th>
                             <th rowspan="2" class="pf-c-n">Tolerance<br><span class="cn">容许度</span></th>
                             <th rowspan="2" class="pf-c-n">Rating<br><span class="cn">等级</span></th>
                         </tr>
-                        <tr><th class="pf-c-r">Lateral side:</th><th class="pf-c-r">Medial side:</th></tr>
                     </thead>
                     <tbody>
                         <?php foreach (['left' => 'Left', 'right' => 'Right'] as $sk => $sideLabel): ?>
@@ -1793,25 +1766,26 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                                     <td class="vf-res-part-cell"><?= $it[0] ?></td>
                                     <td class="vf-res-c">VF-B04<br>(2019/05)</td>
                                     <td class="vf-res-c">kgf</td>
-                                    <?php if ($i === 0): ?><td rowspan="<?= count($pullItems) ?>" class="pf-sketch"><?= $pullSketch($sideLabel) ?></td><?php endif ?>
-                                    <td><input type="number" step="any" class="vf-res-inp" data-pull="<?= $sk ?>.<?= $i ?>.lat"></td>
-                                    <td><input type="number" step="any" class="vf-res-inp" data-pull="<?= $sk ?>.<?= $i ?>.med"></td>
+                                    <?php if ($i === 0): ?><td rowspan="<?= count($pullItems) + 4 ?>" class="pf-sketch"><?= $pullSketch($sideLabel) ?></td><?php endif ?>
+                                    <td class="pf-res-cell"><?= $i === 0 ? '<span class="pf-res-lbl">Lateral side :</span>' : ($i === 1 ? '<span class="pf-res-lbl">Medial side :</span>' : '') ?><input type="text" class="vf-res-inp" data-pull="<?= $sk ?>.<?= $i ?>.res"></td>
                                     <td><input type="text" readonly class="vf-res-inp bold" data-pull="<?= $sk ?>.<?= $i ?>.max"></td>
                                     <td><input type="text" class="vf-res-inp pf-std" data-pull="<?= $sk ?>.<?= $i ?>.std" value="<?= $it[1] ?>"></td>
                                     <td><input type="text" class="vf-res-inp pf-tol" data-pull="<?= $sk ?>.<?= $i ?>.tol" value="<?= $it[1] !== '' ? 'minimum' : '' ?>"></td>
                                     <td><input type="text" readonly class="vf-res-inp bold dtr-rate-inp" data-pull="<?= $sk ?>.<?= $i ?>.rating"></td>
                                 </tr>
                             <?php endforeach ?>
+                            <?php for ($e = 0; $e < 4; $e++): ?>
+                                <tr class="pf-blank-row"><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                            <?php endfor ?>
                         <?php endforeach ?>
-                        <tr><td colspan="10" class="pf-other-head">Other Types of Pull Test</td></tr>
+                        <tr><td colspan="9" class="pf-other-head">Other Types of Pull Test</td></tr>
                         <?php for ($o = 0; $o < 4; $o++): ?>
                             <tr>
                                 <td><input type="text" class="vf-res-inp" data-pull="other.<?= $o ?>.item"></td>
                                 <td><input type="text" class="vf-res-inp" data-pull="other.<?= $o ?>.method"></td>
                                 <td><input type="text" class="vf-res-inp" data-pull="other.<?= $o ?>.unit"></td>
                                 <td></td>
-                                <td><input type="number" step="any" class="vf-res-inp" data-pull="other.<?= $o ?>.lat"></td>
-                                <td><input type="number" step="any" class="vf-res-inp" data-pull="other.<?= $o ?>.med"></td>
+                                <td><input type="text" class="vf-res-inp" data-pull="other.<?= $o ?>.res"></td>
                                 <td><input type="text" readonly class="vf-res-inp bold" data-pull="other.<?= $o ?>.max"></td>
                                 <td><input type="text" class="vf-res-inp pf-std" data-pull="other.<?= $o ?>.std"></td>
                                 <td><input type="text" class="vf-res-inp pf-tol" data-pull="other.<?= $o ?>.tol"></td>
@@ -1844,9 +1818,9 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
     <div class="card glass dtr-section-card">
         <div class="wsf">
             <div class="wsf-head">
-                <img src="<?= base_url('assets/images/vf-logo.webp') ?>" class="wsf-vf" alt="VF" loading="lazy" decoding="async">
+                <img src="<?= base_url('assets/images/vf-logo.webp') ?>" class="wsf-vf" alt="VF">
                 <div class="wsf-title"><h2>Whole Footwear Test Results</h2><h3>整鞋测试报告</h3></div>
-                <img src="<?= base_url('assets/images/satra-accredited.png') ?>" class="wsf-satra" alt="SATRA Accredited Laboratory" loading="lazy" decoding="async">
+                <img src="<?= base_url('assets/images/satra-accredited.png') ?>" class="wsf-satra" alt="SATRA Accredited Laboratory">
             </div>
             <table class="wsf-t wsf-ref"><tr><td class="wsf-frm">Form # : Lab VF 002</td><td class="wsf-rf"><div>ETRF. No :</div><div class="wsf-lr">Lab Ref. No : <input type="text" id="ws-labref" readonly tabindex="-1" aria-label="Lab Ref No" placeholder="Open a Lab Ref from the Lab Tracker"></div></td></tr></table>
             <table class="wsf-t wsf-info">
@@ -2134,8 +2108,14 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
 <div id="bimg-backdrop" class="dtr-modal-backdrop hidden">
     <div class="bimg-dialog">
         <div class="bimg-bar">
+            <button type="button" class="bimg-btn bimg-burger" id="bimg-burger" title="Editing tools" aria-label="Editing tools">&#9776;</button>
             <b id="bimg-title">Report</b>
             <span class="bimg-sep"></span>
+            <span id="bimg-msg" class="muted sm"></span>
+            <button type="button" class="dtr-btn dtr-btn-outline" id="bimg-close">Close</button>
+            <button type="button" class="dtr-btn dtr-btn-primary" id="bimg-save" title="Save as the new report; the report in place becomes the next old version (_1, _2 ...)">Save</button>
+        </div>
+        <div id="bimg-menu" class="bimg-menu hidden">
             <button type="button" class="bimg-tool active" data-tool="circle" title="Drag to draw a circle around a failed spot">&#9711; Circle</button>
             <button type="button" class="bimg-tool" data-tool="mark" title="Drag to highlight an area">&#9608; Highlight</button>
             <button type="button" class="bimg-tool" data-tool="text" title="Drag a box, then type: a white box with your value written over the old one">T Text box</button>
@@ -2149,17 +2129,16 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                 <button type="button" class="bimg-btn" id="bimg-z100">100%</button>
             </span>
             <span class="bimg-sep"></span>
-            <button type="button" class="bimg-stamp" data-stamp="PASS"><img src="<?= base_url('assets/images/stamps/pass.png') ?>" alt="PASS" loading="lazy" decoding="async"></button>
-            <button type="button" class="bimg-stamp" data-stamp="FAILED"><img src="<?= base_url('assets/images/stamps/failed.png') ?>" alt="FAILED" loading="lazy" decoding="async"></button>
-            <button type="button" class="bimg-stamp" data-stamp="TOLERABLE"><img src="<?= base_url('assets/images/stamps/tolerable.png') ?>" alt="TOLERABLE" loading="lazy" decoding="async"></button>
+            <button type="button" class="bimg-stamp" data-stamp="PASS"><img src="<?= base_url('assets/images/stamps/pass.png') ?>" alt="PASS"></button>
+            <button type="button" class="bimg-stamp" data-stamp="FAILED"><img src="<?= base_url('assets/images/stamps/failed.png') ?>" alt="FAILED"></button>
+            <button type="button" class="bimg-stamp" data-stamp="TOLERABLE"><img src="<?= base_url('assets/images/stamps/tolerable.png') ?>" alt="TOLERABLE"></button>
+            <label class="bimg-size" title="Font style of the selected text box (also used for the next ones)">Font <select id="bimg-font"><option value="&quot;Segoe UI&quot;, &quot;Segoe UI Variable&quot;, Calibri, Arial, sans-serif">Segoe UI</option><option value="Arial, sans-serif">Arial</option><option value="Calibri, sans-serif">Calibri</option><option value="Verdana, sans-serif">Verdana</option><option value="Tahoma, sans-serif">Tahoma</option><option value="&quot;Times New Roman&quot;, serif">Times New Roman</option><option value="Georgia, serif">Georgia</option><option value="&quot;Courier New&quot;, monospace">Courier New</option></select></label>
+            <label class="bimg-size" title="Font colour of the selected text box (also used for the next ones)">Font colour <input type="color" id="bimg-color" value="#000000"></label>
+            <span class="bimg-sep"></span>
             <label class="bimg-size" title="Size of the selected stamp">Size <input type="range" id="bimg-size" min="8" max="70" value="28"></label>
             <button type="button" class="bimg-btn" id="bimg-del" title="Delete the selected item (Delete key)">Delete</button>
             <button type="button" class="bimg-btn" id="bimg-undo">Undo</button>
             <button type="button" class="bimg-btn" id="bimg-orig" title="Throw away the unsaved edits and reload the saved report">Reload</button>
-            <span class="bimg-sep"></span>
-            <span id="bimg-msg" class="muted sm"></span>
-            <button type="button" class="dtr-btn dtr-btn-outline" id="bimg-close">Close</button>
-            <button type="button" class="dtr-btn dtr-btn-primary" id="bimg-save" title="Save as the new report; the report in place becomes the next old version (_1, _2 ...)">Save</button>
         </div>
         <div class="bimg-stage"><div class="bimg-wrap"><canvas id="bimg-canvas"></canvas><input type="text" id="bimg-text" class="hidden" autocomplete="off"></div></div>
     </div>
@@ -2198,7 +2177,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
             <table class="dtr-table dtr-intake-table" id="dtr-intake-table">
                 <thead>
                     <tr>
-                        <th>Active</th><th>Line</th><th>Side</th><th class="dtr-labref-th">Lab Ref No <span class="dtr-prod-ico" id="dtr-prod-ico" title="Production Date: <?= date('Y-m-d') ?>"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><input type="date" id="dtr-intake-production" value="<?= date('Y-m-d') ?>" aria-label="Production Date"></span></th><th>Test Type</th><th>Production Code</th><th>Style</th><th>Colorway</th><th>MTL #</th>
+                        <th>Active</th><th>Line</th><th>Side</th><th class="dtr-labref-th">Lab Ref No <span class="dtr-prod-ico" id="dtr-prod-ico" title="Production Date: <?= date('Y-m-d') ?>"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><input type="date" id="dtr-intake-production" value="<?= date('Y-m-d') ?>" aria-label="Production Date"></span></th><th>Test Type</th><th>Production Code</th><th>MTL #</th><th>Colorway</th><th>Style</th>
                         <th>Image</th><th>Pull Type</th><th>Lacking</th><th>Remarks</th>
                     </tr>
                 </thead>
@@ -2249,7 +2228,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
         <div class="dtr-modal-body dtr-intake-body">
             <table class="dtr-table dtr-intake-table dtr-wshoe-table">
                 <thead>
-                    <tr><th>Active</th><th>Line</th><th>Side</th><th>Test Type Lab Ref No</th><th>Production Code</th><th>Style No.</th><th>Colorway</th><th>MTL #</th><th>Shoe Master</th><th>No. of Shoes</th><th>Test Type</th></tr>
+                    <tr><th>Type</th><th>Line</th><th>Side</th><th>Test Type Lab Ref No</th><th>Production Code</th><th>Style No.</th><th>Colorway</th><th>MTL #</th><th>Shoe Master</th><th>No. of Shoes</th><th>Test Type</th><th></th></tr>
                 </thead>
                 <tbody id="dtr-wshoe-tbody"></tbody>
             </table>
@@ -2270,12 +2249,14 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
         <div class="dtr-modal-header dtr-intake-head">
             <div>
                 <h3>Material Receive</h3>
-                <small>Enter every material received, one per line. The Lab Reference is generated automatically when you save. Use + Add line for more.</small>
+                <small>Log incoming materials into the IQC Container Receiving queue. Pick a Production Code and Material Code to auto-fill details.</small>
             </div>
-            <button type="button" id="btn-mrec-close" class="dtr-btn-xs" style="background:transparent;color:#fff;border:none;font-size:20px;cursor:pointer" aria-label="Close">&times;</button>
+            <div style="display:flex;align-items:center;gap:12px">
+                <span id="dtr-mrec-count-badge" class="mrec-count-badge">4 lines</span>
+                <button type="button" id="btn-mrec-close" class="dtr-btn-xs" style="background:transparent;color:#fff;border:none;font-size:22px;cursor:pointer;line-height:1" aria-label="Close">&times;</button>
+            </div>
         </div>
-        <div class="dtr-intake-bar">
-            <button type="button" id="btn-mrec-addrow" class="dtr-btn dtr-btn-outline" style="margin-bottom:2px">+ Add line</button>
+        <div class="dtr-intake-bar mrec-top-bar">
             <div class="dtr-intake-field">
                 <label for="dtr-mrec-date">Received Date</label>
                 <input type="date" id="dtr-mrec-date" value="<?= date('Y-m-d') ?>">
@@ -2286,21 +2267,61 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
             </div>
             <div class="dtr-intake-field" style="margin-left:auto">
                 <label for="dtr-mrec-encoder">Encoded By</label>
-                <input type="text" id="dtr-mrec-encoder" value="<?= esc((string) (service('auth')->user()['name'] ?? ''), 'attr') ?>" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;min-width:220px">
+                <input type="text" id="dtr-mrec-encoder" value="<?= esc((string) (service('auth')->user()['name'] ?? ''), 'attr') ?>" style="padding:7px 11px;border:1px solid #cbd5e1;border-radius:6px;font-size:12.5px;min-width:220px;background:#fff">
             </div>
         </div>
-        <div class="dtr-modal-body dtr-intake-body">
-            <table class="dtr-table dtr-intake-table dtr-mrec-table" style="table-layout:fixed;width:100%">
+        <div class="dtr-modal-body dtr-intake-body mrec-body-scroll">
+            <table class="dtr-table dtr-intake-table dtr-mrec-table">
+                <colgroup>
+                    <col style="width:42px"><!-- # -->
+                    <col style="width:132px"><!-- Production Code -->
+                    <col style="width:140px"><!-- Colorway -->
+                    <col style="width:112px"><!-- MTL # -->
+                    <col style="width:128px"><!-- Material Code -->
+                    <col style="width:185px"><!-- Material Name -->
+                    <col style="width:110px"><!-- Material Type -->
+                    <col style="width:125px"><!-- Supplier -->
+                    <col style="width:108px"><!-- Container # -->
+                    <col style="width:98px"><!-- Batch # -->
+                    <col style="width:74px"><!-- Qty -->
+                    <col style="width:74px"><!-- QC Qty -->
+                    <col style="width:72px"><!-- Unit -->
+                    <col style="width:40px"><!-- Action -->
+                </colgroup>
                 <thead>
-                    <tr><th style="width:150px">Production Code</th><th style="width:14%">Colorway</th><th style="width:11%">Style</th><th style="width:118px">MTL #</th><th style="width:128px">Material Code</th><th style="width:20%">Material Name</th><th style="width:112px">Material Type</th><th style="width:10%">Supplier</th><th style="width: 80px;">Container #</th><th style="width: 80px;">Batch #</th><th style="width:64px">Qty</th><th style="width:64px">QC Qty</th></tr>
+                    <tr class="mrec-grp-row">
+                        <th rowspan="2" class="mrec-th-num">#</th>
+                        <th colspan="3" class="mrec-grp-hd grp-erp">Production Order (ERP)</th>
+                        <th colspan="4" class="mrec-grp-hd grp-mat">Material Details</th>
+                        <th colspan="5" class="mrec-grp-hd grp-shp">Shipment &amp; Quantity</th>
+                        <th rowspan="2" class="mrec-th-act"></th>
+                    </tr>
+                    <tr class="mrec-sub-row">
+                        <th>Production Code</th>
+                        <th>Colorway</th>
+                        <th>MTL #</th>
+                        <th>Material Code <span class="req-dot" title="Required">*</span></th>
+                        <th>Material Name <span class="req-dot" title="Lookup or type material">*</span></th>
+                        <th>Material Type</th>
+                        <th>Supplier</th>
+                        <th>Container #</th>
+                        <th>Batch #</th>
+                        <th>Qty</th>
+                        <th>QC Qty</th>
+                        <th>Unit</th>
+                    </tr>
                 </thead>
                 <tbody id="dtr-mrec-tbody"></tbody>
             </table>
         </div>
-        <div class="dtr-modal-footer">
-            <span id="dtr-mrec-msg" class="muted sm" style="margin-right:auto"></span>
+        <div class="dtr-modal-footer mrec-footer">
+            <div style="display:flex;align-items:center;gap:12px;margin-right:auto">
+                <button type="button" id="btn-mrec-addrow-foot" class="dtr-btn dtr-btn-outline" style="padding:6px 12px;font-size:12px">+ Add another line</button>
+                <span class="mrec-hint">Tip: Type in <b>Production Code</b> or <b>Material Code</b> to search and auto-fill related fields.</span>
+                <span id="dtr-mrec-msg" class="mrec-err-msg"></span>
+            </div>
             <button type="button" id="btn-mrec-cancel" class="dtr-btn dtr-btn-outline">Cancel</button>
-            <button type="button" id="btn-mrec-save" class="dtr-btn dtr-btn-primary">Save</button>
+            <button type="button" id="btn-mrec-save" class="dtr-btn dtr-btn-primary" style="padding:8px 22px;font-weight:700">Save Material Receive</button>
         </div>
     </div>
 </div>
@@ -2622,6 +2643,11 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                     <!-- Dynamically rendered printable report sheet -->
                 </div>
             </div>
+            <!-- page 2: the report picture of this Lab Ref (the one shown in the Lab Tracker), Shoe Bonding (U60) only -->
+            <div class="dtr-a4-paper dtr-a4-page2 hidden" id="dtr-print-page2">
+                <div class="dtr-page2-cap" id="dtr-print-page2-cap"></div>
+                <img id="dtr-print-page2-img" alt="Report picture">
+            </div>
         </div>
         <div class="dtr-modal-footer">
             <button type="button" id="btn-dtr-cancel-print" class="dtr-btn dtr-btn-outline">Close</button>
@@ -2694,13 +2720,13 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                             <span>Attach Image File</span>
                         </label>
-                        <input type="file" id="syno-file-upload" accept="image/*" style="display:none">
+                        <input type="file" id="syno-file-upload" accept="image/*" multiple style="display:none">
                         <button type="button" id="btn-syno-capture-card" class="dtr-btn dtr-btn-outline dtr-btn-sm" title="Generate snapshot image of the current bonding report sheet / graph">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                             <span>Snapshot Report Graph Card</span>
                         </button>
                     </div>
-                    <small class="muted">The report graph card and a photo are two separate images: both are sent. PNG, JPG or WebP.</small>
+                    <small class="muted">The report graph card is sent first, then up to 10 photos (upload several at once, or scan the QR code again for each photo). PNG, JPG or WebP.</small>
                 </div>
 
                 <div id="syno-preview-wrap" class="syno-preview-card hidden">
@@ -2712,15 +2738,7 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                         <button type="button" id="btn-syno-remove-attach" class="syno-remove-attach">&times; Remove this image</button>
                     </div>
                 </div>
-                <div id="syno-photo-wrap" class="syno-preview-card hidden">
-                    <img id="syno-photo-img" class="syno-preview-thumb" tabindex="0" role="button" title="Click to enlarge" src="" alt="Photo preview: click to enlarge">
-                    <div class="syno-preview-meta">
-                        <span class="syno-preview-kind">Image 2: photo (phone or upload)</span>
-                        <span id="syno-photo-name" class="syno-preview-name">photo.jpg</span>
-                        <span id="syno-photo-size" class="syno-preview-size">0 KB</span>
-                        <button type="button" id="btn-syno-remove-photo" class="syno-remove-attach">&times; Remove this image</button>
-                    </div>
-                </div>
+                <div id="syno-photo-list" class="email-attach-list"></div>
             </div>
         </div>
         <div class="syno-modal-footer">
@@ -2763,13 +2781,13 @@ $activeTab = $activeTab ?? (string) (service('request')->getGet('tab') ?? 'track
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                             <span>Attach Image File</span>
                         </label>
-                        <input type="file" id="email-file-upload" accept="image/*" style="display:none">
+                        <input type="file" id="email-file-upload" accept="image/*" multiple style="display:none">
                         <button type="button" id="btn-email-capture-card" class="dtr-btn dtr-btn-outline dtr-btn-sm" title="Generate snapshot image of the current bonding report sheet / graph">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                             <span>Snapshot Report Graph Card</span>
                         </button>
                     </div>
-                    <small class="muted">A photo you already took or uploaded for this report is kept here too, and the other way round.</small>
+                    <small class="muted">Up to 10 photos. The photos you took or uploaded for this report are kept here too, and the other way round.</small>
                 </div>
                 <div id="email-attach-list" class="email-attach-list"></div>
             </div>

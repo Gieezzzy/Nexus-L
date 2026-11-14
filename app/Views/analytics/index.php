@@ -61,7 +61,7 @@ $segmented = $months && array_key_exists('pass', $months[0]);
 .an-lbl{font-size:10px;color:var(--muted);margin-top:5px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:clip}
 .an-num{font-size:11px;font-weight:700;margin-bottom:3px}
 .an-legend{display:flex;gap:16px;font-size:12px;margin-top:10px;color:var(--muted)}
-.an-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.an-leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:middle}
 .an-two{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
 .an-row{display:grid;grid-template-columns:minmax(0,1.6fr) 1fr 50px;gap:10px;align-items:center;padding:4px 0;border-bottom:1px solid #eef2f7;font-size:12.5px}
 .an-row .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -72,39 +72,119 @@ $segmented = $months && array_key_exists('pass', $months[0]);
 .an-tabs a{padding:9px 16px;font-size:12.5px;font-weight:700;color:#475569;text-decoration:none;border-right:1px solid #eef2f7}
 .an-tabs a:last-child{border-right:0}.an-tabs a:hover{background:#f1f5f9}
 .an-tabs a.on{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff}
-.ms-tbl{border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:14px;align-self:flex-start;margin-top:0}
-.ms-tbl th,.ms-tbl td{border:1px solid #000;padding:3px 6px;text-align:left}
-.ms-tbl th{background:#b4c6e7;text-align:center;font-weight:700}
-.ms-tbl th.ttl{background:#4472c4;color:#fff}
+.ms-kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:2px}
+.ms-kpi-card{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+.ms-kpi-card small{display:block;font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.04em}
+.ms-kpi-card b{display:block;font-size:20px;font-weight:800;line-height:1.15;margin:2px 0;color:#0f172a}
+.ms-kpi-card .kpi-val-row{display:flex;align-items:baseline;gap:7px;margin:2px 0}
+.ms-kpi-card .kpi-val-row b{margin:0}
+.ms-kpi-card .kpi-pct{display:inline-flex;align-items:center;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:800;line-height:1.3}
+.ms-kpi-card .pct-pass{background:rgba(16,185,129,.14);color:#059669}
+.ms-kpi-card .pct-tol{background:rgba(245,158,11,.16);color:#d97706}
+.ms-kpi-card .pct-fail{background:rgba(239,68,68,.14);color:#dc2626}
+.ms-kpi-card span.sub{display:block;font-size:10.5px;color:#64748b}
+.ms-kpi-ico{width:34px;height:34px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;flex-shrink:0}
+.ms-ico-blue{background:rgba(37,99,235,.12);color:#2563eb}
+.ms-ico-pass{background:rgba(16,185,129,.14);color:#059669}
+.ms-ico-warn{background:rgba(245,158,11,.16);color:#d97706}
+.ms-ico-fail{background:rgba(239,68,68,.14);color:#dc2626}
+.ms-ico-shut{background:rgba(100,116,139,.14);color:#334155}
+.an-top-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+@media (max-width:1100px){.an-top-kpis{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}}
+.ms-tbl{border-collapse:collapse;width:100%;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:12px;align-self:flex-start;margin-top:0}
+.ms-tbl th,.ms-tbl td{border:1px solid #e2e8f0;padding:4px 8px;text-align:left}
+.ms-tbl th{background:#f1f5f9;text-align:center;font-weight:700;color:#334155}
+.ms-tbl th.ttl{background:#2563eb;color:#fff}
 .ms-tbl tr.tt td{font-weight:800}
-.mx-tbl{border-collapse:collapse;width:100%;table-layout:fixed;font-family:Arial,sans-serif;font-size:10px;text-align:center;background:#fff}
-.mx-tbl th,.mx-tbl td{border:1px solid #000;padding:2px 1px;height:17px;font-weight:700;overflow:hidden}
-.mx-tbl th.ttl{background:#2f75b5;color:#fff;font-size:11px;padding:4px}
-.mx-tbl tr.dh th{font-size:9px;font-weight:800}
-.mx-tbl .lc{width:150px;text-align:left;padding-left:5px;font-weight:800}
-.mx-tbl .tc{width:92px}
-.mx-tbl tr.bt td{background:#f4b183;height:30px;font-size:12px}
-.mx-tbl tr.bt td.blue{color:#2f75b5;font-size:15px}
-.mx-tbl td.sd{background:#a6a6a6;font-size:6.5px;letter-spacing:0;padding:0}
-.mx-tbl td.mx{background:#c55a11}
-.mx-tbl tr.rd td{color:#e00000;height:26px}
-.mx-tbl tr.rt td{height:22px}
-.br-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:22px 24px}
-.br-tbl{border-collapse:collapse;width:86%;margin:0 0 18px 0;background:#fff;font-family:Arial,Helvetica,sans-serif;color:#000}
-.br-tbl th,.br-tbl td{border:1px solid #000;text-align:center;padding:2px 8px}
-.br-tbl tr.hd th{background:#d9d9d9;font-size:12px;font-weight:700;padding:14px 8px;border-width:2px 1px 1px}
-.br-tbl tr.hd th:first-child,.br-tbl tr.hd th:last-child{border-left-width:2px}
-.br-tbl tr.rw td{font-size:10.5px;font-weight:700;height:22px}
-.br-tbl tr.rw td.nm{background:#d9d9d9;font-weight:800}
-.br-tbl tr.tot td{background:#d9d9d9;font-weight:800;font-size:18px;border-bottom-width:2px}
-.br-tbl tr.tot td.red{color:#f00}
-.br-tbl td:first-child{border-left-width:2px}.br-tbl td:last-child{border-right-width:2px}.br-tbl th:last-child{border-right-width:2px}
+
+/* Upgraded Matrix Card & Building Toggle */
+.mx-card{background:#fff;border:1px solid #cbd5e1;border-radius:16px;box-shadow:0 4px 16px rgba(15,23,42,.05);overflow:hidden}
+.mx-head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:14px 20px;background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%);color:#fff}
+.mx-head-l h3{margin:0;font-size:14px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:#fff;display:flex;align-items:center;gap:8px}
+.mx-head-l p{margin:3px 0 0;font-size:12px;color:#cbd5e1;font-weight:500}
+.mx-head-r{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.mx-legend{display:flex;align-items:center;gap:12px;font-size:11.5px;color:#e2e8f0;font-weight:600}
+.mx-legend span{display:inline-flex;align-items:center;gap:5px}
+.mx-legend i{display:inline-block;width:10px;height:10px;border-radius:3px}
+.bld-toggle{display:inline-flex;background:rgba(15,23,42,.45);padding:4px;border-radius:11px;border:1px solid rgba(255,255,255,.16);gap:4px}
+.bld-btn{display:inline-flex;align-items:center;gap:8px;border:0;background:transparent;color:#cbd5e1;padding:6px 14px;border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;transition:all .18s ease}
+.bld-btn:hover{color:#fff;background:rgba(255,255,255,.08)}
+.bld-btn.on{background:#fff;color:#0f172a;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+.bld-btn .bld-pill{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;padding:0 6px;border-radius:999px;font-size:11px;font-weight:800;background:rgba(255,255,255,.15);color:#fff}
+.bld-btn.on .bld-pill{background:#fee2e2;color:#dc2626}
+.bld-btn.on .bld-pill.zero{background:#e2e8f0;color:#475569}
+.bld-pane[hidden]{display:none!important}
+.mx-scroll{overflow-x:auto;max-width:100%}
+.mx-tbl{border-collapse:separate;border-spacing:0;width:100%;table-layout:fixed;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:11.5px;font-variant-numeric:tabular-nums;text-align:center;background:#fff}
+.mx-tbl th,.mx-tbl td{border-right:1px solid #cbd5e1;border-bottom:1px solid #cbd5e1;padding:5px 3px;height:28px;line-height:1.2;font-weight:600;color:#334155;overflow:hidden}
+.mx-tbl tr.dh th{background:#f8fafc;color:#334155;font-size:11px;font-weight:800;height:36px;border-bottom:2px solid #94a3b8;letter-spacing:.01em}
+.mx-tbl .lc{text-align:left;padding:5px 14px;font-weight:800;white-space:nowrap;color:#0f172a;background:#fff;position:sticky;left:0;z-index:2;border-right:2px solid #94a3b8}
+.mx-tbl tr.dh th.lc{background:#f1f5f9;z-index:3;color:#1e293b;font-size:11px;letter-spacing:.03em}
+.mx-tbl .line-tag{display:inline-flex;align-items:center;justify-content:center;min-width:36px;padding:2px 8px;border-radius:6px;background:#f1f5f9;color:#0f172a;font-weight:800;font-size:11.5px;border:1px solid #cbd5e1}
+.mx-tbl tbody tr:hover td{background:#f8fafc}
+.mx-tbl tbody tr:hover td.lc{background:#f1f5f9}
+.mx-tbl col.sun{background:#fff1f2}
+.mx-tbl th.sun{background:#ffe4e6!important;color:#e11d48!important}
+.mx-tbl td.sun-cell{background:#fff5f6}
+.mx-tbl tbody tr:hover td.sun-cell{background:#ffe4e6}
+.mx-tbl td.z{color:#94a3b8;font-weight:600}
+.mx-tbl td.has-fail{background:#fef2f2!important;color:#dc2626;font-weight:800}
+.mx-tbl td.has-fail span{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;border-radius:6px;background:#dc2626;color:#fff;font-size:11px;font-weight:800;box-shadow:0 1px 3px rgba(220,38,38,.3)}
+.mx-tbl .tc{width:100px;font-weight:800;background:#f8fafc;position:sticky;right:0;z-index:2;border-left:2px solid #94a3b8;border-right:0}
+.mx-tbl tr.dh th.tc{background:#f1f5f9;z-index:3;font-size:9.5px;line-height:1.25;color:#1e293b}
+.mx-tbl tr.bt td{background:#fff7ed!important;color:#9a3412;height:32px;font-size:11.5px;font-weight:800;border-top:2px solid #fdba74;border-bottom:2px solid #fdba74;border-right:1px solid #fed7aa}
+.mx-tbl tr.bt td.z-sum{color:#fdba74;font-weight:600}
+.mx-tbl tr.bt td.lc{background:#ffedd5!important;color:#9a3412;font-size:11px;letter-spacing:.02em;border-right:2px solid #94a3b8}
+.mx-tbl tr.bt td.blue{background:#ffedd5!important;color:#1d4ed8;font-size:13px;font-weight:900;border-right:0}
+.mx-tbl td.sd{background:#e2e8f0!important;color:#475569;font-size:8px;font-weight:800;letter-spacing:.02em;padding:0}
+.mx-tbl td.mx{background:#ea580c!important;color:#fff!important;font-weight:900;font-size:12.5px}
+.mx-tbl tr.rd td{background:#fef2f2!important;color:#dc2626;height:30px;font-size:11.5px;font-weight:800;border-right:1px solid #fecaca;border-bottom:1px solid #fecaca}
+.mx-tbl tr.rd td.z-sum{color:#fca5a5;font-weight:600}
+.mx-tbl tr.rd td.lc{background:#fee2e2!important;color:#991b1b;font-size:10.5px;letter-spacing:.01em;border-right:2px solid #94a3b8}
+.mx-tbl tr.rd td.tc{background:#fee2e2!important;color:#b91c1c;font-size:12.5px;border-right:0}
+.mx-tbl tr.rt td{background:#f8fafc!important;color:#0f172a;height:30px;font-size:11.5px;font-weight:800;border-right:1px solid #cbd5e1;border-bottom:1px solid #cbd5e1}
+.mx-tbl tr.rt td.z-sum{color:#94a3b8;font-weight:600}
+.mx-tbl tr.rt td.lc{background:#f1f5f9!important;color:#1e293b;font-size:10.5px;letter-spacing:.01em;border-right:2px solid #94a3b8}
+.mx-tbl tr.rt td.tc{background:#f1f5f9!important;color:#0f172a;font-size:12.5px;border-right:0}
+.mx-tbl tr.pct-row td{font-size:10px;letter-spacing:-.02em;padding:5px 2px}
+.mx-tbl tr.pct-row td.has-pct{background:#fee2e2!important;color:#b91c1c;font-weight:900;font-size:10.5px}
+.mx-tbl tr.pct-row td.tc{font-size:12px;letter-spacing:0}
+
+/* Monthly Summary Pie & Trend Cards */
+.ms-chart-grid{display:grid;grid-template-columns:380px minmax(0,1fr);gap:16px;align-items:stretch}
+@media (max-width:1080px){.ms-chart-grid{grid-template-columns:1fr}}
+.ms-pie-card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:18px 20px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 4px 14px rgba(15,23,42,.04)}
+.ms-pie-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
+.ms-pie-head h3{margin:0;font-size:15.5px;font-weight:800;color:#0f172a}
+.ms-pie-head span{font-size:11.5px;font-weight:700;color:#475569;background:#f1f5f9;padding:4px 10px;border-radius:999px}
+.ms-pie-body{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;padding:8px 0}
+.ms-trend-card{background:linear-gradient(145deg,#0f172a 0%,#1e293b 100%);border:1px solid #1e293b;border-radius:16px;padding:18px 20px 12px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 8px 24px rgba(15,23,42,.14);color:#fff;min-width:0;overflow:hidden}
+.ms-trend-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+.ms-trend-head h3{margin:0;font-size:14.5px;font-weight:800;letter-spacing:.03em;color:#f8fafc;text-transform:uppercase}
+.ms-trend-head p{margin:2px 0 0;font-size:11.5px;color:#94a3b8}
+.ms-trend-leg{display:flex;align-items:center;gap:14px;font-size:11.5px;color:#cbd5e1;font-weight:600}
+.ms-trend-leg span{display:inline-flex;align-items:center;gap:6px}
+.ms-trend-leg i{display:inline-block;width:10px;height:10px;border-radius:3px}
+.ms-trend-leg i.ln{width:18px;height:2.5px;border-radius:2px;background:#38bdf8}
+
+/* Cement Analytics */
+.br-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:22px 24px;box-shadow:0 4px 14px rgba(15,23,42,.04)}
+.br-tbl{border-collapse:separate;border-spacing:0;width:100%;margin:0 0 22px 0;background:#fff;font-family:Inter,system-ui,-apple-system,sans-serif;color:#0f172a;border:1px solid #cbd5e1;border-radius:12px;overflow:hidden}
+.br-tbl th,.br-tbl td{border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;text-align:center;padding:10px 14px}
+.br-tbl th:last-child,.br-tbl td:last-child{border-right:0}
+.br-tbl tr.hd th{background:linear-gradient(135deg,#0f172a,#1e3a8a);color:#fff;font-size:11.5px;font-weight:800;letter-spacing:.04em;padding:12px 14px;border-bottom:0}
+.br-tbl tr.rw td{font-size:13px;font-weight:700;color:#334155}
+.br-tbl tr.rw:hover td{background:#f8fafc}
+.br-tbl tr.rw td.nm{background:#f8fafc;font-weight:800;color:#0f172a;text-align:left}
+.br-tbl tr.tot td{background:#f1f5f9;font-weight:800;font-size:15px;color:#0f172a;border-bottom:0;border-top:2px solid #cbd5e1}
+.br-tbl tr.tot td:first-child{text-align:left}
+.br-tbl tr.tot td.red{color:#dc2626;background:#fef2f2}
 .br-pies{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:20px}
-.br-pie{background:radial-gradient(ellipse at 50% 20%,#5b5b5b 0,#2e2e2e 60%,#1c1c1c 100%);padding:22px 20px 14px;color:#fff;text-align:center}
-.br-pie h4{margin:0 0 6px;font-size:16px;font-weight:700;color:#f1f1f1}
+.br-pie{background:linear-gradient(145deg,#0f172a 0%,#1e293b 100%);border-radius:16px;padding:22px 20px 16px;color:#fff;text-align:center;box-shadow:0 6px 20px rgba(15,23,42,.12)}
+.br-pie h4{margin:0 0 6px;font-size:15px;font-weight:800;color:#f8fafc;letter-spacing:.03em}
 .br-pie svg{display:block;max-width:480px;margin:0 auto}
-.br-leg{display:flex;justify-content:center;gap:22px;margin-top:6px;font-size:12px;color:#d4d4d4;font-family:Arial,sans-serif}
-.br-leg i{display:inline-block;width:9px;height:9px;margin-right:5px}</style>
+.br-leg{display:flex;justify-content:center;gap:22px;margin-top:8px;font-size:12px;color:#cbd5e1;font-weight:600}
+.br-leg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:middle}</style>
 
 <div class="an">
     <form method="get" action="<?= site_url('analytics') ?>" class="an-filter" id="an-form" data-today="<?= date('Y-m-d') ?>">
@@ -112,7 +192,7 @@ $segmented = $months && array_key_exists('pass', $months[0]);
         <?php if ($tab === 'bonding'): ?>
         <input type="hidden" name="view" value="<?= esc($view, 'attr') ?>">
         <div class="an-tabs" style="margin-right:auto">
-            <?php foreach (['analytics' => 'Bonding Analytics', 'monthly' => 'Monthly Summary', 'result' => 'Bonding Result'] as $vk => $vl): ?>
+            <?php foreach (['monthly' => 'Monthly Summary', 'daily' => 'Daily Bonding', 'analytics' => 'Bonding Analytics', 'result' => 'Cement Analytics'] as $vk => $vl): ?>
                 <a href="<?= esc(site_url('analytics') . '?' . http_build_query(array_filter(['tab' => 'bonding', 'view' => $vk, 'group' => $group, 'from' => $from, 'to' => $to, 'all' => ($from === '' && $to === '') ? '1' : null], static fn ($v) => $v !== null && $v !== '')), 'attr') ?>" class="<?= $view === $vk ? 'on' : '' ?>"><?= esc($vl) ?></a>
             <?php endforeach ?>
         </div>
@@ -140,7 +220,6 @@ $segmented = $months && array_key_exists('pass', $months[0]);
                     </div>
                     <label>Weekly<select id="an-week"><option value="">Select Weekly</option></select></label>
                     <label>Monthly<select id="an-month"><option value="">Select Monthly</option></select></label>
-                    <label>Yearly<select id="an-year"><option value="">Select Yearly</option></select></label>
                     <button type="button" class="an-custom-btn" id="an-custom">Custom</button>
                     <button type="button" class="an-clear-btn" id="an-all">Show all dates</button>
                 </div>
@@ -200,6 +279,29 @@ $segmented = $months && array_key_exists('pass', $months[0]);
     ?>
     <div class="br-wrap">
         <?php if (! $suppliers): ?><div class="card glass"><p class="muted sm" style="margin:0">No bonding results with a cement supplier in this period.</p></div><?php else: ?>
+        <?php
+        $supLabel = static fn (string $n) => match (strtoupper(trim($n))) {
+            'NANPAO'  => 'Nan Pao',
+            'ZHONGBU' => 'Zhong Bu',
+            default   => ucwords(strtolower(trim($n))),
+        };
+        ?>
+        <div style="margin-bottom:20px">
+            <h3 style="margin:0 0 3px;font-size:15.5px;font-weight:800;color:#0f172a">Cement Suppliers of Failed Bonding</h3>
+            <p style="margin:0 0 12px;font-size:12px;color:#64748b">Compares failure rates between adhesive glue suppliers used on tested shoes.</p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+                <?php foreach ($suppliers as $s): ?>
+                    <div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;background:#f8fafc">
+                        <div style="font-size:13.5px;font-weight:800;color:#0f172a;margin-bottom:6px"><?= esc($supLabel((string) $s['name'])) ?></div>
+                        <div style="display:flex;justify-content:space-between;font-size:12px;color:#475569;margin-bottom:6px">
+                            <span>Specimens: <b><?= number_format((int) $s['total']) ?></b></span>
+                            <span>Failed: <b style="color:#dc2626"><?= number_format((int) $s['fail']) ?></b></span>
+                        </div>
+                        <div style="font-size:20px;font-weight:900;color:#dc2626"><?= $pc((int) $s['fail'], (int) $s['total']) ?> <span style="font-size:11.5px;font-weight:600;color:#64748b">Failed</span></div>
+                    </div>
+                <?php endforeach ?>
+            </div>
+        </div>
         <table class="br-tbl">
             <tr class="hd"><th>CEMENT SUPPLIER</th><th>QTY PASS</th><th>QTY FAILED</th><th>QTY TOLERABLE</th><th>QTY&nbsp; SPECIMENS</th><th>PERCENTAGE FAILED<br>PER CEMENT SUPPLIER</th></tr>
             <?php foreach ($suppliers as $s): ?>
@@ -224,120 +326,340 @@ $segmented = $months && array_key_exists('pass', $months[0]);
     $monthName = strtoupper(date('F Y', strtotime(($from !== '' ? $from : ($days ? $days[0]['d'] : date('Y-m-d')))))); // e.g. OCTOBER 2026
     $monthOnly = strtoupper(date('F', strtotime(($from !== '' ? $from : ($days ? $days[0]['d'] : date('Y-m-d'))))));
     $mdY = static fn (string $d) => date('m-d-Y', strtotime($d));
+    $totRep = (int) ($status['total'] ?? ((int) $status['pass'] + (int) $status['fail'] + (int) $status['tol']));
+    $ratedTot = (int) $status['pass'] + (int) $status['fail'] + (int) $status['tol'];
+    $stT = max(1, $ratedTot);
+    $passPct = round((int) $status['pass'] / $stT * 100);
+    $tolPct  = round((int) $status['tol'] / $stT * 100);
+    $failPct = round((int) $status['fail'] / $stT * 100);
+    $pendRep = max(0, $totRep - $ratedTot);
+    $periodLbl = ($from !== '' || $to !== '') ? ucfirst(strtolower($monthName)) : 'all dates';
     ?>
+    <div class="an-top-kpis">
+        <div class="card glass ms-kpi-card">
+            <div>
+                <small>Total Lab Test Reports</small>
+                <b><?= number_format($totRep) ?></b>
+                <span class="sub">Bonding Shoe Collection &middot; <?= esc($periodLbl) ?><?= $pendRep > 0 ? ' (' . number_format($pendRep) . ' pending)' : '' ?></span>
+            </div>
+            <span class="ms-kpi-ico ms-ico-blue"><svg class="ic" width="18" height="18" aria-hidden="true"><use href="#i-flask"/></svg></span>
+        </div>
+        <div class="card glass ms-kpi-card">
+            <div>
+                <small>Passed Reports</small>
+                <div class="kpi-val-row">
+                    <b class="an-pass"><?= number_format((int) $status['pass']) ?></b>
+                    <span class="kpi-pct pct-pass"><?= $passPct ?>%</span>
+                </div>
+                <span class="sub"><?= $passPct ?>% of rated &middot; Meets VF / Vans Specification</span>
+            </div>
+            <span class="ms-kpi-ico ms-ico-pass">&#10003;</span>
+        </div>
+        <div class="card glass ms-kpi-card">
+            <div>
+                <small>Tolerable / Data</small>
+                <div class="kpi-val-row">
+                    <b class="an-tol"><?= number_format((int) $status['tol']) ?></b>
+                    <span class="kpi-pct pct-tol"><?= $tolPct ?>%</span>
+                </div>
+                <span class="sub"><?= $tolPct ?>% of rated &middot; Within Tolerance Band</span>
+            </div>
+            <span class="ms-kpi-ico ms-ico-warn"><svg class="ic" width="18" height="18" aria-hidden="true"><use href="#i-bolt"/></svg></span>
+        </div>
+        <div class="card glass ms-kpi-card">
+            <div>
+                <small>Failed Reports</small>
+                <div class="kpi-val-row">
+                    <b class="an-fail"><?= number_format((int) $status['fail']) ?></b>
+                    <span class="kpi-pct pct-fail"><?= $failPct ?>%</span>
+                </div>
+                <span class="sub"><?= $failPct ?>% of rated &middot; Requires Retest / Action</span>
+            </div>
+            <span class="ms-kpi-ico ms-ico-fail">&#10005;</span>
+        </div>
+        <div class="card glass ms-kpi-card">
+            <div>
+                <small>Shutdown Lines</small>
+                <b><?= number_format((int) ($status['shut'] ?? 0)) ?></b>
+                <span class="sub">lines marked SHUTDOWN &middot; <?= esc($periodLbl) ?></span>
+            </div>
+            <span class="ms-kpi-ico ms-ico-shut"><svg class="ic" width="18" height="18" aria-hidden="true"><use href="#i-bolt"/></svg></span>
+        </div>
+    </div>
     <?php if (! $days): ?><div class="card glass"><p class="muted sm" style="margin:0">No bonding tests with a production date in this period.</p></div><?php else: ?>
 
     <?php
     // ---- 1. failure trend (bars: failed + tested, line: % failed) ----
-    $W = 1000; $H = 430; $L = 46; $R = 56; $T = 56; $B = 92;
+    $W = 1000; $H = 440; $L = 48; $R = 58; $T = 32; $B = 64;
     $pw = $W - $L - $R; $ph = $H - $T - $B;
     $maxT = 5; $maxP = 5;
     foreach ($days as $d) { $maxT = max($maxT, (int) $d['tested']); $maxP = max($maxP, $d['tested'] ? ceil((int) $d['failed'] / (int) $d['tested'] * 100 / 5) * 5 : 0); }
     $maxT = (int) (ceil($maxT / 5) * 5);
-    $n = count($days); $slot = $pw / $n; $bw = min(22, $slot * 0.36);
+    $n = count($days); $slot = $pw / $n; $bw = min(24, $slot * 0.36);
     $yT = static fn ($v) => $T + $ph - $v / $maxT * $ph;
     $yP = static fn ($v) => $T + $ph - $v / $maxP * $ph;
-    $svg = '';
+    $svg = '<defs><linearGradient id="gFail" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f87171"/><stop offset="100%" stop-color="#dc2626"/></linearGradient><linearGradient id="gTest" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#fb923c"/><stop offset="100%" stop-color="#ea580c"/></linearGradient></defs>';
     for ($i = 0; $i <= 6; $i++) {
         $gy = $T + $ph - $i / 6 * $ph;
-        $svg .= '<line x1="' . $L . '" x2="' . ($W - $R) . '" y1="' . $gy . '" y2="' . $gy . '" stroke="#555" stroke-width="1"/>';
-        $svg .= '<text x="' . ($L - 6) . '" y="' . ($gy + 4) . '" text-anchor="end" fill="#ddd" font-size="11">' . round($i / 6 * $maxT, 1) . '</text>';
-        $svg .= '<text x="' . ($W - $R + 6) . '" y="' . ($gy + 4) . '" fill="#ddd" font-size="11">' . number_format($i / 6 * $maxP, 2) . '%</text>';
+        $svg .= '<line x1="' . $L . '" x2="' . ($W - $R) . '" y1="' . $gy . '" y2="' . $gy . '" stroke="rgba(148,163,184,0.18)" stroke-dasharray="4 4" stroke-width="1"/>';
+        $svg .= '<text x="' . ($L - 8) . '" y="' . ($gy + 4) . '" text-anchor="end" fill="#94a3b8" font-size="11" font-weight="600">' . round($i / 6 * $maxT, 1) . '</text>';
+        $svg .= '<text x="' . ($W - $R + 8) . '" y="' . ($gy + 4) . '" fill="#94a3b8" font-size="11" font-weight="600">' . number_format($i / 6 * $maxP, 2) . '%</text>';
     }
-    $pts = []; $lbls = '';
+    $pts = []; $dots = ''; $lbls = '';
     foreach ($days as $i => $d) {
         $cx = $L + $slot * ($i + 0.5); $te = (int) $d['tested']; $fa = (int) $d['failed'];
-        $svg .= '<rect x="' . ($cx - $bw - 1) . '" y="' . $yT($fa) . '" width="' . $bw . '" height="' . ($T + $ph - $yT($fa)) . '" fill="#4a90d9"/>';
-        $svg .= '<rect x="' . ($cx + 1) . '" y="' . $yT($te) . '" width="' . $bw . '" height="' . ($T + $ph - $yT($te)) . '" fill="#ed7d31"/>';
-        $svg .= '<text x="' . ($cx - $bw / 2) . '" y="' . ($yT($fa) - 4) . '" text-anchor="middle" fill="#fff" font-size="10" font-weight="700">' . $fa . '</text>';
-        $svg .= '<text x="' . ($cx + $bw / 2 + 1) . '" y="' . ($yT($te) - 4) . '" text-anchor="middle" fill="#fff" font-size="10" font-weight="700">' . $te . '</text>';
+        $hFa = max(0, $T + $ph - $yT($fa));
+        $hTe = max(0, $T + $ph - $yT($te));
+        $svg .= '<rect x="' . ($cx - $bw - 1.5) . '" y="' . $yT($fa) . '" width="' . $bw . '" height="' . $hFa . '" rx="3" fill="url(#gFail)"/>';
+        $svg .= '<rect x="' . ($cx + 1.5) . '" y="' . $yT($te) . '" width="' . $bw . '" height="' . $hTe . '" rx="3" fill="url(#gTest)"/>';
+        $svg .= '<text x="' . ($cx - $bw / 2 - 1.5) . '" y="' . ($yT($fa) - 5) . '" text-anchor="middle" fill="#fca5a5" font-size="10.5" font-weight="800">' . $fa . '</text>';
+        $svg .= '<text x="' . ($cx + $bw / 2 + 1.5) . '" y="' . ($yT($te) - 5) . '" text-anchor="middle" fill="#fdba74" font-size="10.5" font-weight="800">' . $te . '</text>';
         $pv = $te ? $fa / $te * 100 : 0;
-        $pts[] = round($cx, 1) . ',' . round($yP($pv), 1);
-        $lbls .= '<text x="' . $cx . '" y="' . ($yP($pv) - 5) . '" text-anchor="middle" fill="#fff" font-size="10.5" font-weight="700" stroke="#3a3a3a" stroke-width="2.5" paint-order="stroke">' . number_format($pv, 2) . '%</text>';
-        $svg .= '<text transform="translate(' . ($cx + 3) . ',' . ($T + $ph + 10) . ') rotate(-45)" text-anchor="end" fill="#ddd" font-size="10">' . $mdY($d['d']) . '</text>';
+        $py = round($yP($pv), 1);
+        $pts[] = round($cx, 1) . ',' . $py;
+        $dots .= '<circle cx="' . round($cx, 1) . '" cy="' . $py . '" r="3.5" fill="#38bdf8" stroke="#0f172a" stroke-width="1.8"/>';
+        $lbls .= '<text x="' . $cx . '" y="' . ($py - 8) . '" text-anchor="middle" fill="#f8fafc" font-size="10.5" font-weight="800" stroke="#0f172a" stroke-width="3" paint-order="stroke">' . number_format($pv, 2) . '%</text>';
+        $svg .= '<text transform="translate(' . ($cx + 3) . ',' . ($T + $ph + 14) . ') rotate(-38)" text-anchor="end" fill="#cbd5e1" font-size="10.5" font-weight="600">' . $mdY($d['d']) . '</text>';
     }
-    $svg .= '<polyline points="' . implode(' ', $pts) . '" fill="none" stroke="#bfbfbf" stroke-width="1.4"/>' . $lbls;
-    $lg = $H - 14;
-    $svg .= '<g font-size="11" fill="#ddd"><rect x="330" y="' . ($lg - 8) . '" width="9" height="9" fill="#4a90d9"/><text x="344" y="' . $lg . '">Failed Specimen</text><rect x="440" y="' . ($lg - 8) . '" width="9" height="9" fill="#ed7d31"/><text x="454" y="' . $lg . '">Tested Specimen</text><line x1="555" x2="575" y1="' . ($lg - 4) . '" y2="' . ($lg - 4) . '" stroke="#bfbfbf"/><text x="580" y="' . $lg . '">Percentage Failed</text></g>';
-    ?>
-    <div class="card" style="padding:0;overflow:hidden;background:#3a3a3a;border:0">
-        <div style="text-align:center;color:#fff;font:700 15px Arial,sans-serif;padding:14px 0 0;letter-spacing:.02em">BONDING FAILURE TREND BY PRODUCTION DATE &nbsp;- <?= esc($monthName) ?></div>
-        <svg viewBox="0 0 <?= $W ?> <?= $H ?>" width="100%" style="display:block;font-family:Arial,sans-serif"><?= $svg ?></svg>
-    </div>
+    $svg .= '<polyline points="' . implode(' ', $pts) . '" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>' . $dots . $lbls;
 
-    <?php
-    // ---- 2. status summary pie + table ----
-    $stT = max(1, (int) $status['pass'] + (int) $status['fail'] + (int) $status['tol']);
-    $sp = [['PASS', (int) $status['pass'], '#5b9bd5'], ['FAILED', (int) $status['fail'], '#ed7d31'], ['TOLERABLE', (int) $status['tol'], '#a5a5a5']];
-    $cxp = 150; $cyp = 150; $rp = 112; $acc = 0; $ps = ''; $pl = '';
+    // ---- 2. status summary donut ----
+    $sp = [['PASS', (int) $status['pass'], '#10b981'], ['FAILED', (int) $status['fail'], '#ef4444'], ['TOLERABLE', (int) $status['tol'], '#f59e0b']];
+    $cxp = 160; $cyp = 152; $rp = 114; $acc = 0; $ps = ''; $pl = '';
     foreach ($sp as [$nm, $v, $col]) {
         if ($v <= 0) { continue; }
         $a0 = $acc / $stT * 360; $acc += $v; $a1 = $acc / $stT * 360;
         if ($v >= $stT) { $ps .= '<circle cx="' . $cxp . '" cy="' . $cyp . '" r="' . $rp . '" fill="' . $col . '"/>'; }
         else {
             $x0 = $cxp + $rp * sin(deg2rad($a0)); $y0 = $cyp - $rp * cos(deg2rad($a0)); $x1 = $cxp + $rp * sin(deg2rad($a1)); $y1 = $cyp - $rp * cos(deg2rad($a1));
-            $ps .= '<path d="M' . $cxp . ',' . $cyp . ' L' . round($x0, 1) . ',' . round($y0, 1) . ' A' . $rp . ',' . $rp . ' 0 ' . (($a1 - $a0) > 180 ? 1 : 0) . ' 1 ' . round($x1, 1) . ',' . round($y1, 1) . ' Z" fill="' . $col . '" stroke="#fff" stroke-width="1"/>';
+            $ps .= '<path d="M' . $cxp . ',' . $cyp . ' L' . round($x0, 1) . ',' . round($y0, 1) . ' A' . $rp . ',' . $rp . ' 0 ' . (($a1 - $a0) > 180 ? 1 : 0) . ' 1 ' . round($x1, 1) . ',' . round($y1, 1) . ' Z" fill="' . $col . '" stroke="#fff" stroke-width="2.5"/>';
         }
         $mid = deg2rad(($a0 + $a1) / 2);
-        $lx = $cxp + ($rp + 26) * sin($mid); $ly = $cyp - ($rp + 18) * cos($mid);
-        $pl .= '<g transform="translate(' . round($lx, 1) . ',' . round($ly, 1) . ')"><rect x="-38" y="-17" width="76" height="34" fill="#fff" stroke="#777"/><text y="-3" text-anchor="middle" font-size="11.5" font-weight="700">' . $nm . '</text><text y="11" text-anchor="middle" font-size="11.5" font-weight="700">' . round($v / $stT * 100) . '%</text></g>';
+        $lx = $cxp + ($rp + 27) * sin($mid); $ly = $cyp - ($rp + 20) * cos($mid);
+        $pl .= '<g transform="translate(' . round($lx, 1) . ',' . round($ly, 1) . ')"><text y="-2" text-anchor="middle" font-size="11.5" font-weight="800" fill="#0f172a" stroke="#fff" stroke-width="3.5" paint-order="stroke">' . $nm . '</text><text y="12" text-anchor="middle" font-size="12" font-weight="800" fill="' . $col . '" stroke="#fff" stroke-width="3.5" paint-order="stroke">' . round($v / $stT * 100) . '%</text></g>';
     }
+    $ps .= '<circle cx="' . $cxp . '" cy="' . $cyp . '" r="52" fill="#fff"/><text x="' . $cxp . '" y="' . ($cyp - 3) . '" text-anchor="middle" font-size="22" font-weight="800" fill="#0f172a">' . number_format($ratedTot) . '</text><text x="' . $cxp . '" y="' . ($cyp + 14) . '" text-anchor="middle" font-size="10" font-weight="800" letter-spacing="0.06em" fill="#64748b">RATED</text>';
     ?>
-    <div class="card" style="background:#fff;display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
-        <div style="flex:1 1 330px;max-width:520px;border:1px solid #cfd6df;background:#fff">
-            <div style="text-align:center;font:700 22px Arial,sans-serif;padding-top:10px"><?= ucfirst(strtolower($monthOnly)) ?> Summary</div>
-            <svg viewBox="-20 0 340 310" width="100%" style="display:block;font-family:Arial,sans-serif"><?= $ps . $pl ?></svg>
+    <div class="ms-chart-grid">
+        <div class="ms-pie-card">
+            <div class="ms-pie-head">
+                <h3><?= ucfirst(strtolower($monthOnly)) ?> Summary</h3>
+                <span><?= number_format($ratedTot) ?> Rated</span>
+            </div>
+            <div class="ms-pie-body">
+                <svg viewBox="-12 8 344 288" width="100%" style="display:block;width:100%;max-width:345px;height:auto;margin:auto;font-family:Inter,system-ui,sans-serif"><?= $ps . $pl ?></svg>
+            </div>
         </div>
-        <table class="ms-tbl" style="flex:0 1 380px">
-            <tr><th colspan="2" class="ttl"><?= esc($monthOnly) ?></th></tr>
-            <tr><th>STATUS</th><th>COUNT</th></tr>
-            <tr><td>PASS</td><td><?= (int) $status['pass'] ?></td></tr>
-            <tr><td>FAILED</td><td><?= (int) $status['fail'] ?></td></tr>
-            <tr><td>TOLERABLE</td><td><?= (int) $status['tol'] ?></td></tr>
-            <tr class="tt"><td>Total:</td><td><?= (int) $status['pass'] + (int) $status['fail'] + (int) $status['tol'] ?></td></tr>
-        </table>
+
+        <div class="ms-trend-card">
+            <div class="ms-trend-head">
+                <div>
+                    <h3>Bonding Failure Trend by Production Date &mdash; <?= esc($monthName) ?></h3>
+                    <p>Daily tested specimens vs. bonding failures and failure rate percentage</p>
+                </div>
+                <div class="ms-trend-leg">
+                    <span><i style="background:#ef4444"></i>Failed Specimen</span>
+                    <span><i style="background:#f97316"></i>Tested Specimen</span>
+                    <span><i class="ln"></i>Percentage Failed</span>
+                </div>
+            </div>
+            <svg viewBox="0 0 <?= $W ?> <?= $H ?>" width="100%" style="display:block;font-family:Inter,system-ui,sans-serif"><?= $svg ?></svg>
+        </div>
     </div>
 
     <?php
-    // ---- 3. failed specimens per line and production date ----
-    $dates = array_column($days, 'd');
-    $totF = []; $totT = []; $grand = 0; $grandT = 0;
+    // ---- 3. failed specimens per line and production date (Building A & B tabs) ----
+    $withTests = array_column($days, 'd');
+    $rangeFrom = $from !== '' ? strtotime($from) : strtotime(date('Y-m-01', strtotime($withTests[0])));
+    $rangeTo   = ($to ?? '') !== '' ? strtotime($to) : strtotime(date('Y-m-t', $rangeFrom));
+    $dates = [];
+    for ($t = $rangeFrom; $t <= $rangeTo && count($dates) < 62; $t = strtotime('+1 day', $t)) { $dates[] = date('Y-m-d', $t); }
+    $totF = array_fill_keys($dates, 0);
+    $totT = array_fill_keys($dates, 0);
+    $grand = 0; $grandT = 0;
     foreach ($days as $d) { $totT[$d['d']] = (int) $d['tested']; $grandT += (int) $d['tested']; }
-    $lastD = end($dates);
+    $lastD = end($withTests);
+    $mdHead = static fn (string $d) => count($dates) > 10 ? date('m-d', strtotime($d)) : date('m-d-Y', strtotime($d));
+
+    $bldStats = [];
+    foreach ($lines as $bld => $nums) {
+        $bTot = array_fill_keys($dates, 0);
+        $rowT = [];
+        foreach ($nums as $nn) {
+            $rowT[$nn] = 0;
+            foreach ($dates as $d) {
+                $c = (int) ($cells[$bld][$nn][$d] ?? 0);
+                $rowT[$nn] += $c;
+                $bTot[$d]  += $c;
+                $totF[$d]   = ($totF[$d] ?? 0) + $c;
+            }
+        }
+        $bSum = array_sum($rowT);
+        $grand += $bSum;
+        $bldStats[$bld] = [
+            'nums'  => $nums,
+            'bTot'  => $bTot,
+            'rowT'  => $rowT,
+            'mxRow' => $rowT ? max($rowT) : 0,
+            'sum'   => $bSum,
+        ];
+    }
+    $bldKeys = array_keys($bldStats);
+    $firstBld = $bldKeys[0] ?? 'A';
     ?>
-    <div class="card" style="background:#fff;padding:0;overflow-x:auto">
-        <table class="mx-tbl">
-            <tr><th colspan="<?= count($dates) + 2 ?>" class="ttl">COUNT OF BONDING-FAILED SPECIMENS BY LINE AND PRODUCTION DATE - <?= esc($monthName) ?></th></tr>
-            <tr class="dh"><th class="lc">PRODUCTION DATE</th><?php foreach ($dates as $d): ?><th><?= $mdY($d) ?></th><?php endforeach ?><th class="tc">TOTAL FAILED<br>PER LINE AS OF<br><?= esc($lastD) ?></th></tr>
-            <?php foreach ($lines as $bld => $nums): ?>
-                <?php
-                $bTot = array_fill_keys($dates, 0); $rowT = [];
-                foreach ($nums as $nn) { $rowT[$nn] = array_sum($cells[$bld][$nn] ?? []); }
-                $mxRow = $rowT ? max($rowT) : 0;
-                ?>
-                <?php foreach ($nums as $nn): ?>
-                    <tr><td class="lc"><?= esc($bld . $nn) ?></td>
-                    <?php foreach ($dates as $d): $c = (int) ($cells[$bld][$nn][$d] ?? 0); $bTot[$d] += $c; $totF[$d] = ($totF[$d] ?? 0) + $c; ?><?php if (! empty($shut[$bld][$nn][$d]) && $c === 0): ?><td class="sd" title="Shutdown">SHUTDOWN</td><?php else: ?><td><?= $c ?></td><?php endif ?><?php endforeach ?>
-                    <td class="tc<?= ($mxRow > 0 && $rowT[$nn] === $mxRow) ? ' mx' : '' ?>"><?= $rowT[$nn] ?></td></tr>
-                <?php endforeach ?>
-                <tr class="bt"><td class="lc">TOTAL FAILED BLDG <?= esc($bld) ?></td><?php foreach ($dates as $d): ?><td><?= $bTot[$d] ?></td><?php endforeach ?><td class="tc blue"><?= array_sum($rowT) ?></td></tr>
-                <?php $grand += array_sum($rowT); ?>
-            <?php endforeach ?>
-            <tr class="rd"><td class="lc">TOTAL FAILED PER PRODUCTION DATE</td><?php foreach ($dates as $d): ?><td><?= (int) ($totF[$d] ?? 0) ?></td><?php endforeach ?><td class="tc"><?= $grand ?></td></tr>
-            <tr class="rt"><td class="lc">TOTAL TESTED PER PRODUCTION DATE</td><?php foreach ($dates as $d): ?><td><?= $totT[$d] ?></td><?php endforeach ?><td class="tc"><?= $grandT ?></td></tr>
-            <tr class="rd"><td class="lc">TOTAL FAILURE PERCENTAGE PER PRODUCTION DATE</td><?php foreach ($dates as $d): ?><td><?= $totT[$d] ? number_format((int) ($totF[$d] ?? 0) / $totT[$d] * 100, 2) . '%' : '0.00%' ?></td><?php endforeach ?><td class="tc"><?= $grandT ? number_format($grand / $grandT * 100, 2) . '%' : '0.00%' ?></td></tr>
-        </table>
-    </div>
-    <?php endif ?>
-<?php else: ?>
-    <div class="an-kpis">
-        <?php foreach ($kpis as $k): ?>
-            <div class="card glass an-kpi"><small><?= esc($k[0]) ?></small><b class="<?= esc($k[3]) ?>"><?= esc($k[1]) ?></b><span><?= esc($k[2]) ?></span></div>
+    <div class="mx-card" id="mx-bld-card">
+        <div class="mx-head">
+            <div class="mx-head-l">
+                <h3>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                    Count of Bonding-Failed Specimens by Line &amp; Production Date &mdash; <?= esc($monthName) ?>
+                </h3>
+                <p>As of <?= esc($lastD) ?> &middot; Total Failed: <b><?= number_format($grand) ?></b> of <b><?= number_format($grandT) ?></b> Tested Specimens (<b><?= $grandT ? number_format($grand / $grandT * 100, 2) . '%' : '0.00%' ?></b>)</p>
+            </div>
+            <div class="mx-head-r">
+                <div class="mx-legend">
+                    <span><i style="background:#ffe4e6;border:1px solid #fda4af"></i>Sunday</span>
+                    <span><i style="background:#dc2626"></i>Failed &gt; 0</span>
+                    <span><i style="background:#ea580c"></i>Highest Line</span>
+                </div>
+                <div class="bld-toggle" role="tablist" aria-label="Select Building">
+                    <?php foreach ($bldStats as $bld => $stB): ?>
+                        <button type="button" role="tab" class="bld-btn <?= $bld === $firstBld ? 'on' : '' ?>" data-bld-target="<?= esc($bld, 'attr') ?>" aria-selected="<?= $bld === $firstBld ? 'true' : 'false' ?>">
+                            Building <?= esc($bld) ?>
+                            <span class="bld-pill <?= $stB['sum'] === 0 ? 'zero' : '' ?>" title="<?= $stB['sum'] ?> failed specimen(s) in Building <?= esc($bld) ?>"><?= number_format($stB['sum']) ?></span>
+                        </button>
+                    <?php endforeach ?>
+                </div>
+            </div>
+        </div>
+
+        <?php foreach ($bldStats as $bld => $stB): ?>
+            <?php
+            $nums  = $stB['nums'];
+            $bTot  = $stB['bTot'];
+            $rowT  = $stB['rowT'];
+            $mxRow = $stB['mxRow'];
+            ?>
+            <div class="bld-pane" data-bld-pane="<?= esc($bld, 'attr') ?>" <?= $bld === $firstBld ? '' : 'hidden' ?>>
+                <div class="mx-scroll">
+                    <table class="mx-tbl" style="min-width:<?= 380 + count($dates) * 44 ?>px">
+                        <colgroup>
+                            <col style="width:276px">
+                            <?php foreach ($dates as $d): ?><col<?= date('w', strtotime($d)) === '0' ? ' class="sun"' : '' ?>><?php endforeach ?>
+                            <col style="width:104px">
+                        </colgroup>
+                        <thead>
+                            <tr class="dh">
+                                <th class="lc">BUILDING <?= esc($bld) ?> &middot; PRODUCTION DATE</th>
+                                <?php foreach ($dates as $d): ?>
+                                    <th<?= date('w', strtotime($d)) === '0' ? ' class="sun"' : '' ?>><?= $mdHead($d) ?></th>
+                                <?php endforeach ?>
+                                <th class="tc">TOTAL FAILED<br>PER LINE AS OF<br><?= esc($lastD) ?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($nums as $nn): ?>
+                                <tr>
+                                    <td class="lc"><span class="line-tag"><?= esc($bld . $nn) ?></span></td>
+                                    <?php foreach ($dates as $d):
+                                        $c = (int) ($cells[$bld][$nn][$d] ?? 0);
+                                        $isSun = date('w', strtotime($d)) === '0';
+                                    ?>
+                                        <?php if (! empty($shut[$bld][$nn][$d]) && $c === 0): ?>
+                                            <td class="sd" title="Shutdown">SHUTDOWN</td>
+                                        <?php elseif ($c > 0): ?>
+                                            <td class="has-fail<?= $isSun ? ' sun-cell' : '' ?>"><span><?= $c ?></span></td>
+                                        <?php else: ?>
+                                            <td class="z<?= $isSun ? ' sun-cell' : '' ?>">0</td>
+                                        <?php endif ?>
+                                    <?php endforeach ?>
+                                    <td class="tc<?= ($mxRow > 0 && $rowT[$nn] === $mxRow) ? ' mx' : '' ?>"><?= $rowT[$nn] ?></td>
+                                </tr>
+                            <?php endforeach ?>
+                            <tr class="bt">
+                                <td class="lc">TOTAL FAILED BLDG <?= esc($bld) ?></td>
+                                <?php foreach ($dates as $d): $bv = (int) $bTot[$d]; ?>
+                                    <td<?= $bv === 0 ? ' class="z-sum"' : '' ?>><?= $bv ?></td>
+                                <?php endforeach ?>
+                                <td class="tc blue"><?= $stB['sum'] ?></td>
+                            </tr>
+                            <tr class="rd">
+                                <td class="lc">TOTAL FAILED PER PRODUCTION DATE</td>
+                                <?php foreach ($dates as $d): $fv = (int) ($totF[$d] ?? 0); ?>
+                                    <td<?= $fv === 0 ? ' class="z-sum"' : '' ?>><?= $fv ?></td>
+                                <?php endforeach ?>
+                                <td class="tc"><?= $grand ?></td>
+                            </tr>
+                            <tr class="rt">
+                                <td class="lc">TOTAL TESTED PER PRODUCTION DATE</td>
+                                <?php foreach ($dates as $d): $tv = (int) $totT[$d]; ?>
+                                    <td<?= $tv === 0 ? ' class="z-sum"' : '' ?>><?= $tv ?></td>
+                                <?php endforeach ?>
+                                <td class="tc"><?= $grandT ?></td>
+                            </tr>
+                            <tr class="rd pct-row">
+                                <td class="lc">TOTAL FAILURE PERCENTAGE PER PRODUCTION DATE</td>
+                                <?php foreach ($dates as $d):
+                                    $fv = (int) ($totF[$d] ?? 0);
+                                    $tv = (int) $totT[$d];
+                                    $hasPct = $tv > 0 && $fv > 0;
+                                ?>
+                                    <td class="<?= $hasPct ? 'has-pct' : 'z-sum' ?>"><?= $tv ? number_format($fv / $tv * 100, 2) . '%' : '0.00%' ?></td>
+                                <?php endforeach ?>
+                                <td class="tc"><?= $grandT ? number_format($grand / $grandT * 100, 2) . '%' : '0.00%' ?></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         <?php endforeach ?>
     </div>
 
-    <div class="card glass">
-        <h3 style="margin:0 0 10px"><?= esc($chartTitle) ?></h3>
+    <?php endif ?>
+<?php elseif ($view === 'daily'): ?>
+    <?php include __DIR__ . '/bonding_daily.php'; ?>
+<?php else: ?>
+    <div class="an-kpis">
+        <?php foreach ($kpis as $k): ?>
+            <?php
+            $icoCls = match ($k[3] ?? '') {
+                'an-pass' => 'ms-ico-pass',
+                'an-tol'  => 'ms-ico-warn',
+                'an-fail' => 'ms-ico-fail',
+                default   => 'ms-ico-blue',
+            };
+            $icoSym = match ($k[3] ?? '') {
+                'an-pass' => '&#10003;',
+                'an-tol'  => '<svg class="ic" width="18" height="18" aria-hidden="true"><use href="#i-bolt"/></svg>',
+                'an-fail' => '&#10005;',
+                default   => '<svg class="ic" width="18" height="18" aria-hidden="true"><use href="#i-flask"/></svg>',
+            };
+            ?>
+            <div class="card glass ms-kpi-card">
+                <div>
+                    <small><?= esc($k[0]) ?></small>
+                    <b class="<?= esc($k[3]) ?>"><?= esc($k[1]) ?></b>
+                    <span class="sub"><?= esc($k[2]) ?></span>
+                </div>
+                <span class="ms-kpi-ico <?= $icoCls ?>"><?= $icoSym ?></span>
+            </div>
+        <?php endforeach ?>
+    </div>
+
+    <div class="card glass" style="padding:18px 20px;border-radius:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+            <div>
+                <h3 style="margin:0;font-size:15px;font-weight:800;color:#0f172a"><?= esc($chartTitle) ?></h3>
+                <span style="font-size:11.5px;color:#64748b">Distribution of test volume and results across the selected period</span>
+            </div>
+            <?php if ($segmented): ?>
+                <div class="an-legend" style="margin:0;font-weight:600">
+                    <span><i class="an-p"></i>Pass</span>
+                    <span><i class="an-t"></i>Tolerable</span>
+                    <span><i class="an-f"></i>Fail</span>
+                </div>
+            <?php endif ?>
+        </div>
         <?php if (! $months): ?>
             <p class="muted sm">No dated records yet.</p>
         <?php else: ?>
@@ -359,19 +681,18 @@ $segmented = $months && array_key_exists('pass', $months[0]);
                     </div>
                 <?php endforeach ?>
             </div>
-            <?php if ($segmented): ?><div class="an-legend"><span><i class="an-p"></i>Pass</span><span><i class="an-t"></i>Tolerable</span><span><i class="an-f"></i>Fail</span></div><?php endif ?>
         <?php endif ?>
     </div>
 
     <div class="an-two">
         <?php foreach ($lists as [$title, $mode, $rows]): ?>
-            <div class="card glass">
-                <h3 style="margin:0 0 8px"><?= esc($title) ?></h3>
+            <div class="card glass" style="padding:18px 20px;border-radius:16px">
+                <h3 style="margin:0 0 12px;font-size:14.5px;font-weight:800;color:#0f172a"><?= esc($title) ?></h3>
                 <?php $mx = max(1, (int) ($rows[0]['a'] ?? 1)); foreach ($rows as $r): ?>
                     <?php $w = $mode === 'ratio' ? ((int) $r['b'] > 0 ? round((int) $r['a'] / (int) $r['b'] * 100, 1) : 0) : round((int) $r['a'] / $mx * 100); ?>
-                    <div class="an-row"><span class="nm" title="<?= esc($r['name'], 'attr') ?>"><?= esc($r['name']) ?></span>
+                    <div class="an-row" style="padding:7px 0"><span class="nm" style="font-weight:600;color:#1e293b" title="<?= esc($r['name'], 'attr') ?>"><?= esc($r['name']) ?></span>
                         <span class="an-meter"><i class="<?= $mode === 'ratio' ? '' : 'an-neutral' ?>" style="width:<?= $w ?>%"></i></span>
-                        <span class="v"><?= (int) $r['a'] ?><?= $mode === 'ratio' ? '/' . (int) $r['b'] : '' ?></span></div>
+                        <span class="v" style="font-size:12px;color:#0f172a"><?= (int) $r['a'] ?><?= $mode === 'ratio' ? '<span style="color:#64748b;font-weight:500">/' . (int) $r['b'] . '</span>' : '' ?></span></div>
                 <?php endforeach ?>
                 <?php if (! $rows): ?><p class="muted sm">No data.</p><?php endif ?>
             </div>
@@ -382,6 +703,24 @@ $segmented = $months && array_key_exists('pass', $months[0]);
 
 <script>
 (function () {
+  var bldCard = document.getElementById('mx-bld-card');
+  if (bldCard) {
+    var btns = bldCard.querySelectorAll('[data-bld-target]');
+    var panes = bldCard.querySelectorAll('[data-bld-pane]');
+    btns.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var target = btn.getAttribute('data-bld-target');
+        btns.forEach(function (b) {
+          var active = b.getAttribute('data-bld-target') === target;
+          b.classList.toggle('on', active);
+          b.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        panes.forEach(function (p) {
+          p.hidden = p.getAttribute('data-bld-pane') !== target;
+        });
+      });
+    });
+  }
   var form = document.getElementById('an-form'); if (!form) return;
   var $ = function (id) { return document.getElementById(id); };
   var pad = function (n) { return (n < 10 ? '0' : '') + n; };
@@ -412,8 +751,8 @@ $segmented = $months && array_key_exists('pass', $months[0]);
     });
   });
 
-  // weekly (Monday - Sunday, last 12 weeks), monthly (last 12), yearly (last 6)
-  var wk = $('an-week'), mo = $('an-month'), yr = $('an-year');
+  // weekly (Monday - Sunday, last 12 weeks), monthly (last 12)
+  var wk = $('an-week'), mo = $('an-month');
   var mon = new Date(today); mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
   for (var i = 0; i < 12; i++) {
     var s = new Date(mon); s.setDate(s.getDate() - 7 * i); var e = new Date(s); e.setDate(e.getDate() + 6);
@@ -423,9 +762,8 @@ $segmented = $months && array_key_exists('pass', $months[0]);
     var ms = new Date(today.getFullYear(), today.getMonth() - m, 1), me = new Date(ms.getFullYear(), ms.getMonth() + 1, 0);
     mo.add(new Option(MONTHS[ms.getMonth()] + ' ' + ms.getFullYear(), iso(ms) + '|' + iso(me)));
   }
-  for (var y = 0; y < 6; y++) { var yy = today.getFullYear() - y; yr.add(new Option(String(yy), yy + '-01-01|' + yy + '-12-31')); }
   var pick = function (sel, group) { sel.addEventListener('change', function () { if (!sel.value) return; var p = sel.value.split('|'); go(p[0], p[1], group); }); };
-  pick(wk, 'day'); pick(mo, 'day'); pick(yr, 'month');
+  pick(wk, 'day'); pick(mo, 'day');
   $('an-all').addEventListener('click', function () { go('', '', 'month'); });
 
   // custom range calendar

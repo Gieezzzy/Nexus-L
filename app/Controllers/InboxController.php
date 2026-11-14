@@ -25,9 +25,13 @@ class InboxController extends BaseController
 
     public function index(): string
     {
+        $uid = (int) ($this->auth->id() ?? 0);
+        $uRow = $uid > 0 ? ((new UserModel())->select('UserID, Avatar')->find($uid) ?: []) : [];
+
         return $this->render('inbox/index', [
             'title' => 'Inbox', 'withCss' => 'inbox.css', 'withJs' => ['inbox-emoji.js', 'inbox.js'],
             'isAdmin' => strcasecmp((string) ($this->auth->user()['role'] ?? ''), 'admin') === 0,
+            'myAvatar' => UserModel::avatarUrl($uRow['Avatar'] ?? null, $uid),
         ]);
     }
 
@@ -40,6 +44,7 @@ class InboxController extends BaseController
             $out  = ['conversations' => [], 'people' => [], 'warnings' => []];
             foreach ($this->stores() as [$store, $me]) {
                 try {
+                    $store->touchPresence($me);
                     foreach ($store->conversations($me) as $c) {
                         $out['conversations'][] = $this->tag($c, $store);
                     }
@@ -57,7 +62,8 @@ class InboxController extends BaseController
             if ($q === '') {
                 unset($out['people']);
             }
-            $out['admin'] = $this->admin;
+            $out['admin']    = $this->admin;
+            $out['myAvatar'] = UserModel::avatarUrl($this->webUser['Avatar'] ?? null, (int) ($this->webUser['UserID'] ?? 0));
 
             return $out;
         });
@@ -107,15 +113,18 @@ class InboxController extends BaseController
     {
         return $this->guard(function () use ($key) {
             [$s, $me, $targetId, $person, , $isGroup] = $this->scope($key);
-            $after = max(0, (int) $this->request->getGet('after'));
+            $s->touchPresence($me);
+            $after  = max(0, (int) $this->request->getGet('after'));
+            $before = max(0, (int) $this->request->getGet('before'));
+            $limit  = ($after > 0 && $before === 0) ? 100 : 60;
             if ($isGroup) {
-                $data = $s->groupThread($me, $targetId, $after, $after > 0 ? 100 : 60);
+                $data = $s->groupThread($me, $targetId, $after, $limit, $before);
                 $data['messages'] = $this->withUrls($data['messages'], $key);
 
                 return ['peer' => $this->tag($person, $s), 'me' => $me, 'isGroup' => true, 'group' => $data['group']] + $data;
             }
 
-            $data  = $s->thread($me, $targetId, $after, $after > 0 ? 100 : 60);
+            $data  = $s->thread($me, $targetId, $after, $limit, $before);
             $s->markRead($me, $targetId);
             $data['messages'] = $this->withUrls($data['messages'], $key);
 
@@ -135,6 +144,7 @@ class InboxController extends BaseController
             }
             if ($isGroup) {
                 $id = $s->sendGroup($me, $targetId, $body, [], (int) ($in['reply_to'] ?? 0) ?: null, $this->admin);
+                $this->notifyGroup($s, $me, $myName, $person, $body);
 
                 return ['id' => $id, 'message' => $this->one($s, $me, $targetId, $id, $key, true)];
             }
@@ -153,6 +163,9 @@ class InboxController extends BaseController
         return $this->guard(function () use ($key) {
             [$s, $me, $targetId, $person, $myName, $isGroup] = $this->scope($key);
             $this->throttle($me);
+            if (! $isGroup && $me !== $targetId && $s->isBlockedBetween($me, $targetId)) {
+                throw new \DomainException('Messaging is blocked in this conversation.', 403);
+            }
             $files = $this->request->getFileMultiple('files') ?: array_filter([$this->request->getFile('file')]);
             if (! $files || count($files) > 5) {
                 throw new \InvalidArgumentException('Attach between 1 and 5 files.');
@@ -173,6 +186,9 @@ class InboxController extends BaseController
                 if ($isGroup) {
                     $id = $s->sendGroup($me, $targetId, $text, $att, $replyId, $this->admin);
                     $out[] = $this->one($s, $me, $targetId, $id, $key, true);
+                    if ($i === 0) {
+                        $this->notifyGroup($s, $me, $myName, $person, $text !== '' ? $text : ($att['name'] ?? 'Sent an attachment'));
+                    }
                 } else {
                     $id = $s->send($me, $targetId, $text, $att, $replyId);
                     $out[] = $this->one($s, $me, $targetId, $id, $key, false);
@@ -231,6 +247,15 @@ class InboxController extends BaseController
             $ext = self::IMAGE_MIMES[$mime];
         } elseif (! in_array($ext, self::FILE_EXTS, true)) {
             throw new \InvalidArgumentException('This file type is not allowed. Allowed: images, PDF, Office files, TXT, CSV, ZIP, RAR, 7Z.');
+        } else {
+            $detected = class_exists(\finfo::class) ? (string) ((new \finfo(FILEINFO_MIME_TYPE))->file($f->getTempName()) ?: '') : '';
+            $blocked  = ['application/x-dosexec', 'application/x-executable', 'application/x-msdownload', 'application/x-httpd-php', 'text/x-php', 'application/x-sh', 'text/x-shellscript'];
+            if (in_array(strtolower($detected), $blocked, true)) {
+                throw new \InvalidArgumentException('This file content is not allowed.');
+            }
+            if ($ext === 'pdf' && $detected !== '' && stripos($detected, 'pdf') === false) {
+                throw new \InvalidArgumentException('Invalid PDF file.');
+            }
         }
         $rel = date('Y/m') . '/' . bin2hex(random_bytes(16)) . '.' . $ext;
         $dir = dirname(NexusStore::absolutePath($rel));
@@ -250,14 +275,20 @@ class InboxController extends BaseController
         return ['pdf' => 'application/pdf', 'txt' => 'text/plain', 'csv' => 'text/csv', 'zip' => 'application/zip'][$ext] ?? 'application/octet-stream';
     }
 
-    /** Authenticated download/inline view of a NEXUS-L attachment. */
+    /** Authenticated download/inline view of a NEXUS-L attachment (1:1 and Group). */
     public function file(string $key, int $id)
     {
-        $user = $this->boot();
+        $this->boot();
+        if (! $this->webUser) {
+            return $this->response->setStatusCode(401)->setBody('Unauthorized');
+        }
         try {
-            [$s, $me, $peer] = $this->scope($key);
-            $row = $s instanceof NexusStore ? $s->rawMessage($me, $peer, $id) : null;
+            [$s, $me, $peer, , , $isGroup] = $this->scope($key);
+            $row = $s instanceof NexusStore ? $s->rawScopedMessage($me, $peer, $id, $isGroup) : null;
         } catch (\Throwable $e) {
+            $row = null;
+        }
+        if ($row && (! empty($row['IsUnsent']) || (! empty($row['ExpiresAt']) && strtotime((string) $row['ExpiresAt']) <= time()))) {
             $row = null;
         }
         $path = $row && ! empty($row['FilePath']) ? NexusStore::absolutePath((string) $row['FilePath']) : null;
@@ -282,58 +313,90 @@ class InboxController extends BaseController
     public function react(string $key)
     {
         return $this->guard(function () use ($key) {
-            [$s, $me, $peer, , $myName] = $this->scope($key);
+            [$s, $me, $peer, , $myName, $isGroup] = $this->scope($key);
             $in = $this->input();
 
-            return ['reactions' => $s->react($me, $peer, (int) ($in['id'] ?? 0), (string) ($in['emoji'] ?? ''), $myName)];
+            return ['reactions' => $s->react($me, $peer, (int) ($in['id'] ?? 0), (string) ($in['emoji'] ?? ''), $myName, $isGroup)];
         });
     }
 
     public function edit(string $key)
     {
         return $this->guard(function () use ($key) {
-            [$s, $me, $peer] = $this->scope($key);
+            [$s, $me, $peer, , , $isGroup] = $this->scope($key);
             $in   = $this->input();
             $text = trim((string) ($in['body'] ?? ''));
             if ($text === '' || mb_strlen($text) > 2000) {
                 throw new \InvalidArgumentException('Message must be 1–2000 characters.');
             }
-            $m = $s->edit($me, $peer, (int) ($in['id'] ?? 0), $text);
+            $m = $s->edit($me, $peer, (int) ($in['id'] ?? 0), $text, $isGroup);
 
             return ['message' => $this->withUrls([$m], $key)[0]];
+        });
+    }
+
+    public function unsend(string $key)
+    {
+        return $this->guard(function () use ($key) {
+            [$s, $me, $peer, , , $isGroup] = $this->scope($key);
+            $in = $this->input();
+            $m  = $s->unsend($me, $peer, (int) ($in['id'] ?? 0), $isGroup, $this->admin);
+
+            return ['ok' => true, 'message' => $this->withUrls([$m], $key)[0]];
+        });
+    }
+
+    public function deleteMsg(string $key)
+    {
+        return $this->guard(function () use ($key) {
+            [$s, $me, $peer, , , $isGroup] = $this->scope($key);
+            $in = $this->input();
+            $s->deleteForMe($me, $peer, (int) ($in['id'] ?? 0), $isGroup);
+
+            return ['ok' => true, 'id' => (int) ($in['id'] ?? 0)];
         });
     }
 
     public function bump(string $key)
     {
         return $this->guard(function () use ($key) {
-            [$s, $me, $peer, $person, $myName] = $this->scope($key);
+            [$s, $me, $peer, $person, $myName, $isGroup] = $this->scope($key);
             $this->throttle($me);
-            $id = $s->bump($me, $peer, (int) ($this->input()['id'] ?? 0), $myName, $person['name']);
-            $this->notify($s, $me, $myName, $peer, $person, 'Bumped a message');
+            $id = $s->bump($me, $peer, (int) ($this->input()['id'] ?? 0), $myName, $person['name'], $isGroup, $this->admin);
+            if ($isGroup) {
+                $this->notifyGroup($s, $me, $myName, $person, 'Bumped a message');
+            } else {
+                $this->notify($s, $me, $myName, $peer, $person, 'Bumped a message');
+            }
 
-            return ['message' => $this->one($s, $me, $peer, $id, $key)];
+            return ['message' => $this->one($s, $me, $peer, $id, $key, $isGroup)];
         });
     }
 
-    /** POST {id, to: "<src>:<peer>"} re-sends the text to another chat of the same source. */
+    /** POST {id, to: "<src>:<peer>"} re-sends the text to another chat (1:1 or Group) of the same source. */
     public function forward(string $key)
     {
         return $this->guard(function () use ($key) {
-            [$s, $me, $peer] = $this->scope($key);
+            [$s, $me, $peer, , , $isGroup] = $this->scope($key);
             $in = $this->input();
             $to = (string) ($in['to'] ?? '');
-            [$s2, , $peer2, $person2, $myName] = $this->scope($to);
+            [$s2, , $peer2, $person2, $myName, $isGroup2] = $this->scope($to);
             if ($s2->source() !== $s->source()) {
                 throw new \InvalidArgumentException('Messages can only be forwarded within the same system.');
             }
             $this->throttle($me);
-            $text = $s->plainText($me, $peer, (int) ($in['id'] ?? 0));
+            $text = $s->plainText($me, $peer, (int) ($in['id'] ?? 0), $isGroup);
             if ($text === null || trim($text) === '') {
                 throw new \InvalidArgumentException('Attachments cannot be forwarded yet.');
             }
-            $s2->send($me, $peer2, '[Forwarded] ' . $text);
-            $this->notify($s2, $me, $myName, $peer2, $person2, '[Forwarded] ' . $text);
+            $msg = '[Forwarded] ' . $text;
+            if ($isGroup2) {
+                $s2->sendGroup($me, $peer2, $msg, [], null, $this->admin);
+                $this->notifyGroup($s2, $me, $myName, $person2, $msg);
+            } else {
+                $s2->send($me, $peer2, $msg);
+                $this->notify($s2, $me, $myName, $peer2, $person2, $msg);
+            }
 
             return ['ok' => true];
         });
@@ -362,7 +425,11 @@ class InboxController extends BaseController
             $in = $this->input();
             if ($isGroup) {
                 if (isset($in['key']) && isset($in['value'])) {
-                    $s->setGroupSetting($targetId, (string) $in['key'], (string) $in['value']);
+                    $settingKey = (string) $in['key'];
+                    if (in_array($settingKey, ['GroupName', 'SecuredChat', 'IsReadReceipt'], true) && ! $this->admin && ! $s->isGroupAdmin($me, $targetId)) {
+                        throw new \DomainException('Only group admins can change this setting.', 403);
+                    }
+                    $s->setGroupSetting($targetId, $settingKey, (string) $in['value']);
                 }
 
                 return ['settings' => $s->groupDetails($me, $targetId)];
@@ -402,15 +469,20 @@ class InboxController extends BaseController
                 $creator = (string) $this->webUser['UserID'];
             }
 
-            // Clean members
-            $cleanMembers = array_values(array_unique(array_filter(array_map('trim', $members))));
+            // Clean & verify member IDs against active user directory
+            $cleanMembers = [];
+            foreach (array_unique(array_filter(array_map('trim', $members))) as $uid) {
+                if ($uid === $creator || $store->person($uid) !== null) {
+                    $cleanMembers[] = $uid;
+                }
+            }
             if (! in_array($creator, $cleanMembers, true)) {
                 $cleanMembers[] = $creator;
             }
 
             $totalCount = count($cleanMembers);
             if ($totalCount < 2) {
-                throw new \InvalidArgumentException('Please select at least 1 other member to create a group.');
+                throw new \InvalidArgumentException('Please select at least 1 other valid member to create a group.');
             }
 
             // Limit of 50 members: Above 50 requires Administrator approval
@@ -428,6 +500,8 @@ class InboxController extends BaseController
 
             $gid = $store->createGroupRecord($creator, $name, $cleanMembers, $policies);
             $key = ($isRms ? 'rg:' : 'g:') . $gid;
+            $actor = (string) ($this->webUser['FullName'] ?? 'Someone');
+            $store->postSystemGroupEvent((string) $gid, $creator, "{$actor} created the group \"{$name}\"");
 
             return [
                 'ok'              => true,
@@ -448,7 +522,7 @@ class InboxController extends BaseController
             if (! $this->admin) {
                 throw new \DomainException('Only administrators can approve or reject groups.', 403);
             }
-            [$s, , $targetId, , , $isGroup] = $this->scope($key);
+            [$s, $me, $targetId, , , $isGroup] = $this->scope($key, true);
             if (! $isGroup) {
                 throw new \InvalidArgumentException('Not a group chat.');
             }
@@ -457,11 +531,182 @@ class InboxController extends BaseController
             $approve = ($action === 'approve');
             $s->approveGroup($targetId, $approve);
 
-            return ['ok' => true, 'action' => $action, 'group' => $s->groupDetails('', $targetId)];
+            return ['ok' => true, 'action' => $action, 'group' => $s->groupDetails($me, $targetId)];
         });
     }
 
-    /** POST toggle or approve disappearing messages (1:1 or Group). */
+    public function renameGroup(string $key)
+    {
+        return $this->guard(function () use ($key) {
+            [$s, $me, $targetId, , , $isGroup] = $this->scope($key);
+            if (! $isGroup) {
+                throw new \InvalidArgumentException('Not a group chat.');
+            }
+            $in = $this->input();
+            $group = $s->renameGroup($me, $targetId, (string) ($in['name'] ?? ''), $this->admin);
+
+            return ['ok' => true, 'group' => $group];
+        });
+    }
+
+    public function updateGroupPhoto(string $key)
+    {
+        return $this->guard(function () use ($key) {
+            [$s, $me, $targetId, , , $isGroup] = $this->scope($key);
+            if (! $isGroup) {
+                throw new \InvalidArgumentException('Not a group chat.');
+            }
+            $f = $this->request->getFile('file');
+            if ($f && $f->isValid() && ! $f->hasMoved()) {
+                if ($f->getSize() > self::MAX_FILE) {
+                    throw new \InvalidArgumentException('Photo exceeds the 10 MB limit.');
+                }
+                $mime = $f->getMimeType();
+                if (! isset(self::IMAGE_MIMES[$mime]) || @getimagesize($f->getTempName()) === false) {
+                    throw new \InvalidArgumentException('Please upload a valid image (PNG, JPG, WebP, or GIF).');
+                }
+                $ext = self::IMAGE_MIMES[$mime];
+                $rel = 'groups/' . date('Y/m') . '/' . bin2hex(random_bytes(16)) . '.' . $ext;
+                $dir = dirname(NexusStore::absolutePath($rel));
+                if (! is_dir($dir) && ! @mkdir($dir, 0775, true)) {
+                    throw new \RuntimeException('Could not create the upload folder.');
+                }
+                if (! $f->move($dir, basename($rel))) {
+                    throw new \RuntimeException('Could not store the group photo.');
+                }
+                $group = $s->setGroupPhoto($me, $targetId, $rel);
+
+                return ['ok' => true, 'group' => $group];
+            }
+
+            $in = $this->input();
+            if (! empty($in['remove'])) {
+                $group = $s->setGroupPhoto($me, $targetId, null);
+
+                return ['ok' => true, 'group' => $group];
+            }
+            $avatar = trim((string) ($in['avatar'] ?? ''));
+            if ($avatar === '' || ! preg_match('#^data:image/(png|jpeg|webp);base64,([A-Za-z0-9+/=\r\n]+)$#', $avatar, $m) || strlen($avatar) > 5 * 1024 * 1024) {
+                throw new \InvalidArgumentException('Invalid group photo.');
+            }
+            $raw = base64_decode($m[2], true);
+            if ($raw === false || @getimagesizefromstring($raw) === false) {
+                throw new \InvalidArgumentException('Invalid group photo.');
+            }
+            $ext = $m[1] === 'jpeg' ? 'jpg' : $m[1];
+            $rel = 'groups/' . date('Y/m') . '/' . bin2hex(random_bytes(16)) . '.' . $ext;
+            $dir = dirname(NexusStore::absolutePath($rel));
+            if (! is_dir($dir) && ! @mkdir($dir, 0775, true)) {
+                throw new \RuntimeException('Could not create the upload folder.');
+            }
+            if (@file_put_contents(NexusStore::absolutePath($rel), $raw) === false) {
+                throw new \RuntimeException('Could not store the group photo.');
+            }
+            $group = $s->setGroupPhoto($me, $targetId, $rel);
+
+            return ['ok' => true, 'group' => $group];
+        });
+    }
+
+    public function groupAvatar(string $key)
+    {
+        $this->boot();
+        if (! $this->webUser) {
+            return $this->response->setStatusCode(401)->setBody('Unauthorized');
+        }
+        try {
+            [$s, , $targetId, , , $isGroup] = $this->scope($key, true);
+            if (! $isGroup) {
+                return $this->response->setStatusCode(404)->setBody('Not found');
+            }
+            $rel = $s->rawGroupPic($targetId);
+        } catch (\Throwable $e) {
+            $rel = null;
+        }
+        if ($rel === null || str_starts_with($rel, 'data:') || str_starts_with($rel, 'http')) {
+            return $this->response->setStatusCode(404)->setBody('Not found');
+        }
+        $path = NexusStore::absolutePath($rel);
+        if (! is_file($path)) {
+            return $this->response->setStatusCode(404)->setBody('Not found');
+        }
+        $ext  = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $mime = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'gif' => 'image/gif', 'webp' => 'image/webp'][$ext] ?? 'image/png';
+
+        return $this->response
+            ->setHeader('Content-Type', $mime)
+            ->setHeader('X-Content-Type-Options', 'nosniff')
+            ->setHeader('Cache-Control', 'private, max-age=86400')
+            ->setBody((string) file_get_contents($path));
+    }
+
+    public function addGroupMembers(string $key)
+    {
+        return $this->guard(function () use ($key) {
+            [$s, $me, $targetId, , , $isGroup] = $this->scope($key);
+            if (! $isGroup) {
+                throw new \InvalidArgumentException('Not a group chat.');
+            }
+            $in = $this->input();
+            $group = $s->addGroupMembers($me, $targetId, (array) ($in['members'] ?? []), $this->admin);
+
+            return ['ok' => true, 'group' => $group];
+        });
+    }
+
+    public function removeGroupMember(string $key)
+    {
+        return $this->guard(function () use ($key) {
+            [$s, $me, $targetId, , , $isGroup] = $this->scope($key);
+            if (! $isGroup) {
+                throw new \InvalidArgumentException('Not a group chat.');
+            }
+            $in = $this->input();
+            $group = $s->removeGroupMember($me, $targetId, trim((string) ($in['member_id'] ?? '')), $this->admin);
+
+            return ['ok' => true, 'group' => $group];
+        });
+    }
+
+    public function leaveGroup(string $key)
+    {
+        return $this->guard(function () use ($key) {
+            [$s, $me, $targetId, , , $isGroup] = $this->scope($key);
+            if (! $isGroup) {
+                throw new \InvalidArgumentException('Not a group chat.');
+            }
+            $s->leaveGroup($me, $targetId);
+
+            return ['ok' => true];
+        });
+    }
+
+    public function toggleMute(string $key)
+    {
+        return $this->guard(function () use ($key) {
+            [$s, $me, $targetId, , , $isGroup] = $this->scope($key);
+            $in = $this->input();
+            $mute = (bool) ($in['muted'] ?? true);
+
+            return ['ok' => true, 'muted' => $s->setMute($me, $targetId, $mute, $isGroup)];
+        });
+    }
+
+    public function toggleBlock(string $key)
+    {
+        return $this->guard(function () use ($key) {
+            [$s, $me, $targetId, , , $isGroup] = $this->scope($key);
+            if ($isGroup) {
+                throw new \InvalidArgumentException('Groups cannot be blocked. Leave the group instead.');
+            }
+            $in = $this->input();
+            $block = (bool) ($in['blocked'] ?? true);
+
+            return ['ok' => true, 'blocked' => $s->setBlocked($me, $targetId, $block)];
+        });
+    }
+
+    /** POST toggle or set disappearing messages preset (off | 24h | 7d). */
     public function setDisappearing(string $key)
     {
         return $this->guard(function () use ($key) {
@@ -469,7 +714,10 @@ class InboxController extends BaseController
             $in   = $this->input();
             $mode = trim((string) ($in['mode'] ?? 'toggle'));
             if ($isGroup) {
-                $res = $s->setGroupDisappearingMode($targetId, $mode);
+                if (! $this->admin && ! $s->isGroupAdmin($me, $targetId)) {
+                    throw new \DomainException('Only group admins can change disappearing messages.', 403);
+                }
+                $res = $s->setGroupDisappearingMode($targetId, $mode, $me);
             } else {
                 $res = $s->setDisappearingMode($me, $targetId, $mode);
             }
@@ -481,8 +729,8 @@ class InboxController extends BaseController
     public function markTriggered(string $key, int $id)
     {
         return $this->guard(function () use ($key, $id) {
-            [$s] = $this->scope($key);
-            $s->markTriggered($id);
+            [$s, $me, $targetId, , , $isGroup] = $this->scope($key);
+            $s->markTriggered($me, $targetId, $id, $isGroup);
 
             return ['ok' => true];
         });
@@ -491,9 +739,9 @@ class InboxController extends BaseController
     public function pinned(string $key)
     {
         return $this->guard(function () use ($key) {
-            [$s, $me, $peer] = $this->scope($key);
+            [$s, $me, $peer, , , $isGroup] = $this->scope($key);
 
-            return ['messages' => $this->withUrls($s->pinned($me, $peer), $key)];
+            return ['messages' => $this->withUrls($s->pinned($me, $peer, $isGroup), $key)];
         });
     }
 
@@ -501,9 +749,9 @@ class InboxController extends BaseController
     public function pin(string $key)
     {
         return $this->guard(function () use ($key) {
-            [$s, $me, $peer] = $this->scope($key);
+            [$s, $me, $peer, , , $isGroup] = $this->scope($key);
             $in  = $this->input();
-            $ids = $s->setPinned($me, $peer, (int) ($in['id'] ?? 0), (bool) ($in['pin'] ?? true));
+            $ids = $s->setPinned($me, $peer, (int) ($in['id'] ?? 0), (bool) ($in['pin'] ?? true), $isGroup);
 
             return ['pinned' => $ids];
         });
@@ -512,18 +760,18 @@ class InboxController extends BaseController
     public function chatSearch(string $key)
     {
         return $this->guard(function () use ($key) {
-            [$s, $me, $peer] = $this->scope($key);
+            [$s, $me, $peer, , , $isGroup] = $this->scope($key);
             $q = trim((string) $this->request->getGet('q'));
 
-            return ['messages' => mb_strlen($q) >= 2 ? $s->searchChat($me, $peer, mb_substr($q, 0, 60)) : []];
+            return ['messages' => mb_strlen($q) >= 2 ? $s->searchChat($me, $peer, mb_substr($q, 0, 60), $isGroup) : []];
         });
     }
 
     public function media(string $key)
     {
         return $this->guard(function () use ($key) {
-            [$s, $me, $peer] = $this->scope($key);
-            $items = $s->media($me, $peer, max(0, (int) $this->request->getGet('before')), (bool) $this->request->getGet('files'));
+            [$s, $me, $peer, , , $isGroup] = $this->scope($key);
+            $items = $s->media($me, $peer, max(0, (int) $this->request->getGet('before')), (bool) $this->request->getGet('files'), 24, $isGroup);
 
             return ['items' => $this->withUrls($items, $key)];
         });
@@ -745,7 +993,7 @@ class InboxController extends BaseController
     }
 
     /** @return array{0:ChatStore,1:string,2:string,3:array,4:string,5:bool} store, my id, peer/group id, peer/group info, my display name, isGroup */
-    private function scope(string $key): array
+    private function scope(string $key, bool $allowAdminBypass = false): array
     {
         if (! preg_match('/^(n|r|g|rg):([A-Za-z0-9_.\-]{1,100})$/', $key, $m)) {
             throw new \DomainException('Chat not found.', 404);
@@ -771,7 +1019,13 @@ class InboxController extends BaseController
         }
 
         if ($isGroup) {
+            if ((! $allowAdminBypass || ! $this->admin) && ! $store->isGroupMember($me, $targetId)) {
+                throw new \DomainException('You are not a member of this group.', 403);
+            }
             $person = $store->groupDetails($me, $targetId);
+            if (empty($person)) {
+                throw new \DomainException('Group not found.', 404);
+            }
             $person['src'] = $isRms ? 'rg' : 'g';
         } else {
             $person = $targetId === $me
@@ -822,6 +1076,31 @@ class InboxController extends BaseController
             (new InboxNotifier())->newMessage($s, $me, $myName, $peer, $text, isset($person['synologyId']) ? (string) $person['synologyId'] : null);
         } catch (\Throwable $e) {
             log_message('error', '[Inbox] notify: ' . $e->getMessage());
+        }
+    }
+
+    private function notifyGroup(ChatStore $s, string $me, string $myName, array $groupPerson, string $text): void
+    {
+        $groupLabel = (string) ($groupPerson['name'] ?? 'Group');
+        $members    = $groupPerson['members'] ?? [];
+        $notifier   = new InboxNotifier();
+        foreach ($members as $m) {
+            $uid = (string) ($m['id'] ?? '');
+            if ($uid === '' || $uid === $me || ! empty($m['muted'])) {
+                continue;
+            }
+            try {
+                $notifier->newMessage(
+                    $s,
+                    $me,
+                    $myName . ' (' . $groupLabel . ')',
+                    $uid,
+                    $text,
+                    isset($m['synologyId']) ? (string) $m['synologyId'] : null
+                );
+            } catch (\Throwable $e) {
+                log_message('error', '[Inbox] notifyGroup: ' . $e->getMessage());
+            }
         }
     }
 

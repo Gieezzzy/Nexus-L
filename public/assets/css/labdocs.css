@@ -1488,3 +1488,20 @@ a.ld-btn { text-decoration: none; display: inline-flex; align-items: center; }
 .gdoc-page-sheet table, .gdoc-page-sheet th, .gdoc-page-sheet td { border: 1px solid #dadce0; }
 .gdoc-page-sheet th { background: #f8f9fa; font-weight: bold; padding: 8px 12px; }
 .gdoc-page-sheet td { padding: 8px 12px; }
+
+/* ---- folder of files: file-manager menu, selection, cut (SATRA / Admin) ---- */
+.fl-sel{outline:2px solid #2563eb;outline-offset:-2px;background:rgba(37,99,235,.08)!important}
+.fl-cut{opacity:.45}
+.fl-ctx{position:fixed;z-index:10060;min-width:230px;max-width:300px;padding:6px;border-radius:10px;background:#fff;border:1px solid #e2e8f0;box-shadow:0 12px 32px rgba(15,23,42,.18)}
+.fl-ctx-i{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;padding:7px 10px;border:0;background:none;border-radius:6px;font:inherit;font-size:13px;color:#0f172a;text-align:left;cursor:pointer}
+.fl-ctx-i:hover:not([disabled]),.fl-ctx-i:focus-visible{background:#eff6ff;outline:none}
+.fl-ctx-i[disabled]{color:#94a3b8;cursor:default}
+.fl-ctx-i kbd{font:11px/1 inherit;color:#64748b;background:none;border:0}
+.fl-ctx-i.danger{color:#b42318}
+.fl-ctx-i.danger:hover{background:#fef3f2}
+.fl-ctx-sep{height:1px;background:#e2e8f0;margin:5px 4px}
+.fl-ctx-h{padding:6px 10px;font-size:12px;font-weight:600;color:#475569}
+.ld-dlg-b p{white-space:pre-line}
+.fl-sync{color:#b45309}
+.fl-tip{color:#64748b;font-size:12px}
+@media (prefers-color-scheme:dark){.fl-ctx{background:#0f172a;border-color:#334155}.fl-ctx-i{color:#e2e8f0}.fl-ctx-i:hover:not([disabled]){background:#1e293b}.fl-ctx-sep{background:#334155}}

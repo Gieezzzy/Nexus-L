@@ -14,9 +14,9 @@ namespace App\Libraries;
 class LabDocRoles
 {
     /** the roles that can be given (the names shown to people) */
-    public const ROLES = ['Admin', 'Bonding', 'Encoding', 'Materials', 'Manager', 'Supervisor', 'Technician', 'Guest'];   // the same eight as Roles::ROLES (the old Encoder / Supervisor 1 / 2 still count)
+    public const ROLES = ['Admin', 'Bonding', 'Encoding', 'Materials', 'Manager', 'Supervisor', 'Technician', 'Guest', 'SATRA', 'Warehouse PIC'];   // the same eight as Roles::ROLES (the old Encoder / Supervisor 1 / 2 still count)
 
-    private const EDIT = ['admin', 'manager', 'supervisor', 'supervisor1', 'supervisor2', 'encoder', 'encoders', 'encoding'];
+    private const EDIT = ['admin', 'manager', 'supervisor', 'supervisor1', 'supervisor2', 'encoder', 'encoders', 'encoding', 'satra'];
 
     /** @return list<string> the roles of a Role value, as normal names where they are known */
     public static function parse(string $role): array
@@ -42,6 +42,18 @@ class LabDocRoles
     {
         foreach (self::parse($role) as $r) {
             if (in_array(self::key($r), self::EDIT, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** full control (SATRA, Admin): rename, move, copy / cut / paste, delete files and whole folders, new files */
+    public static function canManage(string $role): bool
+    {
+        foreach (self::parse($role) as $r) {
+            if (in_array(self::key($r), ['admin', 'satra'], true)) {
                 return true;
             }
         }

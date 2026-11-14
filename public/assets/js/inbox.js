@@ -4,6 +4,9 @@
   const root = document.getElementById('msgr');
   if (!root) return;
   const BASE = root.dataset.base;
+  const ACCOUNT_AVATAR_URL = root.dataset.accountAvatar || BASE.replace(/\/inbox\/?$/, '/account/avatar');
+  let myAvatar = root.dataset.myAvatar || '';
+  const myName = root.dataset.myName || 'Me';
   const ADMIN = root.dataset.admin === '1';
   const $ = (id) => document.getElementById(id);
   const csrfMeta = document.querySelector('meta[name="X-CSRF-TOKEN"]');
@@ -19,13 +22,17 @@
     particleCanvas: $('msgr-particle-canvas'), cinemaOverlay: $('msgr-cinema-overlay'),
     approvalBanner: $('msgr-approval-banner'), abActions: $('ab-actions'), abApprove: $('ab-btn-approve'), abReject: $('ab-btn-reject'),
     abTitle: $('ab-title'), abDesc: $('ab-desc'), disappearingBar: $('msgr-disappearing-bar'), disappearingTxt: $('msgr-disappearing-txt'),
-    infThemeBtn: $('inf-theme-btn'), infThemeName: $('inf-theme-name'), infDisBtn: $('inf-dis-btn'),
-    infMembersBtn: $('inf-members-btn'), infMembersCount: $('inf-members-count') };
+    filters: $('msgr-filters'), pinBar: $('msgr-pin-bar'), pinText: $('msgr-pin-text'), pinCount: $('msgr-pin-count'),
+    infThemeBtn: $('inf-theme-btn'), infThemeName: $('inf-theme-name'), infDisBtn: $('inf-dis-btn'), infDis: $('inf-dis'),
+    infMembersBtn: $('inf-members-btn'), infMembersCount: $('inf-members-count'),
+    infPhotoBtn: $('inf-photo-btn'), infMyPhotoBtn: $('inf-my-photo-btn'), myAvBtn: $('msgr-my-avatar-btn'), myAv: $('msgr-my-av'),
+    infRenameBtn: $('inf-rename-btn'), infAddMembersBtn: $('inf-add-members-btn'),
+    infMute: $('inf-mute'), infBlockBtn: $('inf-block-btn'), infLeaveBtn: $('inf-leave-btn') };
 
   // ---------- state ----------
   let key = null, peer = null, me = '';
-  let lastId = 0, lastDay = '', lastSender = null, lastTime = 0, seenEl = null, tick = 0, busy = false;
-  let settings = null, nicks = { me: '', peer: '' };
+  let lastId = 0, oldestId = 0, hasMore = false, loadingOlder = false, lastDay = '', lastSender = null, lastTime = 0, seenEl = null, tick = 0, busy = false;
+  let settings = null, nicks = { me: '', peer: '' }, convFilter = 'all', pinIdx = 0;
   const msgData = new Map();
   let pending = [];                       // files waiting to be sent
   let replyTo = null;                     // message being replied to {id, from, text, image, file}
@@ -119,20 +126,7 @@
     post('token', { token, device_type: 'web' }).catch((err) => console.warn('[FCM] Token save error:', err));
   };
 
-  const registerServiceWorker = () => {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register(`${BASE.replace(/\/inbox$/, '')}/firebase-messaging-sw.js`)
-        .then((reg) => {
-          console.log('[FCM] SW registered:', reg.scope);
-          if (reg.pushManager) {
-            reg.pushManager.getSubscription().then((sub) => {
-              if (sub && sub.endpoint) saveFcmToken(sub.endpoint);
-            }).catch(() => {});
-          }
-        })
-        .catch((err) => console.warn('[FCM] SW registration failed:', err));
-    }
-  };
+  const registerServiceWorker = () => { if (window.nxEnablePush) window.nxEnablePush(); };   // the push subscription is made once, in app.js
 
   const initNotifBanner = () => {
     const bannerEl = $('msgr-notif-banner');
@@ -477,19 +471,59 @@
 
   const updateDisappearingUI = (status) => {
     if (!el.disappearingBar) return;
-    if (status === 'on') {
+    const labels = {
+      '1m': '⏱ Disappearing messages: 1 minute. New messages expire automatically.',
+      '1h': '⏱ Disappearing messages: 1 hour. New messages expire automatically.',
+      '24h': '⏱ Disappearing messages: 24 hours. New messages expire automatically.',
+      '7d': '⏱ Disappearing messages: 7 days. New messages expire automatically.',
+      'on': '⏱ Disappearing messages are turned ON. Messages disappear automatically.',
+      'pending': '⏱ Disappearing messages requested. Waiting for peer approval.'
+    };
+    if (labels[status]) {
       show(el.disappearingBar, true);
-      if (el.disappearingTxt) el.disappearingTxt.textContent = '⏱ Disappearing messages are turned ON. Messages disappear automatically.';
-    } else if (status === 'pending') {
-      show(el.disappearingBar, true);
-      if (el.disappearingTxt) el.disappearingTxt.textContent = '⏱ Disappearing messages requested. Waiting for peer approval.';
+      if (el.disappearingTxt) el.disappearingTxt.textContent = labels[status];
     } else {
       show(el.disappearingBar, false);
     }
     if (el.infDis) {
-      el.infDis.textContent = { on: 'On', pending: 'Waiting for approval', off: 'Off' }[status] || 'Off';
+      el.infDis.textContent = { '1m': '1 minute', '1h': '1 hour', '24h': '24 hours', '7d': '7 days', on: 'On', pending: 'Waiting for approval', off: 'Off' }[status] || 'Off';
     }
   };
+
+  const fmtRemaining = (expStr) => {
+    const ms = +parse(expStr) - Date.now();
+    if (ms <= 0) return '0s';
+    const s = Math.ceil(ms / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60), rs = s % 60;
+    if (m < 60) return rs > 0 && m < 10 ? `${m}m ${rs}s` : `${m}m`;
+    const h = Math.floor(m / 60), rm = m % 60;
+    if (h < 24) return rm > 0 ? `${h}h ${rm}m` : `${h}h`;
+    const d = Math.floor(h / 24), rh = h % 24;
+    return rh > 0 ? `${d}d ${rh}h` : `${d}d`;
+  };
+
+  const tickExpiringMessages = () => {
+    if (!el.msgs) return;
+    let removedAny = false;
+    el.msgs.querySelectorAll('.m-exp[data-exp]').forEach((badge) => {
+      const exp = badge.dataset.exp;
+      const ms = +parse(exp) - Date.now();
+      if (ms <= 0) {
+        const b = badge.closest('.m');
+        if (b) {
+          const id = +b.dataset.id;
+          msgData.delete(id);
+          (b.closest('.mq') || b).remove();
+          removedAny = true;
+        }
+      } else {
+        badge.textContent = '⏱ ' + fmtRemaining(exp);
+      }
+    });
+    if (removedAny) loadList();
+  };
+  setInterval(tickExpiringMessages, 1000);
 
   const updateApprovalBanner = (group) => {
     if (!el.approvalBanner) return;
@@ -565,23 +599,48 @@
     if (p.isGroup && p.pendingApproval) {
       s.append(mk('span', 'grp-pending-chip', '⚠️ Pending Approval'), document.createTextNode(' '));
     }
+    if (conv && p.muted) {
+      s.append(mk('span', 'muted-chip', '🔕 '), document.createTextNode(''));
+    }
     s.append(document.createTextNode(conv ? ((p.mine ? 'You: ' : '') + p.last) : (p.username ? '@' + p.username : (p.dept || ''))));
     m.append(n, s); b.append(a, m);
     if (conv) {
       b.append(mk('span', 'when', fmtShort(p.at)));
-      if (p.unread > 0) b.append(mk('span', 'badge-dot', p.unread));
+      if (p.unread > 0) b.append(mk('span', 'badge-dot' + (p.muted ? ' muted' : ''), p.unread));
     }
     b.addEventListener('click', () => open(p));
     const li = document.createElement('li'); li.append(b); return li;
   };
   const renderList = () => {
     el.items.textContent = '';
-    if (people.length) { el.items.append(mk('li', 'sec', 'People')); people.forEach((p) => el.items.append(row(p, false))); }
-    else convCache.forEach((c) => el.items.append(row(c, true)));
     const searching = el.q.value.trim() !== '';
-    el.none.textContent = searching ? 'No people found.' : 'No conversations yet. Search for a person to start one.';
-    show(el.none, !((searching ? people.length : convCache.length) > 0));
+    if (people.length) {
+      el.items.append(mk('li', 'sec', 'People'));
+      people.forEach((p) => el.items.append(row(p, false)));
+    } else {
+      const list = convCache.filter((c) => {
+        if (convFilter === 'unread') return (c.unread || 0) > 0;
+        if (convFilter === 'groups') return !!(c.isGroup || c.src === 'g' || c.src === 'rg');
+        return true;
+      });
+      list.forEach((c) => el.items.append(row(c, true)));
+      el.none.textContent = searching ? 'No people found.' : (convFilter === 'unread' ? 'No unread conversations.' : (convFilter === 'groups' ? 'No group chats yet.' : 'No conversations yet. Search for a person to start one.'));
+      show(el.none, list.length === 0);
+      return;
+    }
+    el.none.textContent = 'No people found.';
+    show(el.none, false);
   };
+  el.filters?.addEventListener('click', (e) => {
+    const b = e.target.closest('.msgr-filter'); if (!b) return;
+    convFilter = b.dataset.filter || 'all';
+    el.filters.querySelectorAll('.msgr-filter').forEach((btn) => {
+      const on = btn === b;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    renderList();
+  });
   const updateTabTitle = () => {
     const totalUnread = convCache.reduce((acc, c) => acc + (c.unread || 0), 0);
     const baseTitle = document.title.replace(/^\(\d+\)\s*/, '');
@@ -604,7 +663,7 @@
   let qt; el.q.addEventListener('input', () => { clearTimeout(qt); qt = setTimeout(loadList, 250); });
 
   // ---------- message rendering ----------
-  const resetThread = () => { el.msgs.textContent = ''; msgData.clear(); lastId = 0; lastDay = ''; lastSender = null; lastTime = 0; seenEl = null; };
+  const resetThread = () => { el.msgs.textContent = ''; msgData.clear(); lastId = 0; oldestId = 0; hasMore = false; loadingOlder = false; pinIdx = 0; lastDay = ''; lastSender = null; lastTime = 0; seenEl = null; show(el.pinBar, false); };
   const reactChips = (m) => {
     const wrap = mk('div', 'reacts');
     const by = new Map();
@@ -617,13 +676,21 @@
   };
   const core = (m) => {
     const mine = m.from === me;
-    const b = mk('div', 'm ' + (mine ? 'me' : 'them')); b.dataset.id = m.id; b.title = fmtTime(parse(m.at));
+    const b = mk('div', 'm ' + (mine ? 'me' : 'them') + (m.unsent ? ' unsent' : '')); b.dataset.id = m.id; b.title = fmtTime(parse(m.at));
     if (peer && (peer.isGroup || peer.src === 'g' || peer.src === 'rg') && !mine) {
       const snd = mk('div', 'm-group-sender');
       const a = mk('span', 'av xs');
       avatar(a, { id: m.from, name: m.fromName || ('User ' + m.from), avatar: m.fromAvatar, online: false });
       snd.append(a, mk('span', '', m.fromName || ('User ' + m.from)));
       b.append(snd);
+    }
+    if (m.unsent) {
+      b.append(mk('span', 't unsent-txt', mine ? 'You unsent a message' : ((m.fromName ? m.fromName + ' ' : '') + 'unsent a message')));
+      const hv = mk('div', 'hv'); hv.setAttribute('role', 'group');
+      const mb = mk('button', '', '⋯'); mb.type = 'button'; mb.title = 'More'; mb.setAttribute('aria-label', 'More options');
+      mb.addEventListener('click', (e) => { e.stopPropagation(); const r = mb.getBoundingClientRect(); openCtx(msgData.get(m.id) || m, r.left, r.bottom + 4); });
+      hv.append(mb); b.append(hv);
+      return b;
     }
     if (m.image) {
       const a = mk('a', 'pimg'); a.href = m.image; a.setAttribute('aria-label', 'View image');
@@ -635,6 +702,12 @@
       b.append(a); b.classList.add('has-file');
     }
     if (m.text && m.text !== '[Image Attachment]') b.append(mk('span', 't', m.text));
+    if (m.expiresAt && !m.unsent) {
+      const expBadge = mk('span', 'm-exp', '⏱ ' + fmtRemaining(m.expiresAt));
+      expBadge.dataset.exp = m.expiresAt;
+      expBadge.title = 'Disappears at ' + fmtTime(parse(m.expiresAt));
+      b.append(expBadge);
+    }
     // hover actions (reply / more), like Messenger
     const hv = mk('div', 'hv'); hv.setAttribute('role', 'group');
     const rb = mk('button', '', '↩'); rb.type = 'button'; rb.title = 'Reply'; rb.setAttribute('aria-label', 'Reply');
@@ -693,10 +766,12 @@
   const addMsg = (m) => {
     if (msgData.has(m.id)) return;
     msgData.set(m.id, m);
+    oldestId = oldestId === 0 ? m.id : Math.min(oldestId, m.id);
     const d = parse(m.at), day = d.toDateString();
     if (day !== lastDay) { el.msgs.append(mk('div', 'stamp', d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) + ' · ' + fmtTime(d))); lastDay = day; lastSender = null; }
     else if (d - lastTime > 15 * 60000) { el.msgs.append(mk('div', 'stamp', fmtTime(d))); lastSender = null; }
     if (m.kind === 'call') { el.msgs.append(mk('div', 'stamp call', '📞 ' + m.text)); lastSender = null; lastTime = +d; lastId = Math.max(lastId, m.id); return; }
+    if (m.kind === 'sys') { el.msgs.append(mk('div', 'stamp sys', m.text)); lastSender = null; lastTime = +d; lastId = Math.max(lastId, m.id); return; }
     const w = bubble(m), b = inner(w); decorate(b, m);
     const prev = inner([...el.msgs.children].reverse().find((n) => !n.classList.contains('seen')));
     if (!m.quote && lastSender === m.from && prev) { b.classList.add('cont'); prev.classList.add('more'); }
@@ -707,7 +782,7 @@
   const patchMsg = (m) => {
     const old = msgData.get(m.id), b = el.msgs.querySelector(`.m[data-id="${m.id}"]`);
     if (!old || !b) return;
-    if (JSON.stringify(old.reactions) === JSON.stringify(m.reactions) && old.text === m.text) return;
+    if (JSON.stringify(old.reactions) === JSON.stringify(m.reactions) && old.text === m.text && !!old.unsent === !!m.unsent) return;
     swap(b, m);
   };
   const swap = (b, m) => {
@@ -724,6 +799,17 @@
     if (last && +last.dataset.id <= id) { seenEl = mk('div', 'seen', 'Seen'); el.msgs.append(seenEl); }
   };
   const nearBottom = () => el.msgs.scrollHeight - el.msgs.scrollTop - el.msgs.clientHeight < 80;
+  let stickUntil = 0;
+  const scrollToBottom = (keepSticky = false) => {
+    if (keepSticky) stickUntil = Date.now() + 1200;
+    el.msgs.scrollTop = el.msgs.scrollHeight;
+    requestAnimationFrame(() => { el.msgs.scrollTop = el.msgs.scrollHeight; });
+  };
+  el.msgs.addEventListener('load', () => {
+    if (Date.now() < stickUntil || nearBottom()) el.msgs.scrollTop = el.msgs.scrollHeight;
+  }, true);
+  el.msgs.addEventListener('wheel', () => { stickUntil = 0; }, { passive: true });
+  el.msgs.addEventListener('touchstart', () => { stickUntil = 0; }, { passive: true });
 
   // ---------- thread loading ----------
   const headerFor = () => {
@@ -742,6 +828,44 @@
     el.sub.textContent = (nk ? peer.name + ' · ' : (peer.username ? '@' + peer.username + ' · ' : '')) + (ADMIN ? SYS[peer.src] : '');
     el.sub.textContent = el.sub.textContent.replace(/ · $/, '');
   };
+  const ensureLoadOlderBtn = () => {
+    $('msgr-load-older')?.remove();
+    if (!hasMore || !oldestId) return;
+    const btn = mk('button', 'msgr-load-older', 'Load older messages');
+    btn.id = 'msgr-load-older'; btn.type = 'button';
+    btn.addEventListener('click', loadOlder);
+    el.msgs.prepend(btn);
+  };
+  const loadOlder = () => {
+    if (key === null || loadingOlder || !hasMore || !oldestId) return;
+    const k = key; loadingOlder = true;
+    const btn = $('msgr-load-older'); if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+    api(`thread/${enc(k)}?before=${oldestId}`).then((d) => {
+      if (k !== key) return;
+      hasMore = !!d.hasMore;
+      const oldH = el.msgs.scrollHeight, oldTop = el.msgs.scrollTop;
+      const frag = document.createDocumentFragment();
+      let pDay = '', pSender = null, pTime = 0, prevNode = null;
+      (d.messages || []).forEach((m) => {
+        if (msgData.has(m.id)) return;
+        msgData.set(m.id, m);
+        oldestId = oldestId === 0 ? m.id : Math.min(oldestId, m.id);
+        const dt = parse(m.at), day = dt.toDateString();
+        if (day !== pDay) { frag.append(mk('div', 'stamp', dt.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) + ' · ' + fmtTime(dt))); pDay = day; pSender = null; prevNode = null; }
+        else if (dt - pTime > 15 * 60000) { frag.append(mk('div', 'stamp', fmtTime(dt))); pSender = null; prevNode = null; }
+        if (m.kind === 'call') { frag.append(mk('div', 'stamp call', '📞 ' + m.text)); pSender = null; pTime = +dt; prevNode = null; return; }
+        if (m.kind === 'sys') { frag.append(mk('div', 'stamp sys', m.text)); pSender = null; pTime = +dt; prevNode = null; return; }
+        const w = bubble(m), b = inner(w); decorate(b, m);
+        if (!m.quote && pSender === m.from && prevNode) { b.classList.add('cont'); prevNode.classList.add('more'); }
+        else if (prevNode) w.classList.add('gap');
+        frag.append(w); prevNode = b; pSender = m.quote ? null : m.from; pTime = +dt;
+      });
+      $('msgr-load-older')?.remove();
+      el.msgs.prepend(frag);
+      ensureLoadOlderBtn();
+      el.msgs.scrollTop = oldTop + (el.msgs.scrollHeight - oldH);
+    }).catch((e) => { if (e.message !== 'auth') flashErr(e.message); }).finally(() => { loadingOlder = false; });
+  };
   const pull = (first) => {
     if (key === null || busy) return Promise.resolve();
     const k = key; busy = true; tick++;
@@ -749,13 +873,23 @@
     return api(`thread/${enc(k)}?after=${full && !first ? 0 : lastId}`).then((d) => {
       if (k !== key) return;
       me = String(d.me); nicks = d.nicknames || nicks; headerFor();
+      if (first) hasMore = !!d.hasMore;
       if (d.group) {
+        const prevAv = peer && peer.avatar;
         peer = Object.assign(peer, d.group);
+        if (peer.avatar !== prevAv) {
+          avatar(el.av, peer);
+          if (!inf.box.classList.contains('hidden')) avatar(inf.av, peer);
+        }
         if (d.group.theme && d.group.theme !== currentThemeKey) {
           applyTheme(d.group.theme, false);
         }
-        updateDisappearingUI(d.group.disappearing ? 'on' : 'off');
+        updateDisappearingUI(d.group.disappearing || 'off');
         updateApprovalBanner(d.group);
+      } else if (d.disappearing !== undefined) {
+        if (peer) peer.disappearing = d.disappearing;
+        if (settings) settings.disappearing = d.disappearing;
+        updateDisappearingUI(d.disappearing || 'off');
       }
       const stick = first || nearBottom(); seenEl?.remove(); seenEl = null;
       let added = 0;
@@ -774,8 +908,9 @@
           }
         }
       });
+      if (first) ensureLoadOlderBtn();
       markSeen(+d.seen || 0);
-      if (stick && (added || first)) el.msgs.scrollTop = el.msgs.scrollHeight;
+      if (stick && (added || first)) scrollToBottom(true);
       if (added && !first) loadList();
     }).catch((e) => { if (e.message !== 'auth') flashErr(e.message); }).finally(() => { busy = false; });
   };
@@ -786,7 +921,7 @@
     show(el.blank, false); show(el.pane, true); root.classList.add('open'); show(el.err, false);
     avatar(el.av, p); headerFor(); renderList(); closePops(); updateSend();
     applyTheme(p.theme || 'default', false);
-    updateDisappearingUI(p.disappearing ? 'on' : 'off');
+    updateDisappearingUI(p.disappearing || 'off');
     updateApprovalBanner(p);
     onPeerChange();
     pull(true).then(() => { loadList(); el.input.focus(); });
@@ -814,7 +949,7 @@
         }
         addMsg(j.message);
       }
-      seenEl?.remove(); seenEl = null; el.msgs.scrollTop = el.msgs.scrollHeight; loadList();
+      seenEl?.remove(); seenEl = null; scrollToBottom(true); loadList();
     }).catch((e) => flashErr(e.message)).finally(() => { btn.disabled = false; el.input.focus(); });
   };
   const sendFiles = (caption) => {
@@ -822,13 +957,17 @@
     const btn = $('msgr-send'); btn.disabled = true; flashErr('');
     return postForm(`upload/${enc(key)}`, fd).then((j) => {
       clearReply(); (j.messages || []).forEach((m) => m && addMsg(m)); pending = []; renderPending(); seenEl?.remove(); seenEl = null;
-      el.msgs.scrollTop = el.msgs.scrollHeight; loadList();
+      scrollToBottom(true); loadList();
     }).catch((e) => flashErr(e.message)).finally(() => { btn.disabled = false; el.input.focus(); updateSend(); });
   };
   const submit = () => {
     if (key === null) return;
     const text = el.input.value.trim();
-    if (!text && !pending.length) { sendText(settings && settings.emoji ? settings.emoji : '👍'); return; }
+    if (!text && !pending.length) {
+      const themeDefault = (THEMES.find((t) => t.key === currentThemeKey) || {}).emoji || '👍';
+      sendText(settings && settings.emoji ? settings.emoji : themeDefault);
+      return;
+    }
     el.input.value = ''; el.input.style.height = 'auto'; updateSend();
     if (pending.length) sendFiles(text); else sendText(text);
   };
@@ -901,17 +1040,24 @@
   const openCtx = (m, x, y) => {
     ctxMsg = m; closePops();
     const bar = $('ctx-react'); bar.textContent = '';
-    quick().forEach((e) => { const b = mk('button', '', e); b.type = 'button'; b.addEventListener('click', () => { closePops(); react(m.id, e); }); bar.append(b); });
-    const more = mk('button', 'more', '➕'); more.type = 'button'; more.setAttribute('aria-label', 'More reactions'); more.addEventListener('click', () => { closePops(); reactDialog(m); }); bar.append(more);
-    el.ctx.querySelector('[data-act="reply"]').classList.toggle('hidden', false);
+    show(bar, !m.unsent);
+    if (!m.unsent) {
+      quick().forEach((e) => { const b = mk('button', '', e); b.type = 'button'; b.addEventListener('click', () => { closePops(); react(m.id, e); }); bar.append(b); });
+      const more = mk('button', 'more', '➕'); more.type = 'button'; more.setAttribute('aria-label', 'More reactions'); more.addEventListener('click', () => { closePops(); reactDialog(m); }); bar.append(more);
+    }
+    el.ctx.querySelector('[data-act="reply"]').classList.toggle('hidden', !!m.unsent);
     const pinned = settings && settings.pinned && settings.pinned.includes(m.id);
-    el.ctx.querySelector('[data-act="pin"]').textContent = pinned ? 'Unpin' : 'Pin';
-    el.ctx.querySelector('[data-act="bump"]').classList.toggle('hidden', !m.text);
-    el.ctx.querySelector('[data-act="copy"]').classList.toggle('hidden', !m.text);
-    el.ctx.querySelector('[data-act="translate"]').classList.toggle('hidden', !m.text);
-    el.ctx.querySelector('[data-act="forward"]').classList.toggle('hidden', !m.text);
-    const canEdit = m.from === me && m.text && !m.file && (Date.now() - parse(m.at)) <= 60000;
+    const pinBtn = el.ctx.querySelector('[data-act="pin"]');
+    pinBtn.textContent = pinned ? 'Unpin' : 'Pin';
+    pinBtn.classList.toggle('hidden', !!m.unsent);
+    el.ctx.querySelector('[data-act="bump"]').classList.toggle('hidden', !!m.unsent || !m.text);
+    el.ctx.querySelector('[data-act="copy"]').classList.toggle('hidden', !!m.unsent || !m.text);
+    el.ctx.querySelector('[data-act="translate"]').classList.toggle('hidden', !!m.unsent || !m.text);
+    el.ctx.querySelector('[data-act="forward"]').classList.toggle('hidden', !!m.unsent || (!m.text && !m.image && !m.file));
+    const canEdit = !m.unsent && m.from === me && m.text && !m.file && (Date.now() - parse(m.at)) <= 60000;
     $('ctx-edit').classList.toggle('hidden', !canEdit);
+    $('ctx-unsend')?.classList.toggle('hidden', !!m.unsent || m.from !== me);
+    $('ctx-delete')?.classList.toggle('hidden', false);
     placeAt(el.ctx, x, y);
   };
   el.msgs.addEventListener('contextmenu', (e) => {
@@ -919,10 +1065,31 @@
     const m = msgData.get(+b.dataset.id); if (!m) return;
     e.preventDefault(); openCtx(m, e.clientX, e.clientY);
   });
+  const unsendMsg = async (m) => {
+    if (!(await nxConfirm('Unsend this message for everyone?', { okText: 'Unsend' }))) return;
+    post(`unsend/${enc(key)}`, { id: m.id }).then((j) => {
+      if (j.message) { msgData.delete(m.id); patchReplace(j.message); }
+      loadList();
+    }).catch((e) => flashErr(e.message));
+  };
+  const deleteMsgForMe = async (m) => {
+    if (!(await nxConfirm('Delete this message for you only?', { okText: 'Delete' }))) return;
+    post(`delete/${enc(key)}`, { id: m.id }).then(() => {
+      const b = el.msgs.querySelector(`.m[data-id="${m.id}"]`);
+      (b?.closest('.mq') || b)?.remove();
+      msgData.delete(m.id);
+      loadList();
+    }).catch((e) => flashErr(e.message));
+  };
   el.ctx.addEventListener('click', (e) => {
     const b = e.target.closest('button[data-act]'); if (!b || !ctxMsg) return;
     const m = ctxMsg; closePops();
-    ({ reply: () => setReply(m), pin: () => pinMsg(m), bump: () => bump(m), copy: () => copyText(m), translate: () => translateDialog(m), forward: () => forwardDialog(m), edit: () => editDialog(m) })[b.dataset.act]();
+    ({
+      reply: () => setReply(m), pin: () => pinMsg(m), bump: () => bump(m),
+      copy: () => copyText(m), translate: () => translateDialog(m),
+      forward: () => forwardDialog(m), edit: () => editDialog(m),
+      unsend: () => unsendMsg(m), delete: () => deleteMsgForMe(m)
+    })[b.dataset.act]();
   });
   const toast = (t) => { flashErr(t); };
   const copyText = (m) => {
@@ -974,12 +1141,49 @@
   };
   const patchReplace = (m) => { const b = el.msgs.querySelector(`.m[data-id="${m.id}"]`); msgData.set(m.id, m); if (b) swap(b, m); };
   const forwardDialog = (m) => {
-    const list = mk('ul', 'fw-list'); const sb = mk('input', 'dlg-in'); sb.type = 'search'; sb.placeholder = 'Search chats'; sb.maxLength = 40;
-    const targets = () => convCache.filter((c) => c.src === peer.src && c.key !== key && c.name.toLowerCase().includes(sb.value.trim().toLowerCase()));
-    const fill = () => { list.textContent = ''; targets().forEach((c) => { const li = mk('li'); const b = mk('button', 'row'); b.type = 'button'; const a = mk('span', 'av sm'); avatar(a, c); b.append(a, mk('span', 'meta', c.name)); b.addEventListener('click', () => {
-      b.disabled = true; post(`forward/${enc(key)}`, { id: m.id, to: c.key }).then(() => { closeDlg(); toast('Message forwarded'); loadList(); }).catch((e) => { flashErr(e.message); b.disabled = false; }); }); li.append(b); list.append(li); });
-      if (!list.children.length) list.append(mk('li', 'msgr-empty', 'No other chats to forward to.')); };
-    sb.addEventListener('input', fill); fill(); openDlg('Forward message to', sb, list);
+    const list = mk('ul', 'fw-list'); const sb = mk('input', 'dlg-in'); sb.type = 'search'; sb.placeholder = 'Search chats or people'; sb.maxLength = 40;
+    const isRms = peer && (peer.src === 'r' || peer.src === 'rg');
+    let remoteUsers = [];
+    const renderItems = () => {
+      list.textContent = '';
+      const q = sb.value.trim().toLowerCase();
+      const seenKeys = new Set();
+      const convTargets = convCache.filter((c) => {
+        const cIsRms = c.src === 'r' || c.src === 'rg';
+        return cIsRms === isRms && c.key !== key && c.name.toLowerCase().includes(q);
+      });
+      convTargets.forEach((c) => seenKeys.add(c.key));
+      const all = [...convTargets];
+      if (!isRms) {
+        remoteUsers.forEach((u) => {
+          const uk = 'n:' + u.id;
+          if (uk !== key && !seenKeys.has(uk)) { seenKeys.add(uk); all.push({ key: uk, id: u.id, name: u.name, avatar: u.avatar, src: 'n' }); }
+        });
+      }
+      all.forEach((c) => {
+        const li = mk('li'); const b = mk('button', 'row'); b.type = 'button';
+        const a = mk('span', 'av sm'); avatar(a, c); b.append(a, mk('span', 'meta', c.name));
+        b.addEventListener('click', () => {
+          b.disabled = true;
+          post(`forward/${enc(key)}`, { id: m.id, to: c.key }).then(() => { closeDlg(); toast('Message forwarded'); loadList(); }).catch((e) => { flashErr(e.message); b.disabled = false; });
+        });
+        li.append(b); list.append(li);
+      });
+      if (!list.children.length) list.append(mk('li', 'msgr-empty', 'No matching chats or people.'));
+    };
+    let ft;
+    sb.addEventListener('input', () => {
+      renderItems();
+      if (!isRms) {
+        clearTimeout(ft);
+        ft = setTimeout(() => {
+          const q = sb.value.trim();
+          if (q.length < 2) { remoteUsers = []; renderItems(); return; }
+          api(`users?q=${enc(q)}`).then((d) => { remoteUsers = d.users || []; renderItems(); }).catch(() => {});
+        }, 250);
+      }
+    });
+    renderItems(); openDlg('Forward message to', sb, list);
   };
 
   // ---------- chat details sidebar ----------
@@ -990,13 +1194,63 @@
   let mediaBefore = 0;
   const infErr = (t) => { inf.err.textContent = t || ''; show(inf.err, !!t); };
   const showView = (v) => { show(inf.main, v === 'main'); show(inf.sub, v !== 'main'); show(inf.qbox, v === 'search'); inf.grid.textContent = ''; inf.list.textContent = ''; show(inf.more, false); show(inf.empty, false); };
+  const updatePinnedBar = (s) => {
+    if (!el.pinBar) return;
+    const pins = (s && s.pinned) || [];
+    if (!pins.length) { show(el.pinBar, false); return; }
+    if (pinIdx >= pins.length) pinIdx = 0;
+    const pid = pins[pinIdx];
+    const pm = msgData.get(pid);
+    if (el.pinText) el.pinText.textContent = pm ? (pm.text || (pm.image ? '🖼 Image' : (pm.file ? '📄 ' + pm.file.name : 'Pinned message'))) : 'Click to view pinned message';
+    if (el.pinCount) el.pinCount.textContent = pins.length > 1 ? `${pinIdx + 1}/${pins.length}` : '';
+    show(el.pinBar, true);
+  };
+  el.pinBar?.addEventListener('click', () => {
+    const pins = (settings && settings.pinned) || [];
+    if (!pins.length) return;
+    const pid = pins[pinIdx % pins.length];
+    pinIdx = (pinIdx + 1) % pins.length;
+    updatePinnedBar(settings);
+    const node = el.msgs.querySelector(`.m[data-id="${pid}"]`);
+    if (node) {
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      node.classList.add('pin-flash');
+      setTimeout(() => node.classList.remove('pin-flash'), 1400);
+    } else {
+      show(inf.box, true); root.classList.add('info-open'); inf.btn.setAttribute('aria-pressed', 'true');
+      document.querySelector('[data-go="pinned"]')?.click();
+    }
+  });
   const applySettings = (s) => {
-    settings = s; inf.rr.checked = s.readReceipts; inf.sec.checked = s.secured; inf.emoji.textContent = s.emoji;
+    settings = s; inf.rr.checked = !!s.readReceipts; inf.sec.checked = !!s.secured; inf.emoji.textContent = s.emoji || '👍';
+    if (el.infMute) el.infMute.checked = !!s.muted;
     inf.pinN.textContent = s.pinned && s.pinned.length ? `${s.pinned.length}/8` : '';
     if (s.theme && s.theme !== currentThemeKey) {
       applyTheme(s.theme, false);
     }
-    updateDisappearingUI(s.disappearing);
+    updateDisappearingUI(s.disappearing || 'off');
+    updatePinnedBar(s);
+    if (Date.now() < stickUntil || nearBottom()) scrollToBottom(false);
+    const isGrp = !!(peer && (peer.isGroup || peer.src === 'g' || peer.src === 'rg'));
+    const isGrpAdmin = isGrp && (ADMIN || s.myRole === 'Admin' || s.isGroupAdmin);
+    if (el.infPhotoBtn) show(el.infPhotoBtn, isGrp);
+    if (el.infRenameBtn) show(el.infRenameBtn, isGrp);
+    if (el.infAddMembersBtn) show(el.infAddMembersBtn, isGrpAdmin);
+    if (el.infLeaveBtn) show(el.infLeaveBtn, isGrp);
+    show($('inf-nick-btn'), !isGrp);
+    if (inf.av) {
+      inf.av.classList.toggle('editable-av', isGrp);
+      inf.av.title = isGrp ? 'Click to customize group photo' : '';
+    }
+    if (el.infBlockBtn) {
+      show(el.infBlockBtn, !isGrp && peer && peer.id !== me && peer.src === 'n');
+      el.infBlockBtn.querySelector('span').textContent = s.blocked ? 'Unblock user' : 'Block user';
+    }
+    if (s.blocked || s.blockedByPeer) {
+      if (el.input) { el.input.disabled = true; el.input.placeholder = s.blocked ? 'You blocked this user' : 'You cannot reply to this conversation'; }
+    } else if (el.input && !(peer && peer.pendingApproval && !ADMIN)) {
+      el.input.disabled = false; el.input.placeholder = 'Aa';
+    }
     if (s.members && s.members.length && el.infMembersCount) {
       el.infMembersCount.textContent = `${s.members.length} members`;
     }
@@ -1004,12 +1258,14 @@
   };
   const loadDetails = () => {
     if (key === null || !peer) return;
-    const k = key; infErr(''); showView('main'); show($('inf-files-btn'), peer.src === 'n');
+    const k = key; infErr(''); showView('main'); show($('inf-files-btn'), peer.src === 'n' || peer.src === 'g');
     inf.name.textContent = nicks.peer || peer.name; inf.user.textContent = peer.username ? '@' + peer.username : ''; avatar(inf.av, peer);
     inf.status.textContent = peer.src === 'r' ? (peer.online ? '● Online' : '● Offline') : ''; inf.status.classList.toggle('on', !!peer.online);
     api(`details/${enc(k)}`).then((d) => {
       if (k !== key) return;
       peer = Object.assign(peer, d.peer);
+      avatar(inf.av, peer);
+      avatar(el.av, peer);
       applySettings(d.settings);
       inf.name.textContent = nicks.peer || peer.name;
       if (peer.src === 'r') {
@@ -1078,13 +1334,389 @@
   };
   $('inf-theme-btn')?.addEventListener('click', openThemeDialog);
 
-  // Disappearing Messages Toggle
-  $('inf-dis-btn')?.addEventListener('click', () => {
-    post(`disappearing/${enc(key)}`, { mode: 'toggle' }).then((j) => {
-      if (settings) settings.disappearing = j.disappearing;
-      updateDisappearingUI(j.disappearing);
-      toast(j.disappearing === 'on' ? 'Disappearing messages turned ON!' : (j.disappearing === 'pending' ? 'Disappearing messages requested (pending approval)' : 'Disappearing messages turned OFF'));
-    }).catch((e) => flashErr(e.message));
+  // Disappearing Messages Preset Picker
+  const openDisappearingDialog = () => {
+    const cur = (settings && settings.disappearing) || (peer && peer.disappearing) || 'off';
+    const opts = [
+      { mode: 'off', title: 'Off', desc: 'Messages stay in this conversation until deleted.' },
+      { mode: '1m', title: '1 minute', desc: 'New messages disappear 1 minute after they are sent.' },
+      { mode: '1h', title: '1 hour', desc: 'New messages disappear 1 hour after they are sent.' },
+      { mode: '24h', title: '24 hours', desc: 'New messages disappear 24 hours after they are sent.' },
+      { mode: '7d', title: '7 days', desc: 'New messages disappear 7 days after they are sent.' }
+    ];
+    const list = mk('div', 'dis-presets');
+    opts.forEach((o) => {
+      const btn = mk('button', 'dis-opt' + (cur === o.mode || (o.mode === '24h' && cur === 'on') ? ' active' : ''));
+      btn.type = 'button';
+      btn.append(mk('b', '', o.title), mk('small', '', o.desc));
+      btn.addEventListener('click', () => {
+        post(`disappearing/${enc(key)}`, { mode: o.mode }).then((j) => {
+          if (settings) settings.disappearing = j.disappearing;
+          if (peer) peer.disappearing = j.disappearing;
+          updateDisappearingUI(j.disappearing);
+          closeDlg();
+          pull(false);
+          loadList();
+          toast(j.disappearing === 'off' ? 'Disappearing messages turned OFF' : `Disappearing messages set to ${o.title}`);
+        }).catch((e) => flashErr(e.message));
+      });
+      list.append(btn);
+    });
+    openDlg('Disappearing messages', list);
+  };
+  $('inf-dis-btn')?.addEventListener('click', openDisappearingDialog);
+  el.disappearingBar?.addEventListener('click', openDisappearingDialog);
+
+  // Mute / Block / Group Management
+  el.infMute?.addEventListener('change', () => {
+    const on = el.infMute.checked;
+    post(`mute/${enc(key)}`, { muted: on }).then((j) => {
+      if (settings) settings.muted = !!j.muted;
+      loadList();
+      toast(j.muted ? 'Notifications muted' : 'Notifications unmuted');
+    }).catch((e) => { infErr(e.message); el.infMute.checked = !on; });
+  });
+
+  el.infBlockBtn?.addEventListener('click', async () => {
+    const next = !(settings && settings.blocked);
+    if (!(await nxConfirm(next ? 'Block this user? They will not be able to send you messages.' : 'Unblock this user?', { okText: next ? 'Block' : 'Unblock' }))) return;
+    post(`block/${enc(key)}`, { blocked: next }).then(() => loadDetails()).catch((e) => infErr(e.message));
+  });
+
+  const renderBadgePng = (icon, c1, c2) => {
+    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256;
+    const cx = cv.getContext('2d');
+    const grd = cx.createLinearGradient(0, 0, 256, 256);
+    grd.addColorStop(0, c1); grd.addColorStop(1, c2);
+    cx.fillStyle = grd; cx.fillRect(0, 0, 256, 256);
+    cx.font = '128px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';
+    cx.textAlign = 'center'; cx.textBaseline = 'middle';
+    cx.fillText(icon, 128, 136);
+    return cv.toDataURL('image/png');
+  };
+
+  const openPhotoStudioDialog = (mode = 'group') => {
+    const isProfile = mode === 'profile';
+    if (!isProfile && (!peer || !(peer.isGroup || peer.src === 'g' || peer.src === 'rg'))) return;
+    const targetObj = isProfile ? { id: me || 'me', name: myName, avatar: myAvatar } : peer;
+    let pickedDataUrl = null, removeFlag = false;
+    const wrap = mk('div', 'gp-dlg');
+    const prevWrap = mk('div', 'gp-prev-wrap');
+    const prevAv = mk('span', 'av big gp-preview');
+    avatar(prevAv, targetObj);
+    prevWrap.append(prevAv);
+
+    // Interactive Crop / Rearrange / Rotate / Zoom / Flip Stage (shown when an image is uploaded)
+    const cropBox = mk('div', 'gp-crop-stage hidden');
+    const cropCv = mk('canvas', 'gp-crop-cv'); cropCv.width = 260; cropCv.height = 260;
+    const cctx = cropCv.getContext('2d');
+    const sliders = mk('div', 'gp-crop-sliders');
+    const zLab = mk('label', 'gp-crop-sl');
+    const zTop = mk('span'); const zVal = mk('b', '', '100%'); zTop.append(document.createTextNode('Zoom '), zVal);
+    const zIn = mk('input'); zIn.type = 'range'; zIn.min = '50'; zIn.max = '400'; zIn.value = '100';
+    zLab.append(zTop, zIn);
+    const aLab = mk('label', 'gp-crop-sl');
+    const aTop = mk('span'); const aVal = mk('b', '', '0°'); aTop.append(document.createTextNode('Straighten / Rotate '), aVal);
+    const aIn = mk('input'); aIn.type = 'range'; aIn.min = '-180'; aIn.max = '180'; aIn.value = '0';
+    aLab.append(aTop, aIn);
+    sliders.append(zLab, aLab);
+
+    const toolRow = mk('div', 'gp-crop-btns');
+    const btnRotL = mk('button', '', '↶ -90°'); btnRotL.type = 'button';
+    const btnRotR = mk('button', '', '↷ +90°'); btnRotR.type = 'button';
+    const btnFlipH = mk('button', '', '↔ Flip H'); btnFlipH.type = 'button';
+    const btnFlipV = mk('button', '', '↕ Flip V'); btnFlipV.type = 'button';
+    const btnReset = mk('button', '', 'Reset'); btnReset.type = 'button';
+    toolRow.append(btnRotL, btnRotR, btnFlipH, btnFlipV, btnReset);
+    cropBox.append(cropCv, sliders, toolRow);
+
+    let cropImg = null, baseScale = 1;
+    let st = { zoom: 1, angle: 0, rot90: 0, flipH: 1, flipV: 1, ox: 0, oy: 0, dragging: false, sx: 0, sy: 0 };
+
+    const drawTransformed = (ctx, w, h, scaleFactor) => {
+      ctx.save();
+      ctx.translate(w / 2 + st.ox * scaleFactor, h / 2 + st.oy * scaleFactor);
+      ctx.rotate(((st.rot90 + st.angle) * Math.PI) / 180);
+      ctx.scale(st.flipH * baseScale * st.zoom * scaleFactor, st.flipV * baseScale * st.zoom * scaleFactor);
+      ctx.drawImage(cropImg, -cropImg.width / 2, -cropImg.height / 2);
+      ctx.restore();
+    };
+
+    const updateCroppedOutput = () => {
+      if (!cropImg) return;
+      const W = cropCv.width, H = cropCv.height, R = 104;
+      cctx.clearRect(0, 0, W, H);
+      cctx.fillStyle = '#0f172a'; cctx.fillRect(0, 0, W, H);
+      drawTransformed(cctx, W, H, 1);
+
+      cctx.save();
+      cctx.fillStyle = 'rgba(15, 23, 42, 0.58)';
+      cctx.beginPath(); cctx.rect(0, 0, W, H); cctx.arc(W / 2, H / 2, R, 0, Math.PI * 2, true); cctx.fill();
+      cctx.strokeStyle = 'rgba(255,255,255,0.9)'; cctx.lineWidth = 2;
+      cctx.beginPath(); cctx.arc(W / 2, H / 2, R, 0, Math.PI * 2); cctx.stroke();
+      cctx.restore();
+
+      const outCv = document.createElement('canvas'); outCv.width = 400; outCv.height = 400;
+      const octx = outCv.getContext('2d');
+      octx.fillStyle = '#ffffff'; octx.fillRect(0, 0, 400, 400);
+      drawTransformed(octx, 400, 400, 400 / (R * 2));
+      pickedDataUrl = outCv.toDataURL('image/png');
+      removeFlag = false;
+      avatar(prevAv, { id: targetObj.id, name: targetObj.name, avatar: pickedDataUrl });
+      save.disabled = false;
+    };
+
+    const resetCrop = () => {
+      if (!cropImg) return;
+      const R = 104 * 2;
+      baseScale = Math.max(R / cropImg.width, R / cropImg.height);
+      st = { zoom: 1, angle: 0, rot90: 0, flipH: 1, flipV: 1, ox: 0, oy: 0, dragging: false, sx: 0, sy: 0 };
+      zIn.value = '100'; aIn.value = '0'; zVal.textContent = '100%'; aVal.textContent = '0°';
+      updateCroppedOutput();
+    };
+
+    cropCv.addEventListener('pointerdown', (e) => {
+      if (!cropImg) return;
+      st.dragging = true;
+      const r = cropCv.getBoundingClientRect();
+      const sc = cropCv.width / r.width;
+      st.sx = (e.clientX - r.left) * sc - st.ox;
+      st.sy = (e.clientY - r.top) * sc - st.oy;
+      cropCv.setPointerCapture(e.pointerId);
+    });
+    cropCv.addEventListener('pointermove', (e) => {
+      if (!st.dragging || !cropImg) return;
+      const r = cropCv.getBoundingClientRect();
+      const sc = cropCv.width / r.width;
+      st.ox = (e.clientX - r.left) * sc - st.sx;
+      st.oy = (e.clientY - r.top) * sc - st.sy;
+      updateCroppedOutput();
+    });
+    ['pointerup', 'pointercancel'].forEach((ev) => cropCv.addEventListener(ev, () => { st.dragging = false; }));
+    cropCv.addEventListener('wheel', (e) => {
+      if (!cropImg) return;
+      e.preventDefault();
+      const next = Math.max(50, Math.min(400, Number(zIn.value) + (e.deltaY < 0 ? 10 : -10)));
+      zIn.value = String(next); st.zoom = next / 100; zVal.textContent = next + '%';
+      updateCroppedOutput();
+    }, { passive: false });
+    zIn.addEventListener('input', () => { st.zoom = Number(zIn.value) / 100; zVal.textContent = zIn.value + '%'; updateCroppedOutput(); });
+    aIn.addEventListener('input', () => { st.angle = Number(aIn.value); aVal.textContent = aIn.value + '°'; updateCroppedOutput(); });
+    btnRotL.addEventListener('click', () => { st.rot90 = (st.rot90 - 90) % 360; updateCroppedOutput(); });
+    btnRotR.addEventListener('click', () => { st.rot90 = (st.rot90 + 90) % 360; updateCroppedOutput(); });
+    btnFlipH.addEventListener('click', () => { st.flipH *= -1; updateCroppedOutput(); });
+    btnFlipV.addEventListener('click', () => { st.flipV *= -1; updateCroppedOutput(); });
+    btnReset.addEventListener('click', resetCrop);
+
+    const fileIn = mk('input', 'hidden'); fileIn.type = 'file'; fileIn.accept = 'image/png,image/jpeg,image/webp';
+    const upBtn = mk('button', 'gp-up-btn', '📷 Upload & crop photo from computer'); upBtn.type = 'button';
+    upBtn.addEventListener('click', () => { fileIn.value = ''; fileIn.click(); });
+
+    const ICONS = ['🚀', '🧪', '👟', '📦', '🛡️', '⚡', '🔥', '🎯', '🏆', '💡', '📊', '🎉', '💬', '🌟', '👑', '🔬'];
+    const GRADS = [
+      ['#0084ff', '#6366f1'], ['#10b981', '#059669'], ['#f59e0b', '#ef4444'], ['#ec4899', '#8b5cf6'],
+      ['#06b6d4', '#3b82f6'], ['#dc2626', '#991b1b'], ['#8b5cf6', '#4f46e5'], ['#334155', '#0f172a']
+    ];
+    let curIcon = ICONS[0], curGrad = GRADS[0];
+
+    const applyBadgePreview = () => {
+      cropImg = null; show(cropBox, false); removeFlag = false;
+      pickedDataUrl = renderBadgePng(curIcon, curGrad[0], curGrad[1]);
+      avatar(prevAv, { id: targetObj.id, name: targetObj.name, avatar: pickedDataUrl });
+      save.disabled = false;
+    };
+
+    fileIn.addEventListener('change', () => {
+      const f = fileIn.files && fileIn.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const im = new Image();
+        im.onload = () => {
+          cropImg = im;
+          show(cropBox, true);
+          resetCrop();
+        };
+        im.src = String(reader.result);
+      };
+      reader.readAsDataURL(f);
+    });
+
+    const secLab = mk('small', 'gp-lab', isProfile ? 'Or choose an avatar badge:' : 'Or create a custom group icon badge:');
+    const iconGrid = mk('div', 'gp-icons');
+    ICONS.forEach((ic) => {
+      const b = mk('button', 'gp-ic', ic); b.type = 'button';
+      b.addEventListener('click', () => {
+        curIcon = ic;
+        iconGrid.querySelectorAll('.gp-ic').forEach((n) => n.classList.toggle('active', n === b));
+        applyBadgePreview();
+      });
+      iconGrid.append(b);
+    });
+
+    const gradRow = mk('div', 'gp-grads');
+    GRADS.forEach((g, idx) => {
+      const b = mk('button', 'gp-gr' + (idx === 0 ? ' active' : '')); b.type = 'button';
+      b.style.background = `linear-gradient(135deg, ${g[0]}, ${g[1]})`;
+      b.addEventListener('click', () => {
+        curGrad = g;
+        gradRow.querySelectorAll('.gp-gr').forEach((n) => n.classList.toggle('active', n === b));
+        applyBadgePreview();
+      });
+      gradRow.append(b);
+    });
+
+    const err = mk('p', 'msgr-err hidden');
+    const acts = mk('div', 'dlg-acts');
+    const cancel = mk('button', 'inf-cancel', 'Cancel'); cancel.type = 'button';
+    cancel.addEventListener('click', closeDlg);
+    if (targetObj.avatar) {
+      const rm = mk('button', 'inf-cancel ctx-danger', 'Remove photo'); rm.type = 'button';
+      rm.addEventListener('click', () => {
+        cropImg = null; show(cropBox, false); pickedDataUrl = null; removeFlag = true;
+        avatar(prevAv, { id: targetObj.id, key: targetObj.key, name: targetObj.name, avatar: null });
+        save.disabled = false;
+      });
+      acts.append(rm);
+    }
+    const save = mk('button', 'inf-save', 'Save photo'); save.type = 'button'; save.disabled = true;
+    save.addEventListener('click', () => {
+      save.disabled = true; show(err, false);
+      if (isProfile) {
+        fetch(ACCOUNT_AVATAR_URL, {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfMeta ? csrfMeta.content : '' },
+          body: JSON.stringify(removeFlag ? { remove: true } : { avatar: pickedDataUrl }),
+        }).then((r) => r.json().then((j) => {
+          if (csrfMeta && j.csrf) csrfMeta.content = j.csrf;
+          if (!r.ok || j.ok === false) throw new Error(j.error || j.message || 'Could not save profile picture.');
+          return j;
+        })).then((j) => {
+          myAvatar = j.avatar || '';
+          syncMyAvatarUI();
+          closeDlg();
+          loadList();
+          if (key) pull(false);
+          toast(removeFlag ? 'Profile picture removed' : 'Profile picture updated!');
+        }).catch((e) => {
+          err.textContent = e.message; show(err, true); save.disabled = false;
+        });
+        return;
+      }
+
+      let req;
+      if (removeFlag) {
+        req = post(`group/photo/${enc(key)}`, { remove: true });
+      } else if (pickedDataUrl) {
+        req = post(`group/photo/${enc(key)}`, { avatar: pickedDataUrl });
+      } else {
+        return;
+      }
+      req.then((j) => {
+        closeDlg();
+        if (j.group) peer = Object.assign(peer, j.group);
+        avatar(el.av, peer); avatar(inf.av, peer);
+        loadList(); pull(false);
+        toast(removeFlag ? 'Group photo removed' : 'Group photo updated!');
+      }).catch((e) => {
+        err.textContent = e.message; show(err, true); save.disabled = false;
+      });
+    });
+    acts.append(cancel, save);
+    wrap.append(prevWrap, cropBox, upBtn, fileIn, secLab, iconGrid, gradRow);
+    openDlg(isProfile ? 'Change My Profile Picture' : 'Customize Group Photo', wrap, err, acts);
+  };
+
+  const syncMyAvatarUI = () => {
+    if (el.myAv) avatar(el.myAv, { id: me || 'me', name: myName, avatar: myAvatar || null });
+    const topAv = document.getElementById('top-user-avatar');
+    if (topAv) {
+      if (myAvatar) {
+        topAv.style.backgroundImage = `url('${myAvatar}')`;
+        topAv.style.backgroundSize = 'cover';
+        topAv.style.backgroundPosition = 'center';
+        topAv.style.color = 'transparent';
+        topAv.textContent = '';
+      } else {
+        topAv.style.backgroundImage = '';
+        topAv.style.color = '';
+        topAv.textContent = topAv.dataset.initials || 'U';
+      }
+    }
+  };
+  syncMyAvatarUI();
+
+  el.infPhotoBtn?.addEventListener('click', () => openPhotoStudioDialog('group'));
+  el.infMyPhotoBtn?.addEventListener('click', () => openPhotoStudioDialog('profile'));
+  el.myAvBtn?.addEventListener('click', () => openPhotoStudioDialog('profile'));
+  inf.av?.addEventListener('click', () => {
+    if (peer && (peer.isGroup || peer.src === 'g' || peer.src === 'rg')) openPhotoStudioDialog('group');
+    else if (peer && String(peer.id) === String(me)) openPhotoStudioDialog('profile');
+  });
+
+  el.infRenameBtn?.addEventListener('click', () => {
+    const inp = mk('input', 'dlg-in'); inp.type = 'text'; inp.maxLength = 100; inp.value = (peer && peer.name) || ''; inp.placeholder = 'Group name';
+    const err = mk('p', 'msgr-err hidden'); const cancel = mk('button', 'inf-cancel', 'Cancel'); cancel.type = 'button';
+    const save = mk('button', 'inf-save', 'Save'); save.type = 'button';
+    cancel.addEventListener('click', closeDlg);
+    save.addEventListener('click', () => {
+      const name = inp.value.trim(); if (!name) return;
+      save.disabled = true;
+      post(`group/rename/${enc(key)}`, { name }).then((j) => {
+        closeDlg();
+        if (j.group) peer = Object.assign(peer, j.group);
+        headerFor(); inf.name.textContent = peer.name; loadList(); pull(false); toast('Group renamed');
+      }).catch((e) => { err.textContent = e.message; show(err, true); save.disabled = false; });
+    });
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') save.click(); });
+    const acts = mk('div', 'dlg-acts'); acts.append(cancel, save);
+    openDlg('Rename group', inp, err, acts); inp.focus();
+  });
+
+  el.infAddMembersBtn?.addEventListener('click', () => {
+    const existing = new Set(((settings && settings.members) || []).map((m) => String(m.id)));
+    const selected = new Set();
+    const sb = mk('input', 'dlg-in'); sb.type = 'search'; sb.placeholder = 'Search colleagues to add…'; sb.maxLength = 40;
+    const list = mk('ul', 'fw-list');
+    const err = mk('p', 'msgr-err hidden');
+    const cancel = mk('button', 'inf-cancel', 'Cancel'); cancel.type = 'button';
+    const addBtn = mk('button', 'inf-save', 'Add (0)'); addBtn.type = 'button'; addBtn.disabled = true;
+    cancel.addEventListener('click', closeDlg);
+    const search = (q) => {
+      api(`users?q=${enc(q)}`).then((d) => {
+        list.textContent = '';
+        (d.users || []).filter((u) => !existing.has(String(u.id))).forEach((u) => {
+          const li = mk('li'); const b = mk('button', 'row' + (selected.has(String(u.id)) ? ' sel' : '')); b.type = 'button';
+          const a = mk('span', 'av sm'); avatar(a, u);
+          b.append(a, mk('span', 'meta', u.name));
+          b.addEventListener('click', () => {
+            const uid = String(u.id);
+            if (selected.has(uid)) selected.delete(uid); else selected.add(uid);
+            b.classList.toggle('sel', selected.has(uid));
+            addBtn.textContent = `Add (${selected.size})`; addBtn.disabled = selected.size === 0;
+          });
+          li.append(b); list.append(li);
+        });
+        if (!list.children.length) list.append(mk('li', 'msgr-empty', 'No eligible users found.'));
+      }).catch(() => {});
+    };
+    let at; sb.addEventListener('input', () => { clearTimeout(at); at = setTimeout(() => search(sb.value.trim()), 250); });
+    addBtn.addEventListener('click', () => {
+      addBtn.disabled = true;
+      post(`group/members/add/${enc(key)}`, { members: [...selected] }).then(() => {
+        closeDlg(); loadDetails(); loadList(); pull(false); toast('Members added');
+      }).catch((e) => { err.textContent = e.message; show(err, true); addBtn.disabled = false; });
+    });
+    const acts = mk('div', 'dlg-acts'); acts.append(cancel, addBtn);
+    openDlg('Add people to group', sb, list, err, acts); search(''); sb.focus();
+  });
+
+  el.infLeaveBtn?.addEventListener('click', async () => {
+    if (!(await nxConfirm('Leave this group? You will no longer receive messages from it.', { okText: 'Leave group' }))) return;
+    post(`group/leave/${enc(key)}`, {}).then(() => {
+      key = null; peer = null; show(el.pane, false); show(el.blank, true); show(inf.box, false);
+      root.classList.remove('open', 'info-open'); loadList(); toast('You left the group');
+    }).catch((e) => infErr(e.message));
   });
 
   // Group Admin Approval Actions
@@ -1156,6 +1788,7 @@
   const loadMembers = () => {
     inf.list.textContent = '';
     const mems = (settings && settings.members) || [];
+    const canManage = ADMIN || (settings && settings.myRole === 'Admin');
     if (!mems.length) { showEmpty('No members found.'); return; }
     mems.forEach((m) => {
       const it = mk('li', 'roster-item');
@@ -1164,6 +1797,16 @@
       meta.append(mk('b', '', m.name || ('User ' + m.id)), mk('small', '', m.username ? '@' + m.username : ''));
       const role = mk('span', 'role-tag' + (m.role === 'Admin' ? ' admin' : ''), m.role || 'Member');
       it.append(av, meta, role);
+      if (canManage && String(m.id) !== String(me)) {
+        const rm = mk('button', 'inf-un', 'Remove'); rm.type = 'button';
+        rm.addEventListener('click', async () => {
+          if (!(await nxConfirm(`Remove ${m.name || 'this member'} from the group?`, { okText: 'Remove' }))) return;
+          post(`group/members/remove/${enc(key)}`, { user_id: m.id }).then(() => {
+            loadDetails(); loadMembers(); loadList(); pull(false); toast('Member removed');
+          }).catch((e) => infErr(e.message));
+        });
+        it.append(rm);
+      }
       inf.list.append(it);
     });
   };

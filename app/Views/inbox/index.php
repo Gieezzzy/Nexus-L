@@ -1,8 +1,12 @@
-<div class="msgr" id="msgr" data-base="<?= esc(site_url('inbox'), 'attr') ?>" data-admin="<?= ! empty($isAdmin) ? '1' : '0' ?>">
+<?php $authUser = service('auth')->user() ?? []; ?>
+<div class="msgr" id="msgr" data-base="<?= esc(site_url('inbox'), 'attr') ?>" data-account-avatar="<?= esc(site_url('account/avatar'), 'attr') ?>" data-my-avatar="<?= esc($myAvatar ?? '', 'attr') ?>" data-my-name="<?= esc($authUser['name'] ?? 'Me', 'attr') ?>" data-admin="<?= ! empty($isAdmin) ? '1' : '0' ?>">
     <aside class="msgr-list glass" id="msgr-list">
         <div class="msgr-head">
             <h2>Chats</h2>
             <div class="msgr-head-acts">
+                <button type="button" id="msgr-my-avatar-btn" class="msgr-icon-btn msgr-my-av-btn" aria-label="Change my profile picture" title="Change my profile picture">
+                    <span class="av sm" id="msgr-my-av"></span>
+                </button>
                 <button type="button" id="msgr-new-group" class="msgr-icon-btn" aria-label="New group" title="New group (up to 50 members)">
                     <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
                 </button>
@@ -28,6 +32,11 @@
         <div class="msgr-search">
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
             <input id="msgr-q" type="search" placeholder="Search people" autocomplete="off" maxlength="50" aria-label="Search people">
+        </div>
+        <div class="msgr-filters" id="msgr-filters" role="tablist" aria-label="Filter conversations">
+            <button type="button" class="msgr-filter active" data-filter="all" role="tab" aria-selected="true">All</button>
+            <button type="button" class="msgr-filter" data-filter="unread" role="tab" aria-selected="false">Unread</button>
+            <button type="button" class="msgr-filter" data-filter="groups" role="tab" aria-selected="false">Groups</button>
         </div>
         <ul id="msgr-items" data-nx-load class="msgr-items"></ul>
         <p id="msgr-none" class="msgr-empty hidden">No conversations yet. Search for a person to start one.</p>
@@ -74,6 +83,13 @@
                 <span id="msgr-disappearing-txt">Disappearing messages are turned ON</span>
             </div>
 
+            <!-- Pinned Message Banner -->
+            <button type="button" id="msgr-pin-bar" class="msgr-pin-bar hidden" title="Jump to pinned message">
+                <span class="pin-ico">📌</span>
+                <span class="pin-body"><b id="msgr-pin-label">Pinned message</b><small id="msgr-pin-text"></small></span>
+                <span id="msgr-pin-count" class="pin-count"></span>
+            </button>
+
             <div id="msgr-msgs" class="msgr-msgs" aria-live="polite"></div>
 
             <div id="msgr-reply" class="msgr-reply hidden" aria-live="polite"></div>
@@ -112,10 +128,14 @@
 
             <h4>Chat info</h4>
             <button type="button" class="inf-row hidden" id="inf-members-btn" data-go="members"><span>Group members</span><em id="inf-members-count"></em></button>
+            <button type="button" class="inf-row hidden" id="inf-add-members-btn"><span>Add people to group</span></button>
+            <button type="button" class="inf-row hidden" id="inf-rename-btn"><span>Rename group</span></button>
             <button type="button" class="inf-row" data-go="pinned"><span>View pinned messages</span><em id="inf-pinned-n"></em></button>
             <button type="button" class="inf-row" data-go="search"><span>Search in conversation</span></button>
 
             <h4>Customize chat</h4>
+            <button type="button" class="inf-row hidden" id="inf-photo-btn"><span>Change group photo</span></button>
+            <button type="button" class="inf-row" id="inf-my-photo-btn"><span>Change my profile picture</span></button>
             <button type="button" class="inf-row" id="inf-theme-btn"><span>Theme</span><em id="inf-theme-name">Default RMS</em></button>
             <button type="button" class="inf-row" id="inf-emoji-btn"><span>Change emoji</span><em id="inf-emoji"></em></button>
             <button type="button" class="inf-row" id="inf-nick-btn"><span>Edit nicknames</span></button>
@@ -125,9 +145,12 @@
             <button type="button" class="inf-row" data-go="files" id="inf-files-btn"><span>Files</span></button>
 
             <h4>Privacy &amp; support</h4>
+            <label class="inf-row toggle"><span>Mute notifications</span><input type="checkbox" id="inf-mute"></label>
             <button type="button" class="inf-row" id="inf-dis-btn"><span>Disappearing messages</span><em id="inf-dis">Off</em></button>
             <label class="inf-row toggle"><span>Read receipts</span><input type="checkbox" id="inf-rr"></label>
             <label class="inf-row toggle"><span>Secure messaging (E2EE)</span><input type="checkbox" id="inf-sec"></label>
+            <button type="button" class="inf-row inf-danger hidden" id="inf-block-btn"><span>Block user</span></button>
+            <button type="button" class="inf-row inf-danger hidden" id="inf-leave-btn"><span>Leave group</span></button>
             <p id="inf-err" class="msgr-err hidden" role="alert"></p>
         </div>
 
@@ -151,6 +174,8 @@
         <button type="button" role="menuitem" data-act="translate">Translate</button>
         <button type="button" role="menuitem" data-act="forward">Forward</button>
         <button type="button" role="menuitem" data-act="edit" id="ctx-edit">Edit</button>
+        <button type="button" role="menuitem" data-act="unsend" id="ctx-unsend" class="ctx-danger">Unsend</button>
+        <button type="button" role="menuitem" data-act="delete" id="ctx-delete" class="ctx-danger">Delete for me</button>
     </div>
 
     <!-- attach menu -->

@@ -29,7 +29,9 @@
 
   // "find a setting": hides the fields that do not match, and a card with nothing left
   const find = document.getElementById('st-find'); const empty = document.getElementById('st-empty');
-  if (find) find.addEventListener('input', () => {
+  let findT = 0;
+  if (find) find.addEventListener('input', () => { clearTimeout(findT); findT = setTimeout(runFind, 150); });
+  function runFind() {
     const q = find.value.trim().toLowerCase(); let shown = 0;
     cards.forEach((c) => {
       if (c.id === 'su-root') { c.classList.toggle('st-hide', q !== '' && !'users roles access role admin account'.includes(q) && !c.innerText.toLowerCase().includes(q)); if (!c.classList.contains('st-hide')) shown++; return; }
@@ -42,7 +44,7 @@
       c.classList.toggle('st-hide', !ok); if (ok) shown++;
     });
     if (empty) empty.hidden = shown > 0;
-  });
+  }
 
   // "Check the ERP PC": is the agent reachable with the saved address, port and token
   const chk = document.getElementById('st-erp-test');

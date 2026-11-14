@@ -2284,8 +2284,17 @@
       const b64 = lr.form_slug === 'bonding'
         ? await window.nxReportPdf({ slug: lr.form_slug, id: lr.source_id || lr.id })
         : await pdfAsB64(`dtr/report-pdf?lab_ref=${encodeURIComponent(lr.lab_ref_no)}&app=${encodeURIComponent(app)}`);
+      // a generated report of about 1 KB is an empty / failed print, never a report: nothing is replaced by it
+      if (!b64 || b64.length < 3000 || !b64.startsWith('JVBER')) throw new Error(`The report PDF came out empty (${Math.max(1, Math.round((b64 || '').length * 3 / 4 / 1024))} KB), so nothing was replaced. Open the Digital Test Report once, then press Generate again.`);
       // a name typed by hand for this report is kept when it is generated again
       const prev = window.nxAttachedPdf;
+      // the user's own browsed file of this report stays the attachment: the new report is saved for approval, it does not take the file's place
+      const keepOwn = prev && prev.replaced && prev.lab_ref_no === lr.lab_ref_no && prev.b64 && prev.b64.length >= 3000;
+      if (keepOwn) {
+        showToast(`Your own file (${prev.name}) stays attached. Press "Use the signed report again" first if you want the generated report instead.`);
+        btn.disabled = false; btn.textContent = label;
+        return;
+      }
       const keep = prev && prev.nameByHand && prev.lab_ref_no === lr.lab_ref_no ? prev.name : '';
       setAttachedPdf({ app, lab_ref_no: lr.lab_ref_no, name: keep || fileNameFor(app, lr), nameByHand: !!keep, b64, source: 'generated', regenerate });
       showToast(`Report ready: ${app}.pdf. Check the report view, then request approval.`);

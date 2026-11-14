@@ -7,7 +7,9 @@ namespace App\Libraries;
  * "Materials;Encoding"); the user gets the highest access any of the roles gives. Admin sees and does everything, including Settings,
  * the Brain console, the Report Designer and the management of users and roles.
  *
- * The eight roles: Admin, Bonding, Encoding, Materials, Manager, Supervisor, Technician, Guest.
+ * The roles: Admin, Bonding, Encoding, Materials, Manager, Supervisor, Technician, Guest, SATRA, Warehouse PIC.
+ *   SATRA          full control of Laboratory Documents and Other Documents (rename, move, copy / cut / paste, delete files and folders, new file ...)
+ *   Warehouse PIC  full control of the Warehouse 3D Tracker (register, edit, transfer, dispose and delete boxes)
  * A user whose Role is still the old plain "user" (nobody has assigned a role yet) keeps the access that every signed-in user had before,
  * except the admin pages, so introducing roles locks nobody out; assign a role and the matrix below applies.
  *
@@ -16,7 +18,7 @@ namespace App\Libraries;
  */
 class Roles
 {
-    public const ROLES = ['Admin', 'Bonding', 'Encoding', 'Materials', 'Manager', 'Supervisor', 'Technician', 'Guest'];
+    public const ROLES = ['Admin', 'Bonding', 'Encoding', 'Materials', 'Manager', 'Supervisor', 'Technician', 'Guest', 'SATRA', 'Warehouse PIC'];
 
     /** module key => label shown to people */
     public const MODULES = [
@@ -34,6 +36,7 @@ class Roles
         'testsummary' => 'Test results summary',
         'analytics'   => 'Analytics',
         'labdocs'     => 'Lab documents',
+        'warehouse'   => 'Warehouse 3D Tracker',
         'thirdparty'  => 'Third party tests',
         'approvals'   => 'Report approval (sign off)',
         'help'        => 'Help',
@@ -47,18 +50,20 @@ class Roles
 
     /** role => module => level (0 none, 1 view, 2 edit). Admin is not listed: it is always 2 everywhere. */
     private const MATRIX = [
-        'Manager' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 1, 'etrf' => 1, 'dtr' => 1, 'materials' => 1, 'wholeshoe' => 1, 'bonding' => 1, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 2, 'thirdparty' => 1, 'approvals' => 2, 'help' => 2, 'calendar' => 1, 'erpfinish' => 1],
-        'Supervisor' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 2, 'etrf' => 2, 'dtr' => 2, 'materials' => 2, 'wholeshoe' => 2, 'bonding' => 2, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 2, 'thirdparty' => 1, 'approvals' => 2, 'help' => 2, 'calendar' => 1, 'erpfinish' => 2],
-        'Encoding' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 2, 'etrf' => 2, 'dtr' => 2, 'materials' => 1, 'wholeshoe' => 1, 'bonding' => 1, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 2, 'thirdparty' => 2, 'help' => 2, 'calendar' => 1, 'erpfinish' => 2],
-        'Materials' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 1, 'dtr' => 1, 'materials' => 2, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 1, 'help' => 2, 'calendar' => 1, 'erpfinish' => 1],
-        'Bonding' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 1, 'dtr' => 1, 'bonding' => 2, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 1, 'help' => 2, 'calendar' => 1, 'erpfinish' => 1],
-        'Technician' => ['dashboard' => 1, 'inbox' => 2, 'dtr' => 1, 'materials' => 2, 'wholeshoe' => 2, 'bonding' => 2, 'testsummary' => 1, 'labdocs' => 1, 'help' => 2, 'calendar' => 1],
-        'Guest'      => ['dashboard' => 1, 'dtr' => 1, 'materials' => 1, 'wholeshoe' => 1, 'bonding' => 1, 'calendar' => 1, 'insights' => 1, 'erpfinish' => 1, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 1, 'thirdparty' => 1, 'help' => 1],
+        'Manager' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 1, 'etrf' => 1, 'warehouse' => 1, 'dtr' => 1, 'materials' => 1, 'wholeshoe' => 1, 'bonding' => 1, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 2, 'thirdparty' => 1, 'approvals' => 2, 'help' => 2, 'calendar' => 1, 'erpfinish' => 1],
+        'Supervisor' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 2, 'etrf' => 2, 'warehouse' => 1, 'dtr' => 2, 'materials' => 2, 'wholeshoe' => 2, 'bonding' => 2, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 2, 'thirdparty' => 1, 'approvals' => 2, 'help' => 2, 'calendar' => 1, 'erpfinish' => 2],
+        'Encoding' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 2, 'etrf' => 2, 'warehouse' => 1, 'dtr' => 2, 'materials' => 1, 'wholeshoe' => 1, 'bonding' => 1, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 2, 'thirdparty' => 2, 'help' => 2, 'calendar' => 1, 'erpfinish' => 2],
+        'Materials' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 1, 'warehouse' => 1, 'dtr' => 1, 'materials' => 2, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 1, 'help' => 2, 'calendar' => 1, 'erpfinish' => 1],
+        'Bonding' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 1, 'warehouse' => 1, 'dtr' => 1, 'bonding' => 2, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 1, 'help' => 2, 'calendar' => 1, 'erpfinish' => 1],
+        'Technician' => ['dashboard' => 1, 'inbox' => 2, 'warehouse' => 1, 'dtr' => 1, 'materials' => 2, 'wholeshoe' => 2, 'bonding' => 2, 'testsummary' => 1, 'labdocs' => 1, 'help' => 2, 'calendar' => 1],
+        'SATRA'      => ['dashboard' => 1, 'inbox' => 2, 'labdocs' => 2, 'help' => 2, 'calendar' => 1],
+        'Warehouse PIC' => ['dashboard' => 1, 'inbox' => 2, 'warehouse' => 2, 'help' => 2, 'calendar' => 1],
+        'Guest'      => ['dashboard' => 1, 'warehouse' => 1, 'dtr' => 1, 'materials' => 1, 'wholeshoe' => 1, 'bonding' => 1, 'calendar' => 1, 'insights' => 1, 'erpfinish' => 1, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 1, 'thirdparty' => 1, 'help' => 1],
     ];
 
     /** the first URL segment of a page => its module (a segment that is not here is not restricted) */
     public const SEGMENTS = [
-        'dashboard' => 'dashboard', 'inbox' => 'inbox', 'interlink' => 'interlink', 'lab-monitoring' => 'erpfinish', 'calendar-monitoring' => 'calendar', 'calendar' => 'calendar', 'quality-insights' => 'insights', 'dtr' => 'dtr', 'warehouse-tracker' => 'dtr', 'warehouse' => 'dtr', 'materials' => 'materials', 'material-testing' => 'materials',
+        'dashboard' => 'dashboard', 'inbox' => 'inbox', 'interlink' => 'interlink', 'lab-monitoring' => 'erpfinish', 'calendar-monitoring' => 'calendar', 'calendar' => 'calendar', 'quality-insights' => 'insights', 'dtr' => 'dtr', 'warehouse-tracker' => 'warehouse', 'warehouse' => 'warehouse', 'materials' => 'materials', 'material-testing' => 'materials',
         'wholeshoe' => 'wholeshoe', 'whole-shoe-test' => 'wholeshoe', 'wst' => 'wholeshoe', 'bonding' => 'bonding', 'test-summary' => 'testsummary', 'tests-summary' => 'testsummary', 'test-results' => 'testsummary',
         'analytics' => 'analytics', 'labdocs' => 'labdocs', 'thirdparty' => 'thirdparty', 'approval' => 'approvals', 'help' => 'help', 'designer' => 'designer', 'brain' => 'brain', 'settings' => 'settings',
     ];
@@ -90,6 +95,8 @@ class Roles
             in_array($k, ['supervisor', 'supervisor1', 'supervisor2'], true) => 'Supervisor',
             $k === 'technician' || $k === 'tech' => 'Technician',
             in_array($k, ['guest', 'guests', 'visitor', 'readonly'], true) => 'Guest',
+            $k === 'satra' => 'SATRA',
+            in_array($k, ['warehousepic', 'warehouse', 'warehouseincharge', 'pic'], true) => 'Warehouse PIC',
             default => null,
         };
     }
@@ -185,6 +192,21 @@ class Roles
         }
 
         return self::can($role, $module, 2);
+    }
+
+    /** full control of a module beyond "edit": Admin everywhere, SATRA in the documents, Warehouse PIC in the warehouse */
+    public static function canManage(string $role, string $module): bool
+    {
+        $r = self::parse($role);
+        if (in_array('Admin', $r, true)) {
+            return true;
+        }
+
+        return match ($module) {
+            'labdocs'   => in_array('SATRA', $r, true),
+            'warehouse' => in_array('Warehouse PIC', $r, true),
+            default     => false,
+        };
     }
 
     /** the module of a request path ('' when the page is not restricted) */

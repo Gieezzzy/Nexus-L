@@ -37,11 +37,11 @@ class LabMonitoringController extends BaseController
     {
         ErpMonitor::ensureColumns();
 
+        // Index lookups per lab ref (the old GROUP BY sub-tables with COLLATE on both sides read both tables in full: ~6 s a query).
+        // The tracker has one row per lab ref (unique LabRefNo); the bonding info takes its newest row through its LabRefNo index.
         return "FROM tbl_dtr_unified_labrefs u
-            LEFT JOIN (SELECT LabRefNo, MAX(TrackerID) mid FROM tbl_dtr_bondingtracker GROUP BY LabRefNo) tm ON tm.LabRefNo COLLATE utf8mb4_general_ci = u.lab_ref_no COLLATE utf8mb4_general_ci
-            LEFT JOIN tbl_dtr_bondingtracker t ON t.TrackerID = tm.mid
-            LEFT JOIN (SELECT LabRefNo, MAX(BondingTestID) bid FROM tbl_dtr_bonding_info GROUP BY LabRefNo) bm ON bm.LabRefNo COLLATE utf8mb4_general_ci = u.lab_ref_no COLLATE utf8mb4_general_ci
-            LEFT JOIN tbl_dtr_bonding_info b ON b.BondingTestID = bm.bid
+            LEFT JOIN tbl_dtr_bondingtracker t ON t.LabRefNo = (u.lab_ref_no COLLATE utf8mb4_general_ci)
+            LEFT JOIN tbl_dtr_bonding_info b ON b.BondingTestID = (SELECT MAX(b2.BondingTestID) FROM tbl_dtr_bonding_info b2 WHERE b2.LabRefNo = u.lab_ref_no)
             WHERE u.form_slug = 'bonding' AND u.lab_ref_no REGEXP '^DTP[0-9]{8}'";
     }
 

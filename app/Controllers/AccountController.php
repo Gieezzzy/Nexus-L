@@ -36,6 +36,7 @@ class AccountController extends BaseController
                 'Email'             => '',
                 'Phone'             => '',
                 'Department'        => 'Visitor',
+                'Avatar'            => null,
                 'JobTitle'          => 'Guest (View-only)',
                 'EmployeeNo'        => '',
                 'SynologyID'        => null,
@@ -78,6 +79,7 @@ class AccountController extends BaseController
             'withCss'   => 'account.css',
             'withJs'    => ['account.js'],
             'u'              => $u,
+            'avatarUrl'      => UserModel::avatarUrl($u['Avatar'] ?? null, (int) ($u['UserID'] ?? 0)),
             'isGuestSession' => $this->auth->isGuestSession(),
             'roles'          => Roles::parse($role),
             'legacy'    => Roles::isLegacy($role),
@@ -211,5 +213,110 @@ class AccountController extends BaseController
         }
 
         return $this->json(['ok' => true, 'message' => $png !== '' ? 'Signature saved.' : 'Signature removed.']);
+    }
+
+    /** POST account/avatar {avatar: "data:image/png;base64,...", remove?: true} or multipart file */
+    public function saveAvatar()
+    {
+        if ($this->auth->isGuestSession()) {
+            return $this->json(['ok' => false, 'error' => 'Guest sessions are read-only and cannot change profile pictures.'], 403);
+        }
+        $uid = (int) $this->auth->id();
+        if ($uid <= 0) {
+            return $this->json(['ok' => false, 'error' => 'Unauthorized.'], 401);
+        }
+        $u   = $this->me();
+        $old = trim((string) ($u['Avatar'] ?? ''));
+        $dir = WRITEPATH . 'uploads/avatars';
+        if (! is_dir($dir) && ! @mkdir($dir, 0775, true)) {
+            return $this->json(['ok' => false, 'error' => 'Could not create avatar storage directory.'], 500);
+        }
+
+        $p = $this->request->getJSON(true) ?? $this->request->getPost() ?? [];
+        if (! empty($p['remove'])) {
+            if ($old !== '' && ! str_contains($old, '..') && is_file($dir . '/' . basename($old))) {
+                @unlink($dir . '/' . basename($old));
+            }
+            $this->users()->update($uid, ['Avatar' => null]);
+            UserModel::clearAvatarCache();
+            $s = session(\App\Libraries\Auth::SESSION_KEY) ?? [];
+            $s['avatar'] = null;
+            session()->set(\App\Libraries\Auth::SESSION_KEY, $s);
+
+            return $this->json(['ok' => true, 'avatar' => null, 'message' => 'Profile picture removed.']);
+        }
+
+        $raw   = null;
+        $ext   = 'png';
+        $data  = trim((string) ($p['avatar'] ?? ''));
+        $file  = $this->request->getFile('file');
+        if ($data !== '') {
+            if (! preg_match('#^data:image/(png|jpeg|webp);base64,([A-Za-z0-9+/=\r\n]+)$#', $data, $m)) {
+                return $this->json(['ok' => false, 'error' => 'Please provide a valid cropped PNG, JPG, or WebP image.'], 422);
+            }
+            $ext = $m[1] === 'jpeg' ? 'jpg' : $m[1];
+            $raw = base64_decode($m[2], true);
+            if ($raw === false || strlen($raw) < 64 || strlen($raw) > 5 * 1024 * 1024) {
+                return $this->json(['ok' => false, 'error' => 'Profile picture must be under 5 MB.'], 422);
+            }
+            if (@getimagesizefromstring($raw) === false) {
+                return $this->json(['ok' => false, 'error' => 'Uploaded data is not a valid image.'], 422);
+            }
+        } elseif ($file && $file->isValid() && ! $file->hasMoved()) {
+            if ($file->getSize() > 5 * 1024 * 1024) {
+                return $this->json(['ok' => false, 'error' => 'Profile picture must be under 5 MB.'], 422);
+            }
+            $mime = $file->getMimeType();
+            $mimes = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp'];
+            if (! isset($mimes[$mime]) || @getimagesize($file->getTempName()) === false) {
+                return $this->json(['ok' => false, 'error' => 'Please upload a valid PNG, JPG, or WebP image.'], 422);
+            }
+            $ext = $mimes[$mime];
+            $raw = file_get_contents($file->getTempName());
+        } else {
+            return $this->json(['ok' => false, 'error' => 'No image provided.'], 422);
+        }
+
+        $filename = 'u' . $uid . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
+        if (@file_put_contents($dir . '/' . $filename, $raw) === false) {
+            return $this->json(['ok' => false, 'error' => 'Failed to save profile picture.'], 500);
+        }
+        if ($old !== '' && $old !== $filename && ! str_contains($old, '..') && is_file($dir . '/' . basename($old))) {
+            @unlink($dir . '/' . basename($old));
+        }
+
+        $this->users()->update($uid, ['Avatar' => $filename]);
+        UserModel::clearAvatarCache();
+        $url = UserModel::avatarUrl($filename, $uid);
+        $s   = session(\App\Libraries\Auth::SESSION_KEY) ?? [];
+        $s['avatar'] = $url;
+        session()->set(\App\Libraries\Auth::SESSION_KEY, $s);
+
+        return $this->json(['ok' => true, 'avatar' => $url, 'message' => 'Profile picture updated.']);
+    }
+
+    /** GET account/avatar/(:num) serves any user's profile picture to signed-in users */
+    public function avatar(int $userId)
+    {
+        if ($userId <= 0) {
+            return $this->response->setStatusCode(404)->setBody('Not found');
+        }
+        $row = $this->users()->select('UserID, Avatar')->find($userId);
+        $rel = trim((string) ($row['Avatar'] ?? ''));
+        if ($rel === '' || str_contains($rel, '..')) {
+            return $this->response->setStatusCode(404)->setBody('Not found');
+        }
+        $path = WRITEPATH . 'uploads/avatars/' . basename($rel);
+        if (! is_file($path)) {
+            return $this->response->setStatusCode(404)->setBody('Not found');
+        }
+        $ext  = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $mime = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp', 'gif' => 'image/gif'][$ext] ?? 'image/png';
+
+        return $this->response
+            ->setHeader('Content-Type', $mime)
+            ->setHeader('X-Content-Type-Options', 'nosniff')
+            ->setHeader('Cache-Control', 'private, max-age=86400')
+            ->setBody((string) file_get_contents($path));
     }
 }

@@ -7,7 +7,7 @@
 helper('nx'); // nx_asset(): the page body is built before the layout loads it
 $a = $approval;
 ?>
-<div class="apv" id="apv-root" data-token="<?= esc($a['token']) ?>" data-next="<?= esc($nextUrl ?? '', 'attr') ?>">
+<div class="apv" id="apv-root" data-token="<?= esc($a['token']) ?>" data-id="<?= (int) $a['id'] ?>" data-me="<?= (int) (service('auth')->user()['id'] ?? 0) ?>" data-next="<?= esc($nextUrl ?? '', 'attr') ?>">
     <header class="apv-top">
         <div class="apv-title">
             <h2>Report approval</h2>
@@ -36,6 +36,7 @@ $a = $approval;
         </section>
 
         <aside class="apv-sign" aria-label="Your decision">
+            <div class="apv-lock" id="apv-lock" hidden role="status" aria-live="polite"></div>
             <?php if (! $signatory): ?>
                 <h3>Not an approver</h3>
                 <p class="sm">Only a registered Manager or Supervisor can approve reports. Ask an admin to add your account in <b>Report Designer → Signatories</b>.</p>

@@ -38,10 +38,15 @@ class AuthController extends BaseController
             return redirect()->back()->withInput()->with('error', $result['message']);
         }
 
-        // Only redirect to same-site URLs.
+        // Only redirect to same-site HTML page URLs (never JSON/API/bot endpoints).
         $target = session()->getFlashdata('redirect_after_login') ?? session('redirect_after_login');
         session()->remove('redirect_after_login');
-        if (! is_string($target) || ! str_starts_with($target, base_url())) {
+        $relTarget = is_string($target) && str_starts_with($target, base_url())
+            ? ltrim(substr($target, strlen(base_url())), '/')
+            : '';
+        $isBadRedirect = $relTarget === ''
+            || (bool) preg_match('#^(bot/|push/|api/|login|logout|inbox/(?!$)|account/(?!$)|dtr/approval/feed|interlink/.*feed)#i', $relTarget);
+        if ($isBadRedirect) {
             $target = url_to('dashboard');
         }
 

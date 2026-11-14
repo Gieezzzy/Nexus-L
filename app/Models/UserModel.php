@@ -11,9 +11,60 @@ class UserModel extends Model
     protected $returnType       = 'array';
     protected $useAutoIncrement = true;
     protected $allowedFields    = [
-        'Username', 'FullName', 'Email', 'SynologyID', 'Department', 'Password', 'Role',
+        'Username', 'FullName', 'Email', 'SynologyID', 'Department', 'Avatar', 'Password', 'Role',
         'IsActive', 'FailedAttempts', 'LockedUntil', 'LastLoginAt', 'LastLoginIP', 'PasswordChangedAt', 'Phone', 'EmployeeNo', 'JobTitle', 'Prefs',
     ];
+
+    public static function avatarUrl(?string $avatar, int $userId): ?string
+    {
+        $a = trim((string) $avatar);
+        if ($a === '' || $userId <= 0) {
+            return null;
+        }
+        if (str_starts_with($a, 'http://') || str_starts_with($a, 'https://') || str_starts_with($a, '/')) {
+            return $a;
+        }
+
+        $path = 'account/avatar/' . $userId . '?v=' . substr(md5($a), 0, 8);
+        if (function_exists('site_url')) {
+            try {
+                return site_url($path);
+            } catch (\Throwable $e) {
+            }
+        }
+
+        return '/' . $path;
+    }
+
+    private static ?array $synAvatarCache = null;
+
+    public static function clearAvatarCache(): void
+    {
+        self::$synAvatarCache = null;
+    }
+
+    public static function synologyAvatar(?string $synId): ?string
+    {
+        $syn = trim((string) $synId);
+        if ($syn === '') {
+            return null;
+        }
+        if (self::$synAvatarCache === null) {
+            self::$synAvatarCache = [];
+            try {
+                $rows = db_connect()->query("SELECT UserID, SynologyID, Avatar FROM tbl_users WHERE Avatar IS NOT NULL AND Avatar <> '' AND SynologyID IS NOT NULL AND SynologyID <> ''")->getResultArray();
+                foreach ($rows as $r) {
+                    $url = self::avatarUrl($r['Avatar'] ?? null, (int) ($r['UserID'] ?? 0));
+                    if ($url !== null) {
+                        self::$synAvatarCache[strtolower(trim((string) $r['SynologyID']))] = $url;
+                    }
+                }
+            } catch (\Throwable $e) {
+            }
+        }
+
+        return self::$synAvatarCache[strtolower($syn)] ?? null;
+    }
 
     protected $useTimestamps = true;
     protected $dateFormat    = 'datetime';

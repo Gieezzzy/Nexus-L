@@ -184,7 +184,12 @@
         .then((j) => { if (!j || !j.ok) return; (j.events || []).forEach(notify); showPill(j); cursor = j.cursor; })
         .catch(() => {});
     };
-    if (document.querySelector('meta[name="base-url"]') && !/\/login\b/.test(location.pathname)) { tick(); setInterval(tick, 20000); }
+    // every 8 s; every 3 s while the "waiting for your approval" pill is showing, so a report another approver decided disappears at once
+    if (document.querySelector('meta[name="base-url"]') && !/\/login\b/.test(location.pathname)) {
+      tick();
+      let last = 0;
+      setInterval(() => { const now = Date.now(); if (now - last >= (pill ? 3000 : 8000)) { last = now; tick(); } }, 1000);
+    }
   })();
 
   // ---- InterLink background service: unique Application No. toast + chat notification wherever the user is in NEXUS-L ----
@@ -349,19 +354,27 @@
       .catch((err) => console.warn('[FCM] Token register error:', err));
     };
 
-    const registerServiceWorker = () => {
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register(`${BASE_URL}firebase-messaging-sw.js`)
-          .then((reg) => {
-            if (reg.pushManager) {
-              reg.pushManager.getSubscription().then((sub) => {
-                if (sub && sub.endpoint) saveFcmToken(sub.endpoint);
-              }).catch(() => {});
-            }
-          })
-          .catch((err) => console.warn('[FCM] SW registration failed:', err));
-      }
+    const urlB64ToBytes = (b64) => { const pad = '='.repeat((4 - (b64.length % 4)) % 4); const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from([...raw].map((c) => c.charCodeAt(0))); };
+    // Real browser push (arrives with NEXUS-L closed). Needs https:// - on plain http the browser refuses service workers.
+    const registerServiceWorker = async () => {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window) || !window.isSecureContext) return;
+      try {
+        const reg = await navigator.serviceWorker.register(`${BASE_URL}nexus-push-sw.js`);
+        await navigator.serviceWorker.ready;
+        const hdr = { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' };
+        if (csrfMeta && csrfMeta.content) hdr['X-CSRF-TOKEN'] = csrfMeta.content;
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          const k = await (await fetch(`${BASE_URL}push/key`, { credentials: 'same-origin' })).json();
+          if (!k || !k.ok) return;
+          sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToBytes(k.key) });
+        }
+        const r = await fetch(`${BASE_URL}push/subscribe`, { method: 'POST', credentials: 'same-origin', headers: hdr, body: JSON.stringify(sub.toJSON()) });
+        const j = await r.json().catch(() => null);
+        if (j && j.csrf && csrfMeta) csrfMeta.content = j.csrf;
+      } catch (err) { console.warn('[Push] subscribe failed:', err); }
     };
+    window.nxEnablePush = registerServiceWorker;
 
     const playNotificationChime = () => {
       try {

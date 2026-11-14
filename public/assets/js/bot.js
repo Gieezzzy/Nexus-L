@@ -21,7 +21,7 @@
       headers: Object.assign({ 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': token() }, opts.headers || {}),
     }));
     if (r.status === 403 && retry) {                 // stale CSRF token: fetch a fresh one and try once more
-      const t = await origFetch(BASE + 'bot/badge', { credentials: 'same-origin' }).then((x) => x.json()).catch(() => null);
+      const t = await origFetch(BASE + 'bot/badge', { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' } }).then((x) => (x.ok ? x.json() : null)).catch(() => null);
       if (t && t.csrf) { csrfMeta.content = t.csrf; return api(path, opts, false); }
     }
     const j = await r.json().catch(() => ({}));
@@ -38,8 +38,13 @@
     queue.push(Object.assign({ type, page: pagePath() }, detail));
     if (queue.length >= 25) flush();
   };
+  let loggingOut = false;
+  document.addEventListener('submit', (e) => {
+    const f = e.target;
+    if (f && f.action && /\/logout\b/i.test(f.action)) { loggingOut = true; queue = []; }
+  }, true);
   const flush = (keepalive = false) => {
-    if (!queue.length) return;
+    if (loggingOut || !queue.length) return;
     const events = queue.splice(0, 40);
     post('bot/events', { events }, keepalive ? { keepalive: true } : {}).catch(() => {});
   };

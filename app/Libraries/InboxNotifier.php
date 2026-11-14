@@ -66,6 +66,12 @@ class InboxNotifier
             log_message('error', '[Inbox] FCM Nexus web push: ' . $e->getMessage());
         }
 
+        // 1c) Browser push with NEXUS-L closed (people who allowed notifications on https://)
+        if ($store->source() !== 'r') {
+            // a click opens this chat (from the recipient's side the chat key is the sender's id)
+            $res['webPush'] = WebPush::notify($fromName, $preview, 'inbox?chat=' . rawurlencode('n:' . $fromId), ['user_ids' => [$toId], 'tag' => 'inbox-' . $convId]);
+        }
+
         // 2) Synology Chat DM when the recipient has a numeric Synology id
         $syn = $store->source() === 'r' ? $toId : (string) $toSynologyId;
         if (ctype_digit($syn) && $syn !== '0') {

@@ -45,7 +45,7 @@
     return { ok: r.ok && j.ok !== false, j };
   };
 
-  let menu = null; let cap = null; let capPoll = 0; let capClock = 0; let L = null; let zoom = null; let zoomClock = 0;
+  const seenV = {}; let got = 0; let menu = null; let cap = null; let capPoll = 0; let capClock = 0; let L = null; let zoom = null; let zoomClock = 0;
   const secsLeft = () => (L ? Math.max(0, Math.round((L.expires - Date.now()) / 1000)) : 0);
   const clock = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
@@ -75,7 +75,7 @@
     if (L.state === 'expired' || (L.state === 'pending' && s === 0)) {
       cap.innerHTML = '<div class="syno-cap-body"><div class="syno-cap-txt"><b>This code expired</b><span>A code works for 15 minutes.</span><span><button type="button" class="dtr-btn dtr-btn-primary dtr-btn-sm" data-cap="new">Make a new code</button> <button type="button" class="dtr-btn dtr-btn-outline dtr-btn-sm" data-cap="cancel">Cancel</button></span></div></div>';
     } else if (L.state === 'got') {
-      cap.innerHTML = '<div class="syno-cap-body"><div class="syno-cap-txt"><b>Photo received</b><span>It is attached below. To replace it, take another one.</span><button type="button" class="dtr-btn dtr-btn-outline dtr-btn-sm" data-cap="again">Take another with the phone</button></div></div>';
+      cap.innerHTML = `<div class="syno-cap-body"><div class="syno-cap-txt"><b>${got} photo${got === 1 ? '' : 's'} received</b><span>Added to the list below (up to 10). The same code stays valid: take the next photo with the phone, they are added, nothing is replaced.</span><button type="button" class="dtr-btn dtr-btn-outline dtr-btn-sm" data-cap="zoom">Show the QR code again</button> <button type="button" class="dtr-btn dtr-btn-outline dtr-btn-sm" data-cap="cancel">Done</button></div></div>`;
     } else {
       cap.innerHTML = `<div class="syno-cap-body"><button type="button" class="syno-cap-qr" data-cap="zoom" title="Click to enlarge"><img src="${esc(L.qr)}" alt="QR code to take the photo with a phone"></button>
         <div class="syno-cap-txt"><b>Scan with the phone camera</b><span>Take the photo: it appears here by itself.</span><span class="syno-cap-time">Valid for <b>${clock(s)}</b></span>${L.scanning ? '<span class="syno-cap-busy">Someone is capturing this right now.</span>' : ''}${L.by ? `<span class="syno-cap-time">Code started by ${esc(L.by)}</span>` : ''}
@@ -99,6 +99,7 @@
     const { ok, j } = await api('dtr/photo-link', { kind: 'attach', lab_ref: lab, test_type: 'REPORT' });
     if (!ok) { cap?.remove(); cap = null; toast(j.error || 'Could not make the QR code.', 'error'); return; }
     L = { token: j.token, qr: j.qr, lab, expires: new Date(String(j.expires_at).replace(' ', 'T')).getTime(), state: 'pending', v: 0, by: j.reused ? j.by : '', scanning: !!j.scanning };
+    L.v = seenV[j.token] || 0;   // a photo this code already delivered is not added twice
     if (j.reused && j.by) toast(`A code for this report is already open (started by ${j.by}). Use the same one.`, 'info');
     paintCap();
     capClock = setInterval(() => { if (!cap) { stopCap(); return; } if (L.state === 'pending') paintCap(); }, 1000);
@@ -107,14 +108,14 @@
       if (zone.closest('.hidden')) { hideCap(); return; }   // this Send report window was closed
       const { j: st } = await api('dtr/photo-status?token=' + encodeURIComponent(L.token));
       if (st.status === 'captured' && st.v !== L.v) {
-        L.v = st.v;
+        L.v = st.v; seenV[L.token] = st.v;
         try {
           const r = await fetch(`${BASE}dtr/photo-image?token=${encodeURIComponent(L.token)}&v=${st.v}`, { credentials: 'same-origin' });
           if (!r.ok) throw new Error('image');
           const blob = await r.blob();
           const file = new File([blob], `Phone_${L.lab}_${new Date().toISOString().slice(11, 19).replace(/:/g, '')}.jpg`, { type: 'image/jpeg' });
           document.dispatchEvent(new CustomEvent('syno:attach', { detail: { file } }));   // dtr.js attaches it like an uploaded file
-          L.state = 'got'; paintCap(); closeZoom();
+          got++; L.state = 'got'; paintCap(); closeZoom();
           toast(`Photo received for ${L.lab}.`, 'success');
         } catch (e) { toast('The photo arrived but could not be loaded. Try again.', 'error'); }
       } else if ((st.status === 'expired' || Date.now() > L.expires) && L.state === 'pending') { L.state = 'expired'; paintCap(); }

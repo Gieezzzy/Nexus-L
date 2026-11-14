@@ -443,6 +443,18 @@ class InterlinkServiceController extends BaseController
         $isEtrf = in_array($mode, ['etrf', 'vf_copy'], true);
         $genApp = (string) ($upd['application_no'] ?? '');
 
+        // Browser push to whoever started the job (arrives with NEXUS-L closed)
+        if ((int) ($job['user_id'] ?? 0) > 0 && $mode !== 'vf_grid') {
+            $what = $lab !== '' ? $lab : ($rep !== '' ? $rep : 'InterLink job');
+            if ($state === 'done') {
+                \App\Libraries\WebPush::notify($genApp !== '' ? "InterLink Application No: {$genApp}" : 'InterLink: done', $what . ($msg !== '' ? ' - ' . $msg : ''), 'interlink', ['user_ids' => [(string) $job['user_id']], 'tag' => 'il-' . $uid]);
+            } elseif ($state === 'failed') {
+                \App\Libraries\WebPush::notify('InterLink job failed', $what . ($msg !== '' ? ' - ' . $msg : ''), 'interlink', ['user_ids' => [(string) $job['user_id']], 'tag' => 'il-' . $uid]);
+            } elseif ($state === 'signin-required') {
+                \App\Libraries\WebPush::notify('InterLink needs a sign-in', 'Sign in to InterLink on the service PC so the job can continue.', 'interlink', ['user_ids' => [(string) $job['user_id']], 'tag' => 'il-' . $uid]);
+            }
+        }
+
         if ($mode === 'vf_pdf') {
             (new \App\Libraries\VfTestRequestService())->handlePdfCallback($job, $p);
         } elseif ($mode === 'vf_copy') {

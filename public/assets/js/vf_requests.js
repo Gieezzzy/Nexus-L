@@ -24,13 +24,16 @@
   let pageSize = Number((function () { try { return localStorage.getItem('vfmPageSize'); } catch (e) { return ''; } })()) || 50;
   let allBatches = [];
   let bPage = 1;
+  let bTab = 'CPSIA';
+  try { bTab = localStorage.getItem('vfmBatchTab') || 'CPSIA'; } catch (e) { /* private mode */ }
+  const bGroup = (b) => (/CPSIA/i.test(b.test_package || '') ? 'CPSIA' : (/(^|[^A-Za-z])KC([^A-Za-z]|$)/i.test(b.test_package || '') ? 'KC' : 'OTHER'));
   const B_SIZE = 10;
 
   const badge = (s) => {
     const u = String(s || '').toUpperCase();
     if (u === 'COMPLETED' || u === 'PASS') return 'vfm-ok';
     if (u === 'SUBMITTED_INTERLINK' || u === 'EMAIL_SENT' || u === 'LAB_RECEIVED') return 'vfm-info';
-    if (u === 'FAILED') return 'vfm-err';
+    if (u === 'FAILED' || u === 'FOLLOW_UP') return 'vfm-err';
     return 'vfm-warn';
   };
 
@@ -111,7 +114,14 @@
     document.getElementById('k-done').textContent = live.filter((x) => x.stage === 'COMPLETED').length;
     document.getElementById('k-hist').textContent = allRows.length - live.length;
 
-    allBatches = j.batches || [];
+    const batchesAll = j.batches || [];
+    const bc = { CPSIA: 0, KC: 0, OTHER: 0 };
+    batchesAll.forEach((b) => { bc[bGroup(b)]++; });
+    Object.keys(bc).forEach((k) => { const el = document.getElementById('kb-' + k); if (el) el.textContent = bc[k]; });
+    const ob = document.getElementById('vfm-bt-other');
+    if (ob) ob.hidden = bc.OTHER === 0 && bTab !== 'OTHER';
+    document.querySelectorAll('#vfm-btabs .vfm-subtab').forEach((x) => x.classList.toggle('active', x.dataset.bt === bTab));
+    allBatches = batchesAll.filter((b) => bGroup(b) === bTab);
     const bPages = Math.max(1, Math.ceil(allBatches.length / B_SIZE));
     if (bPage > bPages) bPage = bPages;
     const kidsOf = (id) => allRows.filter((x) => String(x.batch_id) === String(id));
@@ -149,7 +159,9 @@
         })()}
           <label class="vfm-sub" style="margin-left:6px" title="Send automatically when every request of this e-mail is submitted"><input type="checkbox" class="vfm-auto" data-id="${b.id}" ${Number(b.auto_send_email) ? 'checked' : ''}> auto</label>
           ${sub.some((x) => !x.etrf_pdf_path) ? `<button type="button" class="vfm-btn sm vfm-getpdf" data-id="${b.id}" style="margin-left:6px" title="Let the InterLink service print the missing eTRF PDFs">Get ${sub.filter((x) => !x.etrf_pdf_path).length} PDF(s) from InterLink</button>` : ''}
-          <button type="button" class="vfm-btn sm primary vfm-send" data-id="${b.id}" style="margin-left:6px">Send Batch PDF Email</button></td>
+          ${bGroup(b) === 'KC' ? `<button type="button" class="vfm-btn sm vfm-kcdocs" data-id="${b.id}" style="margin-left:6px" title="Invoice and Packing List that go with the e-mail">Invoice / Packing List</button>` : ''}
+          <button type="button" class="vfm-btn sm primary vfm-send" data-id="${b.id}" style="margin-left:6px">Send Batch PDF Email</button>
+          ${bGroup(b) === 'KC' && mailed.length ? `<button type="button" class="vfm-btn sm vfm-kcgo" data-id="${b.id}" style="margin-left:6px" title="The receiver answered: place these samples in Transit Monitoring">Proceed &rarr; Transit</button>` : ''}</td>
       </tr>
       <tr class="vfm-kidwrap ${open ? 'open' : ''}" data-kids="${b.id}"><td colspan="5">
         <table class="vfm-kids"><thead><tr><th><input type="checkbox" class="vfm-pickall" data-b="${b.id}" title="Select all"></th><th>Prod Code</th><th>MTL#</th><th>Style</th><th>Application No.</th><th>eTRF PDF</th><th>Stage</th><th>E-mailed</th></tr></thead>
@@ -178,7 +190,7 @@
         <td class="mono">${esc(r0.container_no || '-')}</td>
         <td class="mono">${esc(r0.lab_order_no || '-')}</td>
         <td class="mono">${esc(r0.lab_report_no || '-')}</td>
-        <td>${esc(r0.expected_due_date || '-')}</td>
+        <td>${r0.expected_due_remark ? `<span style="color:#991b1b;font-weight:600" title="${esc(r0.expected_due_remark)}">${esc(String(r0.expected_due_remark).slice(0, 40))}</span>` : esc(r0.expected_due_date || '-')}</td>
         <td>${r0.test_result ? `<span class="vfm-badge ${badge(r0.test_result)}">${esc(r0.test_result)}</span>` : '-'}</td>
         <td>${esc(r0.issue_date || '-')}</td>
         <td>${esc(r0.validity_date || '-')}</td>
@@ -218,6 +230,21 @@
   batchesEl.addEventListener('click', async (e) => {
     const send = e.target.closest('.vfm-send');
     if (send) { openMailDialog(Number(send.dataset.id), ticked(send.dataset.id)); return; }
+    const kcd = e.target.closest('.vfm-kcdocs');
+    if (kcd) { openKcDocs(Number(kcd.dataset.id)); return; }
+    const kcg = e.target.closest('.vfm-kcgo');
+    if (kcg) {
+      const trk = window.prompt('The receiver answered. Proceed: these KC samples go to Transit Monitoring.\n\nTracking number (leave empty to add it later, when the update e-mail is sent):', '');
+      if (trk === null) return;
+      const ids = ticked(kcg.dataset.id);
+      kcg.disabled = true;
+      const r = await fetch(`${base}lab-monitoring/vf-requests/kc/proceed`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ batch_id: Number(kcg.dataset.id), tracking_no: trk.trim(), request_ids: ids }) });
+      const j = await r.json().catch(() => null);
+      toast(j && j.ok ? `${j.count} request(s) are now In transit (see Transit Monitoring).` : ((j && j.error) || 'Could not proceed.'), j && j.ok ? 'success' : 'error');
+      kcg.disabled = false;
+      load();
+      return;
+    }
     const getpdf = e.target.closest('.vfm-getpdf');
     if (getpdf) {
       getpdf.disabled = true;
@@ -307,6 +334,64 @@
     } finally { btn.disabled = false; }
   });
 
+  // ---- KC Test: the editable Invoice / Packing List data of a batch
+  const kcModal = document.getElementById('vfm-kc-modal');
+  let kcBatch = 0, kcLines = [];
+  const kcNum = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
+  const kcRender = () => {
+    document.getElementById('kc-lines').innerHTML = '<thead><tr><th>#</th><th>HS code</th><th>Item name</th><th>MTL#</th><th>Qty</th><th>Unit</th><th>Unit price</th><th>Amount</th><th></th></tr></thead><tbody>'
+      + kcLines.map((l, i) => `<tr data-i="${i}"><td>${i + 1}</td>
+        <td><input data-k="hs" value="${esc(l.hs)}" style="width:110px"></td><td><input data-k="item" value="${esc(l.item)}" style="width:360px"></td><td><input data-k="mtl" value="${esc(l.mtl)}" style="width:110px"></td>
+        <td><input data-k="qty" type="number" step="any" value="${esc(l.qty)}" style="width:60px"></td><td><input data-k="unit" value="${esc(l.unit)}" style="width:60px"></td><td><input data-k="price" type="number" step="any" value="${esc(l.price)}" style="width:70px"></td>
+        <td class="mono kc-amt">${(kcNum(l.qty) * kcNum(l.price)).toFixed(2)}</td><td><button type="button" class="vfm-btn sm" data-del="${i}" title="Remove the line">&times;</button></td></tr>`).join('') + '</tbody>';
+    kcTotal();
+  };
+  const kcTotal = () => { document.getElementById('kc-total').textContent = kcLines.reduce((s, l) => s + kcNum(l.qty) * kcNum(l.price), 0).toFixed(2); };
+  async function openKcDocs(batchId) {
+    const r = await fetch(`${base}lab-monitoring/vf-requests/kc/docs/${batchId}`, { credentials: 'same-origin' });
+    const j = await r.json().catch(() => null);
+    if (!j || !j.ok) { toast('Could not load the KC sheets.', 'error'); return; }
+    kcBatch = batchId;
+    const d = j.docs;
+    kcLines = (d.lines || []).map((l) => ({ ...l }));
+    document.getElementById('kc-title').textContent = `- batch #${batchId}${d.style ? ' - ' + d.style : ''}`;
+    document.getElementById('kc-inv').value = d.invoice_no || '';
+    document.getElementById('kc-date').value = d.date || '';
+    document.getElementById('kc-ctn').value = d.cartons || 1;
+    document.getElementById('kc-nw').value = d.nw || '';
+    document.getElementById('kc-gw').value = d.gw || '';
+    document.getElementById('kc-ms').value = d.measure || '';
+    document.getElementById('kc-dl-inv').href = `${base}lab-monitoring/vf-requests/kc/xlsx/${batchId}/invoice`;
+    document.getElementById('kc-dl-pack').href = `${base}lab-monitoring/vf-requests/kc/xlsx/${batchId}/packing`;
+    kcModal.dataset.mtl = (d.mtls || [])[0] || '';
+    kcModal.dataset.sample = JSON.stringify(j.sample || []);
+    kcRender();
+    kcModal.classList.add('open');
+  }
+  const kcCollect = () => ({ batch_id: kcBatch, invoice_no: document.getElementById('kc-inv').value, date: document.getElementById('kc-date').value, cartons: document.getElementById('kc-ctn').value, nw: document.getElementById('kc-nw').value, gw: document.getElementById('kc-gw').value, measure: document.getElementById('kc-ms').value, lines: kcLines });
+  document.getElementById('kc-lines').addEventListener('input', (e) => {
+    const tr = e.target.closest('tr[data-i]'); if (!tr || !e.target.dataset.k) return;
+    kcLines[Number(tr.dataset.i)][e.target.dataset.k] = e.target.value;
+    tr.querySelector('.kc-amt').textContent = (kcNum(kcLines[Number(tr.dataset.i)].qty) * kcNum(kcLines[Number(tr.dataset.i)].price)).toFixed(2);
+    kcTotal();
+  });
+  document.getElementById('kc-lines').addEventListener('click', (e) => { const x = e.target.closest('[data-del]'); if (x) { kcLines.splice(Number(x.dataset.del), 1); kcRender(); } });
+  document.getElementById('kc-add').addEventListener('click', () => { kcLines.push({ hs: '', item: '', mtl: kcModal.dataset.mtl || '', qty: 1, unit: 'PCS', price: 0 }); kcRender(); });
+  document.getElementById('kc-sample').addEventListener('click', () => {
+    const s = JSON.parse(kcModal.dataset.sample || '[]').map((l) => ({ ...l, mtl: kcModal.dataset.mtl || '' }));
+    if (kcLines.length + s.length > 20) { toast('The sheets have room for 20 lines: remove some first.', 'error'); return; }
+    kcLines.push(...s); kcRender();
+  });
+  document.getElementById('kc-close').addEventListener('click', () => kcModal.classList.remove('open'));
+  const kcSave = async () => {
+    const r = await fetch(`${base}lab-monitoring/vf-requests/kc/docs-save`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(kcCollect()) });
+    const j = await r.json().catch(() => null);
+    if (!(j && j.ok)) toast((j && j.error) || 'Could not save.', 'error');
+    return !!(j && j.ok);
+  };
+  document.getElementById('kc-save').addEventListener('click', async () => { if (await kcSave()) { toast('Saved. The e-mail will attach the new Invoice and Packing List.', 'success'); kcModal.classList.remove('open'); } });
+  ['kc-dl-inv', 'kc-dl-pack'].forEach((id) => document.getElementById(id).addEventListener('click', async (e) => { e.preventDefault(); const href = e.currentTarget.href; if (await kcSave()) window.location.href = href; }));
+
   document.getElementById('vfm-sync-emails').addEventListener('click', async () => {
     const r = await fetch(`${base}interlink/vf-test-request/sync-emails`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}' });
     const j = await r.json().catch(() => null);
@@ -354,6 +439,14 @@
   });
 
   load();
+
+  document.getElementById('vfm-btabs').addEventListener('click', (e) => {
+    const b = e.target.closest('.vfm-subtab');
+    if (!b) return;
+    bTab = b.dataset.bt; bPage = 1;
+    try { localStorage.setItem('vfmBatchTab', bTab); } catch (err) { /* private mode */ }
+    load(true);
+  });
 
   // live: refresh every 6 s while the tab is visible and no dialog is open (also right when the tab comes back)
   let polling = false;

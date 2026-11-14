@@ -383,6 +383,10 @@ class NotifierController extends BaseController
                 }
             }
             if (! empty($ch['push'])) {
+                // browser push that arrives with NEXUS-L closed (people who allowed notifications on https://)
+                if (\App\Libraries\WebPush::notify('Lab Alerts', mb_substr(preg_replace('/\s+/', ' ', $text), 0, 200), 'inbox', ['user_ids' => [(string) $uid], 'tag' => 'lab-alert']) > 0) {
+                    $res[] = 'web push';
+                }
                 try {
                     $fcm = new \App\Libraries\FcmService();
                     if ($fcm->isConfigured() && $db->tableExists('tbl_user_push_tokens')) {

@@ -159,11 +159,11 @@
   // Lab Tracker sub-tabs (containers / materials / bonding shoes / whole shoes / AppSheet archives)
   const AS_ARCHIVE_TYPES = ['bench', 'erp', 'cfa', 'schedule', 'failed'];
   const asArchiveState = {
-    bench: { loaded: false, page: 1, total: 0, limit: 100 },
-    erp: { loaded: false, page: 1, total: 0, limit: 100 },
-    cfa: { loaded: false, page: 1, total: 0, limit: 100 },
-    schedule: { loaded: false, page: 1, total: 0, limit: 100 },
-    failed: { loaded: false, page: 1, total: 0, limit: 100 },
+    bench: { loaded: false, page: 1, total: 0, limit: 15 },
+    erp: { loaded: false, page: 1, total: 0, limit: 15 },
+    cfa: { loaded: false, page: 1, total: 0, limit: 15 },
+    schedule: { loaded: false, page: 1, total: 0, limit: 15 },
+    failed: { loaded: false, page: 1, total: 0, limit: 15 },
   };
 
   const renderAsBadge = (val) => {
@@ -296,9 +296,12 @@
     const st = asArchiveState[type];
     const tbody = $(`#as-tbody-${type}`);
     const q = $(`.dtr-as-search[data-as-type="${type}"]`)?.value.trim() || '';
+    const ls = window.dtrListState || {};
+    const rgQ = (type === 'bench' && ls.rg) ? `&from=${encodeURIComponent(ls.rg.from)}&to=${encodeURIComponent(ls.rg.to)}` : '';
+    const resQ = (type === 'bench' && ls.res) ? `&res=${encodeURIComponent(ls.res)}` : '';
     try {
       if (tbody && window.nxState) nxState(tbody, 'loading', 'Loading records…', 10);
-      const res = await apiFetch(`dtr/appsheet-archive?type=${encodeURIComponent(type)}&q=${encodeURIComponent(q)}&page=${page}&limit=${st.limit}`);
+      const res = await apiFetch(`dtr/appsheet-archive?type=${encodeURIComponent(type)}&q=${encodeURIComponent(q)}&page=${page}&limit=${st.limit}${rgQ}${resQ}`);
       if (!res || !res.ok) throw new Error('Archive fetch failed');
       st.loaded = true;
       st.page = res.page || page;
@@ -320,8 +323,10 @@
       const sub = btn.dataset.subtab;
       $$('.dtr-subtab').forEach((b) => b.classList.toggle('active', b === btn));
       $$('.dtr-subpanel').forEach((p) => p.classList.toggle('hidden', p.dataset.subpanel !== sub));
-      if (AS_ARCHIVE_TYPES.includes(sub) && !asArchiveState[sub].loaded) {
-        loadAppsheetArchive(sub, 1);
+      // the Lab Material Test Collection tab ("containers") shows the Material Bench Log
+      const arch = sub === 'containers' ? 'bench' : sub;
+      if (AS_ARCHIVE_TYPES.includes(arch) && !asArchiveState[arch].loaded) {
+        loadAppsheetArchive(arch, 1);
       }
     });
   });
@@ -334,57 +339,202 @@
     const orig = { total: kp.total?.textContent, pass: kp.pass?.textContent, tol: kp.tol?.textContent, fail: kp.fail?.textContent, shut: kp.shut?.textContent, sub: kp.sub?.innerHTML };
     const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const fmt = (n) => Number(n).toLocaleString('en-US');
-    const rangeOf = (key, day) => {
+    const fmtShort = (s) => {
+      if (!s) return '';
+      const d = new Date(`${s}T00:00:00`);
+      return isNaN(d) ? s : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+    const rangeOf = (key, day, customLabel) => {
       const t = new Date(); t.setHours(0, 0, 0, 0);
       const add = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
-      if (key === 'today') return { from: ymd(t), to: ymd(t), label: 'Today' };
-      if (key === 'yesterday') return { from: ymd(add(t, -1)), to: ymd(add(t, -1)), label: 'Previous day' };
-      if (key === 'week') { const mon = add(t, -((t.getDay() + 6) % 7)); return { from: ymd(mon), to: ymd(add(mon, 6)), label: 'This week' }; }
-      if (key === 'month') return { from: ymd(new Date(t.getFullYear(), t.getMonth(), 1)), to: ymd(new Date(t.getFullYear(), t.getMonth() + 1, 0)), label: 'This month' };
-      if (key === 'day' && day) return { from: day, to: day, label: day };
+      if (key === 'today') return { from: ymd(t), to: ymd(t), label: `Today · ${t.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`, key: 'today' };
+      if (key === 'yesterday') { const yd = add(t, -1); return { from: ymd(yd), to: ymd(yd), label: `Yesterday · ${yd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`, key: 'yesterday' }; }
+      if (key === 'week') { const mon = add(t, -((t.getDay() + 6) % 7)); return { from: ymd(mon), to: ymd(add(mon, 6)), label: 'This Week', key: 'week' }; }
+      if (key === 'month') return { from: ymd(new Date(t.getFullYear(), t.getMonth(), 1)), to: ymd(new Date(t.getFullYear(), t.getMonth() + 1, 0)), label: 'This Month', key: 'month' };
+      if (key === 'day' && day) return { from: day, to: day, label: fmtShort(day), key: 'day' };
+      if (key === 'range' && /^\d{4}-\d{2}-\d{2}\|\d{4}-\d{2}-\d{2}$/.test(day || '')) {
+        const [a, b] = day.split('|');
+        const lbl = customLabel || (a === b ? fmtShort(a) : `${fmtShort(a)} – ${fmtShort(b)}`);
+        return { from: a, to: b, label: lbl, key: 'range' };
+      }
+      if (key === 'weekpick' && /^(\d{4})-W(\d{2})$/.test(day || '')) {   // ISO week: Monday .. Sunday
+        const [, y, w] = day.match(/^(\d{4})-W(\d{2})$/);
+        const jan4 = new Date(Number(y), 0, 4);
+        const mon = add(jan4, -((jan4.getDay() + 6) % 7) + (Number(w) - 1) * 7);
+        return { from: ymd(mon), to: ymd(add(mon, 6)), label: `Week ${Number(w)} · ${ymd(mon).slice(5)} to ${ymd(add(mon, 6)).slice(5)}`, key: 'weekpick' };
+      }
+      if (key === 'monthpick' && /^\d{4}-\d{2}$/.test(day || '')) {
+        const [y, m] = day.split('-').map(Number);
+        return { from: ymd(new Date(y, m - 1, 1)), to: ymd(new Date(y, m, 0)), label: new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' }), key: 'monthpick' };
+      }
       return null;
     };
-    // the two shoe lists: rows outside the range are hidden by their Prod. Date column
-    const filterLists = (rg) => {
-      $$('.dtr-bshoe-table, .dtr-wlist-table').forEach((tbl) => {
-        const col = [...tbl.querySelectorAll('thead th')].findIndex((th) => /prod\.?\s*date/i.test(th.textContent));
-        tbl.querySelectorAll('tbody tr').forEach((tr) => {
-          const d = (tr.children[col]?.textContent || '').trim().slice(0, 10);
-          const out = rg && col >= 0 && (!d || d < rg.from || d > rg.to);
-          if (out) tr.setAttribute('data-dfhide', ''); else tr.removeAttribute('data-dfhide');
-        });
-      });
-    };
-    const apply = async (key, day) => {
-      const rg = rangeOf(key, day);
+    const clearBtn = $('#dtr-date-clear');
+    const apply = async (key, day, customLabel) => {
+      const rg = rangeOf(key, day, customLabel);
       $('#dtr-date-label').textContent = rg ? rg.label : 'All dates';
       btn.classList.toggle('on', !!rg);
-      pop.querySelectorAll('button[data-range]').forEach((b) => b.classList.toggle('on', (b.dataset.range === key) || (!rg && b.dataset.range === 'all')));
+      if (clearBtn) clearBtn.hidden = !rg;
+      $('#dtr-dp-custom')?.classList.remove('on');
+      if (key !== 'range') { const w = $('#dtr-week-sel'); const m2 = $('#dtr-month-sel'); if (w) w.value = ''; if (m2) m2.value = ''; }
+      pop.querySelectorAll('.dp-chip[data-range]').forEach((b) => b.classList.toggle('on', b.dataset.range === key));
+      if (rg) { dp.from = rg.from; dp.to = rg.to; dp.view = new Date(`${rg.from}T00:00:00`); dpRender(); }
+      else { dp.from = ''; dp.to = ''; dpRender(); }
       pop.hidden = true; btn.setAttribute('aria-expanded', 'false');
-      filterLists(rg);
-      if (!rg) {
-        if (kp.total) kp.total.textContent = orig.total; if (kp.pass) kp.pass.textContent = orig.pass; if (kp.tol) kp.tol.textContent = orig.tol;
-        if (kp.fail) kp.fail.textContent = orig.fail; if (kp.shut) kp.shut.textContent = orig.shut; if (kp.sub) kp.sub.innerHTML = orig.sub;
+      kpiState.rg = rg;
+      refreshKpis();
+      window.dtrReloadList?.();   // the open list loads every report of that range (pending ones too)
+    };
+    // the cards follow the open tab (Bonding / Whole Shoe / Lab Material Test Collection) and the date range chosen
+    const kpiState = window.dtrListState = { rg: null, scope: '', res: '' };
+    // clicking a card lists only the reports of that result (Total = all)
+    $$('.dtr-top-kpis .dtr-kpi').forEach((card, i) => {
+      const res = ['', 'pass', 'tol', 'fail'][i];
+      if (res === undefined) return;
+      card.dataset.kres = res || 'all';
+      card.setAttribute('title', res ? 'Click to list only these reports (click again to clear)' : 'Click to list all reports');
+      card.addEventListener('click', () => {
+        kpiState.res = (res && kpiState.res !== res) ? res : '';
+        $$('.dtr-top-kpis .dtr-kpi').forEach((c) => c.classList.toggle('kpi-on', !!kpiState.res && c.dataset.kres === kpiState.res));
+        window.dtrReloadList?.();
+      });
+    });
+    const scopeOf = (sub) => ({ bonding: 'bonding', shoes: 'shoes', containers: 'materials' }[sub] || '');
+    const setText = (el, v) => { if (el) el.textContent = v; };
+    const refreshKpis = async () => {
+      const { rg, scope } = kpiState;
+      if (!scope && !rg) {
+        setText(kp.total, orig.total); setText(kp.pass, orig.pass); setText(kp.tol, orig.tol); setText(kp.fail, orig.fail); setText(kp.shut, orig.shut);
+        if (kp.sub) kp.sub.innerHTML = orig.sub;
         return;
       }
       try {
-        const r = await apiFetch(`dtr/kpis?from=${rg.from}&to=${rg.to}`);
+        const r = await apiFetch(`dtr/kpis?scope=${scope}${rg ? `&from=${rg.from}&to=${rg.to}` : ''}`);
         if (!r || !r.ok) return;
-        kp.total.textContent = fmt(r.total); kp.pass.textContent = fmt(r.pass); kp.tol.textContent = fmt(r.tol); kp.fail.textContent = fmt(r.fail); kp.shut.textContent = fmt(r.shut);
-        if (kp.sub) kp.sub.textContent = `lines marked SHUTDOWN · ${rg.label}`;
+        const names = { bonding: 'Bonding Shoe Collection', shoes: 'Whole Shoe Collection', materials: 'Lab Material Test Collection' };
+        setText(kp.total, fmt(r.total)); setText(kp.pass, fmt(r.pass)); setText(kp.tol, fmt(r.tol)); setText(kp.fail, fmt(r.fail));
+        setText(kp.shut, r.shut === null || r.shut === undefined ? '-' : fmt(r.shut));
+        const tag = [names[scope] || '', rg ? rg.label : 'all dates'].filter(Boolean).join(' · ');
+        const tt = document.querySelector('#dtr-kpi-total')?.parentElement?.querySelector('.dtr-kpi-sub');
+        if (tt) tt.textContent = tag;
+        if (kp.sub) kp.sub.textContent = r.shut === null || r.shut === undefined ? 'lines marked SHUTDOWN: Bonding tab only' : `lines marked SHUTDOWN · ${rg ? rg.label : 'all dates'}`;
       } catch (e) { /* keep the numbers shown */ }
     };
-    btn.addEventListener('click', (e) => { e.stopPropagation(); pop.hidden = !pop.hidden; btn.setAttribute('aria-expanded', String(!pop.hidden)); });
-    pop.addEventListener('click', (e) => { const b = e.target.closest('button[data-range]'); if (b) apply(b.dataset.range === 'all' ? '' : b.dataset.range); });
-    $('#dtr-date-input')?.addEventListener('change', (e) => { if (e.target.value) apply('day', e.target.value); });
-    document.addEventListener('click', (e) => { if (!pop.hidden && !e.target.closest('.dtr-datefilter')) { pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); } });
-    pop.querySelector('[data-range=all]')?.classList.add('on');
+    document.addEventListener('click', (e) => {
+      const b = e.target.closest('.dtr-subtab[data-subtab]');
+      if (!b) return;
+      kpiState.scope = scopeOf(b.dataset.subtab);
+      refreshKpis();
+      if (kpiState.rg || kpiState.res) window.dtrReloadList?.();
+    });
+    kpiState.scope = scopeOf($('.dtr-subtab.active')?.dataset.subtab || $('.dtr-subpanel:not(.hidden)')?.dataset.subpanel || '');
+    if (kpiState.scope) refreshKpis();
+    btn.addEventListener('click', (e) => {
+      if (e.target.closest('#dtr-date-clear')) { e.stopPropagation(); apply(''); return; }
+      e.stopPropagation(); pop.hidden = !pop.hidden; btn.setAttribute('aria-expanded', String(!pop.hidden));
+    });
+    pop.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-range]');
+      if (!b) return;
+      e.preventDefault();
+      apply(b.dataset.range === 'all' ? '' : b.dataset.range);
+    });
+    // (composedPath: the calendar re-draws itself on a click, so the clicked day may already be detached from the page)
+    document.addEventListener('click', (e) => { if (!pop.hidden && !e.composedPath().some((n) => n.classList?.contains('dtr-datefilter'))) { pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); } });
+
+    // Weekly / Monthly lists: the last 20 weeks (Monday to Sunday) and the last 12 months
+    const nice = (d) => d.toLocaleString('en-US', { month: 'short', day: 'numeric' });
+    const wk = $('#dtr-week-sel');
+    const mo = $('#dtr-month-sel');
+    if (wk) {
+      const t = new Date(); t.setHours(0, 0, 0, 0);
+      const mon0 = new Date(t); mon0.setDate(t.getDate() - ((t.getDay() + 6) % 7));
+      wk.innerHTML = '<option value="">Select Week…</option>' + Array.from({ length: 20 }, (_, i) => {
+        const m = new Date(mon0); m.setDate(mon0.getDate() - i * 7);
+        const s = new Date(m); s.setDate(m.getDate() + 6);
+        return `<option value="${ymd(m)}|${ymd(s)}">${nice(m)} – ${nice(s)}, ${s.getFullYear()}${i === 0 ? ' (this week)' : ''}</option>`;
+      }).join('');
+      wk.addEventListener('change', () => {
+        if (wk.value) {
+          if (mo) mo.value = '';
+          const optTxt = wk.options[wk.selectedIndex]?.textContent?.replace(/\s*\(this week\)$/, '') || '';
+          apply('range', wk.value, optTxt);
+        }
+      });
+    }
+    if (mo) {
+      const t = new Date();
+      mo.innerHTML = '<option value="">Select Month…</option>' + Array.from({ length: 12 }, (_, i) => {
+        const m = new Date(t.getFullYear(), t.getMonth() - i, 1);
+        const e2 = new Date(m.getFullYear(), m.getMonth() + 1, 0);
+        return `<option value="${ymd(m)}|${ymd(e2)}">${m.toLocaleString('en-US', { month: 'long', year: 'numeric' })}${i === 0 ? ' (this month)' : ''}</option>`;
+      }).join('');
+      mo.addEventListener('change', () => {
+        if (mo.value) {
+          if (wk) wk.value = '';
+          const optTxt = mo.options[mo.selectedIndex]?.textContent?.replace(/\s*\(this month\)$/, '') || '';
+          apply('range', mo.value, optTxt);
+        }
+      });
+    }
+
+    // Custom record: pick the first and the last day on the calendar, then Apply
+    const dp = { from: '', to: '', view: new Date() };
+    dp.view.setDate(1);
+    const gridEl = $('#dtr-dp-grid');
+    const hintEl = $('#dtr-dp-hint');
+    function dpRender() {
+      if (!gridEl) return;
+      const y = dp.view.getFullYear(); const m = dp.view.getMonth();
+      $('#dtr-dp-title').textContent = dp.view.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+      $('#dtr-dp-from').value = dp.from; $('#dtr-dp-to').value = dp.to;
+      if (hintEl) {
+        hintEl.textContent = !dp.from ? 'Click a start date on the calendar' : (!dp.to ? 'Now click an end date (or Apply for 1 day)' : `${fmtShort(dp.from)} → ${fmtShort(dp.to)}`);
+      }
+      const first = new Date(y, m, 1);
+      const start = new Date(y, m, 1 - first.getDay());
+      const todayS = ymd(new Date());
+      let h = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => `<span class="dp-dow">${d}</span>`).join('');
+      for (let i = 0; i < 42; i++) {
+        const d = new Date(start); d.setDate(start.getDate() + i);
+        const s = ymd(d);
+        const inM = d.getMonth() === m;
+        const hi = dp.from && (dp.to ? (s >= dp.from && s <= dp.to) : s === dp.from);
+        const edge = s === dp.from || s === dp.to;
+        h += `<button type="button" class="dp-day${inM ? '' : ' out'}${hi && inM ? ' in' : ''}${edge && inM ? ' edge' : ''}${s === todayS ? ' today' : ''}" data-d="${s}">${d.getDate()}</button>`;
+      }
+      gridEl.innerHTML = h;
+    }
+    gridEl?.addEventListener('click', (e) => {
+      const b = e.target.closest('.dp-day');
+      if (!b || b.classList.contains('out')) return;
+      const s = b.dataset.d;
+      if (!dp.from || dp.to) { dp.from = s; dp.to = ''; }
+      else if (s < dp.from) { dp.to = dp.from; dp.from = s; }
+      else dp.to = s;
+      dpRender();
+    });
+    $('#dtr-dp-prev')?.addEventListener('click', () => { dp.view.setMonth(dp.view.getMonth() - 1); dpRender(); });
+    $('#dtr-dp-next')?.addEventListener('click', () => { dp.view.setMonth(dp.view.getMonth() + 1); dpRender(); });
+    $('#dtr-dp-custom')?.addEventListener('click', () => { $('#dtr-dp-custom').classList.add('on'); if (wk) wk.value = ''; if (mo) mo.value = ''; });
+    $('#dtr-dp-clear')?.addEventListener('click', () => { dp.from = ''; dp.to = ''; dpRender(); });
+    $('#dtr-dp-apply')?.addEventListener('click', () => {
+      if (!dp.from) return;
+      apply('range', `${dp.from}|${dp.to || dp.from}`);
+      $('#dtr-dp-custom')?.classList.add('on');
+    });
+    dpRender();
   })();
 
   $$('.dtr-as-search-btn').forEach((b) => b.addEventListener('click', () => loadAppsheetArchive(b.dataset.asType, 1)));
   $$('.dtr-as-search').forEach((inp) => inp.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); loadAppsheetArchive(inp.dataset.asType, 1); }
   }));
+  // no Search button: the list searches by itself shortly after typing stops
+  $$('.dtr-as-search').forEach((inp) => {
+    let tmr = null;
+    inp.addEventListener('input', () => { clearTimeout(tmr); tmr = setTimeout(() => loadAppsheetArchive(inp.dataset.asType, 1), 350); });
+  });
   $$('.dtr-as-prev').forEach((b) => b.addEventListener('click', () => {
     const t = b.dataset.asType;
     if (asArchiveState[t].page > 1) loadAppsheetArchive(t, asArchiveState[t].page - 1);
@@ -395,8 +545,9 @@
     if (asArchiveState[t].page < totalPages) loadAppsheetArchive(t, asArchiveState[t].page + 1);
   }));
   const initActiveSubtab = $('.dtr-subtab.active')?.dataset.subtab || $('.dtr-subpanel:not(.hidden)')?.dataset.subpanel;
-  if (initActiveSubtab && AS_ARCHIVE_TYPES.includes(initActiveSubtab)) {
-    loadAppsheetArchive(initActiveSubtab, 1);
+  const initArch = initActiveSubtab === 'containers' ? 'bench' : initActiveSubtab;
+  if (initArch && AS_ARCHIVE_TYPES.includes(initArch)) {
+    loadAppsheetArchive(initArch, 1);
   }
 
   // =========================================================================
@@ -408,7 +559,7 @@
   // A row for one line. The "+" beside the line number adds another row for that same line (extra = true, with a remove button).
   // o.type = preset Test Type; o.pick = the line is chosen from a list (First Case); o.noLine = no line and no Active toggle (Tech Trial)
   // Test Types: TRIAL and INTERNAL TESTING have no line; SAMPLE, FIRST ARTICLE and RETEST load one row with a chosen line; DAILY loads every line
-  const IK_TYPES = ['DAILY', 'TECH TRIAL', 'SAMPLE', 'INTERNAL TESTING', 'FIRST ARTICLE', 'RETEST'];
+  const IK_TYPES = ['DAILY', 'TECH TRIAL', 'SAMPLE', 'INTERNAL TESTING', 'FIRST ARTICLE', 'RETEST', 'LACKING'];
   const ikNoLine = (t) => t === 'TECH TRIAL' || t === 'INTERNAL TESTING' || t === 'SAMPLE';
   const ikPick = (t) => t === 'FIRST ARTICLE' || t === 'RETEST';
   const intakeRowHtml = (line, extra, rightSide, o = {}) => {
@@ -429,9 +580,9 @@
           <td class="ik-labref mono"><span class="ik-lr"></span>${o.noLine ? `<button type="button" class="ik-addrow" title="Add another tech trial row" aria-label="Add another tech trial row">+</button>${extra ? '<button type="button" class="ik-delrow" title="Remove this row" aria-label="Remove this row">&times;</button>' : ''}` : ''}</td>
           <td><select class="ik-type">${typeOpts}</select></td>
           <td><input type="text" class="ik-code" placeholder="Type to filter" autocomplete="off">${type === 'SAMPLE' ? `<select class="ik-sub" aria-label="Sample test">${[['SH', 'Bonding'], ['STRIP', 'Strip Test'], ['RIVET', 'Rivets'], ['OSNA', 'Osnaburg']].map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>` : ''}</td>
-          <td><input type="text" class="ik-style" placeholder="Style" readonly tabindex="-1"></td>
-          <td><input type="text" class="ik-color" placeholder="Colorway" readonly tabindex="-1"></td>
           <td>${type === 'TECH TRIAL' ? '<input type="text" class="ik-mtl" placeholder="Type MTL #" autocomplete="off">' : '<input type="text" class="ik-mtl" placeholder="MTL #" readonly tabindex="-1">'}</td>
+          <td><input type="text" class="ik-color" placeholder="Colorway" readonly tabindex="-1"></td>
+          <td><input type="text" class="ik-style" placeholder="Style" readonly tabindex="-1"></td>
           <td class="ik-imgcell"><img class="ik-img" alt="" hidden></td>
           <td class="ik-pulls"><label><input type="checkbox" class="ik-pt" value="HEEL PULL"> Heel Pull</label><label><input type="checkbox" class="ik-pt" value="EYELET"> Eyelet</label><label><input type="checkbox" class="ik-pt" value="D-RING"> D-Ring</label><label><input type="checkbox" class="ik-pt" value="RIVET"> Rivet</label></td>
           <td class="ik-lackcell" style="text-align:center"><input type="checkbox" class="ik-lacking" aria-label="Lacking (1 = lacking, 0 = not)"${type === 'LACKING' ? ' checked' : ''}><input type="date" class="ik-lackdate" tabindex="-1" aria-label="Lacking date" value="${type === 'LACKING' ? ($('#dtr-intake-production')?.value || '') : ''}" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none"><div class="ik-lackshow">${type === 'LACKING' ? ($('#dtr-intake-production')?.value || '').slice(5) : ''}</div></td>
@@ -467,7 +618,9 @@
     const seen = {};   // running number (-#) per Lab Ref base in the order shown (the server confirms the free number on save)
     $$('#dtr-intake-tbody tr').forEach((tr) => {
       // every Lab Ref carries the Production Date selected at the top of the form
-      const d = prodDate.replace(/-/g, '');
+      // a lacking row carries the day it was lacking (the date picked in its Lacking box)
+      const lackOn = tr.querySelector('.ik-lacking')?.checked ? (tr.querySelector('.ik-lackdate')?.value || '') : '';
+      const d = (lackOn || prodDate).replace(/-/g, '');
       const side = tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L';
       const type = tr.querySelector('.ik-type').value;
       const isRetest = type === 'RETEST';
@@ -525,6 +678,18 @@
     if (!e.target.classList.contains('ik-type')) return;
     const v = e.target.value;
     const reduced = intake.mode !== 'DAILY';
+    // LACKING = the same as ticking the row's Lacking box (the Lab Ref keeps the Production Date chosen at the top: pick the day the shoe was lacking)
+    const lk = e.target.closest('tr')?.querySelector('.ik-lacking');
+    if (v === 'LACKING' && !reduced && lk) {
+      if (!lk.checked) { lk.checked = true; lk.dispatchEvent(new Event('change', { bubbles: true })); }
+      return;
+    }
+    if (v !== 'LACKING' && lk && lk.checked) {
+      lk.checked = false; lk.dispatchEvent(new Event('change', { bubbles: true }));
+      e.target.value = v;
+      if (v === 'DAILY' && !reduced) return;
+    }
+    if (v === 'LACKING') { intake.mode = 'DAILY'; renderIntakeRows(); return; }   // from a reduced batch: back to every line, tick Lacking on the wanted one
     if (v !== 'DAILY' || reduced) {
       intake.mode = v;
       renderIntakeRows();
@@ -650,8 +815,8 @@
       const panel = libPanel;
       const list = panel.querySelector('.lib-list');
       try {
-        // Material Receive filters on tbl_dtr_shoe_list; the intake forms on the ERP production orders
-        const res = await apiFetch(`${input.closest('#dtr-mrec-tbody') ? 'dtr/shoe-list-search' : 'dtr/erp-shoe-search'}?q=${encodeURIComponent(input.value.trim())}`);
+        // every Production Code box (intake forms and Material Receive) filters on the ERP production orders (dberp.production_orders)
+        const res = await apiFetch(`dtr/erp-shoe-search?q=${encodeURIComponent(input.value.trim())}`);
         let shoes = (res && res.shoes) || [];
         const byMtl = input.classList.contains('ik-mtl');
         if (byMtl) {   // MTL # picker: one entry per MTL #, newest order first
@@ -687,6 +852,7 @@
           put(['.ik-mtl', '[data-f=MTL]'], s.MTL || '');
           setIntakeImage(tr);
           closeLibrary();
+          if (tr.closest('#dtr-mrec-tbody')) window.mrAutoMaterial?.(tr);   // Material Receive: the materials of this production order fill in
         };
       } catch (err) {
         // a reply that is not JSON is the login page: the session ended; anything else is a network / server problem
@@ -827,9 +993,10 @@
         if (!di.value) di.value = $('#dtr-intake-production')?.value || '';
         try { di.showPicker(); } catch (_) { /* older browsers: the default date stays */ }
       } else di.value = '';
-      // Lacking ticked: the whole row is locked (greyed) and recorded as lacking, like a shutdown; only the Lacking box stays usable
+      // Lacking ticked: the row is locked like a SHUTDOWN row (only the Lacking box and its date stay usable) and is recorded as lacking
       tr.classList.toggle('lacked', e.target.checked);
-      tr.querySelectorAll('input:not(.ik-lacking):not(.ik-lackdate), select, textarea, .dtr-side-toggle button, .ik-addrow').forEach((el) => { el.disabled = e.target.checked; });
+      const ts = tr.querySelector('.ik-type');
+      if (e.target.checked) ts.value = 'LACKING'; else if (ts.value === 'LACKING') ts.value = 'DAILY';
     }
     if (e.target.classList.contains('ik-lacking') || e.target.classList.contains('ik-lackdate')) {
       tr.querySelector('.ik-lackshow').textContent = tr.querySelector('.ik-lacking').checked ? tr.querySelector('.ik-lackdate').value.slice(5) : '';
@@ -851,6 +1018,7 @@
     const lackings = [];
     const trialSeen = new Set();
     let trialIssue = '';
+    let pullIssue = '';
     $$('#dtr-intake-tbody tr').forEach((tr) => {
       const act = tr.querySelector('.ik-active');
       if (act && !act.checked) { if (!tr.dataset.extra) shutdowns.push(tr.dataset.line); return; }   // main row toggled off = line shutdown (an extra row only skips itself)
@@ -888,6 +1056,9 @@
         lackingDate: tr.querySelector('.ik-lacking').checked ? tr.querySelector('.ik-lackdate').value : '',
       };
       row.retest = row.type === 'RETEST';   // a remark on any other test type is only a remark, it does not turn the row into a retest
+      // ticked pull types are never dropped silently: a row needs its shoe first, and SAMPLE rows take no pull tests
+      if (row.pullTypes.length && row.type === 'SAMPLE') { pullIssue = `Line ${row.line}: pull types are not used for SAMPLE rows. Untick them.`; return; }
+      if (row.pullTypes.length && !(row.code || row.style || row.color || row.mtl)) { pullIssue = `Line ${row.line}: pick a Production Code before ticking pull types (${row.pullTypes.join(', ')}).`; return; }
       if (row.type === 'TECH TRIAL' && row.mtl && !row.style) { trialIssue = `MTL # ${row.mtl} was not found in the production orders. Pick it from the list.`; return; }
       if (row.type === 'TECH TRIAL') {
         // a trial is checked first: the same MTL # / Style on the same side must not be entered twice in this batch
@@ -897,6 +1068,7 @@
       if (row.code || row.style || row.color || row.mtl || row.type === 'SAMPLE') rows.push(row);
     });
     if (trialIssue) { intakeEl.msg.textContent = trialIssue; return; }
+    if (pullIssue) { intakeEl.msg.textContent = pullIssue; return; }
     if (!rows.length && !shutdowns.length && !lackings.length) { intakeEl.msg.textContent = 'Fill in at least one active line before saving.'; return; }
     const sb = savingBox('Saving batch...');
     closeIntake();   // the window closes at once; a message box confirms the save
@@ -979,8 +1151,10 @@
   const EDIT_ICO = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
   const CHECK_ICO = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
   const editLocked = new Set(window.dtrEditLocked || []);
-  document.querySelectorAll('.dtr-del-btn').forEach((d) => {
+  // also called again after a list reload (date filter / search / KPI card) because the rows are replaced
+  window.dtrAddEditButtons = (root) => (root || document).querySelectorAll('.dtr-del-btn').forEach((d) => {
     if (!EDIT_COLS[d.dataset.del] || editLocked.has(d.dataset.del + ':' + d.dataset.id)) return;
+    if (d.parentNode.querySelector('.dtr-edit-btn')) return;
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'dtr-edit-btn';
     b.dataset.edit = d.dataset.del; b.dataset.id = d.dataset.id;
@@ -988,6 +1162,7 @@
     b.innerHTML = EDIT_ICO;
     d.parentNode.insertBefore(b, d);
   });
+  window.dtrAddEditButtons();
   document.addEventListener('click', async (e) => {
     const btn = e.target.closest('.dtr-edit-btn');
     if (!btn) return;
@@ -1010,6 +1185,7 @@
             td.removeAttribute('data-edit-orig');
           });
           btn.dataset.mode = ''; btn.innerHTML = EDIT_ICO; btn.classList.remove('is-save'); btn.title = 'Edit the empty columns of this entry';
+          leaveEditUi(tr);
           successBox(res.message, null, 'Saved');
         } else { toast((res && res.message) || 'Save failed.'); }
       } catch (ex) { toast('Save failed: ' + (ex.message || ex)); }
@@ -1030,7 +1206,34 @@
     });
     if (!n) { toast('Every editable column of this row already has data.'); return; }
     btn.dataset.mode = 'save'; btn.innerHTML = CHECK_ICO; btn.classList.add('is-save'); btn.title = 'Save';
+    // while a row is being edited the Delete button is replaced by Cancel (no accidental delete); Cancel puts the row back as it was
+    const del = tr.querySelector('.dtr-del-btn');
+    if (del && !tr.querySelector('.dtr-cancel-btn')) {
+      del.hidden = true;
+      const c = document.createElement('button');
+      c.type = 'button'; c.className = 'dtr-cancel-btn'; c.title = 'Cancel the edit'; c.setAttribute('aria-label', 'Cancel the edit');
+      c.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+      del.parentNode.insertBefore(c, del);
+    }
     tr.querySelector('.dtr-edit-in')?.focus();
+  });
+  const leaveEditUi = (tr) => {
+    tr.querySelector('.dtr-cancel-btn')?.remove();
+    const del = tr.querySelector('.dtr-del-btn');
+    if (del) del.hidden = false;
+  };
+  document.addEventListener('click', (e) => {
+    const c = e.target.closest('.dtr-cancel-btn');
+    if (!c) return;
+    e.preventDefault();
+    const tr = c.closest('tr');
+    tr.querySelectorAll('td[data-edit-orig]').forEach((td) => { td.textContent = ''; td.removeAttribute('data-edit-orig'); });
+    const b = tr.querySelector('.dtr-edit-btn');
+    if (b) { b.dataset.mode = ''; b.innerHTML = EDIT_ICO; b.classList.remove('is-save'); b.title = 'Edit the empty columns of this entry'; }
+    leaveEditUi(tr);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && e.target.classList?.contains('dtr-edit-in')) e.target.closest('tr')?.querySelector('.dtr-cancel-btn')?.click();
   });
   // edits are carried to the other tables of the Lab Ref 3 minutes after saving: the page asks the server every minute to run the due ones
   // a synced row is locked: its edit button goes away
@@ -1095,6 +1298,127 @@
     });
   });
 
+  // Select multiple: a checkbox in the header of the Edit / Delete column selects every row of that list; each row has its own box.
+  // The bar above the list then edits / saves / cancels / deletes all the selected rows at once.
+  const selRows = (table) => [...table.querySelectorAll('tbody tr.dtr-row-picked')];
+  const selBar = (table) => {
+    const wrap = table.closest('.dtr-table-wrap') || table.parentNode;
+    let bar = wrap.previousElementSibling?.classList?.contains('dtr-sel-bar') ? wrap.previousElementSibling : null;
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.className = 'dtr-sel-bar'; bar.hidden = true;
+      bar.innerHTML = '<span class="n"></span><button type="button" data-sel="edit">Edit</button><button type="button" data-sel="save">Save</button><button type="button" data-sel="cancel">Cancel edit</button><button type="button" data-sel="del" class="danger">Delete</button><button type="button" data-sel="clear">Clear</button>';
+      wrap.parentNode.insertBefore(bar, wrap);
+    }
+    return bar;
+  };
+  const refreshSel = (table) => {
+    const rows = selRows(table);
+    const all = table.querySelector('thead .dtr-sel-all');
+    const mode = table.classList.contains('dtr-sel-mode');
+    if (all) { all.checked = mode; all.indeterminate = false; }
+    const bar = selBar(table);
+    bar.hidden = !mode;
+    bar.querySelector('.n').textContent = rows.length ? `${rows.length} selected` : 'Click the rows to select';
+    const editing = rows.some((r) => r.querySelector('.dtr-edit-btn[data-mode="save"]'));
+    bar.querySelector('[data-sel=save]').hidden = !editing;
+    bar.querySelector('[data-sel=cancel]').hidden = !editing;
+    bar.querySelector('[data-sel=edit]').hidden = !rows.some((r) => r.querySelector('.dtr-edit-btn') && !r.querySelector('.dtr-edit-btn[data-mode="save"]'));
+  };
+  window.dtrAddRowChecks = (root) => (root || document).querySelectorAll('.dtr-del-btn').forEach((d) => {
+    const table = d.closest('table');
+    const th = table?.querySelector('thead tr:last-child th:last-child');
+    if (th && !th.querySelector('.dtr-sel-all')) {
+      const a = document.createElement('input');
+      a.type = 'checkbox'; a.className = 'dtr-sel-all'; a.title = 'Select all'; a.setAttribute('aria-label', 'Select all rows');
+      th.appendChild(a);
+    }
+  });
+  window.dtrAddRowChecks();
+  document.addEventListener('change', (e) => {
+    const t = e.target;
+    if (t.classList?.contains('dtr-sel-all')) {
+      const table = t.closest('table');
+      // the header box turns select mode on / off: while it is on, clicking a row highlights it (click again to un-highlight)
+      table.classList.toggle('dtr-sel-mode', t.checked);
+      if (!t.checked) table.querySelectorAll('tr.dtr-row-picked').forEach((r) => r.classList.remove('dtr-row-picked'));
+      refreshSel(table);
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if (e.target.classList?.contains('dtr-sel-all')) { e.stopPropagation(); return; }
+    // select mode: a click on a row (outside its buttons / inputs) highlights or un-highlights it instead of opening it
+    const row = e.target.closest('table.dtr-sel-mode tbody tr');
+    if (row && row.querySelector('.dtr-del-btn') && !e.target.closest('button, input, textarea, select, a, label')) {
+      e.preventDefault(); e.stopPropagation();
+      row.classList.toggle('dtr-row-picked');
+      refreshSel(row.closest('table'));
+      return;
+    }
+    // select mode with highlighted rows: the Edit / Save / Cancel / Delete buttons of the column act on ALL highlighted rows
+    const rb = e.target.closest('table.dtr-sel-mode .dtr-del-btn, table.dtr-sel-mode .dtr-edit-btn, table.dtr-sel-mode .dtr-cancel-btn');
+    if (rb) {
+      const tbl = rb.closest('table');
+      if (selRows(tbl).length) {
+        e.preventDefault(); e.stopPropagation();
+        const act = rb.classList.contains('dtr-del-btn') ? 'del' : rb.classList.contains('dtr-cancel-btn') ? 'cancel' : (rb.dataset.mode === 'save' ? 'save' : 'edit');
+        selBar(tbl).querySelector(`[data-sel=${act}]`)?.click();
+        return;
+      }
+    }
+    const b = e.target.closest('.dtr-sel-bar [data-sel]');
+    if (!b) return;
+    const bar = b.closest('.dtr-sel-bar');
+    const table = bar.nextElementSibling?.querySelector('table') || (bar.nextElementSibling?.tagName === 'TABLE' ? bar.nextElementSibling : null);
+    if (!table) return;
+    const rows = selRows(table);
+    const act = b.dataset.sel;
+    if (act === 'clear') { table.querySelectorAll('tr.dtr-row-picked').forEach((r) => r.classList.remove('dtr-row-picked')); refreshSel(table); return; }
+    if (act === 'edit') { rows.forEach((r) => { const eb = r.querySelector('.dtr-edit-btn'); if (eb && eb.dataset.mode !== 'save') eb.click(); }); refreshSel(table); return; }
+    if (act === 'cancel') { rows.forEach((r) => r.querySelector('.dtr-cancel-btn')?.click()); refreshSel(table); return; }
+    if (act === 'save') {
+      (async () => {
+        for (const r of rows) { const eb = r.querySelector('.dtr-edit-btn[data-mode="save"]'); if (eb) { eb.click(); await new Promise((ok) => setTimeout(ok, 450)); } }
+        refreshSel(table);
+      })();
+      return;
+    }
+    if (act === 'del') {
+      const dels = rows.map((r) => r.querySelector('.dtr-del-btn')).filter(Boolean);
+      if (!dels.length) return;
+      const ov = document.createElement('div');
+      ov.className = 'dtr-msgbox-bd';
+      ov.innerHTML = `<div class="dtr-msgbox dtr-msgbox-del" role="dialog" aria-modal="true">
+          <div class="dtr-msgbox-ic del">!</div><h3>Delete ${dels.length} selected entr${dels.length === 1 ? 'y' : 'ies'}?</h3>
+          <p class="ref">${escHtml(dels.slice(0, 6).map((d) => d.dataset.ref || '').join(', '))}${dels.length > 6 ? ' …' : ''}</p>
+          <label>Why are these data entries being deleted? <b>(required)</b></label>
+          <textarea rows="3" maxlength="1000" placeholder="Reason for the audit trail..."></textarea>
+          <div class="err" hidden></div>
+          <div class="acts"><button type="button" class="dtr-btn dtr-btn-outline" data-x="cancel">Cancel</button><button type="button" class="dtr-btn dtr-btn-danger" data-x="ok">Delete all</button></div>
+        </div>`;
+      document.body.appendChild(ov);
+      const ta = ov.querySelector('textarea'), err = ov.querySelector('.err'), ok = ov.querySelector('[data-x=ok]');
+      ta.focus();
+      ov.querySelector('[data-x=cancel]').addEventListener('click', () => ov.remove());
+      ok.addEventListener('click', async () => {
+        const reason = ta.value.trim();
+        if (reason.length < 3) { err.textContent = 'Enter the reason for deleting these entries.'; err.hidden = false; ta.focus(); return; }
+        ok.disabled = true;
+        let done = 0; const failed = [];
+        for (const d of dels) {
+          try {
+            const res = await apiFetch('dtr/delete-entry', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: d.dataset.del, id: Number(d.dataset.id), reason }) });
+            if (res && res.ok) { d.closest('tr')?.remove(); done++; } else failed.push(`${d.dataset.ref || d.dataset.id}: ${(res && res.message) || 'failed'}`);
+          } catch (ex) { failed.push(`${d.dataset.ref || d.dataset.id}: ${ex.message || ex}`); }
+        }
+        refreshSel(table);
+        if (failed.length) { err.textContent = `Deleted ${done}. Not deleted: ${failed.join(' | ')}`; err.hidden = false; ok.disabled = false; return; }
+        ov.remove();
+        successBox(`${done} entr${done === 1 ? 'y' : 'ies'} deleted and moved to the delete audit.`, null, 'Entries deleted');
+      });
+    }
+  }, true);
+
 
 
   // =========================================================================
@@ -1108,7 +1432,7 @@
   // A row for one line. The "+" beside the line number adds another row for that same line (extra = true, with a remove button).
   const wsRowHtml = (line, extra, rightSide) => `
       <tr data-line="${line}"${extra ? ' data-extra="1"' : ''}>
-        <td><label class="dtr-switch"><input type="checkbox" class="ik-active" checked><span></span></label></td>
+        <td><div class="dtr-side-toggle dtr-ws-type"><button type="button" data-wtype="DAILY" class="active">DAILY</button><button type="button" data-wtype="TRIAL">TRIAL</button></div></td>
         <td class="ik-linecell"><b>${line}</b> <button type="button" class="ik-addrow" title="Add another row for ${line}" aria-label="Add another row for ${line}">+</button>${extra ? '<button type="button" class="ik-delrow" title="Remove this row" aria-label="Remove this row">&times;</button>' : ''}</td>
         <td><div class="dtr-side-toggle"><button type="button" data-side="L" class="${rightSide ? '' : 'active'}">L</button><button type="button" data-side="R" class="${rightSide ? 'active' : ''}">R</button></div></td>
         <td class="ik-tlabref mono"></td>
@@ -1119,6 +1443,7 @@
         <td class="ik-imgcell"><img class="ik-img" alt="" hidden></td>
         <td><input type="number" class="ik-qty" min="1" step="1" value="1"></td>
         <td class="ik-tests">${WS_TESTS.map((t) => `<label class="ik-test"><input type="checkbox" value="${t}"><span>${t}</span></label>`).join('')}</td>
+        <td class="ik-rmcell"><button type="button" class="ws-rmrow" title="Remove this row" aria-label="Remove this row">&times;</button></td>
       </tr>`;
   const addWholeShoeRow = () => {
     wsLines += 1;
@@ -1129,26 +1454,34 @@
     wsLines = 0;
     const count = wsBuilding === 'B' ? 14 : 12;
     for (let i = 0; i < count; i++) addWholeShoeRow();
+    syncWsBuildingBox();
     refreshWholeShoeLabRefs();
   };
   // Every ticked test type gets its own Test Type Lab Ref No (the Whole Shoe Lab Ref No DTP + date + WH + line is made by the server and not shown): = DTP + date + test code + building + line + -L / -R side (e.g. DTP20261103AGA4-L)
   // Formats: DTP<date><code><line>-<side>-<#>  (UV: DTP<date>UV<line>-<#>, no side). The server confirms the free numbers on save.
   const WS_CODES = { 'Heat Aging': 'HA', Hydrolysis: 'HY', Washing: 'WG', UV: 'UV', Flexing: 'FX', 'Dip Test': 'DT' };
+  // a TRIAL row has no building / line: its Lab Ref is DTP + date + test code + side
+  const wsLineOf = (tr) => (tr.classList.contains('ws-trial') ? '' : tr.dataset.line);
+  const syncWsBuildingBox = () => {   // the Bldg A / B choice only matters while a DAILY row is in the batch
+    const box = $('#dtr-wshoe-building')?.closest('.dtr-intake-field');
+    const rows = $$('#dtr-wshoe-tbody tr');
+    if (box) box.style.visibility = rows.length && rows.every((r) => r.classList.contains('ws-trial')) ? 'hidden' : '';
+  };
   const refreshWholeShoeLabRefs = () => {
     const d = ($('#dtr-wshoe-production')?.value || '').replace(/-/g, '');
     const seen = {};   // running number per code + line, whatever the side
     $$('#dtr-wshoe-tbody tr').forEach((tr) => {
       const tcell = tr.querySelector('.ik-tlabref');
       if (!d) { tcell.textContent = ''; return; }
-      const side = tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L';
+      const side = tr.querySelector('.dtr-side-toggle button[data-side].active')?.dataset.side || 'L';
       if (!tr.querySelector('.ik-tests input:checked')) {   // no test ticked yet: show the format the Lab Ref will follow
-        tcell.innerHTML = `<div class="ik-child" style="opacity:.55;font-style:italic">DTP${d}&lt;test&gt;${tr.dataset.line}-${side}</div>`;
+        tcell.innerHTML = `<div class="ik-child" style="opacity:.55;font-style:italic">DTP${d}&lt;test&gt;${wsLineOf(tr)}-${side}</div>`;
         return;
       }
       tcell.innerHTML = [...tr.querySelectorAll('.ik-tests input:checked')].map((c) => {
         const code = WS_CODES[c.value] || '';
         // no running number (DTP<date><code><line>-<side>, UV has no side); a second row with the same Lab Ref gets -2, -3 ...
-        const base = code === 'UV' ? `DTP${d}${code}${tr.dataset.line}` : `DTP${d}${code}${tr.dataset.line}-${side}`;
+        const base = code === 'UV' ? `DTP${d}${code}${wsLineOf(tr)}` : `DTP${d}${code}${wsLineOf(tr)}-${side}`;
         seen[base] = (seen[base] || 0) + 1;
         return `<div class="ik-child">${seen[base] === 1 ? base : `${base}-${seen[base]}`}</div>`;
       }).join('');
@@ -1183,9 +1516,18 @@
   $('#btn-wshoe-close')?.addEventListener('click', closeWholeShoe);
   $('#btn-wshoe-cancel')?.addEventListener('click', closeWholeShoe);
   wsEl.tbody?.addEventListener('click', (e) => {
-    const sideBtn = e.target.closest('.dtr-side-toggle button');
+    const typeBtn = e.target.closest('.dtr-ws-type button');
+    if (typeBtn) {
+      const trT = typeBtn.closest('tr');
+      trT.querySelectorAll('.dtr-ws-type button').forEach((x) => x.classList.toggle('active', x === typeBtn));
+      trT.classList.toggle('ws-trial', typeBtn.dataset.wtype === 'TRIAL');
+      syncWsBuildingBox();
+      refreshWholeShoeLabRefs();
+      return;
+    }
+    const sideBtn = e.target.closest('.dtr-side-toggle button[data-side]');
     if (sideBtn) {
-      sideBtn.closest('tr').querySelectorAll('.dtr-side-toggle button').forEach((x) => x.classList.toggle('active', x === sideBtn));
+      sideBtn.closest('tr').querySelectorAll('.dtr-side-toggle button[data-side]').forEach((x) => x.classList.toggle('active', x === sideBtn));
       refreshWholeShoeLabRefs();
       return;
     }
@@ -1199,6 +1541,8 @@
       last.nextElementSibling.querySelector('.ik-code')?.focus();
       return;
     }
+    const rm = e.target.closest('.ws-rmrow');
+    if (rm) { rm.closest('tr').remove(); syncWsBuildingBox(); refreshWholeShoeLabRefs(); return; }
     const del = e.target.closest('.ik-delrow');
     if (del) { del.closest('tr').remove(); return; }
     const lib = e.target.closest('.ik-lib');
@@ -1216,27 +1560,26 @@
     if (e.target.classList.contains('ik-code') && !libPanel) suggestProdCode(e.target.closest('tr'), e.target);
   });
   wsEl.tbody?.addEventListener('change', (e) => {
-    if (e.target.classList.contains('ik-active')) e.target.closest('tr').classList.toggle('inactive', !e.target.checked);
     if (e.target.closest('.ik-tests')) refreshWholeShoeLabRefs();
   });
 
   $('#btn-wshoe-save')?.addEventListener('click', async () => {
     const rows = [];
     $$('#dtr-wshoe-tbody tr').forEach((tr) => {
-      if (!tr.querySelector('.ik-active').checked) return;
       const row = {
+        type: tr.querySelector('.dtr-ws-type .active')?.dataset.wtype || 'DAILY',
         code: tr.querySelector('.ik-code').value.trim(),
         style: tr.querySelector('.ik-style').value.trim(),
         color: tr.querySelector('.ik-color').value.trim(),
         mtl: tr.querySelector('.ik-mtl').value.trim(),
-        line: tr.dataset.line,
-        side: tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L',
+        line: wsLineOf(tr),
+        side: tr.querySelector('.dtr-side-toggle button[data-side].active')?.dataset.side || 'L',
         qty: Math.max(1, parseInt(tr.querySelector('.ik-qty').value, 10) || 1),
         tests: [...tr.querySelectorAll('.ik-tests input:checked')].map((c) => c.value),
       };
       if (row.code) rows.push(row);
     });
-    if (!rows.length) { wsEl.msg.textContent = 'Enter a Production Code on at least one active line.'; return; }
+    if (!rows.length) { wsEl.msg.textContent = 'Enter a Production Code on at least one line.'; return; }
     const sb = savingBox('Saving batch...');
     closeWholeShoe();
     try {
@@ -1269,24 +1612,66 @@
   const mrBack = $('#dtr-mrec-backdrop');
   const mrBody = $('#dtr-mrec-tbody');
   const mrMsg = $('#dtr-mrec-msg');
+  const mrCountBadge = $('#dtr-mrec-count-badge');
   const today = () => new Date().toISOString().slice(0, 10);
+  const renumberMaterialRows = () => {
+    const trs = [...(mrBody?.children || [])];
+    trs.forEach((tr, i) => {
+      const numEl = tr.querySelector('.mrec-row-num');
+      if (numEl) numEl.textContent = String(i + 1);
+    });
+    if (mrCountBadge) mrCountBadge.textContent = `${trs.length} line${trs.length === 1 ? '' : 's'}`;
+  };
   const addMaterialRow = () => {
+    const idx = (mrBody?.children.length || 0) + 1;
     mrBody.insertAdjacentHTML('beforeend', `
       <tr>
-        <td><input type="text" class="ik-code" placeholder="Type to filter" autocomplete="off"></td>
-        <td><input type="text" class="ik-color" placeholder="Colorway" readonly tabindex="-1"></td>
-        <td><input type="text" class="ik-style" placeholder="Style" readonly tabindex="-1"></td>
-        <td><input type="text" class="ik-mtl" placeholder="MTL #" readonly tabindex="-1"></td>
-        <td><input type="text" class="mr-code mono" placeholder="Material code" autocomplete="off"></td>
-        <td><input type="text" class="mr-name" placeholder="Material name" readonly tabindex="-1"></td>
-        <td><input type="text" class="mr-type" placeholder="Material type" readonly tabindex="-1"></td>
-        <td><input type="text" class="mr-supplier" placeholder="Supplier" readonly tabindex="-1"></td>
-        <td><input type="text" class="mr-container" placeholder="Container #"></td>
+        <td class="mrec-td-num"><span class="mrec-row-num">${idx}</span></td>
+        <td><input type="text" class="ik-code mrec-in-lookup" placeholder="Search VSP / PO..." autocomplete="off"><input type="hidden" class="ik-style"></td>
+        <td><input type="text" class="ik-color mrec-in-auto" placeholder="Auto-filled" readonly tabindex="-1"></td>
+        <td><input type="text" class="ik-mtl mono mrec-in-auto" placeholder="Auto-filled" readonly tabindex="-1"></td>
+        <td class="mrec-grp-sep"><input type="text" class="mr-code mono mrec-in-lookup" placeholder="Search code..." autocomplete="off"></td>
+        <td><input type="text" class="mr-name" placeholder="Material name" autocomplete="off"></td>
+        <td><input type="text" class="mr-type mrec-in-auto" placeholder="Auto-filled" readonly tabindex="-1"></td>
+        <td><input type="text" class="mr-supplier" placeholder="Supplier"></td>
+        <td class="mrec-grp-sep"><input type="text" class="mr-container" placeholder="Container #"></td>
         <td><input type="text" class="mr-batch" placeholder="Batch #"></td>
-        <td><input type="text" class="mr-qty" placeholder="Qty" inputmode="decimal"></td>
-        <td><input type="text" class="mr-qcqty" placeholder="QC Qty" inputmode="decimal"></td>
+        <td><input type="text" class="mr-qty mrec-in-num" placeholder="0" inputmode="decimal"></td>
+        <td><input type="text" class="mr-qcqty mrec-in-num" placeholder="0" inputmode="decimal"></td>
+        <td><input type="text" class="mr-unit mrec-in-center" placeholder="Unit"></td>
+        <td class="mrec-td-act"><button type="button" class="mrec-del-row" title="Remove or clear line" aria-label="Remove line">&times;</button></td>
       </tr>`);
+    renumberMaterialRows();
   };
+  mrBody?.addEventListener('click', (e) => {
+    const delBtn = e.target.closest('.mrec-del-row');
+    if (!delBtn) return;
+    const tr = delBtn.closest('tr');
+    if (!tr) return;
+    if (mrBody.children.length > 1) {
+      tr.remove();
+      renumberMaterialRows();
+    } else {
+      tr.querySelectorAll('input:not([type="date"])').forEach((inp) => { inp.value = ''; });
+    }
+  });
+  // after a Production Code is picked: the material of that ERP production order fills Name / Code / Supplier / Type / Unit.
+  // One raw material = filled straight away; several = the list opens on Material Name to choose from. A line that already has a code is left alone.
+  window.mrAutoMaterial = async (tr) => {
+    if (tr.querySelector('.mr-code').value.trim()) return;
+    try {
+      const { items } = await fetchMaterials(tr, '');
+      const raw = items.filter((i) => i.raw);
+      const pool = raw.length ? raw : items;
+      if (pool.length === 1) { fillMaterial(tr, pool[0]); mrMsg.textContent = ''; return; }
+      if (pool.length > 1) {
+        mrMsg.textContent = `${tr.querySelector('.ik-code').value.trim()} has ${pool.length} materials - pick the one received.`;
+        tr.querySelector('.mr-code').focus();
+      } else mrMsg.textContent = 'No material found for that Production Code in the ERP. Type the Material Code.';
+    } catch (err) { /* the line stays as it is */ }
+  };
+  // the header "Date Arrived" is the default of every line (a line keeps its own date once it was changed)
+  $('#dtr-mrec-arrived')?.addEventListener('change', (e) => { mrBody?.querySelectorAll('.mr-arrived').forEach((i) => { i.value = e.target.value; }); });
   // Production Code box = filter on tbl_dtr_shoe_list; the picked code fills Colorway / Style / MTL #, editing the code clears them
   mrBody?.addEventListener('input', (e) => {
     if (e.target.classList.contains('ik-code')) {
@@ -1295,7 +1680,9 @@
       suggestProdCode(tr, e.target);
     } else if (e.target.classList.contains('mr-code')) {
       const tr = e.target.closest('tr');
-      ['.mr-name', '.mr-type', '.mr-supplier'].forEach((s) => { tr.querySelector(s).value = ''; });
+      // typing in one of the two boxes clears the details that came from the other pick
+      const other = ['.mr-name', '.mr-type', '.mr-supplier', '.mr-unit'];
+      other.forEach((s) => { tr.querySelector(s).value = ''; });
       suggestMaterialCode(tr, e.target);
     }
   });
@@ -1311,6 +1698,18 @@
     tr.querySelector('.mr-name').value = it.name || '';
     tr.querySelector('.mr-type').value = it.type || '';
     tr.querySelector('.mr-supplier').value = it.supplier || '';
+    tr.querySelector('.mr-unit').value = it.unit || '';
+  };
+  // with a Production Code on the line the materials come from that ERP production order (dberp.production_order_sub_materials);
+  // without one, from the lab material lists
+  const fetchMaterials = async (tr, q) => {
+    const prod = tr.querySelector('.ik-code').value.trim();
+    if (prod) {
+      const res = await apiFetch(`dtr/erp-prod-materials?code=${encodeURIComponent(prod)}&q=${encodeURIComponent(q)}`);
+      return { items: (res && res.items) || [], erp: true, prod };
+    }
+    const res = await apiFetch(`dtr/material-code-search?q=${encodeURIComponent(q)}`);
+    return { items: (res && res.items) || [], erp: false, prod: '' };
   };
   const suggestMaterialCode = (tr, input) => {
     clearTimeout(mcTimer);
@@ -1326,10 +1725,9 @@
       const panel = libPanel;
       const list = panel.querySelector('.lib-list');
       try {
-        const res = await apiFetch(`dtr/material-code-search?q=${encodeURIComponent(input.value.trim())}`);
-        const items = (res && res.items) || [];
-        if (!items.length) { list.innerHTML = '<div class="lib-empty">No material code found. The typed code is kept.</div>'; return; }
-        list.innerHTML = items.map((it, i) => `<div class="lib-item" data-i="${i}"><b>${escHtml(it.code)}</b><span>${escHtml(it.name)}</span><span>${escHtml(it.type)}${it.supplier ? ' - ' + escHtml(it.supplier) : ''}</span></div>`).join('');
+        const { items, erp, prod } = await fetchMaterials(tr, input.value.trim());
+        if (!items.length) { list.innerHTML = `<div class="lib-empty">${erp ? 'No material of ' + escHtml(prod) + ' found in the ERP production order.' : 'No material code found.'} The typed value is kept.</div>`; return; }
+        list.innerHTML = items.map((it, i) => `<div class="lib-item" data-i="${i}"><b>${escHtml(it.code)}</b><span>${escHtml(it.name)}</span><span>${escHtml(it.type)}${it.supplier ? ' - ' + escHtml(it.supplier) : ''}${it.unit ? ' · ' + escHtml(it.unit) : ''}</span></div>`).join('');
         list.onclick = (ev) => {
           const item = ev.target.closest('.lib-item');
           if (!item) return;
@@ -1346,27 +1744,28 @@
     if (!e.target.classList.contains('mr-code') || !e.target.value.trim()) return;
     const tr = e.target.closest('tr');
     try {
-      const res = await apiFetch(`dtr/material-code-search?q=${encodeURIComponent(e.target.value.trim())}`);
-      const hit = ((res && res.items) || []).find((it) => it.code.toUpperCase() === e.target.value.trim().toUpperCase());
+      const { items } = await fetchMaterials(tr, e.target.value.trim());
+      const hit = items.find((it) => it.code.toUpperCase() === e.target.value.trim().toUpperCase());
       if (hit) fillMaterial(tr, hit);
     } catch (err) { /* the typed code stays */ }
   });
   const openMaterialReceive = () => {
     mrBody.innerHTML = '';
     $('#dtr-mrec-date').value = today(); $('#dtr-mrec-arrived').value = today();
-    for (let i = 0; i < 6; i++) addMaterialRow();
+    for (let i = 0; i < 4; i++) addMaterialRow();
     mrMsg.textContent = '';
     mrBack.classList.remove('hidden');
   };
-  const closeMaterialReceive = () => mrBack.classList.add('hidden');
+  const closeMaterialReceive = () => { closeLibrary(); mrBack.classList.add('hidden'); };
   $$('[data-add-record="containers"]').forEach((b) => b.addEventListener('click', openMaterialReceive));
   $('#btn-mrec-addrow')?.addEventListener('click', addMaterialRow);
+  $('#btn-mrec-addrow-foot')?.addEventListener('click', addMaterialRow);
   $('#btn-mrec-close')?.addEventListener('click', closeMaterialReceive);
   $('#btn-mrec-cancel')?.addEventListener('click', closeMaterialReceive);
   $('#btn-mrec-save')?.addEventListener('click', async () => {
-    const v = (tr, c) => tr.querySelector(c).value.trim();
+    const v = (tr, c) => tr.querySelector(c)?.value.trim() || '';
     const rows = [...mrBody.children].map((tr) => ({
-      date: $('#dtr-mrec-date').value, arrived: $('#dtr-mrec-arrived').value, prod: v(tr, '.ik-code'), color: v(tr, '.ik-color'), style: v(tr, '.ik-style'), mtl: v(tr, '.ik-mtl'),
+      date: $('#dtr-mrec-date').value, arrived: $('#dtr-mrec-arrived').value, unit: v(tr, '.mr-unit'), prod: v(tr, '.ik-code'), color: v(tr, '.ik-color'), style: v(tr, '.ik-style'), mtl: v(tr, '.ik-mtl'),
       code: v(tr, '.mr-code'), name: v(tr, '.mr-name'), type: v(tr, '.mr-type'), supplier: v(tr, '.mr-supplier'),
       container: v(tr, '.mr-container'), batch: v(tr, '.mr-batch'), qty: v(tr, '.mr-qty'), qcqty: v(tr, '.mr-qcqty'),
     })).filter((r) => r.code || r.prod || r.container || r.batch);
@@ -1511,6 +1910,14 @@
   // Circle / highlight / text box (white box to write a value over the old one) / PASS-FAILED-TOLERABLE stamp; every item can be
   // moved and resized. Save = new current report <LabRef>.png; the report in place becomes the next old version (_1, _2 ...).
   // =========================================================================
+  // a thumbnail that fails is asked again (twice): when a page loads 100 pictures at once, some requests fail on the busy session file, not because the picture is missing
+  window.bsThumbErr = (img) => {
+    const n = Number(img.dataset.retry || 0);
+    if (n >= 1) { img.parentNode.classList.add('none'); return; }   // one retry: the server now remembers a missing picture, so asking again rarely helps
+    img.dataset.retry = String(n + 1);
+    const base = img.src.replace(/([?&])_r=\d+&?/, '$1').replace(/[?&]$/, '');
+    setTimeout(() => { img.src = base + (base.includes('?') ? '&' : '?') + '_r=' + (n + 1); }, 600 * (n + 1) + Math.floor(Math.random() * 400));
+  };
   (() => {
     const back = $('#bimg-backdrop');
     const cv = $('#bimg-canvas');
@@ -1534,7 +1941,7 @@
     };
     const fontPx = (o) => {
       let f = Math.max(12, o.h * 0.62);
-      ctx.save(); ctx.font = `400 ${f}px ${REPORT_FONT}`;
+      ctx.save(); ctx.font = `400 ${f}px ${o.font || REPORT_FONT}`;
       const w = ctx.measureText(o.text || '').width;
       if (w > o.w - 10) f = Math.max(8, f * (o.w - 10) / w);
       ctx.restore();
@@ -1543,7 +1950,7 @@
     const drawObj = (o, selected) => {
       ctx.save();
       if (o.t === 'circle') {
-        ctx.strokeStyle = '#dc2626'; ctx.lineWidth = lw();
+        ctx.strokeStyle = '#2563eb'; ctx.lineWidth = lw();
         ctx.beginPath(); ctx.ellipse(o.x, o.y, Math.max(1, o.rx), Math.max(1, o.ry), 0, 0, Math.PI * 2); ctx.stroke();
       } else if (o.t === 'mark') {
         ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = 'rgba(250, 204, 21, .55)';
@@ -1551,7 +1958,7 @@
       } else if (o.t === 'text') {
         ctx.fillStyle = '#fff'; ctx.fillRect(o.x, o.y, o.w, o.h);
         if (o.text) {
-          ctx.fillStyle = '#000'; ctx.font = `400 ${fontPx(o)}px ${REPORT_FONT}`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+          ctx.fillStyle = o.color || '#000'; ctx.font = `400 ${fontPx(o)}px ${o.font || REPORT_FONT}`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
           ctx.fillText(o.text, o.x + o.w / 2, o.y + o.h / 2 + 1, o.w - 8);
         }
       } else if (o.t === 'stamp') {
@@ -1626,7 +2033,7 @@
       const r = cv.getBoundingClientRect(); const k = r.width / cv.width;
       txt.style.left = (o.x * k) + 'px'; txt.style.top = (o.y * k) + 'px';
       txt.style.width = (o.w * k) + 'px'; txt.style.height = (o.h * k) + 'px';
-      txt.style.fontSize = (fontPx(o) * k) + 'px';
+      txt.style.fontSize = (fontPx(o) * k) + 'px'; txt.style.fontFamily = o.font || REPORT_FONT; txt.style.color = o.color || '#000';
       txt.value = o.text || ''; txt.classList.remove('hidden'); txt.focus(); txt.select();
     };
     txt.addEventListener('input', () => { const o = objs[editing]; if (o) o.text = txt.value; });
@@ -1672,6 +2079,20 @@
       const o = objs[sel]; if (!o || o.t !== 'stamp') return;
       const ratio = o.h / o.w; o.w = cv.width * (Number(e.target.value) / 100); o.h = o.w * ratio; redraw();
     });
+    // font style / colour: applied to the selected text box, and used for the next ones
+    const applyFont = () => {
+      const o = objs[sel]; if (!o || o.t !== 'text') return;
+      o.font = $('#bimg-font').value; o.color = $('#bimg-color').value;
+      if (editing === sel) { txt.style.fontFamily = o.font; txt.style.color = o.color; }
+      redraw();
+    };
+    $('#bimg-font').addEventListener('change', applyFont);
+    $('#bimg-color').addEventListener('input', applyFont);
+    // hamburger: all editing tools live in this menu
+    const menu = $('#bimg-menu');
+    $('#bimg-burger').addEventListener('click', (e) => { e.stopPropagation(); menu.classList.toggle('hidden'); });
+    menu.addEventListener('click', (e) => e.stopPropagation());
+    document.addEventListener('click', (e) => { if (!menu.classList.contains('hidden') && !e.target.closest('#bimg-burger')) menu.classList.add('hidden'); });
     $('#bimg-del').addEventListener('click', () => { stopEdit(true); if (sel >= 0) { objs.splice(sel, 1); sel = -1; redraw(); } });
     $('#bimg-undo').addEventListener('click', () => { stopEdit(true); objs.pop(); sel = -1; redraw(); });
     $('#bimg-orig').addEventListener('click', () => load());
@@ -1688,7 +2109,7 @@
         sel = -1;
         for (let i = objs.length - 1; i >= 0; i--) {
           if (inHandle(objs[i], p) && i === sel) break;
-          if (inBody(objs[i], p)) { sel = i; const b = box(objs[i]); drag = { mode: 'move', dx: p.x - b.l, dy: p.y - b.t }; if (objs[i].t === 'stamp') $('#bimg-size').value = Math.round(objs[i].w / cv.width * 100); break; }
+          if (inBody(objs[i], p)) { sel = i; const b = box(objs[i]); drag = { mode: 'move', dx: p.x - b.l, dy: p.y - b.t }; if (objs[i].t === 'stamp') $('#bimg-size').value = Math.round(objs[i].w / cv.width * 100); if (objs[i].t === 'text') { $('#bimg-font').value = objs[i].font || REPORT_FONT; $('#bimg-color').value = objs[i].color || '#000000'; } break; }
         }
         redraw();
       } else { sel = -1; drag = { mode: 'draw', sx: p.x, sy: p.y }; redraw(); }
@@ -1713,7 +2134,7 @@
       }
       if (drag.mode === 'draw') {
         if (tool === 'circle') temp = { t: 'circle', x: (drag.sx + p.x) / 2, y: (drag.sy + p.y) / 2, rx: Math.abs(p.x - drag.sx) / 2, ry: Math.abs(p.y - drag.sy) / 2 };
-        else temp = { t: tool === 'text' ? 'text' : 'mark', text: '', x: Math.min(drag.sx, p.x), y: Math.min(drag.sy, p.y), w: Math.abs(p.x - drag.sx), h: Math.abs(p.y - drag.sy) };
+        else temp = { t: tool === 'text' ? 'text' : 'mark', text: '', font: $('#bimg-font').value, color: $('#bimg-color').value, x: Math.min(drag.sx, p.x), y: Math.min(drag.sy, p.y), w: Math.abs(p.x - drag.sx), h: Math.abs(p.y - drag.sy) };
         redraw();
       }
     });
@@ -1741,20 +2162,119 @@
         });
         if (res && res.ok) {
           nxToast(res.message, 'success', 5000);
-          $$('.bs-thumb').filter((i) => i.dataset.labRef === labRef && (i.dataset.tab || 'bonding') === imgTab).forEach((i) => { i.parentNode.classList.remove('none'); i.src = `${BASE_URL}dtr/bonding-image?tab=${imgTab}&lab_ref=${encodeURIComponent(labRef)}&t=${Date.now()}`; });
+          $$('.bs-thumb').filter((i) => i.dataset.labRef === labRef && (i.dataset.tab || 'bonding') === imgTab).forEach((i) => { i.parentNode.classList.remove('none'); i.src = `${BASE_URL}dtr/bonding-image?thumb=1&tab=${imgTab}&lab_ref=${encodeURIComponent(labRef)}&t=${Date.now()}`; });
           close();
         } else msg((res && res.message) || 'Save failed.');
       } catch (err) { msg('Save failed: ' + err.message); }
     });
   })();
 
+  // Reloads the Bonding / Whole Shoe / Materials Master list from the server with the search words, the date range, the KPI result and the page chosen
+  let listSeq = 0;
+  window.dtrReloadList = async (forceKind, forcePage = 1) => {
+    const kind = forceKind || $('.dtr-subtab.active')?.dataset.subtab || $('.dtr-subpanel:not(.hidden)')?.dataset.subpanel;
+    if (kind === 'containers') {
+      loadAppsheetArchive('bench', 1);
+      return;
+    }
+    if (kind !== 'bonding' && kind !== 'shoes' && kind !== 'materials') return;
+    const panel = $(`.dtr-subpanel[data-subpanel="${kind}"]`);
+    if (!panel) return;
+    const st = window.dtrListState || {};
+    const q = panel.querySelector('.dtr-list-search')?.value.trim() || '';
+    const page = Math.max(1, Number(forcePage) || 1);
+    const seq = ++listSeq;
+    const wrap = panel.querySelector('.dtr-table-wrap');
+    const params = new URLSearchParams({ tab: 'labtracker', lk: kind, lq: q, lp: String(page) });
+    if (st.rg) { params.set('from', st.rg.from); params.set('to', st.rg.to); }
+    if (st.res) params.set('res', st.res);
+    if (panel._sort && panel._sort.key) { params.set('ls', panel._sort.key); params.set('ld', panel._sort.dir); }
+    try {
+      wrap?.classList.add('is-loading');
+      const r = await fetch(`${BASE_URL}dtr?${params}`, { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+      const doc = new DOMParser().parseFromString(await r.text(), 'text/html');
+      if (seq !== listSeq) return;   // a newer request is already on its way
+      const freshPanel = doc.querySelector(`.dtr-subpanel[data-subpanel="${kind}"]`);
+      const fresh = freshPanel?.querySelector('tbody');
+      const cur = panel.querySelector('tbody');
+      if (fresh && cur) {
+        cur.innerHTML = fresh.children.length ? fresh.innerHTML : '<tr><td colspan="13" class="muted" style="text-align:center;padding:24px">No matching records found.</td></tr>';
+        window.dtrAddEditButtons?.(cur);
+        window.dtrAddRowChecks?.(cur);
+        const sa = cur.closest('table')?.querySelector('.dtr-sel-all'); if (sa) { sa.checked = false; sa.indeterminate = false; }
+        cur.closest('table')?.classList.remove('dtr-sel-mode');
+        const sb = cur.closest('.dtr-table-wrap')?.previousElementSibling; if (sb?.classList?.contains('dtr-sel-bar')) sb.hidden = true;
+      }
+      const freshCnt = freshPanel?.querySelector(`#lt-count-${kind}`);
+      const curCnt = panel.querySelector(`#lt-count-${kind}`);
+      if (freshCnt && curCnt) {
+        curCnt.textContent = freshCnt.textContent;
+        curCnt.dataset.total = freshCnt.dataset.total || '0';
+      }
+      const freshPg = freshPanel?.querySelector(`#lt-page-${kind}`);
+      const curPg = panel.querySelector(`#lt-page-${kind}`);
+      if (freshPg && curPg) {
+        curPg.textContent = freshPg.textContent;
+        curPg.dataset.page = freshPg.dataset.page || String(page);
+        curPg.dataset.pages = freshPg.dataset.pages || '1';
+      }
+    } catch (_) { /* keep the rows shown */ } finally { wrap?.classList.remove('is-loading'); }
+  };
+
+  // Sort arrows in the column headers of the Bonding / Whole Shoe / Materials lists: click = ascending, again = descending, again = the normal (latest first) order.
+  // The sort runs on the server, so it covers every page, not only the 15 rows shown.
+  const LIST_SORT_COLS = {
+    bonding: ['labref', 'pull', 'prod', 'style', 'color', 'mtl', 'pdate', 'tdate', 'result', 'status', 'tech'],
+    shoes: ['labref', 'prod', 'style', 'color', 'mtl', 'line', 'test', 'pdate', 'tdate', 'result', 'status', 'tech'],
+    materials: ['labref', 'type', 'code', 'name', 'supplier', 'tstatus', 'final'],
+  };
+  Object.keys(LIST_SORT_COLS).forEach((kind) => {
+    const panel = $(`.dtr-subpanel[data-subpanel="${kind}"]`);
+    const ths = panel ? [...panel.querySelectorAll('thead th')] : [];
+    LIST_SORT_COLS[kind].forEach((key, i) => {
+      const th = ths[i];
+      if (!th) return;
+      th.classList.add('dtr-sortable');
+      th.dataset.sortKey = key;
+      th.insertAdjacentHTML('beforeend', ' <span class="dtr-sort-ind" aria-hidden="true"><i class="up">&#9650;</i><i class="dn">&#9660;</i></span>');
+      th.addEventListener('click', () => {
+        const cur = panel._sort || {};
+        panel._sort = cur.key !== key ? { key, dir: 'asc' } : (cur.dir === 'asc' ? { key, dir: 'desc' } : null);
+        ths.forEach((x) => { x.classList.remove('sort-asc', 'sort-desc'); });
+        if (panel._sort) th.classList.add(panel._sort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+        window.dtrReloadList?.(kind, 1);
+      });
+    });
+  });
+
+  $$('.dtr-lt-prev').forEach((b) => b.addEventListener('click', () => {
+    const kind = b.dataset.ltType;
+    const pgEl = $(`#lt-page-${kind}`);
+    const curPage = Number(pgEl?.dataset.page || 1);
+    if (curPage > 1) window.dtrReloadList?.(kind, curPage - 1);
+  }));
+  $$('.dtr-lt-next').forEach((b) => b.addEventListener('click', () => {
+    const kind = b.dataset.ltType;
+    const pgEl = $(`#lt-page-${kind}`);
+    const curPage = Number(pgEl?.dataset.page || 1);
+    const totalPages = Number(pgEl?.dataset.pages || 1);
+    if (curPage < totalPages) window.dtrReloadList?.(kind, curPage + 1);
+  }));
+
   // Search box of a Lab Tracker list (every tab): hides the rows that do not contain all the typed words
   document.addEventListener('input', (e) => {
     const box = e.target.closest('.dtr-list-search');
-    if (!box) return;
+    if (!box || box.classList.contains('dtr-as-search')) return;
     const words = box.value.toLowerCase().split(/\s+/).filter(Boolean);
     const panel = box.closest('.dtr-subpanel');
     if (!panel) return;
+    // Bonding / Whole Shoe / Materials Master lists: the search goes through the whole scheme (server side), not only the rows loaded in the list
+    const kind = panel.dataset.subpanel;
+    if (kind === 'bonding' || kind === 'shoes' || kind === 'materials') {
+      clearTimeout(box._tmr);
+      box._tmr = setTimeout(() => window.dtrReloadList?.(kind, 1), 350);
+      return;
+    }
     panel.querySelectorAll('tbody tr').forEach((tr) => {
       const text = tr.textContent.toLowerCase();
       tr.hidden = words.length > 0 && !words.every((w) => text.includes(w));
@@ -1867,23 +2387,11 @@
     const id = a.dataset.openBonding;
     // a pull-test Lab Ref (DTP<date>EYA1-L = eyelet, DR = D-ring, HP = heel pull, RVT = rivet) opens as a Pull Footwear Test Result in Shoe Bonding (U60)
     const ref = (a.textContent || '').trim();
-    if (/^DTP\d{8}(HP|EY|DR|RVT)[A-Z]\d+/i.test(ref)) {
+    if (/^DTP\d{8}((HP|EY|DR|RVT)[A-Z]\d+|RIVET-\d+)/i.test(ref)) {
       switchTab('bonding');
       markDtrNav('bonding');
       setReportKind('pull');
-      let found = null;
-      try {
-        const res = await apiFetch(`dtr/records?slug=pull&q=${encodeURIComponent(ref)}`);
-        found = ((res && res.rows) || []).find((r) => String(r.lab_ref_no).toLowerCase() === ref.toLowerCase()) || null;
-      } catch (err) { found = null; }
-      if (found) { await loadPullRecord(found.source_id); return; }
-      // no pull report yet: a new one for this Lab Ref, filled from the list row
-      const tds = [...(a.closest('tr')?.children || [])].map((td) => td.textContent.trim());
-      resetPullForm();
-      const put = (k, v) => { const el = $(`#pf_${k}`); if (el && v) el.value = v; };
-      put('LabRefNo', ref); put('POLotNo', tds[1]); put('ModelNoStyle', tds[2]); put('Color', tds[3]); put('TestedDate', tds[7]); put('Technician', tds[10]);
-      computePull();
-      showToast(`New Pull Footwear Test Report for ${ref}.`);
+      await loadPullRecord(0, ref);   // read from tbl_dtr_pull_tests by Lab Ref No
       return;
     }
     if (!id || id === '0') return;
@@ -1938,7 +2446,7 @@
     if (!btn) return;
     const slug = btn.dataset.openRecord;
     const sourceId = btn.dataset.sourceId;
-    if (slug === 'pull') {
+    if (slug === 'pull' || slug === 'pulltest') {
       switchTab('bonding');
       setReportKind('pull');
       await loadPullRecord(sourceId);
@@ -2203,7 +2711,7 @@
       if (res && res.mapped) {
         Object.keys(res.mapped).forEach((ctrlName) => {
           const val = res.mapped[ctrlName];
-          const el = $(`#mf_${ctrlName}`) || $(`[name="${ctrlName}"]`, $('#dtr-material-form'));
+          const el = $(`#mf_${CSS.escape(ctrlName)}`) || $(`[name="${ctrlName}"]`, $('#dtr-material-form'));
           if (el) el.value = val;
         });
       }
@@ -2505,7 +3013,7 @@
       if (res && res.loadedFields) {
         Object.keys(res.loadedFields).forEach((k) => {
           const v = res.loadedFields[k];
-          const el = $(`#mf_${k}`) || $(`[name="${CSS.escape(k)}"]`, $('#dtr-material-form'));
+          const el = $(`#mf_${CSS.escape(String(k))}`) || $(`[name="${CSS.escape(k)}"]`, $('#dtr-material-form'));
           if (el) el.value = v;
           const rawEl = $(`[data-raw-col="${CSS.escape(k)}"]`);
           if (rawEl) rawEl.value = v;
@@ -2683,19 +3191,65 @@
     }
   };
 
-  // PO/Lot No (production code) loaded -> Shipped Date (the order's CRD) and PO Quantity (its pairs) come from dberp.production_orders; filled boxes are left alone
+  // PO/Lot No (production code) loaded -> Shipped Date (the order's CRD) comes from dberp.production_orders; PO Quantity (its pairs) fills when empty
+  // The report shows dates like the Access sheet (MM-DD-YYYY: 11-13-2026); they are stored as YYYY-MM-DD
+  const BOND_DATES = ['ShippedDate', 'ProductionDate', 'ReceivedDate', 'TestedDate', 'FinishedDate'];
+  const toUsDate = (v) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || '').trim()); return m ? `${m[2]}-${m[3]}-${m[1]}` : String(v || ''); };
+  const toIsoDate = (v) => { const m = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(String(v || '').trim()); return m ? `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}` : String(v || ''); };
+  const showBondDates = () => BOND_DATES.forEach((k) => { const el = $(`#bf_${k}`); if (el && el.value) el.value = toUsDate(el.value); });
+  // PO/Lot No shows the order's PO number (production_orders.po_no, e.g. 5200676466); the Production Code stays in data-code for the lookup and the save
+  const bondProdCode = () => { const el = $('#bf_POLotNO'); return (el?.dataset.code || (el?.value || '').split('/')[0]).trim(); };
+  $('#bf_POLotNO')?.addEventListener('input', (e) => { delete e.target.dataset.code; });
   const fillFromErpOrder = async () => {
-    const code = ($('#bf_POLotNO')?.value || '').split('/')[0].trim();
-    const ship = $('#bf_ShippedDate'), qty = $('#bf_POQuantity');
-    if (!code || !ship || !qty || (ship.value.trim() && qty.value.trim())) return;
+    const code = bondProdCode();
+    const ship = $('#bf_ShippedDate'), qty = $('#bf_POQuantity'), po = $('#bf_POLotNO');
+    if (!code || !ship || !qty) return;
     try {
       const res = await apiFetch(`dtr/erp-po?code=${encodeURIComponent(code)}`);
       if (!res || !res.ok || !res.order) return;
-      if (!ship.value.trim() && res.order.shipped) ship.value = res.order.shipped;
+      if (res.order.shipped) ship.value = toUsDate(res.order.shipped);   // Shipped Date is always the order's CRD (production_orders.crd) of this Prod. Code
       if (!qty.value.trim() && res.order.qty) qty.value = res.order.qty;
+      if (po && res.order.po && bondProdCode() === code) { po.dataset.code = code; po.value = res.order.po; }
     } catch (e) { /* the ERP is not reachable: the boxes stay as they are */ }
   };
   $('#bf_POLotNO')?.addEventListener('change', fillFromErpOrder);
+
+  // A loaded report is locked: every field that holds data is read-only until the Edit button is clicked (empty fields stay open for input)
+  let reportEditing = true;
+  const setEditLabel = () => {
+    const t = $('#btn-bond-recalc-txt');
+    if (t) t.textContent = reportEditing ? 'Done' : 'Edit';
+  };
+  const unlockForm = (formSel) => {
+    $$(`${formSel} [data-locked]`).forEach((el) => {
+      if (el.type === 'radio' || el.type === 'checkbox' || el.tagName === 'SELECT') el.removeAttribute('tabindex');
+      else el.readOnly = false;
+      el.removeAttribute('data-locked');
+    });
+  };
+  const lockForm = (formSel) => {
+    unlockForm(formSel);
+    const radiosOn = new Set($$(`${formSel} input[type="radio"]:checked`).map((r) => r.name));
+    $$(`${formSel} input, ${formSel} select, ${formSel} textarea`).forEach((el) => {
+      if (el.type === 'hidden' || el.type === 'button' || el.type === 'submit' || el.readOnly || el.disabled) return;
+      let lock;
+      if (el.type === 'radio') lock = radiosOn.has(el.name);
+      else if (el.type === 'checkbox') lock = el.checked;
+      else lock = String(el.value ?? '').trim() !== '';
+      if (!lock) return;
+      // radios / checkboxes / selects are not "disabled" (that greys them out): the CSS of [data-locked] just stops clicks, so they look like normal selected ones
+      if (el.type === 'radio' || el.type === 'checkbox' || el.tagName === 'SELECT') el.tabIndex = -1;
+      else el.readOnly = true;
+      el.setAttribute('data-locked', '1');
+    });
+    reportEditing = false;
+    setEditLabel();
+  };
+  const openForm = (formSel) => {   // a new, blank report: nothing is locked
+    unlockForm(formSel);
+    reportEditing = true;
+    setEditLabel();
+  };
 
   const loadSingleBondingRecord = async (sourceId = 0, labRefNo = '') => {
     try {
@@ -2723,6 +3277,8 @@
         if (swapped && $('#bf_ETRFNo')) $('#bf_ETRFNo').value = '';
       }
       if ($('#bf_Technician')) $('#bf_Technician').value = withMachineNo($('#bf_Technician').value);   // add the machine no. to older records
+      if ($('#bf_POLotNO')) { delete $('#bf_POLotNO').dataset.code; $('#bf_POLotNO').dataset.code = ($('#bf_POLotNO').value || '').split('/')[0].trim(); }
+      showBondDates();
       fillFromErpOrder();
 
       for (let i = 1; i <= 35; i++) {
@@ -2732,6 +3288,7 @@
       }
 
       computeBondingPoints();
+      lockForm('#dtr-bonding-form');
     } catch (err) {
       console.error(err);
     }
@@ -2756,15 +3313,7 @@
     const v = e.target.value.trim();
     if (v && bondingLabRefs.includes(v)) loadSingleBondingRecord(0, v);
   });
-  // The browser filters the list by the current text: empty the suggested Lab Ref No. while the list is open
-  // so every saved Lab Ref No. shows, and put it back if nothing was picked or typed.
-  $('#bf_LabRefNo')?.addEventListener('focus', (e) => {
-    e.target.dataset.keep = e.target.value;
-    e.target.value = '';
-  });
-  $('#bf_LabRefNo')?.addEventListener('blur', (e) => {
-    if (!e.target.value) e.target.value = e.target.dataset.keep || '';
-  });
+  // no dropdown: the report opens from the Lab Ref No link of the Lab Tracker list
   loadBondingLabRefs();
   $('#bf_AgeCategory')?.addEventListener('change', scheduleFormSketch);
   $('#bf_AgeCategory')?.addEventListener('change', (e) => {
@@ -2778,19 +3327,26 @@
   $$('#dtr-bonding-points-tbody .dtr-bp-inp').forEach((inp) => {
     inp.addEventListener('input', computeBondingPoints);
   });
+  // Edit: unlocks the locked fields; Done: recalculates the report and locks the filled fields again
   $('#btn-bond-recalc')?.addEventListener('click', () => {
-    if (isPull()) {
-      computePull();
-      showToast('✓ Recalculated Maximum and Rating of every pull test row.');
+    const formSel = isPull() ? '#dtr-pull-form' : '#dtr-bonding-form';
+    if (!reportEditing) {
+      unlockForm(formSel);
+      reportEditing = true;
+      setEditLabel();
+      showToast('Fields unlocked: you can edit the report now.');
       return;
     }
-    computeBondingPoints();
-    showToast('✓ Recalculated UTF, FTO, and FiTO Min/Max/Ave & Spot Tolerances.');
+    if (isPull()) computePull();
+    else computeBondingPoints();
+    lockForm(formSel);
+    showToast('✓ Report recalculated and locked. Click Edit to change it again.');
   });
 
   // + New Bonding Report: a blank form, only the Lab Ref No. is suggested
   const newBondingRecord = (notify = true) => {
     const today = new Date().toISOString().slice(0, 10);
+    openForm('#dtr-bonding-form');
     $$('#dtr-bonding-form input, #dtr-bonding-form select, #dtr-bonding-form textarea').forEach((el) => {
       if (el.type === 'radio' || el.type === 'checkbox') el.checked = false;
       else el.value = '';
@@ -2811,7 +3367,8 @@
     $$('#dtr-bonding-form [name]').forEach((inp) => {
       if (inp.name) fields[inp.name] = inp.value;
     });
-    if (fields.POLotNO) fields.POLotNO = fields.POLotNO.split(' / ')[0].trim();   // the field shows "Production Code / MTL #"; only the code is stored
+    if (fields.POLotNO) fields.POLotNO = bondProdCode();   // the field shows the PO number: the Production Code is what is stored
+    BOND_DATES.forEach((k) => { if (fields[k]) fields[k] = toIsoDate(fields[k]); });
     // a Fail / Tolerable result must say how it failed (Quality Insights and the lab alerts read it)
     if (/^(fail|failed|tolerable)$/i.test(String(fields.Result || '').trim()) && !String(fields.ModeOfFailure || '').trim().replace(/^-$/, '')) {
       showToast('Write the Mode of Failure(s) first: a ' + String(fields.Result).trim().toUpperCase() + ' result needs it (for example Adhesive failure, Foxing to outsole).', true);
@@ -2880,14 +3437,14 @@
     let failed = 0;
     Object.keys(PULL_GROUPS).forEach((g) => {
       for (let i = 0; i < PULL_GROUPS[g]; i++) {
-        const vals = [pullInput(g, i, 'lat'), pullInput(g, i, 'med')]
-          .map((el) => parseFloat(el?.value ?? '')).filter(Number.isFinite);
-        pullInput(g, i, 'max').value = vals.length ? roundTo(Math.max(...vals), 2) : '';
+        // readings of the row, e.g. "26.90 29.50 29.23"
+        const vals = (pullInput(g, i, 'res')?.value || '').match(/\d+(?:\.\d+)?/g)?.map(Number) || [];
+        pullInput(g, i, 'max').value = vals.length ? roundTo(Math.max(...vals), 3) : '';
         const std = parseFloat(pullInput(g, i, 'std').value);
         const isMax = /max/i.test(pullInput(g, i, 'tol').value);
         let rating = '';
-        if (vals.length && Number.isFinite(std)) {
-          const ok = isMax ? Math.max(...vals) <= std : Math.min(...vals) >= std;
+        if (vals.length) {   // a row with readings is rated: against its standard when it has one, otherwise PASS
+          const ok = Number.isFinite(std) ? (isMax ? Math.max(...vals) <= std : Math.min(...vals) >= std) : true;
           rating = ok ? 'PASS' : 'FAIL';
           rated++;
           if (!ok) failed++;
@@ -2918,18 +3475,20 @@
 
   const newPullRecord = (notify = true) => {
     const today = new Date().toISOString().slice(0, 10);
+    openForm('#dtr-pull-form');
     resetPullForm();
     $('#pf_LabRefNo').value = `DTP${today.replace(/-/g, '')}PL01-R`;
     computePull();
     if (notify) showToast('Initialized new Pull Footwear Test Report.');
   };
 
-  const loadPullRecord = async (sourceId) => {
+  const loadPullRecord = async (sourceId, labRef) => {
     try {
-      const res = await apiFetch(`dtr/record?slug=pull&source_id=${encodeURIComponent(sourceId)}`);
+      const res = await apiFetch(`dtr/record?slug=pull&source_id=${encodeURIComponent(sourceId || 0)}&lab_ref_no=${encodeURIComponent(labRef || '')}`);
       if (!res || !res.ok) return;
       const rec = res.record || {};
       resetPullForm();
+      if (!rec.LabRefNo && labRef) { rec.LabRefNo = labRef; showToast(`No pull test record for ${labRef} yet.`, true); }
       Object.keys(rec).forEach((k) => {
         const el = $(`#pf_${k}`);
         if (el) el.value = rec[k] ?? '';
@@ -2938,11 +3497,17 @@
       try { data = JSON.parse(rec.PullData || 'null'); } catch (e) { data = null; }
       pullInputs().forEach((el) => {
         const [g, i, k] = el.dataset.pull.split('.');
-        const v = data?.[g]?.[i]?.[k];
+        let v = data?.[g]?.[i]?.[k];
+        if (k === 'res' && (v === undefined || v === null)) {   // older saves kept Lateral / Medial in two cells
+          const o = data?.[g]?.[i] || {};
+          v = [o.lat, o.med].filter((x) => x !== undefined && x !== null && x !== '').join(' ') || undefined;
+        }
         el.value = v !== undefined && v !== null ? v : el.defaultValue;
       });
       syncPullRadios();
+      unlockForm('#dtr-pull-form');   // (the reset above wrote into locked fields of the previous report)
       computePull();
+      lockForm('#dtr-pull-form');
     } catch (err) {
       console.error(err);
     }
@@ -2991,20 +3556,23 @@
         const method = g === 'other' ? c(g, i, 'method') : 'VF-B04<br>(2019/05)';
         const unit = g === 'other' ? c(g, i, 'unit') : 'kgf';
         const rating = c(g, i, 'rating');
+        const lbl = i === 0 ? 'Lateral side : ' : (i === 1 ? 'Medial side : ' : '');
+        const res = c(g, i, 'res');
         rows += `<tr>
           <td class="pf-p-l">${name}</td><td class="pf-p-c">${method}</td><td class="pf-p-c">${unit}</td>
-          ${i === 0 ? `<td rowspan="${n}" class="pf-p-sk">${sketch}</td>` : ''}
-          <td class="pf-p-c">${c(g, i, 'lat')}</td><td class="pf-p-c">${c(g, i, 'med')}</td><td class="pf-p-c">${c(g, i, 'max')}</td>
+          ${i === 0 ? `<td rowspan="${n + 4}" class="pf-p-sk">${sketch}</td>` : ''}
+          <td>${res ? lbl + res : lbl}</td><td class="pf-p-c">${c(g, i, 'max')}</td>
           <td class="pf-p-c pf-p-blue">${c(g, i, 'std')}</td><td class="pf-p-c pf-p-blue">${c(g, i, 'tol')}</td>
           <td class="pf-p-c"><b class="${rating === 'FAIL' ? 'pf-p-fail' : ''}">${rating}</b></td></tr>`;
       }
+      for (let e = 0; e < 4; e++) rows += '<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>';
       return rows;
     };
     let otherRows = '';
     for (let i = 0; i < PULL_GROUPS.other; i++) {
       otherRows += `<tr>
         <td class="pf-p-l">${c('other', i, 'item')}</td><td class="pf-p-c">${c('other', i, 'method')}</td><td class="pf-p-c">${c('other', i, 'unit')}</td><td></td>
-        <td class="pf-p-c">${c('other', i, 'lat')}</td><td class="pf-p-c">${c('other', i, 'med')}</td><td class="pf-p-c">${c('other', i, 'max')}</td>
+        <td>${c('other', i, 'res')}</td><td class="pf-p-c">${c('other', i, 'max')}</td>
         <td class="pf-p-c pf-p-blue">${c('other', i, 'std')}</td><td class="pf-p-c pf-p-blue">${c('other', i, 'tol')}</td><td class="pf-p-c"><b>${c('other', i, 'rating')}</b></td></tr>`;
     }
     const labRef = $('#pf_LabRefNo')?.value || 'Pull Test';
@@ -3014,7 +3582,7 @@
         <div class="pf-p-top">
           <img class="rpt-logo-vf" src="${BASE_URL}assets/images/vf-logo.webp" alt="VF">
           <div class="pf-p-title"><h1>Pull Footwear Test Results</h1><h2>整鞋部件拉力测试</h2></div>
-          <img class="rpt-logo-satra" src="${BASE_URL}assets/images/satra-accredited.png" alt="SATRA Accredited Laboratory">
+          <div class="pf-p-right"><div class="pf-p-res">* Overall Result <b class="${f('Result') === 'FAIL' ? 'pf-p-fail' : ''}">${f('Result')}</b></div><img class="rpt-logo-satra" src="${BASE_URL}assets/images/satra-accredited.png" alt="SATRA Accredited Laboratory"></div>
         </div>
         <div class="pf-p-ids">
           <div>Form # : Lab VF 003</div>
@@ -3047,14 +3615,14 @@
         </div>
         <div class="pf-p-sec">Closures - Eyelet , D-ring , Hook , Webbing Pull Strength</div>
         <table class="pf-p-tbl">
+          <colgroup><col style="width:17%"><col style="width:9%"><col style="width:5%"><col style="width:17%"><col style="width:22%"><col style="width:8%"><col style="width:8%"><col style="width:8%"><col style="width:6%"></colgroup>
           <thead>
-            <tr><th rowspan="2">Test Items<br>测试项目</th><th rowspan="2">VF Test Method<br>测试方法</th><th rowspan="2">Units<br>单位</th><th rowspan="2">Test Sketch<br>测试部位</th><th colspan="2">Test Results<br>测试结果</th><th rowspan="2">Maximum</th><th rowspan="2">Standard<br>标准</th><th rowspan="2">Tolerance<br>容许度</th><th rowspan="2">Rating<br>等级</th></tr>
-            <tr><th>Lateral side:</th><th>Medial side:</th></tr>
+            <tr><th>Test Items<br>测试项目</th><th>VF Test Method<br>测试方法</th><th>Units<br>单位</th><th>Test Sketch<br>测试部位</th><th>Test Results<br>测试结果</th><th>Maximum</th><th>Standard<br>标准</th><th>Tolerance<br>容许度</th><th>Rating<br>等级</th></tr>
           </thead>
           <tbody>
             ${group('left', 6, sketches[0] || '')}
             ${group('right', 6, sketches[1] || '')}
-            <tr><td colspan="10" class="pf-p-oth">Other Types of Pull Test</td></tr>
+            <tr><td colspan="9" class="pf-p-oth">Other Types of Pull Test</td></tr>
             ${otherRows}
           </tbody>
         </table>
@@ -3063,7 +3631,6 @@
           <div>
             <div>Reviewed by 检查: <b>${f('ReviewedBy')}</b></div>
             <div>Approved by 核准: <b>${f('ApprovedBy')}</b></div>
-            <div>Overall Result: <b>${f('Result')}</b></div>
           </div>
         </div>
       </div>
@@ -3083,8 +3650,7 @@
     if (bf) bf.hidden = pull;
     if (pf) pf.hidden = !pull;
     $$('.dtr-only-bonding').forEach((el) => { el.hidden = pull; });
-    const t = $('#btn-bond-recalc-txt');
-    if (t) t.textContent = pull ? 'Recalculate Results' : 'Recalculate Spots & Result';
+    setEditLabel();
   };
   $('#dtr-report-kind')?.addEventListener('change', (e) => {
     setReportKind(e.target.value);
@@ -3273,7 +3839,7 @@
     $$('[data-raw-col]').forEach((i) => { rec[i.dataset.rawCol] = i.value; });
     const pick = (...names) => {
       for (const n of names) {
-        const v = $('#mf_' + n)?.value;
+        const v = $("#mf_" + CSS.escape(String(n)))?.value;
         if (v !== undefined && String(v).trim() !== '') return String(v).trim();
         const r = rec[n];
         if (r !== undefined && r !== null && String(r).trim() !== '') return String(r).trim();
@@ -3584,59 +4150,302 @@
     clearTimeout(formSketchTimer);
     formSketchTimer = setTimeout(renderFormSketch, 120);
   }
-  // Spot 1 sits on the START marker and the numbering carries on from there (the layouts number from another spot).
-  function rotateSpotsToStart(cfg, vec) {
-    if (!cfg || !vec || !vec.vector || !vec.start || !vec.dots) return;
-    ['utf', 'fto'].forEach((k) => {
-      const dots = vec.dots[k] || {};
-      const idx = Object.keys(cfg[k] || {}).map(Number).filter((i) => dots[i]).sort((a, b) => a - b);
-      if (idx.length < 3) return;
-      let best = 0; let bd = Infinity;
-      idx.forEach((i, p) => {
-        const d = Math.hypot(dots[i].x - vec.start.x, dots[i].y - vec.start.y);
-        if (d < bd) { bd = d; best = p; }
-      });
-      if (best === 0) return;
-      const boxes = {}; const nd = {};
-      idx.forEach((n, p) => { const src = idx[(best + p) % idx.length]; boxes[n] = cfg[k][src]; nd[n] = dots[src]; });
-      Object.assign(cfg[k], boxes);
-      vec.dots[k] = Object.assign({}, dots, nd);
-    });
-  }
-  // The START marker always sits on spot 1 (UTF ring): the numbering visibly begins at START, even when the layout has no START of its own
-  function startOnSpotOne(vec) {
-    const one = vec && vec.vector && vec.dots && vec.dots.utf && vec.dots.utf[1];
-    if (!one) return;
-    vec.start = Object.assign({ label: 'START' }, vec.start || {}, { x: one.x, y: one.y });
-  }
-  // Layouts without dot positions: spot 1 is the box at the START arrow (lower right of the sketch, e.g. 5.01 on the 34-point sketch);
-  // the readings carry on from there around the contour (spot 2 follows 1 ...). Returns a rotated copy, the cached config is never changed.
-  function rotateBoxesToArrow(cfg, vec) {
-    if (!cfg || !cfg.utf || (vec && vec.vector)) return cfg;
-    const out = JSON.parse(JSON.stringify(cfg));
-    const ids = Object.keys(out.utf).map(Number).sort((a, b) => a - b);
-    if (ids.length < 3) return out;
-    let best = 0; let bd = Infinity;
-    ids.forEach((i, p) => {
-      const b = out.utf[i];
-      const d = Math.hypot(b.pctLeft - 86.6, b.pctTop - 79.9);
-      if (d < bd) { bd = d; best = p; }
-    });
-    if (best === 0) return out;
-    ['utf', 'fto'].forEach((k) => {
-      const src = out[k] || {};
-      const keys = Object.keys(src).map(Number).sort((a, b) => a - b);
-      if (keys.length !== ids.length) return;
-      const nb = {};
-      keys.forEach((n, p) => { nb[n] = src[keys[(best + p) % keys.length]]; });
-      out[k] = nb;
-    });
+  // Exact normalized contour rings (0..1 relative to blank.png on a Right shoe, clockwise starting at Spot 1 lower-left heel)
+  const SHOE_OUTER_RING = [[0.1098,0.8078],[0.1109,0.7752],[0.1185,0.7184],[0.1215,0.6951],[0.1231,0.6748],[0.1257,0.6559],[0.1258,0.6394],[0.1234,0.6249],[0.1221,0.6109],[0.1203,0.5976],[0.1172,0.5852],[0.1139,0.5731],[0.1105,0.5613],[0.1052,0.5499],[0.1004,0.5383],[0.0944,0.5268],[0.0872,0.5152],[0.0811,0.5031],[0.074,0.4908],[0.0658,0.4779],[0.056,0.4642],[0.0446,0.4496],[0.0363,0.4345],[0.0288,0.4186],[0.0232,0.4021],[0.02,0.3852],[0.0174,0.3675],[0.0163,0.3492],[0.0166,0.3302],[0.0193,0.3108],[0.0225,0.2904],[0.0272,0.2691],[0.034,0.2472],[0.0422,0.2243],[0.0526,0.2005],[0.0671,0.1772],[0.0835,0.1529],[0.1037,0.1292],[0.1284,0.1067],[0.1571,0.0859],[0.1904,0.068],[0.2268,0.0521],[0.266,0.0384],[0.3079,0.0277],[0.3516,0.0199],[0.3966,0.0146],[0.4422,0.0114],[0.4882,0.01],[0.5341,0.0116],[0.5799,0.0136],[0.6251,0.0179],[0.6694,0.0246],[0.7123,0.0334],[0.7528,0.0458],[0.7905,0.0608],[0.8255,0.0775],[0.8548,0.0987],[0.8819,0.1197],[0.9028,0.144],[0.9206,0.1681],[0.9356,0.1919],[0.9477,0.2153],[0.9567,0.2386],[0.9626,0.2615],[0.9701,0.282],[0.9732,0.3029],[0.9756,0.3228],[0.9769,0.3418],[0.9753,0.3605],[0.9736,0.3782],[0.9692,0.3956],[0.965,0.412],[0.959,0.4278],[0.9514,0.443],[0.9407,0.4577],[0.9322,0.4714],[0.9239,0.4844],[0.9159,0.4969],[0.9082,0.5089],[0.9009,0.5204],[0.8969,0.532],[0.8904,0.5432],[0.8859,0.5545],[0.8816,0.5659],[0.8784,0.5777],[0.8754,0.5898],[0.8738,0.6026],[0.8721,0.616],[0.8707,0.6302],[0.8701,0.6456],[0.8706,0.6627],[0.8721,0.6817],[0.8743,0.703],[0.8754,0.7261],[0.8803,0.7546],[0.8804,0.7836],[0.8708,0.847],[0.8557,0.8764],[0.8295,0.8979],[0.8008,0.9197],[0.7677,0.9389],[0.7307,0.9552],[0.6896,0.9662],[0.647,0.9756],[0.6031,0.9838],[0.5577,0.9877],[0.5118,0.9896],[0.4658,0.9893],[0.42,0.9868],[0.375,0.9817],[0.331,0.9742],[0.2889,0.9638],[0.2494,0.9502],[0.2131,0.9338],[0.1798,0.9157],[0.1521,0.8935],[0.1305,0.868],[0.1163,0.8391]];
+  const SHOE_INNER_RING = [[0.148,0.7777],[0.1524,0.7459],[0.1601,0.6946],[0.1619,0.6743],[0.1637,0.6559],[0.1633,0.6402],[0.1623,0.6258],[0.1612,0.6124],[0.159,0.6001],[0.1568,0.5882],[0.1531,0.5772],[0.1506,0.5662],[0.1477,0.5554],[0.143,0.5451],[0.1378,0.5348],[0.1328,0.5243],[0.1266,0.5137],[0.1206,0.5028],[0.1149,0.4916],[0.1073,0.48],[0.0979,0.4676],[0.0891,0.4545],[0.0795,0.4406],[0.0715,0.4259],[0.0651,0.4107],[0.0604,0.3949],[0.0575,0.3785],[0.0559,0.3615],[0.055,0.3437],[0.0551,0.3249],[0.0581,0.306],[0.0607,0.2855],[0.0666,0.2649],[0.0746,0.2437],[0.083,0.2208],[0.0951,0.1981],[0.1092,0.1743],[0.1273,0.1513],[0.1495,0.1291],[0.1755,0.1081],[0.2058,0.0896],[0.2398,0.0733],[0.2772,0.0603],[0.3168,0.0496],[0.3586,0.0424],[0.4012,0.0364],[0.4449,0.0342],[0.4887,0.0324],[0.5326,0.0335],[0.5762,0.0359],[0.6195,0.0396],[0.6614,0.047],[0.7019,0.0563],[0.7404,0.068],[0.7761,0.0826],[0.8081,0.1],[0.8354,0.1207],[0.859,0.1425],[0.8782,0.1658],[0.8936,0.1895],[0.9061,0.2128],[0.9163,0.2353],[0.924,0.2573],[0.9299,0.2784],[0.9341,0.2987],[0.9363,0.3183],[0.9379,0.3368],[0.9373,0.3549],[0.9358,0.3721],[0.9331,0.3887],[0.9277,0.4048],[0.9227,0.42],[0.9146,0.4348],[0.9071,0.4486],[0.8982,0.4618],[0.8894,0.4742],[0.8824,0.486],[0.8742,0.4972],[0.868,0.508],[0.8623,0.5185],[0.8571,0.5288],[0.8525,0.539],[0.8476,0.5491],[0.844,0.5594],[0.8407,0.57],[0.8378,0.5808],[0.8351,0.592],[0.8331,0.6039],[0.8311,0.6163],[0.83,0.6299],[0.8302,0.645],[0.8313,0.6618],[0.8327,0.6805],[0.836,0.7024],[0.8384,0.7266],[0.843,0.7557],[0.8437,0.8217],[0.8325,0.8518],[0.8133,0.8783],[0.7862,0.8993],[0.7545,0.9173],[0.7192,0.9325],[0.6811,0.9452],[0.6404,0.9543],[0.5982,0.9611],[0.555,0.9654],[0.5113,0.9676],[0.4674,0.9665],[0.4236,0.9649],[0.3807,0.9596],[0.3389,0.9522],[0.2992,0.9413],[0.262,0.9277],[0.2275,0.912],[0.1974,0.8928],[0.1735,0.8693],[0.157,0.8415],[0.1488,0.8104]];
+
+  // Sample `count` points evenly by arc length around a closed contour ring (mapped into card % coordinates)
+  function sampleContourPoints(ring, count) {
+    if (!count || count < 1) return [];
+    const imL = 21; const imT = 8; const imW = 58; const imH = 84;
+    const pts = ring.map((p) => ({ x: imL + p[0] * imW, y: imT + p[1] * imH }));
+    const closed = pts.concat([pts[0]]);
+    const segs = [];
+    let total = 0;
+    for (let i = 0; i < closed.length - 1; i++) {
+      // Weight vertical steps by card aspect ratio (~1.5) so visual spacing is uniform around sides and curves
+      const d = Math.hypot(closed[i + 1].x - closed[i].x, (closed[i + 1].y - closed[i].y) * 1.45);
+      segs.push(d);
+      total += d;
+    }
+    const out = [];
+    for (let k = 0; k < count; k++) {
+      let s = (k * total) / count;
+      let j = 0;
+      while (j < segs.length - 1 && s > segs[j]) { s -= segs[j]; j++; }
+      const t = segs[j] ? s / segs[j] : 0;
+      const p0 = closed[j];
+      const p1 = closed[j + 1];
+      const x = p0.x + (p1.x - p0.x) * t;
+      const y = p0.y + (p1.y - p0.y) * t;
+      // Tangent clockwise -> outward normal on right-shoe clockwise loop is (+ty, -tx)
+      const prev = closed[(j - 1 + pts.length) % pts.length];
+      const next = closed[(j + 2) % pts.length];
+      const tx = next.x - prev.x;
+      const ty = (next.y - prev.y) * 1.45;
+      const tLen = Math.hypot(tx, ty) || 1;
+      const nx = ty / tLen;
+      const ny = -tx / tLen;
+      out.push({ idx: k + 1, x, y, nx, ny });
+    }
     return out;
   }
-  // START marker (red diamond + label) placed just before the value box of spot 1 when the layout has no dot positions
-  function startMarkerHtml(c) {
-    return `<div class="vf-start-mark" style="position:absolute;left:${c.pctLeft}%;top:${c.pctTop}%;transform:translate(0,-95%);display:flex;align-items:center;gap:3px;white-space:nowrap;color:#b91c1c;font:800 9px sans-serif;pointer-events:none"><i style="display:block;width:9px;height:9px;background:#dc2626;transform:rotate(45deg)"></i>START</div>`;
+
+  // Project an outer contour point along its inward normal onto the inner contour polygon so UTF[i] and FTO[i] are exact radial pairs
+  function projectToInnerContour(ox, oy, inx, iny, innerRing) {
+    const imL = 21; const imT = 8; const imW = 58; const imH = 84;
+    const pts = innerRing.map((p) => ({ x: imL + p[0] * imW, y: imT + p[1] * imH }));
+    const n = pts.length;
+    let bestT = Infinity;
+    let bestPt = null;
+    for (let i = 0; i < n; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % n];
+      const sx = b.x - a.x;
+      const sy = b.y - a.y;
+      const denom = inx * sy - iny * sx;
+      if (Math.abs(denom) < 1e-8) continue;
+      const dx = a.x - ox;
+      const dy = a.y - oy;
+      const t = (dx * sy - dy * sx) / denom;
+      const u = (dx * iny - dy * inx) / denom;
+      if (t > 0.2 && u >= -0.02 && u <= 1.02 && t < bestT) {
+        bestT = t;
+        bestPt = { x: ox + t * inx, y: oy + t * iny };
+      }
+    }
+    if (bestPt) return bestPt;
+    // Fallback: closest vertex on inner ring
+    let minD = Infinity;
+    for (let i = 0; i < n; i++) {
+      const d = Math.hypot(pts[i].x - ox, (pts[i].y - oy) * 1.45);
+      if (d < minD) { minD = d; bestPt = pts[i]; }
+    }
+    return bestPt || { x: ox, y: oy };
   }
+
+  // De-crowd vertical positions of points on one side so shelves or inner numbers never overlap
+  function deCrowdY(items, minGap, minY, maxY) {
+    if (items.length <= 1) return;
+    const sorted = items.slice().sort((a, b) => a.ey - b.ey);
+    for (let pass = 0; pass < 4; pass++) {
+      for (let i = 1; i < sorted.length; i++) {
+        if (sorted[i].ey - sorted[i - 1].ey < minGap) {
+          const mid = (sorted[i].ey + sorted[i - 1].ey) / 2;
+          sorted[i - 1].ey = Math.max(minY, mid - minGap / 2);
+          sorted[i].ey = Math.min(maxY, mid + minGap / 2);
+        }
+      }
+    }
+  }
+
+  // Build dynamic shoe sketch HTML (contour, dynamic blue dots, bent outer shelves, inner normal ticks, START marker, and aligned numbers)
+  function buildDynamicShoeSketchHtml(opts) {
+    const { isLeft, std, utfVals, ftoVals, defaultSpots, extras } = opts;
+    const imL = 21; const imT = 8; const imW = 58; const imH = 84;
+    let utfCount = 0; let ftoCount = 0;
+    for (let i = 1; i <= 35; i++) {
+      if (parseFloat(utfVals[i]) > 0) utfCount = i;
+      if (parseFloat(ftoVals[i]) > 0) ftoCount = i;
+    }
+    const anyPulled = utfCount > 0 || ftoCount > 0;
+    if (!anyPulled) {
+      utfCount = defaultSpots;
+      ftoCount = defaultSpots;
+    }
+
+    const getValStyle = (val) => {
+      const v = evaluateSpotVerdict(parseFloat(val), std);
+      if (!v) return 'color:#94a3b8;';
+      if (v === 'FAIL') return 'color:#dc2626;font-weight:800;';
+      if (v === 'TOLERABLE') return 'color:#d97706;font-weight:800;';
+      return 'color:#1d4ed8;font-weight:800;';
+    };
+
+    const mx = (x) => (isLeft ? 100 - x : x);
+
+    // 1. Base shoe contour (blank.png) placed identically on Left and Right cards
+    let html = `<img src="${BASE_URL}assets/images/bonding_sketches/blank.png" class="vf-shoe-img" style="left:${imL}%;top:${imT}%;width:${imW}%;height:${imH}%;opacity:0.9${!isLeft ? ';transform:scaleX(-1)' : ''}" alt="Shoe contour">`;
+    let svg = '<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:2">';
+    let dotsHtml = '';
+    let boxesHtml = '';
+
+    // 2. Outer points (UTF): sample around outer contour; inner points (FTO) project radially inward from each outer point so UTF[i] & FTO[i] are always aligned across the sole wall
+    const baseCount = Math.max(utfCount, ftoCount);
+    const baseOuterSamples = sampleContourPoints(SHOE_OUTER_RING, baseCount);
+    const outerSamples = utfCount === baseCount
+      ? baseOuterSamples
+      : sampleContourPoints(SHOE_OUTER_RING, utfCount);
+
+    // Identify at most ONE top-center (toe) and ONE bottom-center (heel) point closest to x = 50
+    let topCenterIdx = -1; let topBestDx = 2.6;
+    let botCenterIdx = -1; let botBestDx = 2.6;
+    baseOuterSamples.forEach((p) => {
+      const dx = Math.abs(p.x - 50);
+      if (p.y < 11.5 && dx < topBestDx) { topBestDx = dx; topCenterIdx = p.idx; }
+      if (p.y > 88.5 && dx < botBestDx) { botBestDx = dx; botCenterIdx = p.idx; }
+    });
+
+    const outerPts = outerSamples.map((p) => {
+      const isTopCenter = p.idx === topCenterIdx;
+      const isBotCenter = p.idx === botCenterIdx;
+      const leftSide = p.x < 50;
+      const rLen = (p.y < 15 || p.y > 85) ? 4.4 : 3.8;
+      const ex = isTopCenter || isBotCenter ? p.x : p.x + p.nx * rLen;
+      const ey = isTopCenter
+        ? Math.max(4.6, p.y - 4.0)
+        : (isBotCenter ? Math.min(95.4, p.y + 4.0) : Math.min(95.8, Math.max(4.2, p.y + (p.ny * rLen) / 1.35)));
+      return { idx: p.idx, dx: p.x, dy: p.y, ex, ey, sx: ex, leftSide, isTopCenter, isBotCenter };
+    });
+    const minOuterGap = utfCount > 30 ? 2.55 : (utfCount > 24 ? 2.85 : 3.35);
+    deCrowdY(outerPts.filter((p) => !p.isTopCenter && !p.isBotCenter && p.leftSide), minOuterGap, 4.5, 95.5);
+    deCrowdY(outerPts.filter((p) => !p.isTopCenter && !p.isBotCenter && !p.leftSide), minOuterGap, 4.5, 95.5);
+
+    outerPts.forEach((p) => {
+      const dx = mx(p.dx); const dy = p.dy;
+      const bw = 9.0; const bh = 2.5;
+      if (p.isTopCenter || p.isBotCenter) {
+        const ey = p.ey;
+        svg += `<line x1="${dx.toFixed(2)}" y1="${dy.toFixed(2)}" x2="${dx.toFixed(2)}" y2="${ey.toFixed(2)}" stroke="#2563eb" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
+        dotsHtml += `<div style="position:absolute;left:${dx.toFixed(2)}%;top:${dy.toFixed(2)}%;width:4.5px;height:4.5px;margin:-2.25px 0 0 -2.25px;border-radius:50%;background:#1d4ed8;z-index:3;pointer-events:none"></div>`;
+        const raw = utfVals[p.idx];
+        const num = parseFloat(raw);
+        const hasVal = Number.isFinite(num) && num > 0;
+        const bLeft = dx - bw / 2;
+        const bTop = p.isTopCenter ? Math.max(0.4, ey - bh - 0.3) : Math.min(99.6 - bh, ey + 0.3);
+        boxesHtml += `<div class="vf-point-box vf-point-utf" style="left:${bLeft.toFixed(2)}%;top:${bTop.toFixed(2)}%;width:${bw}%;height:${bh}%;justify-content:center;${getValStyle(raw)}z-index:4" title="UTF Point ${p.idx}: ${hasVal ? num.toFixed(2) : '-'}">${hasVal ? num.toFixed(2) : ''}</div>`;
+        return;
+      }
+
+      // Snap side shelves to crisp left/right columns (11.2% / 88.8%) so outer values align cleanly with zero floating labels
+      if (p.leftSide) {
+        p.ex = Math.min(p.ex, p.dx - 2.6);
+        p.sx = 11.2;
+      } else {
+        p.ex = Math.max(p.ex, p.dx + 2.6);
+        p.sx = 88.8;
+      }
+      const ex = mx(p.ex); const ey = p.ey;
+      const sx = mx(p.sx);
+      svg += `<polyline points="${dx.toFixed(2)},${dy.toFixed(2)} ${ex.toFixed(2)},${ey.toFixed(2)} ${sx.toFixed(2)},${ey.toFixed(2)}" fill="none" stroke="#2563eb" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
+      dotsHtml += `<div style="position:absolute;left:${dx.toFixed(2)}%;top:${dy.toFixed(2)}%;width:4.5px;height:4.5px;margin:-2.25px 0 0 -2.25px;border-radius:50%;background:#1d4ed8;z-index:3;pointer-events:none"></div>`;
+
+      const raw = utfVals[p.idx];
+      const num = parseFloat(raw);
+      const hasVal = Number.isFinite(num) && num > 0;
+      const onScreenLeft = sx < dx;
+      const bLeft = onScreenLeft ? Math.max(0.4, sx - bw - 0.6) : Math.min(99.6 - bw, sx + 0.6);
+      const bTop = ey - bh / 2;
+      const align = onScreenLeft ? 'justify-content:flex-end;padding-right:1px;' : 'justify-content:flex-start;padding-left:1px;';
+      boxesHtml += `<div class="vf-point-box vf-point-utf" style="left:${bLeft.toFixed(2)}%;top:${bTop.toFixed(2)}%;width:${bw}%;height:${bh}%;${align}${getValStyle(raw)}z-index:4" title="UTF Point ${p.idx}: ${hasVal ? num.toFixed(2) : '-'}">${hasVal ? num.toFixed(2) : ''}</div>`;
+
+      if (p.idx === 1) {
+        // Red diamond on Spot 1's contour dot + compact START tag sitting above the leader shelf so it never overlaps the value
+        const tagX = (ex + sx) / 2;
+        const tagY = ey - 1.6;
+        dotsHtml += `<div style="position:absolute;left:${dx.toFixed(2)}%;top:${dy.toFixed(2)}%;width:0;height:0;pointer-events:none;z-index:6"><i style="position:absolute;left:-4.5px;top:-4.5px;width:9px;height:9px;background:#dc2626;transform:rotate(45deg);box-shadow:0 0 0 1.5px #fff"></i></div>`;
+        dotsHtml += `<div class="vf-start-mark" style="position:absolute;left:${tagX.toFixed(2)}%;top:${tagY.toFixed(2)}%;transform:translate(-50%,-50%);pointer-events:none;z-index:6"><span style="display:inline-block;white-space:nowrap;padding:0 3.5px;border-radius:2px;background:#dc2626;color:#fff;font:800 7px/10px sans-serif;letter-spacing:.03em;box-shadow:0 0 0 1px #fff">START</span></div>`;
+      }
+    });
+
+    // 3. Inner points (FTO): projected radially from the matching outer point across the sole wall -> inward normal tick -> inner value
+    const innerSource = baseOuterSamples.slice(0, ftoCount);
+    const innerPts = innerSource.map((p) => {
+      const inx = -p.nx; const iny = -p.ny;
+      // Normalize inward normal in % space (undoing the 1.45 aspect weight) so ray hits inner contour cleanly
+      const rawInx = inx;
+      const rawIny = iny / 1.45;
+      const rLenNorm = Math.hypot(rawInx, rawIny) || 1;
+      const ip = projectToInnerContour(p.x, p.y, rawInx / rLenNorm, rawIny / rLenNorm, SHOE_INNER_RING);
+      const isTopCenter = p.idx === topCenterIdx;
+      const isBotCenter = p.idx === botCenterIdx;
+      const isToeOrHeel = ip.y < 18 || ip.y > 82;
+      const tLen = isToeOrHeel ? 2.4 : 3.0;
+      const bDist = isToeOrHeel ? 5.2 : 7.8;
+      const tx = isTopCenter || isBotCenter ? ip.x : ip.x + inx * tLen;
+      const ty = isTopCenter
+        ? ip.y + 2.8
+        : (isBotCenter ? ip.y - 2.8 : ip.y + (iny * tLen) / 1.35);
+      const bx = isTopCenter || isBotCenter ? ip.x : ip.x + inx * bDist;
+      const ey = isTopCenter
+        ? ip.y + 5.0
+        : (isBotCenter ? ip.y - 5.0 : ip.y + (iny * (isToeOrHeel ? 5.0 : 6.6)) / 1.35);
+      return { idx: p.idx, dx: ip.x, dy: ip.y, tx, ty, bx, ey, leftSide: ip.x < 50, isTopCenter, isBotCenter, isToeOrHeel };
+    });
+    const minInnerGap = ftoCount > 30 ? 2.4 : (ftoCount > 24 ? 2.7 : 3.0);
+    const innerMaxY = botCenterIdx > 0 ? 83.2 : 85.5;
+    const innerMinY = topCenterIdx > 0 ? 16.8 : 14.5;
+    deCrowdY(innerPts.filter((p) => !p.isTopCenter && !p.isBotCenter && p.leftSide), minInnerGap, innerMinY, innerMaxY);
+    deCrowdY(innerPts.filter((p) => !p.isTopCenter && !p.isBotCenter && !p.leftSide), minInnerGap, innerMinY, innerMaxY);
+
+    innerPts.forEach((p) => {
+      const dx = mx(p.dx); const dy = p.dy;
+      const tx = mx(p.tx); const ty = p.ty;
+      let rawBx = p.bx;
+      if (!p.isTopCenter && !p.isBotCenter) {
+        if (p.isToeOrHeel) {
+          // Keep toe/heel inner values inside the white interior so they never overlap the inner contour line
+          rawBx = p.leftSide ? Math.min(44.5, Math.max(38.0, p.bx)) : Math.max(55.5, Math.min(62.0, p.bx));
+        } else {
+          rawBx = p.leftSide ? Math.min(44.2, p.bx) : Math.max(55.8, p.bx);
+        }
+      }
+      const bx = mx(rawBx); const by = p.ey;
+      svg += `<line x1="${dx.toFixed(2)}" y1="${dy.toFixed(2)}" x2="${tx.toFixed(2)}" y2="${ty.toFixed(2)}" stroke="#2563eb" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
+      dotsHtml += `<div style="position:absolute;left:${dx.toFixed(2)}%;top:${dy.toFixed(2)}%;width:4px;height:4px;margin:-2px 0 0 -2px;border-radius:50%;background:#1d4ed8;z-index:3;pointer-events:none"></div>`;
+
+      const raw = ftoVals[p.idx];
+      const num = parseFloat(raw);
+      const hasVal = Number.isFinite(num) && num > 0;
+      const bw = 8.4; const bh = 2.3;
+      const bLeft = bx - bw / 2;
+      const bTop = by - bh / 2;
+      boxesHtml += `<div class="vf-point-box vf-point-fto" style="left:${bLeft.toFixed(2)}%;top:${bTop.toFixed(2)}%;width:${bw}%;height:${bh}%;${getValStyle(raw)}z-index:4" title="FTO Point ${p.idx}: ${hasVal ? num.toFixed(2) : '-'}">${hasVal ? num.toFixed(2) : ''}</div>`;
+    });
+
+    svg += '</svg>';
+    html += svg + dotsHtml + boxesHtml;
+
+    if (Array.isArray(extras) && extras.length) {
+      extras.forEach((e) => {
+        const pos = `left:${e.pctLeft}%; top:${e.pctTop}%; width:${e.pctWidth}%; height:${e.pctHeight}%;`;
+        const txt = `color:${escHtml(e.color || '#111')}; font-size:${Number(e.size) || 12}px; font-weight:${e.bold ? 700 : 400};`;
+        let inner = '';
+        if (e.type === 'text') inner = escHtml(e.text);
+        else if (e.type === 'field') inner = escHtml($('#bf_' + e.field)?.value || '');
+        else if (e.type === 'image' && e.src) inner = `<img src="${BASE_URL}${escHtml(e.src)}" style="max-width:100%;max-height:100%" alt="">`;
+        const bg = e.type === 'line' ? `background:${escHtml(e.color || '#111')};` : '';
+        html += `<div style="position:absolute;display:flex;align-items:center;overflow:hidden;${pos}${txt}${bg}">${inner}</div>`;
+      });
+    }
+
+    return { html, spotCount: Math.max(utfCount, ftoCount, defaultSpots) };
+  }
+
+  // Build the 6-line Center Filler strip HTML with each pulled FiTO value sitting directly on its black horizontal line
+  function buildFillerSlotsHtml(fitoVals, activeSide, lineClass) {
+    let highestFito = 0;
+    for (let i = 1; i <= 13; i++) {
+      if (parseFloat(fitoVals[i]) > 0) highestFito = i;
+    }
+    const slotCount = Math.max(6, highestFito);
+    const getFitoColor = (val) => {
+      const v = evaluateSpotVerdict(parseFloat(val), FITO_STD);
+      if (!v) return 'color:#94a3b8;';
+      if (v === 'FAIL') return 'color:#dc2626;font-weight:800;';
+      if (v === 'TOLERABLE') return 'color:#d97706;font-weight:800;';
+      return 'color:#1d4ed8;font-weight:800;';
+    };
+    let out = '';
+    for (let i = 1; i <= slotCount; i++) {
+      const raw = activeSide ? (fitoVals[i] || '') : '';
+      const num = parseFloat(raw);
+      const hasVal = activeSide && Number.isFinite(num) && num > 0;
+      out += `<div class="vf-diag-slot"><span class="vf-diag-val" style="${hasVal ? getFitoColor(raw) : ''}">${hasVal ? num.toFixed(2) : '&nbsp;'}</span><i class="${lineClass}"></i></div>`;
+    }
+    return out;
+  }
+
   // Possible Cause(s) legend (a)-(k): tick a cause and its phrase is highlighted; the ticked ones are kept in the Possible Cause field of the form
   (function () {
     const inp = $('#bf_PossibleCause');
@@ -3698,171 +4507,38 @@
     const std = parseFloat($('#bf_STD')?.value || '2.5') || 2.5;
     const IMG = BASE_URL + 'assets/images/bonding_sketches/';
 
-    const utfVals = {}; const ftoVals = {};
-    let highest = 0;
+    const utfVals = {}; const ftoVals = {}; const fitoVals = {};
     for (let i = 1; i <= 35; i++) {
       utfVals[i] = $('#bp_UTFpoint' + i)?.value || '';
       ftoVals[i] = $('#bp_FTOpoint' + i)?.value || '';
-      if (parseFloat(utfVals[i]) > 0 || parseFloat(ftoVals[i]) > 0) highest = i;
+      if (i <= 13) fitoVals[i] = $('#bp_FiTO' + i)?.value || '';
     }
 
-    const blank = `<img src="${IMG}blank.png" class="vf-shoe-img" style="left:12%;top:8%;width:76%;height:84%;opacity:.85" alt="Shoe contour">`;
-    let active = '';
-    const configs = await loadSketchConfigs();
-    // Spot count follows the readings saved for this Lab Ref (tbl_dtr_bonding_points: highest spot that holds a value);
-    // with no readings yet it follows the Age Category (Adult 35 / Children 24 / Kids 16 / Toddler 14)
+    const blank = `<img src="${IMG}blank.png" class="vf-shoe-img" style="left:21%;top:8%;width:58%;height:84%;opacity:.9${!isLeft ? ';transform:scaleX(-1)' : ''}" alt="Shoe contour">`;
     const ageKey = ($('#bf_AgeCategory')?.value || 'ADULT').toUpperCase();
-    const spotCount = highest >= 3 ? Math.min(35, highest) : (AGE_SPOT_LIMITS[ageKey] || 35);
-    let numPts = spotCount;
-    if (configs && !configs[numPts]) {
-      const available = [26, 27, 28, 29, 30, 31, 32, 33, 34];
-      numPts = available.reduce((p, c) => Math.abs(c - numPts) < Math.abs(p - numPts) ? c : p, 27);
-    }
-    let cfg = configs ? configs[numPts] : null;
-    let vec = null;
-    if (cfg) {
-      try {
-        const lj = await apiFetch('dtr/layout?slug=bonding&variant=' + encodeURIComponent(numPts));
-        const L = lj && lj.layout;
-        if (L) {
-          cfg = JSON.parse(JSON.stringify(cfg));
-          if (L.image) Object.assign(cfg.image, L.image);
-          ['utf', 'fto'].forEach((k) => {
-            Object.keys(L[k] || {}).forEach((i) => {
-              if (L[k][i].hidden) delete cfg[k][i];
-              else cfg[k][i] = L[k][i];
-            });
-          });
-          if (L.vector || L.start) vec = L;
-          if (L.vector) cfg.image.file = L.imageFile || 'blank.png';
-        }
-      } catch (e) { /* default layout */ }
-    }
+    const defaultSpots = AGE_SPOT_LIMITS[ageKey] || 28;
     if (seq !== formSketchSeq) return;
 
-    // Re-space the spots around the contour so exactly `spotCount` are drawn (needs the vector layout)
-    if (cfg && vec && vec.vector && spotCount !== cfg.pointsCount) {
-      const resample = (k) => {
-        const idx = Object.keys(vec.dots[k] || {}).map(Number).filter((i) => cfg[k][i]).sort((a, b) => a - b);
-        if (idx.length < 3) return null;
-        const pts = idx.map((i) => ({ x: vec.dots[k][i].x, y: vec.dots[k][i].y, i }));
-        const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
-        const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
-        // signed offset of the value box from its dot, along the outward direction
-        let off = 0;
-        pts.forEach((p) => {
-          const b = cfg[k][p.i];
-          const dx = p.x - cx; const dy = p.y - cy; const len = Math.hypot(dx, dy) || 1;
-          off += ((b.pctLeft + b.pctWidth / 2 - p.x) * dx + (b.pctTop + b.pctHeight / 2 - p.y) * dy) / len;
-        });
-        off /= pts.length;
-        const b0 = cfg[k][pts[0].i];
-        const ring = pts.concat([pts[0]]);
-        const seg = []; let total = 0;
-        for (let j = 0; j < ring.length - 1; j++) {
-          const d = Math.hypot(ring[j + 1].x - ring[j].x, ring[j + 1].y - ring[j].y);
-          seg.push(d); total += d;
-        }
-        const boxes = {}; const dots = {};
-        for (let n = 0; n < spotCount; n++) {
-          let s = (n * total) / spotCount; let j = 0;
-          while (j < seg.length - 1 && s > seg[j]) { s -= seg[j]; j++; }
-          const t = seg[j] ? s / seg[j] : 0;
-          const x = ring[j].x + (ring[j + 1].x - ring[j].x) * t;
-          const y = ring[j].y + (ring[j + 1].y - ring[j].y) * t;
-          const dx = x - cx; const dy = y - cy; const len = Math.hypot(dx, dy) || 1;
-          const bx = x + (dx / len) * off; const by = y + (dy / len) * off;
-          boxes[n + 1] = {
-            pctLeft: Math.min(100 - b0.pctWidth, Math.max(0, bx - b0.pctWidth / 2)),
-            pctTop: Math.min(100 - b0.pctHeight, Math.max(0, by - b0.pctHeight / 2)),
-            pctWidth: b0.pctWidth, pctHeight: b0.pctHeight,
-          };
-          dots[n + 1] = { x, y };
-        }
-        return { boxes, dots };
-      };
-      const u = resample('utf'); const f = resample('fto');
-      if (u && f) {
-        cfg.utf = u.boxes; cfg.fto = f.boxes;
-        vec.dots = { utf: u.dots, fto: f.dots };
-        cfg.pointsCount = spotCount;
-      }
-    }
-
-    rotateSpotsToStart(cfg, vec);
-    cfg = rotateBoxesToArrow(cfg, vec);
-    startOnSpotOne(vec);
-
-    const colour = (val) => {
-      const v = evaluateSpotVerdict(parseFloat(val), std);
-      if (!v) return 'color:#94a3b8';
-      if (v === 'FAIL') return 'color:#dc2626;font-weight:800;';
-      if (v === 'TOLERABLE') return 'color:#d97706;font-weight:800;';
-      return 'color:#1d4ed8;font-weight:800;';
-    };
-
-    if (cfg) {
-      const im = cfg.image;
-      active += `<img src="${IMG}${im.file}" class="vf-shoe-img" style="left:${im.pctLeft}%;top:${im.pctTop}%;width:${im.pctWidth}%;height:${im.pctHeight}%" alt="Shoe sketch">`;
-      const box = (cls, c, val, label, i) => {
-        const n = parseFloat(val);
-        const has = Number.isFinite(n) && n > 0;
-        return `<div class="vf-point-box ${cls}" style="left:${c.pctLeft}%;top:${c.pctTop}%;width:${c.pctWidth}%;height:${c.pctHeight}%;${colour(val)}" title="${label} Point ${i}: ${has ? n.toFixed(2) : '-'}">${has ? n.toFixed(2) : ''}</div>`;
-      };
-      for (let i = 1; i <= cfg.pointsCount; i++) {
-        if (cfg.utf[i]) active += box('vf-point-utf', cfg.utf[i], utfVals[i], 'UTF', i);
-        if (cfg.fto[i]) active += box('vf-point-fto', cfg.fto[i], ftoVals[i], 'FTO', i);
-      }
-      // START always marks spot 1: on its dot when the layout has dot positions, otherwise right before its value box
-      const vecDot1 = !!(vec && vec.vector && vec.dots && vec.dots.utf && vec.dots.utf[1]);
-      if (!vecDot1 && cfg.utf[1]) active += startMarkerHtml(cfg.utf[1]);
-      if (vec) {
-        let svg = '<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none">';
-        let dots = '';
-        if (vec.vector) {
-          ['utf', 'fto'].forEach((k) => Object.keys(cfg[k]).forEach((i) => {
-            const b = cfg[k][i]; const d = ((vec.dots || {})[k] || {})[i];
-            if (!d) return;
-            const r = b.pctLeft + b.pctWidth; const cy = b.pctTop + b.pctHeight / 2;
-            const x = d.x < b.pctLeft ? b.pctLeft : d.x > r ? r : b.pctLeft + b.pctWidth / 2;
-            const y = (x === b.pctLeft || x === r) ? cy : (d.y < b.pctTop ? b.pctTop : b.pctTop + b.pctHeight);
-            const col = k === 'utf' ? '#2563eb' : '#7c3aed';
-            svg += `<line x1="${x}" y1="${y}" x2="${d.x}" y2="${d.y}" stroke="${col}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`;
-            dots += `<div style="position:absolute;left:${d.x}%;top:${d.y}%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border-radius:50%;background:${col}"></div>`;
-          }));
-        }
-        if (vec.start && vecDot1) {
-          const st = vec.start;
-          dots += `<div style="position:absolute;left:${st.x}%;top:${st.y}%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:3px;white-space:nowrap;color:#b91c1c;font:800 9px sans-serif"><i style="display:block;width:9px;height:9px;background:#dc2626;transform:rotate(45deg)"></i>${escHtml(st.label || 'START')}</div>`;
-        }
-        active += svg + '</svg>' + dots;
-      }
-    } else {
-      active = '<div style="padding:20px;text-align:center;color:#64748b">Shoe sketch unavailable</div>';
-    }
+    const { html: active } = buildDynamicShoeSketchHtml({
+      isLeft,
+      std,
+      utfVals,
+      ftoVals,
+      defaultSpots,
+      extras: [],
+    });
 
     leftEl.innerHTML = isLeft ? active : blank;
     rightEl.innerHTML = !isLeft ? active : blank;
 
-    // centre strips (Filler to Outsole): the loaded side is highlighted and carries the FiTO readings; the other side stays blank lines
+    // centre strips (Filler to Outsole): 6 horizontal lines in both Left & Right boxes, with pulled FiTO readings sitting directly on each line on the active side
     const lbls = document.querySelectorAll('.vf-diag-lbl');
     const strips = document.querySelectorAll('.vf-diag-strip');
     [lbls, strips].forEach((list) => list.forEach((el, k) => el.classList.toggle('is-active', k === (isLeft ? 0 : 1))));
-    const fitoColour = (val) => {
-      const v = evaluateSpotVerdict(parseFloat(val), FITO_STD);
-      if (!v) return 'color:#94a3b8';
-      return v === 'FAIL' ? 'color:#dc2626;font-weight:800' : (v === 'TOLERABLE' ? 'color:#d97706;font-weight:800' : 'color:#1d4ed8;font-weight:800');
-    };
-    let fitoHtml = ''; let anyFito = false;
-    for (let i = 1; i <= 13; i++) {
-      const raw = $('#bp_FiTO' + i)?.value || '';
-      const n = parseFloat(raw);
-      const has = Number.isFinite(n) && n > 0;
-      if (has) anyFito = true;
-      fitoHtml += `<div class="vf-center-item" style="${fitoColour(raw)}">${has ? n.toFixed(2) : '&nbsp;'}</div>`;
-    }
-    const lines = '<i class="vf-diag-line"></i>'.repeat(6);
-    strips.forEach((el, k) => { el.innerHTML = (k === (isLeft ? 0 : 1) && anyFito) ? fitoHtml : lines; });
+    strips.forEach((el, k) => {
+      const isAct = k === (isLeft ? 0 : 1);
+      el.innerHTML = buildFillerSlotsHtml(fitoVals, isAct, 'vf-diag-line');
+    });
   }
   const openBondingPrintPreview = async () => {
     const bondingTestId = parseInt($('#bf_BondingTestID')?.value || activeBondingPoints?.BondingTestID || 0) || 0;
@@ -3926,42 +4602,6 @@
       }
     }
 
-    // Determine sketch config
-    const configs = await loadSketchConfigs();
-    let numPts = parseInt(activeBondingPoints?.MaxPoints || highestPoint || 27);
-    if (!configs || !configs[numPts]) {
-      const available = [26, 27, 28, 29, 30, 31, 32, 33, 34];
-      numPts = available.reduce((prev, curr) => Math.abs(curr - numPts) < Math.abs(prev - numPts) ? curr : prev, 27);
-    }
-    let cfg = configs ? configs[numPts] : null;
-
-    // Admin-designed layout (Report Designer): moved / hidden points and extra items
-    let layoutExtras = [];
-    let layoutVec = null;
-    if (cfg) {
-      try {
-        const lj = await apiFetch('dtr/layout?slug=bonding&variant=' + encodeURIComponent(numPts));
-        const L = lj && lj.layout;
-        if (L) {
-          cfg = JSON.parse(JSON.stringify(cfg));
-          if (L.image) Object.assign(cfg.image, L.image);
-          ['utf', 'fto'].forEach((k) => {
-            Object.keys(L[k] || {}).forEach((i) => {
-              if (L[k][i].hidden) delete cfg[k][i];
-              else cfg[k][i] = L[k][i];
-            });
-          });
-          layoutExtras = L.extras || [];
-          if (L.vector || L.start) layoutVec = L;
-          if (L.vector) cfg.image.file = L.imageFile || 'blank.png';
-        }
-      } catch (e) { /* default layout */ }
-    }
-
-    rotateSpotsToStart(cfg, layoutVec);
-    cfg = rotateBoxesToArrow(cfg, layoutVec);
-    startOnSpotOne(layoutVec);
-
     // Spot Color logic
     // blue = pass, amber = tolerable, red = fail (same rules as the result)
     const getValColorStyle = (val, threshold, isFiTO = false) => {
@@ -3972,122 +4612,27 @@
       return 'color:#1d4ed8;font-weight:800;';
     };
 
-    // Active shoe overlay
-    let activeShoePointsHtml = '';
-    if (cfg) {
-      activeShoePointsHtml += `
-        <img src="${BASE_URL}assets/images/bonding_sketches/${cfg.image.file}" 
-             class="vf-shoe-img" 
-             style="left:${cfg.image.pctLeft}%; top:${cfg.image.pctTop}%; width:${cfg.image.pctWidth}%; height:${cfg.image.pctHeight}%;" 
-             alt="${side} Shoe Sketch">
-      `;
-      for (let i = 1; i <= cfg.pointsCount; i++) {
-        const uCoord = cfg.utf[i];
-        if (uCoord) {
-          const val = utfVals[i];
-          const num = parseFloat(val);
-          const hasVal = Number.isFinite(num) && num > 0;
-          const colStyle = getValColorStyle(val, std, false);
-          activeShoePointsHtml += `
-            <div class="vf-point-box vf-point-utf" 
-                 style="left:${uCoord.pctLeft}%; top:${uCoord.pctTop}%; width:${uCoord.pctWidth}%; height:${uCoord.pctHeight}%; ${colStyle}" 
-                 title="UTF Point ${i}: ${hasVal ? num.toFixed(2) : '-'}">
-              ${hasVal ? num.toFixed(2) : ''}
-            </div>
-          `;
-        }
-        const fCoord = cfg.fto[i];
-        if (fCoord) {
-          const val = ftoVals[i];
-          const num = parseFloat(val);
-          const hasVal = Number.isFinite(num) && num > 0;
-          const colStyle = getValColorStyle(val, std, false);
-          activeShoePointsHtml += `
-            <div class="vf-point-box vf-point-fto" 
-                 style="left:${fCoord.pctLeft}%; top:${fCoord.pctTop}%; width:${fCoord.pctWidth}%; height:${fCoord.pctHeight}%; ${colStyle}" 
-                 title="FTO Point ${i}: ${hasVal ? num.toFixed(2) : '-'}">
-              ${hasVal ? num.toFixed(2) : ''}
-            </div>
-          `;
-        }
-      }
-      // START always marks spot 1: on its dot with a vector layout, otherwise right before its value box
-      const vecDot1 = !!(layoutVec && layoutVec.vector && layoutVec.dots && layoutVec.dots.utf && layoutVec.dots.utf[1]);
-      if (!vecDot1 && cfg.utf[1]) activeShoePointsHtml += startMarkerHtml(cfg.utf[1]);
-      if (layoutVec) {
-        let svg = '<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none">';
-        let dots = '';
-        if (layoutVec.vector) {
-          ['utf', 'fto'].forEach((k) => Object.keys(cfg[k]).forEach((i) => {
-            const b = cfg[k][i]; const d = ((layoutVec.dots || {})[k] || {})[i];
-            if (!d) return;
-            const r = b.pctLeft + b.pctWidth; const cy = b.pctTop + b.pctHeight / 2;
-            const x = d.x < b.pctLeft ? b.pctLeft : d.x > r ? r : b.pctLeft + b.pctWidth / 2;
-            const y = (x === b.pctLeft || x === r) ? cy : (d.y < b.pctTop ? b.pctTop : b.pctTop + b.pctHeight);
-            const col = k === 'utf' ? '#2563eb' : '#7c3aed';
-            svg += `<line x1="${x}" y1="${y}" x2="${d.x}" y2="${d.y}" stroke="${col}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`;
-            dots += `<div style="position:absolute;left:${d.x}%;top:${d.y}%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border-radius:50%;background:${col}"></div>`;
-          }));
-        }
-        if (layoutVec.start && vecDot1) {
-          const st = layoutVec.start;
-          dots += `<div style="position:absolute;left:${st.x}%;top:${st.y}%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:3px;white-space:nowrap;color:#b91c1c;font:800 9px sans-serif"><i style="display:block;width:9px;height:9px;background:#dc2626;transform:rotate(45deg)"></i>${escHtml(st.label || 'START')}</div>`;
-        }
-        activeShoePointsHtml += svg + '</svg>' + dots;
-      }
-      layoutExtras.forEach((e) => {
-        const pos = `left:${e.pctLeft}%; top:${e.pctTop}%; width:${e.pctWidth}%; height:${e.pctHeight}%;`;
-        const txt = `color:${escHtml(e.color || '#111')}; font-size:${Number(e.size) || 12}px; font-weight:${e.bold ? 700 : 400};`;
-        let inner = '';
-        if (e.type === 'text') inner = escHtml(e.text);
-        else if (e.type === 'field') inner = escHtml($('#bf_' + e.field)?.value || '');
-        else if (e.type === 'image' && e.src) inner = `<img src="${BASE_URL}${escHtml(e.src)}" style="max-width:100%;max-height:100%" alt="">`;
-        else if (e.type === 'chart') {
-          let max = 0;
-          for (let i = 1; i <= cfg.pointsCount; i++) max = Math.max(max, parseFloat(utfVals[i]) || 0);
-          let bars = '';
-          for (let i = 1; i <= cfg.pointsCount; i++) {
-            const v = parseFloat(utfVals[i]) || 0;
-            bars += `<i style="flex:1;display:block;min-height:1px;height:${max ? (v / max) * 100 : 0}%;background:${v < 2 ? '#dc2626' : v < 3 ? '#d97706' : '#1d4ed8'}"></i>`;
-          }
-          inner = `<div style="display:flex;align-items:flex-end;gap:1px;width:100%;height:100%">${bars}</div>`;
-        }
-        const bg = e.type === 'line' ? `background:${escHtml(e.color || '#111')};` : '';
-        activeShoePointsHtml += `<div style="position:absolute;display:flex;align-items:center;overflow:hidden;${pos}${txt}${bg}">${inner}</div>`;
-      });
-    } else {
-      activeShoePointsHtml = `<div style="padding:20px;text-align:center;color:#64748b">Shoe sketch unavailable</div>`;
-    }
+    const defaultSpots = AGE_SPOT_LIMITS[age] || 28;
+    const { html: activeShoePointsHtml, spotCount: previewSpotCount } = buildDynamicShoeSketchHtml({
+      isLeft,
+      std,
+      utfVals,
+      ftoVals,
+      defaultSpots,
+      extras: [],
+    });
 
     const blankShoeHtml = `
       <img src="${BASE_URL}assets/images/bonding_sketches/blank.png" 
            class="vf-shoe-img" 
-           style="left:12%; top:8%; width:76%; height:84%; opacity:0.85;" 
+           style="left:21%; top:8%; width:58%; height:84%; opacity:0.9;${!isLeft ? 'transform:scaleX(-1);' : ''}" 
            alt="Unmeasured Shoe Contour">
     `;
 
-    // Center FiTO column items
-    let fitoItemsHtml = '';
-    for (let i = 1; i <= 13; i++) {
-      const val = fitoVals[i];
-      const num = parseFloat(val);
-      const hasVal = Number.isFinite(num) && num > 0;
-      const colStyle = getValColorStyle(val, 1.0, true);
-      fitoItemsHtml += `
-        <div class="vf-center-item" style="${colStyle}">
-          ${hasVal ? num.toFixed(2) : '&nbsp;'}
-        </div>
-      `;
-    }
-
-    // Empty write-in lines (black) for a center box that has no FiTO readings
-    const centerLinesHtml = '<div class="vf-center-line"></div>'.repeat(6);
-    const anyFito = Array.from({ length: 13 }, (_, k) => parseFloat(fitoVals[k + 1])).some((n) => Number.isFinite(n) && n > 0);
-
     const leftShoeCardHtml = isLeft ? activeShoePointsHtml : blankShoeHtml;
     const rightShoeCardHtml = !isLeft ? activeShoePointsHtml : blankShoeHtml;
-    const leftCenterHtml = isLeft && anyFito ? fitoItemsHtml : centerLinesHtml;
-    const rightCenterHtml = !isLeft && anyFito ? fitoItemsHtml : centerLinesHtml;
+    const leftCenterHtml = buildFillerSlotsHtml(fitoVals, isLeft, 'vf-center-line');
+    const rightCenterHtml = buildFillerSlotsHtml(fitoVals, !isLeft, 'vf-center-line');
 
     // Status evaluation helpers
     const getEvalStatus = (res) => {
@@ -4103,7 +4648,7 @@
 
     // Build raw spots rows for collapsible table
     let rawSpotRows = '';
-    for (let i = 1; i <= (cfg ? cfg.pointsCount : 27); i++) {
+    for (let i = 1; i <= previewSpotCount; i++) {
       const uVal = utfVals[i] ? parseFloat(utfVals[i]).toFixed(2) : '-';
       const fVal = ftoVals[i] ? parseFloat(ftoVals[i]).toFixed(2) : '-';
       const fiVal = i <= 13 && fitoVals[i] ? parseFloat(fitoVals[i]).toFixed(2) : '-';
@@ -4321,7 +4866,7 @@
         <!-- Optional Collapsible Data Table -->
         <details class="no-print" style="margin-top:8px;font-size:11px;border:1px solid #cbd5e1;border-radius:4px;padding:6px 10px;background:#f8fafc">
           <summary style="cursor:pointer;font-weight:700;color:#334155">
-            <svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg> View Tabular Spot Values (${cfg ? cfg.pointsCount : 27} Points)
+            <svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg> View Tabular Spot Values (${previewSpotCount || 27} Points)
           </summary>
           <table class="dtr-sheet-results-table" style="margin-top:8px;margin-bottom:0">
             <thead>
@@ -4402,13 +4947,42 @@
     }).observe(a4Box, { childList: true });
   }
 
-  $('#btn-dtr-print-preview')?.addEventListener('click', openMaterialPrintPreview);
-  $('#btn-bond-print-preview')?.addEventListener('click', () => (isPull() ? openPullPrintPreview() : openBondingPrintPreview()));
+  // ---- page 2 of the Shoe Bonding (U60) report: the report picture of the Lab Ref (the same picture as its Lab Tracker thumbnail)
+  let page2Src = '';     // data URL of the picture, '' when there is none
+  let page2Seq = 0;
+  const page2Cap = () => $('#dtr-print-page2-cap')?.textContent || '';
+  const hidePage2 = () => { page2Seq++; page2Src = ''; $('#dtr-print-page2')?.classList.add('hidden'); const im = $('#dtr-print-page2-img'); if (im) im.removeAttribute('src'); };
+  const loadPage2 = async (labRef) => {
+    hidePage2();
+    const ref = String(labRef || '').trim();
+    if (!/^[A-Za-z0-9_-]{3,60}$/.test(ref)) return;
+    const seq = page2Seq;
+    try {
+      const r = await fetch(`${BASE_URL}dtr/bonding-image?tab=bonding&lab_ref=${encodeURIComponent(ref)}&t=${Date.now()}`, { credentials: 'same-origin' });
+      if (!r.ok) return;
+      const blob = await r.blob();
+      if (!/^image\//.test(blob.type) || !blob.size) return;
+      const url = await new Promise((ok) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = () => ok(''); fr.readAsDataURL(blob); });
+      if (!url || seq !== page2Seq || $('#dtr-print-modal-backdrop')?.classList.contains('hidden')) return;   // another report was opened, or the preview closed
+      page2Src = url;
+      $('#dtr-print-page2-img').src = url;
+      $('#dtr-print-page2-cap').textContent = `Report picture - ${ref}`;
+      $('#dtr-print-page2').classList.remove('hidden');
+    } catch (e) { /* no picture: the report stays one page */ }
+  };
+  $('#btn-dtr-print-preview')?.addEventListener('click', () => { hidePage2(); openMaterialPrintPreview(); });
+  $('#btn-bond-print-preview')?.addEventListener('click', async () => {
+    hidePage2();
+    await (isPull() ? openPullPrintPreview() : openBondingPrintPreview());
+    loadPage2($('#bf_LabRefNo')?.value);
+  });
   $('#btn-dtr-close-print-modal')?.addEventListener('click', () => {
     $('#dtr-print-modal-backdrop')?.classList.add('hidden');
+    hidePage2();
   });
   $('#btn-dtr-cancel-print')?.addEventListener('click', () => {
     $('#dtr-print-modal-backdrop')?.classList.add('hidden');
+    hidePage2();
   });
   $('#btn-dtr-download-pdf')?.addEventListener('click', async () => {
     const btn = $('#btn-dtr-download-pdf');
@@ -4420,7 +4994,7 @@
       const res = await fetch(BASE_URL + 'dtr/sheet-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name="X-CSRF-TOKEN"]')?.content || '' },
-        body: JSON.stringify({ scale: fitOnePageScale(src.innerHTML), html: src.innerHTML, name: ($('#dtr-print-modal-title')?.textContent || 'Report').replace(/[^A-Za-z0-9._ -]+/g, '_') }),
+        body: JSON.stringify({ scale: fitOnePageScale(src.innerHTML), html: src.innerHTML, page2_img: page2Src, page2_cap: page2Src ? page2Cap() : '', name: ($('#dtr-print-modal-title')?.textContent || 'Report').replace(/[^A-Za-z0-9._ -]+/g, '_') }),
       });
       if (!res.ok) throw new Error((await res.text()).slice(0, 200) || 'PDF failed');
       const blob = await res.blob();
@@ -4438,8 +5012,18 @@
     if (!src) { window.print(); return; }
     const root = document.createElement('div');
     root.id = 'dtr-print-root';
-    root.innerHTML = src.innerHTML;
-    root.style.zoom = String(fitOnePageScale(src.innerHTML));
+    const p1 = document.createElement('div');
+    p1.innerHTML = src.innerHTML;
+    p1.style.zoom = String(fitOnePageScale(src.innerHTML));
+    root.appendChild(p1);
+    if (page2Src) {   // the report picture on its own second page
+      const p2 = document.createElement('div');
+      p2.className = 'dtr-print-p2';
+      p2.innerHTML = '<div class="dtr-page2-cap"></div><img alt="">';
+      p2.querySelector('.dtr-page2-cap').textContent = page2Cap();
+      p2.querySelector('img').src = page2Src;
+      root.appendChild(p2);
+    }
     document.body.appendChild(root);
     document.body.classList.add('dtr-printing');
     const done = () => {
@@ -5546,21 +6130,22 @@
   // SEND REPORT DROPDOWN & SYNOLOGY / EMAIL MODAL CONTROLLER
   // =========================================================================
   (() => {
-    const sendWrap = $('.dtr-send-dropdown-wrap');
-    const sendBtn = $('#btn-bond-send-report');
+    // one dropdown in each toolbar (Bonding, Whole Shoe, Material); they share the Synology / e-mail dialogs
+    const sendWraps = $$('.dtr-send-dropdown-wrap');
+    const closeSendMenus = () => sendWraps.forEach((w) => w.classList.remove('is-open'));
     const synoModal = $('#dtr-synology-modal-backdrop');
     const emailModal = $('#dtr-email-modal-backdrop');
 
     // Toggle dropdown on click
-    sendBtn?.addEventListener('click', (e) => {
+    sendWraps.forEach((w) => w.querySelector('.js-send-toggle')?.addEventListener('click', (e) => {
       e.stopPropagation();
-      sendWrap?.classList.toggle('is-open');
-    });
+      const open = !w.classList.contains('is-open');
+      closeSendMenus();
+      w.classList.toggle('is-open', open);
+    }));
 
     document.addEventListener('click', (e) => {
-      if (!sendWrap?.contains(e.target)) {
-        sendWrap?.classList.remove('is-open');
-      }
+      if (!e.target.closest('.dtr-send-dropdown-wrap')) closeSendMenus();
     });
 
     // Attachment state for Synology
@@ -5571,30 +6156,31 @@
       fileSize: ''
     };
 
-    // the second image: a photo (uploaded, or taken with the phone through the QR code). It never replaces the report graph card.
-    let synoPhoto = { file: null, base64: null, fileName: '', fileSize: '' };
+    // photos (uploaded, or taken with the phone through the QR code): up to 10. They never replace the report graph card.
+    const MAX_PHOTOS = 10;
+    let synoPhotos = [];   // [{file, base64, fileName, fileSize}]
+    const photoSrc = (p) => p.base64 || URL.createObjectURL(p.file);
+    const photoCard = (p, i) => `<div class="syno-preview-card"><img class="syno-preview-thumb" tabindex="0" role="button" title="Click to enlarge" src="${photoSrc(p)}" alt="Photo ${i + 1}: click to enlarge">
+        <div class="syno-preview-meta"><span class="syno-preview-kind">Photo ${i + 1} of ${synoPhotos.length} (phone or upload)</span><span class="syno-preview-name">${escHtml(p.fileName || '')}</span><span class="syno-preview-size">${escHtml(p.fileSize || '')}</span>
+        <button type="button" class="syno-remove-attach" data-rmphoto="${i}">&times; Remove this image</button></div></div>`;
     const updatePhotoPreview = () => {
-      const wrap = $('#syno-photo-wrap'); if (!wrap) return;
-      const has = !!(synoPhoto.file || synoPhoto.base64);
-      wrap.classList.toggle('hidden', !has);
-      $('#syno-photo-img').src = has ? (synoPhoto.base64 || URL.createObjectURL(synoPhoto.file)) : '';
-      $('#syno-photo-name').textContent = has ? (synoPhoto.fileName || 'photo.jpg') : '';
-      $('#syno-photo-size').textContent = has ? (synoPhoto.fileSize || '') : '';
+      const list = $('#syno-photo-list');
+      if (list) list.innerHTML = synoPhotos.map(photoCard).join('');
       renderEmailAttach();
     };
-    // the e-mail dialog lists the same two images (each can be removed there too)
+    // the e-mail dialog lists the same images (each can be removed there too)
     const renderEmailAttach = () => {
       const box = $('#email-attach-list'); if (!box) return;
-      const item = (kind, att, rm) => (att.file || att.base64) ? `<div class="syno-preview-card"><img class="syno-preview-thumb" tabindex="0" role="button" title="Click to enlarge" src="${att.base64 || URL.createObjectURL(att.file)}" alt="Picture: click to enlarge">
-        <div class="syno-preview-meta"><span class="syno-preview-kind">${kind}</span><span class="syno-preview-name">${escHtml(att.fileName || '')}</span><span class="syno-preview-size">${escHtml(att.fileSize || '')}</span>
-        <button type="button" class="syno-remove-attach" data-rm="${rm}">&times; Remove this image</button></div></div>` : '';
-      box.innerHTML = item('Image 1: report graph card', synoAttachment, 'card') + item('Image 2: photo (phone or upload)', synoPhoto, 'photo');
+      const card = (synoAttachment.file || synoAttachment.base64) ? `<div class="syno-preview-card"><img class="syno-preview-thumb" tabindex="0" role="button" title="Click to enlarge" src="${synoAttachment.base64 || URL.createObjectURL(synoAttachment.file)}" alt="Picture: click to enlarge">
+        <div class="syno-preview-meta"><span class="syno-preview-kind">Image 1: report graph card</span><span class="syno-preview-name">${escHtml(synoAttachment.fileName || '')}</span><span class="syno-preview-size">${escHtml(synoAttachment.fileSize || '')}</span>
+        <button type="button" class="syno-remove-attach" data-rm="card">&times; Remove this image</button></div></div>` : '';
+      box.innerHTML = card + synoPhotos.map(photoCard).join('');
       const sum = $('#email-attach-summary'); if (sum) sum.textContent = attachSummary();
     };
     let photoLab = '';   // the Lab Ref the photo belongs to: a photo of one report is not offered on another
-    const keepPhotoFor = (lab) => { if (photoLab !== lab) { synoPhoto = { file: null, base64: null, fileName: '', fileSize: '' }; photoLab = lab; } };
+    const keepPhotoFor = (lab) => { if (photoLab !== lab) { synoPhotos = []; photoLab = lab; } };
     const attachSummary = () => {
-      const n = [synoAttachment.fileName ? 'report graph card' : '', synoPhoto.fileName ? 'photo' : ''].filter(Boolean);
+      const n = [synoAttachment.fileName ? 'report graph card' : '', synoPhotos.length ? `${synoPhotos.length} photo${synoPhotos.length > 1 ? 's' : ''} (max ${MAX_PHOTOS})` : ''].filter(Boolean);
       return n.length ? `Attachments ready: ${n.join(' + ')}` : 'No image attachment selected.';
     };
     // data URL / File -> a File the server can take as an upload
@@ -5603,6 +6189,24 @@
       if (!att.base64) return null;
       const b = await (await fetch(att.base64)).blob();
       return new File([b], att.fileName || fallbackName, { type: b.type || 'image/png' });
+    };
+
+    // the picture shown in the Lab Tracker thumbnail of this Lab Ref is the default image 1 (the generated snapshot only when there is none)
+    const useTrackerPicture = async (labRef) => {
+      if (!labRef) return;
+      try {
+        const r = await fetch(`${BASE_URL}dtr/bonding-image?tab=${{ wholeshoe: 'shoes', material: 'containers' }[reportKind()] || 'bonding'}&lab_ref=${encodeURIComponent(labRef)}&t=${Date.now()}`, { credentials: 'same-origin' });
+        if (!r.ok) return;
+        const blob = await r.blob();
+        if (!/^image\//.test(blob.type) || !blob.size) return;
+        if (!synoAttachment.auto || synoAttachment.lab !== labRef) return;   // the user chose another image meanwhile
+        const ext = /jpe?g/.test(blob.type) ? 'jpg' : 'png';
+        const file = new File([blob], `${labRef}.${ext}`, { type: blob.type });
+        const base64 = await new Promise((ok) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = () => ok(null); fr.readAsDataURL(file); });
+        if (!base64 || !synoAttachment.auto || synoAttachment.lab !== labRef) return;
+        synoAttachment = { file, base64, fileName: file.name, fileSize: (file.size / 1024).toFixed(1) + ' KB (Lab Tracker picture)', auto: false, lab: labRef };
+        updateSynoPreview();
+      } catch (e) { /* keep the generated snapshot */ }
     };
 
     const updateSynoPreview = () => {
@@ -5628,7 +6232,39 @@
     };
 
     // Extract current bonding report details
+    // which report is open: the toolbar that is showing decides (Whole Shoe / Material / Bonding)
+    const reportKind = () => {
+      if ($('[data-dtr-for="wholeshoe"]:not([hidden])')) return 'wholeshoe';
+      if ($('[data-dtr-for="material"]:not([hidden])')) return 'material';
+      return 'bonding';
+    };
+    window.dtrReportLabRef = () => {
+      const k = reportKind();
+      return (k === 'wholeshoe' ? $('#ws-labref')?.value : k === 'material' ? $('#mf_LabRefNo')?.value : $('#bf_LabRefNo')?.value || '').trim();
+    };
+    const getOtherContext = (kind) => {
+      const v = (sel) => ($(sel)?.value || '').trim();
+      let res = 'PASS';
+      let title; let labRef; let style; let color; let prodDate; let testDate; let tech; let cement = ''; let cause = '';
+      if (kind === 'wholeshoe') {
+        title = 'Whole Shoe Test'; labRef = v('#ws-labref'); style = v('#ws-style'); color = v('#ws-color');
+        prodDate = v('#ws-po'); testDate = v('#ws-tested'); tech = v('#ws-tech'); cause = v('#ws-comments');
+        const chips = $$('#ws-sections .wsf-pr').map((c) => c.textContent.trim().toUpperCase());
+        res = chips.some((c) => c.startsWith('FAIL')) ? 'FAIL' : (chips.some((c) => c.startsWith('TOL')) ? 'TOLERABLE' : (chips.length && chips.every((c) => c.startsWith('PASS')) ? 'PASS' : (chips.some((c) => c.startsWith('PASS')) ? 'PASS' : 'PENDING')));
+      } else {
+        title = ($('#mf_MaterialType')?.value || '').trim() || 'Material Test'; labRef = v('#mf_LabRefNo'); style = v('#mf_ModelNoStyle') || v('#mf_MaterialDescription'); color = v('#mf_Color');
+        prodDate = v('#mf_ReceivedDate'); testDate = v('#mf_TestedDate'); tech = v('#mf_TestedBy'); cement = v('#mf_SupplierFactory'); cause = v('#mf_Remarks');
+        const r = v('#mf_Remarks').toUpperCase();
+        res = r.startsWith('FAIL') ? 'FAIL' : (r.startsWith('TOL') ? 'TOLERABLE' : (r ? 'PASS' : 'PENDING'));
+        cause = '';
+      }
+      const lm = labRef.match(/\d{8}[A-Z]{2}([A-Z]\d+)/i) || labRef.match(/([A-Z]\d+)/i);
+      const line = lm ? lm[1].toUpperCase() : '';
+      return { kind, title, labRef, style, color, prodDate, testDate, res, cement, cause, tech, checkedBy: '', line, articleTitle: title };
+    };
     const getBondingContext = () => {
+      const kind = reportKind();
+      if (kind !== 'bonding') return getOtherContext(kind);
       const labRef = ($('#bf_LabRefNo')?.value || '').trim();
       const style = ($('#bf_ModelStyle')?.value || '').trim() || 'UA CLASSIC SLIP-ON';
       const color = ($('#bf_Color')?.value || '').trim() || '';
@@ -5643,7 +6279,7 @@
       // Line / Bldg extraction from LabRef (e.g. DTP20261031FAA5-R -> A5 or B3)
       let line = 'A1';
       let articleTitle = 'First Article';
-      const lm = labRef.match(/([A-Z]\d+)/i);
+      const lm = labRef.match(/\d{8}[A-Z]{2}([A-Z]\d+)/i) || labRef.match(/([A-Z]\d+)/i);
       if (lm) {
         line = lm[1].toUpperCase();
       }
@@ -5654,6 +6290,8 @@
       }
 
       return {
+        kind: 'bonding',
+        title: 'Whole Shoe Bonding Test',
         labRef,
         style,
         color,
@@ -5671,6 +6309,9 @@
 
     // Message Templates
     const buildMessage = (templateKey, ctx) => {
+      if (ctx.kind && ctx.kind !== 'bonding') {
+        return `${ctx.res} - ${ctx.title}\nLab Ref: ${ctx.labRef}\n${ctx.style}${ctx.color ? ' / ' + ctx.color : ''}${ctx.testDate ? '\nTested Date: ' + ctx.testDate : ''}${ctx.tech ? '\nTested by: ' + ctx.tech : ''}`;
+      }
       switch (templateKey) {
         case 'first-article':
           return `Hello everyone, please see the result for ${ctx.articleTitle}\n\n${ctx.res}  ${ctx.style}${ctx.color ? ' ' + ctx.color : ''}`;
@@ -5691,7 +6332,32 @@
     };
 
     // Canvas Snapshot Generator for Bonding Test Result Card (matching media_1794041382622_6ebb5244.png)
+    // Whole Shoe / Material: a plain result card (header, details, result stamp)
+    const generateSimpleCardImage = (ctx) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 820; canvas.height = 340;
+      const g = canvas.getContext('2d');
+      g.fillStyle = '#ffffff'; g.fillRect(0, 0, 820, 340);
+      g.fillStyle = '#111827'; g.textAlign = 'center';
+      g.font = 'bold 22px Arial, sans-serif'; g.fillText('VANS', 410, 34);
+      g.font = 'bold 18px Arial, sans-serif'; g.fillText(ctx.title + ' Result', 410, 60);
+      g.textAlign = 'left';
+      const rows = [['Lab Ref No', ctx.labRef], ['Style / Color', [ctx.style, ctx.color].filter(Boolean).join(' / ')], ['Date', ctx.testDate], ['Tested by', ctx.tech]];
+      g.strokeStyle = '#d1d5db'; g.strokeRect(30, 80, 760, rows.length * 34 + 8);
+      rows.forEach((r, i) => {
+        g.fillStyle = '#374151'; g.font = 'bold 13px Arial, sans-serif'; g.fillText(r[0], 44, 106 + i * 34);
+        g.fillStyle = '#111827'; g.font = '13px Arial, sans-serif'; g.fillText(String(r[1] || '-').slice(0, 70), 190, 106 + i * 34);
+      });
+      const col = ctx.res === 'PASS' ? '#16a34a' : (ctx.res === 'TOLERABLE' ? '#2563eb' : (ctx.res === 'FAIL' ? '#dc2626' : '#6b7280'));
+      g.save(); g.translate(690, 290); g.rotate(-0.08);
+      g.strokeStyle = col; g.lineWidth = 2.5; g.strokeRect(-65, -22, 130, 44);
+      g.fillStyle = col; g.textAlign = 'center'; g.font = 'bold 16px Arial, sans-serif'; g.fillText(ctx.res, 0, -2);
+      g.font = 'bold 9px Arial, sans-serif'; g.fillText('LABORATORY TESTED', 0, 13);
+      g.restore();
+      return canvas.toDataURL('image/png');
+    };
     const generateBondingCardImage = (ctx) => {
+      if (ctx.kind && ctx.kind !== 'bonding') return generateSimpleCardImage(ctx);
       const canvas = document.createElement('canvas');
       canvas.width = 820;
       canvas.height = 540;
@@ -5881,9 +6547,10 @@
     };
 
     // Open Synology Modal
-    $('#btn-open-synology-modal')?.addEventListener('click', () => {
-      sendWrap?.classList.remove('is-open');
+    $$('.js-open-synology').forEach((b) => b.addEventListener('click', () => {
+      closeSendMenus();
       const ctx = getBondingContext();
+      if (!ctx.labRef) { (window.nxToast || showToast)('Open a report first: the Lab Ref No is empty.', 'warning'); return; }
 
       // Reset / Init attachment
       const snapshotBase64 = generateBondingCardImage(ctx);
@@ -5895,15 +6562,18 @@
         file: null,
         base64: snapshotBase64,
         fileName: filename,
-        fileSize: '~115 KB (Generated Snapshot)'
+        fileSize: '~115 KB (Generated Snapshot)',
+        auto: true,
+        lab: ctx.labRef
       };
       keepPhotoFor(ctx.labRef);
       updateSynoPreview();
       updatePhotoPreview();
+      useTrackerPicture(ctx.labRef);
 
       // Pre-select template
-      let defaultTpl = 'first-article';
-      if (ctx.res === 'FAIL') {
+      let defaultTpl = ctx.kind === 'bonding' ? 'first-article' : 'custom';
+      if (ctx.res === 'FAIL' && ctx.kind === 'bonding') {
         defaultTpl = 'failure-alert';
       }
       $$('.syno-tpl-pill').forEach((btn) => {
@@ -5918,7 +6588,7 @@
       const st = $('#syno-status-text');
       if (st) st.textContent = 'Ready to send';
       synoModal?.classList.remove('hidden');
-    });
+    }));
 
     // Template pills click
     $$('.syno-tpl-pill').forEach((btn) => {
@@ -5964,26 +6634,31 @@
       });
     });
 
-    // File upload handler
-    const setSynoFile = (file) => {
-      if (!file) return;
+    // File upload handler: adds to the list (never replaces it), up to 10
+    const addPhoto = (file) => new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (re) => {
-        photoLab = ($('#bf_LabRefNo')?.value || '').trim();
-        synoPhoto = {
-          file: file,
-          base64: re.target.result,
-          fileName: file.name,
-          fileSize: (file.size / 1024).toFixed(1) + ' KB'
-        };
-        updatePhotoPreview();
+        synoPhotos.push({ file, base64: re.target.result, fileName: file.name, fileSize: (file.size / 1024).toFixed(1) + ' KB' });
+        resolve(true);
       };
+      reader.onerror = () => resolve(false);
       reader.readAsDataURL(file);
+    });
+    const addPhotos = async (files) => {
+      const list = Array.from(files || []).filter((f) => f && /^image\//.test(f.type || 'image/'));
+      if (!list.length) return;
+      photoLab = window.dtrReportLabRef();
+      const room = MAX_PHOTOS - synoPhotos.length;
+      if (room <= 0) { if (window.nxToast) nxToast(`You can attach up to ${MAX_PHOTOS} photos. Remove one to add another.`, 'warning'); return; }
+      if (list.length > room && window.nxToast) nxToast(`Only ${room} more photo${room > 1 ? 's' : ''} fit (max ${MAX_PHOTOS}). The rest were skipped.`, 'warning');
+      for (const f of list.slice(0, room)) await addPhoto(f);
+      updatePhotoPreview();
     };
-    $('#syno-file-upload')?.addEventListener('change', (e) => setSynoFile(e.target.files?.[0]));
-    $('#email-file-upload')?.addEventListener('change', (e) => setSynoFile(e.target.files?.[0]));
-    // a picture taken with the phone camera link (dtr-photo.js) is attached like an uploaded file, to the Synology message and the e-mail
-    document.addEventListener('syno:attach', (e) => setSynoFile(e.detail && e.detail.file));
+    const onPick = (e) => { addPhotos(e.target.files); e.target.value = ''; };
+    $('#syno-file-upload')?.addEventListener('change', onPick);
+    $('#email-file-upload')?.addEventListener('change', onPick);
+    // a picture taken with the phone camera link (dtr-photo-attach.js) is added like an uploaded file, to the Synology message and the e-mail
+    document.addEventListener('syno:attach', (e) => addPhotos(e.detail && e.detail.file ? [e.detail.file] : []));
 
     // Capture card snapshot button
     $('#btn-syno-capture-card')?.addEventListener('click', () => {
@@ -6003,12 +6678,12 @@
       synoAttachment = { file: null, base64: null, fileName: '', fileSize: '' };
       updateSynoPreview();
     });
-    $('#btn-syno-remove-photo')?.addEventListener('click', () => {
-      synoPhoto = { file: null, base64: null, fileName: '', fileSize: '' };
-      const fileInp = $('#syno-file-upload');
-      if (fileInp) fileInp.value = '';
+    const removePhoto = (e) => {
+      const b = e.target.closest('[data-rmphoto]'); if (!b) return;
+      synoPhotos.splice(Number(b.dataset.rmphoto), 1);
       updatePhotoPreview();
-    });
+    };
+    $('#syno-photo-list')?.addEventListener('click', removePhoto);
 
     // Close Synology Modal
     $('#btn-close-syno-modal')?.addEventListener('click', () => synoModal?.classList.add('hidden'));
@@ -6032,30 +6707,32 @@
         if (statusEl) statusEl.textContent = 'Contacting Synology Chat Webhook...';
 
         const csrfToken = document.querySelector('meta[name="X-CSRF-TOKEN"]')?.content || '';
-        // Synology Chat takes one picture per message: the text goes with the report graph card, and the photo follows as its own message
+        // Synology Chat takes one picture per message: the images go first (report picture, then the photos) and the message text goes with the LAST image
         const post = async (body) => {
           const res = await fetch(BASE_URL + 'dtr/send-synology', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken }, body });
           const json = await res.json();
           if (!res.ok || !json.ok) throw new Error(json.error || 'Failed to dispatch message to Synology Chat.');
         };
         const hasCard = !!(synoAttachment.file || synoAttachment.base64);
-        const hasPhoto = !!(synoPhoto.file || synoPhoto.base64);
-        const f1 = new FormData();
-        f1.append('text', text);
-        if (hasCard) {
-          if (synoAttachment.file) f1.append('image', synoAttachment.file);
-          else { f1.append('image_base64', synoAttachment.base64); f1.append('file_name', synoAttachment.fileName || 'Bonding_Report.png'); }
-        } else if (hasPhoto) {   // no graph card: the photo goes with the text
-          f1.append('image', await toFile(synoPhoto, 'photo.jpg'));
+        const imgs = [];
+        if (hasCard) imgs.push({ card: true });
+        synoPhotos.slice(0, MAX_PHOTOS).forEach((p, i) => imgs.push({ photo: p, n: i + 1 }));
+        const ctx2 = getBondingContext();
+        if (!imgs.length) {   // no image at all: the text alone
+          const f0 = new FormData(); f0.append('text', text); await post(f0);
         }
-        await post(f1);
-        if (hasCard && hasPhoto) {
-          if (statusEl) statusEl.textContent = 'Sending the photo...';
-          const ctx2 = getBondingContext();
-          const f2 = new FormData();
-          f2.append('text', `Photo - ${ctx2.labRef || 'report'}`);
-          f2.append('image', await toFile(synoPhoto, 'photo.jpg'));
-          await post(f2);
+        for (let i = 0; i < imgs.length; i++) {
+          const last = i === imgs.length - 1;
+          if (statusEl) statusEl.textContent = imgs.length > 1 ? `Sending image ${i + 1} of ${imgs.length}...` : 'Sending...';
+          const f = new FormData();
+          f.append('text', last ? text : `Image ${i + 1}/${imgs.length} - ${ctx2.labRef || 'report'}`);   // Synology needs some text on each message: a short caption, the real message is on the last image
+          if (imgs[i].card) {
+            if (synoAttachment.file) f.append('image', synoAttachment.file);
+            else { f.append('image_base64', synoAttachment.base64); f.append('file_name', synoAttachment.fileName || 'Bonding_Report.png'); }
+          } else {
+            f.append('image', await toFile(imgs[i].photo, `photo${imgs[i].n}.jpg`));
+          }
+          await post(f);
         }
 
         synoModal?.classList.add('hidden');
@@ -6079,34 +6756,37 @@
     });
 
     // Email Modal handlers
-    $('#btn-open-email-modal')?.addEventListener('click', () => {
-      sendWrap?.classList.remove('is-open');
+    $$('.js-open-email').forEach((b) => b.addEventListener('click', () => {
+      closeSendMenus();
       const ctx = getBondingContext();
+      if (!ctx.labRef) { (window.nxToast || showToast)('Open a report first: the Lab Ref No is empty.', 'warning'); return; }
       const subjectInput = $('#email-subject-input');
       const msgInput = $('#email-message-input');
       const summaryEl = $('#email-attach-summary');
 
       if (subjectInput) {
-        subjectInput.value = `[${ctx.res}] Whole Shoe Bonding Test - ${ctx.labRef} (${ctx.style})`;
+        subjectInput.value = `[${ctx.res}] ${ctx.title} - ${ctx.labRef} (${ctx.style})`;
       }
       if (msgInput) {
-        msgInput.value = `Dear Team,\n\nPlease see the whole shoe bonding test results below:\n\nLab Ref No: ${ctx.labRef}\nStyle: ${ctx.style}\nColor: ${ctx.color}\nResult: ${ctx.res}\nProduction Date: ${ctx.prodDate}\nTested Date: ${ctx.testDate}\nPossible Cause: ${ctx.cause}\nTechnician: ${ctx.tech}\n\nBest regards,\nNEXUS-L QA Laboratory`;
+        msgInput.value = `Dear Team,\n\nPlease see the ${ctx.title.toLowerCase()} results below:\n\nLab Ref No: ${ctx.labRef}\nStyle: ${ctx.style}\nColor: ${ctx.color}\nResult: ${ctx.res}\nProduction Date: ${ctx.prodDate}\nTested Date: ${ctx.testDate}\nPossible Cause: ${ctx.cause}\nTechnician: ${ctx.tech}\n\nBest regards,\nNEXUS-L QA Laboratory`;
       }
       keepPhotoFor(ctx.labRef);
-      if (!(synoAttachment.file || synoAttachment.base64)) {   // not opened through Synology first: make the graph card now
+      if (!(synoAttachment.file || synoAttachment.base64) || (synoAttachment.auto && synoAttachment.lab !== ctx.labRef)) {   // not opened through Synology first (or another report): default image now
         const cleanStyle = ctx.style.replace(/[^A-Za-z0-9_-]/g, '_'); const cleanColor = ctx.color.replace(/[^A-Za-z0-9_-]/g, '_');
-        synoAttachment = { file: null, base64: generateBondingCardImage(ctx), fileName: `FA_${ctx.line}_${ctx.res}_${cleanStyle}_${cleanColor}.png`, fileSize: '~115 KB (Generated Snapshot)' };
+        synoAttachment = { file: null, base64: generateBondingCardImage(ctx), fileName: `FA_${ctx.line}_${ctx.res}_${cleanStyle}_${cleanColor}.png`, fileSize: '~115 KB (Generated Snapshot)', auto: true, lab: ctx.labRef };
         updateSynoPreview();
+        useTrackerPicture(ctx.labRef);
       }
       renderEmailAttach();
 
       emailModal?.classList.remove('hidden');
-    });
+    }));
 
     $('#btn-email-capture-card')?.addEventListener('click', () => $('#btn-syno-capture-card')?.click());
     $('#email-attach-list')?.addEventListener('click', (e) => {
+      removePhoto(e);
       const b = e.target.closest('[data-rm]'); if (!b) return;
-      if (b.dataset.rm === 'card') $('#btn-syno-remove-attach')?.click(); else $('#btn-syno-remove-photo')?.click();
+      if (b.dataset.rm === 'card') $('#btn-syno-remove-attach')?.click();
     });
     $('#btn-close-email-modal')?.addEventListener('click', () => emailModal?.classList.add('hidden'));
     $('#btn-close-email-cancel')?.addEventListener('click', () => emailModal?.classList.add('hidden'));
@@ -6132,11 +6812,10 @@
         formData.append('to', to);
         formData.append('subject', subject);
         formData.append('message', message);
-        // both images go with the e-mail: the report graph card (image) and the photo (image2)
+        // the report graph card (image) and up to 10 photos (photos[]) go with the e-mail
         const cardFile = await toFile(synoAttachment, 'Report_Graph_Card.png');
-        const photoFile = await toFile(synoPhoto, 'photo.jpg');
         if (cardFile) formData.append('image', cardFile);
-        if (photoFile) formData.append('image2', photoFile);
+        for (let i = 0; i < Math.min(synoPhotos.length, MAX_PHOTOS); i++) formData.append('photos[]', await toFile(synoPhotos[i], `photo${i + 1}.jpg`));
 
         const csrfToken = document.querySelector('meta[name="X-CSRF-TOKEN"]')?.content || '';
         const res = await fetch(BASE_URL + 'dtr/send-email', {

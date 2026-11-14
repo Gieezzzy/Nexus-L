@@ -317,6 +317,7 @@ class ApprovalController extends BaseController
         $qrUrl  = site_url('approve/' . $token . '/qr.png');
         $about  = "report {$lr['lab_ref_no']} (" . ($app ?: $lr['tr_no']) . ", {$lr['overall_result']}) from " . ($me['name'] ?? 'the lab');
         foreach ($signRows as $sr) {
+            \App\Libraries\WebPush::notify('Report waiting for your approval', "{$lr['lab_ref_no']} ({$about})", 'approve/' . $token, ['user_ids' => [(string) $sr['user_id']], 'tag' => 'nxl-apv-' . $lr['lab_ref_no']]);
             $this->synology([(int) $sr['user_id']], "NEXUS-L: Hello " . trim((string) $sr['full_name']) . ", {$about} is waiting for YOUR approval before it goes to InterLink.
 "
                 . "Scan the QR code below with your phone, or open this link. It works once and expires in {$linkMinutes} minutes:
@@ -458,12 +459,34 @@ class ApprovalController extends BaseController
     }
 
     /** GET approve/<token>: the page the QR code opens */
+    /** the column that keeps the link a decision used up */
+    private function ensureUsedToken(): void
+    {
+        static $done = false;
+        if ($done) {
+            return;
+        }
+        $db = $this->db();
+        if (! $db->fieldExists('used_token', 'tbl_dtr_report_approvals')) {
+            $db->query('ALTER TABLE tbl_dtr_report_approvals ADD COLUMN used_token VARCHAR(40) NULL, ADD INDEX ix_used_token (used_token)');
+        }
+        $done = true;
+    }
+
     public function page(string $token)
     {
         $a = $this->liveLink($token);
         if (! $a) {
-            // used, expired or never existed: all look the same, and nothing about the report is shown
-            return $this->response->setStatusCode(410)->setBody($this->render('approval/gone', ['title' => 'Approval link', 'withCss' => 'approval.css']));
+            // a link that was just decided: an approver is told who decided it and the page closes after the 20 seconds
+            $late = null;
+            if (preg_match('/^[a-f0-9]{40}$/', $token) && $this->mySignatory()) {
+                $this->ensureUsedToken();
+                $late = $this->db()->table('tbl_dtr_report_approvals')->where('used_token', $token)->whereIn('status', ['approved', 'rejected'])->get()->getRowArray();
+            }
+            // used, expired or never existed: nothing about the report itself is shown
+            return $this->response->setStatusCode(410)->setBody($this->render('approval/gone', ['title' => 'Approval link', 'withCss' => 'approval.css',
+                'late' => $late ? ['status' => $late['status'], 'by' => (string) $late['decided_name'], 'at' => date('d M Y H:i', strtotime((string) $late['decided_at'])),
+                    'lab' => (string) $late['lab_ref_no'], 'closesIn' => max(0, self::CLOSE_SECONDS - (time() - strtotime((string) $late['decided_at'])))] : null]));
         }
 
         // the other reports still waiting for this approver, so they can go on with "Next" instead of going back to the list
@@ -489,6 +512,140 @@ class ApprovalController extends BaseController
         ]);
     }
 
+    // ---------------------------------------------------------------------------------------------------------------
+    // One approver at a time (live): who holds the report, who waits, hand over, and the 20-second close after a decision
+    // ---------------------------------------------------------------------------------------------------------------
+
+    private const HOLD_SECONDS  = 12;   // a holder whose page has not answered for this long has left
+    private const CLOSE_SECONDS = 20;   // after a decision the pages still open get this long, then they close
+
+    private function ensurePresence(): void
+    {
+        static $done = false;
+        if ($done) {
+            return;
+        }
+        $this->db()->query('CREATE TABLE IF NOT EXISTS tbl_apv_presence (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            approval_id INT UNSIGNED NOT NULL,
+            user_id INT UNSIGNED NOT NULL,
+            name VARCHAR(150) NOT NULL DEFAULT "",
+            role VARCHAR(10) NOT NULL DEFAULT "waiting",
+            joined_at DATETIME NOT NULL,
+            last_seen DATETIME NOT NULL,
+            granted_by VARCHAR(150) NOT NULL DEFAULT "",
+            UNIQUE KEY uq_apv_user (approval_id, user_id),
+            KEY ix_apv (approval_id, role)
+        ) DEFAULT CHARSET=utf8mb4');
+        $done = true;
+    }
+
+    /** the approver holding a report now (their page answered in the last few seconds), or null */
+    private function holderOf(int $approvalId): ?array
+    {
+        $this->ensurePresence();
+
+        return $this->db()->table('tbl_apv_presence')->where(['approval_id' => $approvalId, 'role' => 'holder'])
+            ->where('last_seen >=', date('Y-m-d H:i:s', time() - self::HOLD_SECONDS))->get()->getRowArray() ?: null;
+    }
+
+    /**
+     * POST approve/presence/<approval id> {token, do: ping|leave|allow|take, user_id?} (polled every 2 s by the approval page)
+     * Answer: who holds the report, who waits (in order), my place, and - once it is decided - who decided and how many seconds are left.
+     */
+    public function presence(string $id)
+    {
+        $this->ensurePresence();
+        $db  = $this->db();
+        $me  = $this->me();
+        $uid = (int) ($me['id'] ?? 0);
+        $sg  = $this->mySignatory();
+        $p   = $this->request->getJSON(true) ?? [];
+        $do  = (string) ($p['do'] ?? 'ping');
+        $a   = $db->table('tbl_dtr_report_approvals')->where('id', (int) $id)->get()->getRowArray();
+        $mine = $a ? $db->table('tbl_apv_presence')->where(['approval_id' => (int) $a['id'], 'user_id' => $uid])->get()->getRowArray() : null;
+        // only someone with the live link (or who was already on the page when it was decided) learns anything
+        if (! $a || ! $sg || ! $uid || (! hash_equals((string) $a['token'], (string) ($p['token'] ?? '')) && ! $mine)) {
+            return $this->json(['ok' => false, 'status' => 'gone'], 404);
+        }
+        $aid = (int) $a['id'];
+        $now = date('Y-m-d H:i:s');
+        if ($a['status'] !== 'pending') {
+            $left = self::CLOSE_SECONDS - (time() - strtotime((string) ($a['decided_at'] ?: $a['updated_at'])));
+
+            return $this->json(['ok' => true, 'status' => $a['status'], 'decided' => ['by' => (string) $a['decided_name'], 'at' => date('H:i:s', strtotime((string) $a['decided_at'])),
+                'mine' => (int) ($a['signatory_id'] ?? 0) === (int) $sg['id'], 'closesIn' => max(0, $left)]]);
+        }
+        if (strtotime((string) $a['expires_at']) <= time()) {
+            return $this->json(['ok' => true, 'status' => 'expired', 'decided' => ['by' => '', 'at' => '', 'mine' => false, 'closesIn' => 0]]);
+        }
+        $stale = date('Y-m-d H:i:s', time() - self::HOLD_SECONDS);
+
+        $db->transStart();
+        $db->query('SELECT id FROM tbl_dtr_report_approvals WHERE id = ? FOR UPDATE', [$aid]);   // one change of holder at a time
+        $db->table('tbl_apv_presence')->where('approval_id', $aid)->where('last_seen <', $stale)->delete();   // pages that closed
+        $holder = $db->table('tbl_apv_presence')->where(['approval_id' => $aid, 'role' => 'holder'])->get()->getRowArray();
+        $mine   = $db->table('tbl_apv_presence')->where(['approval_id' => $aid, 'user_id' => $uid])->get()->getRowArray();
+        $promote = static function () use ($db, $aid, $now): void {   // the first in line becomes the holder
+            $next = $db->table('tbl_apv_presence')->where(['approval_id' => $aid, 'role' => 'waiting'])->orderBy('joined_at')->orderBy('id')->get(1)->getRowArray();
+            if ($next) {
+                $db->table('tbl_apv_presence')->where('id', $next['id'])->update(['role' => 'holder', 'granted_by' => '(next in line)', 'last_seen' => $now]);
+            }
+        };
+        if ($do === 'leave') {
+            if ($mine) {
+                $db->table('tbl_apv_presence')->where('id', $mine['id'])->delete();
+                if ($mine['role'] === 'holder') {
+                    $promote();
+                }
+            }
+            $db->transComplete();
+
+            return $this->json(['ok' => true, 'status' => 'left']);
+        }
+        if (! $mine) {
+            $role = $holder ? 'waiting' : 'holder';
+            $db->table('tbl_apv_presence')->insert(['approval_id' => $aid, 'user_id' => $uid, 'name' => mb_substr((string) $sg['full_name'], 0, 150), 'role' => $role, 'joined_at' => $now, 'last_seen' => $now]);
+            if ($role === 'waiting') {
+                \App\Libraries\ActivityLog::record('approvals', 'wait-for-report', $a['lab_ref_no'], 'held by ' . ($holder['name'] ?? ''));
+            }
+        } else {
+            $db->table('tbl_apv_presence')->where('id', $mine['id'])->update(['last_seen' => $now]);
+            if (! $holder && $mine['role'] !== 'holder') {
+                $promote();   // nobody holds it: the first in line (maybe me) gets it
+            }
+        }
+        if ($do === 'allow' && $holder && (int) $holder['user_id'] === $uid) {
+            $to = $db->table('tbl_apv_presence')->where(['approval_id' => $aid, 'user_id' => (int) ($p['user_id'] ?? 0), 'role' => 'waiting'])->get()->getRowArray();
+            if ($to) {   // exactly one person gets in; I go to the end of the line
+                $db->table('tbl_apv_presence')->where('id', $to['id'])->update(['role' => 'holder', 'granted_by' => $holder['name'], 'last_seen' => $now]);
+                $db->table('tbl_apv_presence')->where('id', $holder['id'])->update(['role' => 'waiting', 'joined_at' => $now]);
+                \App\Libraries\ActivityLog::record('approvals', 'hand-over-report', $a['lab_ref_no'], $holder['name'] . ' let ' . $to['name'] . ' in');
+            }
+        }
+        $db->transComplete();
+
+        $rows   = $db->table('tbl_apv_presence')->where('approval_id', $aid)->orderBy('joined_at')->orderBy('id')->get()->getResultArray();
+        $holder = null;
+        $wait   = [];
+        foreach ($rows as $r) {
+            $row = ['id' => (int) $r['user_id'], 'name' => $r['name'], 'since' => date('H:i:s', strtotime((string) $r['joined_at'])), 'grantedBy' => $r['granted_by']];
+            if ($r['role'] === 'holder') {
+                $holder = $row;
+            } else {
+                $wait[] = $row;
+            }
+        }
+        $pos = 0;
+        foreach ($wait as $i => $w) {
+            if ($w['id'] === $uid) {
+                $pos = $i + 1;
+            }
+        }
+
+        return $this->json(['ok' => true, 'status' => 'pending', 'me' => $holder && $holder['id'] === $uid ? 'holder' : 'waiting', 'holder' => $holder, 'waiting' => $wait, 'place' => $pos]);
+    }
+
     /** POST approve/<token> {action: approve|reject, signature (data URL), remarks} */
     public function decide(string $token)
     {
@@ -504,11 +661,18 @@ class ApprovalController extends BaseController
         if (! empty($a['required_name']) && ! ReportPdf::nameMatches((string) $a['required_name'], (string) $sg['full_name'])) {
             return $this->json(['ok' => false, 'error' => 'This report is signed off by ' . $a['required_name'] . '. Only ' . $a['required_name'] . ' can approve it: sign in with that account.'], 403);
         }
+        // one approver at a time: whoever holds the report (or anybody, when nobody holds it any more)
+        $holder = $this->holderOf((int) $a['id']);
+        $uid    = (int) ($this->me()['id'] ?? 0);
+        if ($holder && (int) $holder['user_id'] !== $uid) {
+            return $this->json(['ok' => false, 'error' => $holder['name'] . ' is checking this report right now. Ask them to let you in, or wait until they leave.', 'locked' => true], 409);
+        }
         $now    = date('Y-m-d H:i:s');
         $action = ($p['action'] ?? '') === 'reject' ? 'rejected' : 'approved';
         $remark = trim((string) ($p['remarks'] ?? ''));
+        $this->ensureUsedToken();
         $data   = ['status' => $action, 'signatory_id' => $sg['id'], 'decided_name' => $sg['full_name'], 'decided_title' => $sg['title'],
-            'decided_at' => $now, 'used_at' => $now, 'token' => $this->spentToken(), 'remarks' => $remark !== '' ? mb_substr($remark, 0, 1000) : null, 'seen_by_requester' => 0, 'updated_at' => $now];
+            'decided_at' => $now, 'used_at' => $now, 'token' => $this->spentToken(), 'used_token' => $a['token'], 'remarks' => $remark !== '' ? mb_substr($remark, 0, 1000) : null, 'seen_by_requester' => 0, 'updated_at' => $now];
 
         if ($action === 'rejected' && $remark === '') {
             return $this->json(['ok' => false, 'error' => 'Write what needs to be corrected.'], 422);
@@ -528,10 +692,16 @@ class ApprovalController extends BaseController
             }
             $data['signature_png'] = $sig;
         }
-        $this->db()->table('tbl_dtr_report_approvals')->where('id', $a['id'])->update($data);
+        // the status check in the WHERE makes a second, simultaneous decision fail instead of overwriting the first
+        $this->db()->table('tbl_dtr_report_approvals')->where(['id' => $a['id'], 'status' => 'pending'])->update($data);
+        if ($this->db()->affectedRows() < 1) {
+            return $this->json(['ok' => false, 'error' => 'This report was decided by another approver a moment ago.'], 409);
+        }
+        \App\Libraries\ActivityLog::record('approvals', $action, $a['lab_ref_no'] . ' ' . $a['application_no'], 'by ' . $sg['full_name'] . ($remark !== '' ? ': ' . $remark : ''));
         // told right away, before the answer goes back: the requester (the report can now be sent / must be corrected) and the
         // other signatories (so nobody opens a link that no longer works)
         $when = date('H:i', strtotime($now));
+        \App\Libraries\WebPush::notify('Report ' . strtoupper($action) . ': ' . $a['lab_ref_no'], "by {$sg['full_name']}" . ($remark !== '' ? ": {$remark}" : ''), 'interlink', ['user_ids' => [(string) $a['requested_by']], 'tag' => 'nxl-apv-' . $a['lab_ref_no']]);
         $this->synology([(int) $a['requested_by']], "NEXUS-L: report {$a['lab_ref_no']} ({$a['application_no']}) was " . strtoupper($action)
             . " by {$sg['full_name']} at {$when}" . ($remark !== '' ? ": {$remark}" : '') . ($action === 'approved' ? '. The signed report is ready: you can now send it to InterLink.' : '. Correct it and request approval again.'));
         $others = array_column(array_filter($this->db()->table('tbl_dtr_signatories')->where('is_active', 1)->get()->getResultArray(),

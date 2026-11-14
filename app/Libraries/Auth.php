@@ -95,6 +95,7 @@ class Auth
             'username'    => $user['Username'],
             'name'        => $user['FullName'],
             'role'        => $user['Role'],
+            'avatar'      => UserModel::avatarUrl($user['Avatar'] ?? null, (int) $user['UserID']),
             'is_guest'    => false,
             'fingerprint' => $this->fingerprint(),
             'login_at'    => time(),
@@ -173,7 +174,7 @@ class Auth
         }
 
         // Re-validate account / Guest setting against DB at most once per minute.
-        if (time() - ($data['verified_at'] ?? 0) > 60) {
+        if (time() - ($data['verified_at'] ?? 0) > 60 || (! empty($data['id']) && ! array_key_exists('avatar', $data))) {
             if (! empty($data['is_guest'])) {
                 if (! SystemSettings::bool('guest.enabled', true)) {
                     $this->logout();
@@ -183,6 +184,7 @@ class Auth
                 $data['verified_at'] = time();
                 $data['role']        = 'Guest';
                 $data['name']        = trim((string) SystemSettings::get('guest.display_name', 'Guest Visitor')) ?: 'Guest Visitor';
+                $data['avatar']      = null;
             } else {
                 $user = $this->users->find($data['id']);
                 if ($user === null || (int) $user['IsActive'] !== 1 || ($user['PasswordChangedAt'] ?? null) !== $data['pwd_changed']) {
@@ -193,6 +195,7 @@ class Auth
                 $data['verified_at'] = time();
                 $data['role']        = (string) $user['Role'];        // a role the Admin just changed applies within a minute, no new sign-in
                 $data['name']        = (string) $user['FullName'];
+                $data['avatar']      = UserModel::avatarUrl($user['Avatar'] ?? null, (int) $user['UserID']);
             }
         }
 
