@@ -355,7 +355,7 @@ $kpiPct   = static fn (int $n, int $d): string => $d > 0 ? rtrim(rtrim(number_fo
                 </div>
             </div>
             <div class="dtr-table-wrap dtr-fill-wrap" style="max-height:440px">
-                <table class="dtr-table">
+                <table class="dtr-table dtr-pc-table" id="dtr-bench-table">
                     <thead>
                         <tr>
                             <th>Lab Ref No</th>

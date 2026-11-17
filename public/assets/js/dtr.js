@@ -184,6 +184,18 @@
     return `<span class="badge ${cls}">${escHtml(v)}</span>`;
   };
 
+  // open / close the tests of a Lab Ref in the Lab Material Test Collection (click the caret, the row or press Enter on the caret)
+  document.addEventListener('click', (e) => {
+    const row = e.target.closest('#as-tbody-bench tr.pc-row');
+    if (!row || e.target.closest('a')) return;
+    const det = row.nextElementSibling;
+    if (!det || !det.classList.contains('pc-detail')) return;
+    const open = det.hidden;
+    det.hidden = !open;
+    row.classList.toggle('open', open);
+    row.querySelector('.pc-toggle')?.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+
   const renderAsArchiveRows = (type, res) => {
     const rows = res.rows || [];
     const tbody = $(`#as-tbody-${type}`);
@@ -193,25 +205,55 @@
       return;
     }
     if (type === 'bench') {
-      tbody.innerHTML = rows.map((r) => {
-        const det = [
-          r.possible_cause ? `Cause: ${r.possible_cause}` : '',
-          r.remarks ? r.remarks : '',
-          r.details_summary ? `[${r.detail_count || 0}] ${r.details_summary}` : '',
-        ].filter(Boolean).join(' · ');
-        const times = [r.started_at_fmt || '', r.finished_at ? `End: ${r.finished_at}` : ''].filter(Boolean).join(' / ');
-        return `<tr>
-          <td class="mono">${r.lab_ref_no ? `<a href="#" class="dtr-labref-link" data-open-material="${escHtml(r.lab_ref_no)}" title="Open the report of this Lab Ref (Material Test Report)"><b>${escHtml(r.lab_ref_no)}</b></a>` : '<b>-</b>'}</td>
-          <td>${escHtml(r.material_category_name || '-')}</td>
-          <td>${escHtml(r.material_test_name || '-')}</td>
-          <td class="mono">${escHtml(r.test_code || '-')}</td>
-          <td class="mono">${escHtml(r.test_date || '-')}</td>
-          <td class="mono" style="white-space:nowrap">${escHtml(times || '-')}</td>
-          <td class="mono">${escHtml(r.machine_number || '-')}</td>
-          <td>${escHtml(r.technician || '-')}</td>
-          <td>${renderAsBadge(r.result)}</td>
-          <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(det)}">${escHtml(det || '-')}</td>
+      // one line per Lab Ref (click it to open the tests done on it), like the Digital Test Report: the tests of a Lab Ref are listed inside
+      const groups = [];
+      const byRef = new Map();
+      rows.forEach((r) => {
+        const k = String(r.lab_ref_no || '-');
+        if (!byRef.has(k)) { const g = { ref: k, items: [] }; byRef.set(k, g); groups.push(g); }
+        byRef.get(k).items.push(r);
+      });
+      const rank = (v) => { const u = String(v || '').toUpperCase(); return u.includes('FAIL') || u === 'REJECTED' ? 3 : u.includes('TOL') ? 2 : u ? 1 : 0; };
+      const uniq = (a) => [...new Set(a.filter(Boolean))];
+      tbody.innerHTML = groups.map((g, gi) => {
+        const worst = g.items.reduce((w, r) => (rank(r.result) > rank(w) ? r.result : w), g.items[0].result);
+        const cats = uniq(g.items.map((r) => r.material_category_name)).join(' / ');
+        const dates = g.items.map((r) => String(r.test_date || '')).filter(Boolean).sort();
+        const dateTxt = dates.length ? (dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} - ${dates[dates.length - 1]}`) : '-';
+        const techs = uniq(g.items.map((r) => r.technician)).join(', ');
+        const link = g.ref !== '-' ? `<a href="#" class="dtr-labref-link" data-open-material="${escHtml(g.ref)}" title="Open the report of this Lab Ref (Material Test Report)"><b>${escHtml(g.ref)}</b></a>` : '<b>-</b>';
+        const head = `<tr class="pc-row" data-pc="${gi}">
+          <td class="mono"><button type="button" class="pc-toggle" aria-expanded="false" aria-label="Show the tests of ${escHtml(g.ref)}"><span class="pc-caret">&#9656;</span><span class="pc-count">${g.items.length}</span></button> ${link}</td>
+          <td>${escHtml(cats || '-')}</td>
+          <td>${g.items.length} test${g.items.length === 1 ? '' : 's'}</td>
+          <td class="mono">-</td>
+          <td class="mono">${escHtml(dateTxt)}</td>
+          <td class="mono">-</td>
+          <td class="mono">-</td>
+          <td>${escHtml(techs || '-')}</td>
+          <td>${renderAsBadge(worst)}</td>
+          <td class="muted">Overall of the ${g.items.length} test${g.items.length === 1 ? '' : 's'}</td>
         </tr>`;
+        const sub = g.items.map((r) => {
+          const det = [
+            r.possible_cause ? `Cause: ${r.possible_cause}` : '',
+            r.remarks ? r.remarks : '',
+            r.details_summary ? `[${r.detail_count || 0}] ${r.details_summary}` : '',
+          ].filter(Boolean).join(' · ');
+          const times = [r.started_at_fmt || '', r.finished_at ? `End: ${r.finished_at}` : ''].filter(Boolean).join(' / ');
+          return `<tr>
+            <td>${escHtml(r.material_category_name || '-')}</td>
+            <td>${escHtml(r.material_test_name || '-')}</td>
+            <td class="mono">${escHtml(r.test_code || '-')}</td>
+            <td class="mono">${escHtml(r.test_date || '-')}</td>
+            <td class="mono" style="white-space:nowrap">${escHtml(times || '-')}</td>
+            <td class="mono">${escHtml(r.machine_number || '-')}</td>
+            <td>${escHtml(r.technician || '-')}</td>
+            <td>${renderAsBadge(r.result)}</td>
+            <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(det)}">${escHtml(det || '-')}</td>
+          </tr>`;
+        }).join('');
+        return head + `<tr class="pc-detail" data-pc-detail="${gi}" hidden><td colspan="10"><table class="pc-sub"><thead><tr><th>Category</th><th>Material Test</th><th>Code</th><th>Test Date</th><th>Started / Finished</th><th>Machine</th><th>Technician</th><th>Result</th><th>Other Details &amp; Bench Breakdown</th></tr></thead><tbody>${sub}</tbody></table></td></tr>`;
       }).join('');
     } else if (type === 'erp') {
       tbody.innerHTML = rows.map((r) => {
