@@ -99,3 +99,43 @@
   .ac-crop-stage-wrap, #ac-crop-canvas { width: 280px; height: 280px; }
 }
 @media (prefers-reduced-motion: reduce) { .ac-sw span, .ac-sw span::after, .ac-strength i { transition: none; } }
+
+
+/* ==========================================================================
+   Liquid Glass Dark Mode (html[data-theme="dark"]) — Account Settings
+   ========================================================================== */
+html[data-theme="dark"] .ac-tabs { border-bottom-color: rgba(148, 163, 184, .22); }
+html[data-theme="dark"] .ac-tabs button { color: #94a3b8; }
+html[data-theme="dark"] .ac-tabs button:hover { color: #f8fafc; }
+html[data-theme="dark"] .ac-tabs button.on { color: #60a5fa; border-bottom-color: #60a5fa; }
+html[data-theme="dark"] .ac-who,
+html[data-theme="dark"] .ac-pic-box,
+html[data-theme="dark"] .ac-sigcur,
+html[data-theme="dark"] .ac-crop-dialog {
+  background: rgba(17, 25, 44, .82);
+  border-color: rgba(148, 163, 184, .24);
+  color: #e2e8f0;
+  backdrop-filter: blur(16px);
+}
+html[data-theme="dark"] .ac-head h2,
+html[data-theme="dark"] .ac-who b,
+html[data-theme="dark"] .ac-crop-head h3 { color: #f1f5f9; }
+html[data-theme="dark"] .ac-pic-meta,
+html[data-theme="dark"] .ac-sw { color: #94a3b8; }
+html[data-theme="dark"] .ac input[type=text],
+html[data-theme="dark"] .ac input[type=password],
+html[data-theme="dark"] .ac input[type=email],
+html[data-theme="dark"] .ac select,
+html[data-theme="dark"] .ac textarea {
+  background: rgba(15, 23, 42, .84);
+  border-color: rgba(148, 163, 184, .26);
+  color: #f1f5f9;
+}
+html[data-theme="dark"] .ac-chip.ok { background: rgba(16, 185, 129, .2); color: #6ee7b7; }
+html[data-theme="dark"] .ac-chip.warn { background: rgba(245, 158, 11, .2); color: #fcd34d; }
+html[data-theme="dark"] .ac-chip.off { background: rgba(100, 116, 139, .24); color: #cbd5e1; }
+html[data-theme="dark"] .ac-chip.admin { background: rgba(59, 130, 246, .22); color: #93c5fd; }
+html[data-theme="dark"] .ac-crop-backdrop { background: rgba(2, 6, 23, .75); backdrop-filter: blur(6px); }
+html[data-theme="dark"] .ac-crop-head,
+html[data-theme="dark"] .ac-crop-foot { background: rgba(15, 23, 42, .88); border-color: rgba(148, 163, 184, .22); }
+html[data-theme="dark"] .ac-crop-stage-wrap { background: rgba(11, 18, 34, .92); border-color: rgba(148, 163, 184, .24); }

@@ -110,8 +110,14 @@ $when = static fn ($d) => $d ? date('d M Y, H:i', strtotime((string) $d)) : '-';
                 <select id="f-sidebar"><option value="expanded" <?= $prefs['sidebar'] === 'expanded' ? 'selected' : '' ?>>Expanded (names and icons)</option><option value="collapsed" <?= $prefs['sidebar'] === 'collapsed' ? 'selected' : '' ?>>Collapsed (icons only)</option></select></label>
             <label>Rows per page in lists
                 <select id="f-page"><?php foreach ([10, 15, 25, 50, 100] as $n): ?><option value="<?= $n ?>" <?= (int) $prefs['page_size'] === $n ? 'selected' : '' ?>><?= $n ?></option><?php endforeach ?></select></label>
+            <label>Browser appearance (Liquid Glass)
+                <select id="f-theme">
+                    <option value="light" <?= ($prefs['theme'] ?? 'light') === 'light' ? 'selected' : '' ?>>Light (Frosted Glass)</option>
+                    <option value="dark" <?= ($prefs['theme'] ?? 'light') === 'dark' ? 'selected' : '' ?>>Dark (Liquid Glass)</option>
+                </select></label>
         </div>
         <div class="ac-checks" role="group" aria-label="Notifications">
+            <label class="ac-sw"><input type="checkbox" id="f-active" <?= ! empty($prefs['chat_active']) ? 'checked' : '' ?>><span></span>Show me as Active in chat (turn off to appear offline with a gray circle)</label>
             <label class="ac-sw"><input type="checkbox" id="f-chat" <?= $prefs['notify_chat'] ? 'checked' : '' ?>><span></span>Tell me about new chat messages</label>
             <label class="ac-sw"><input type="checkbox" id="f-appr" <?= $prefs['notify_approval'] ? 'checked' : '' ?>><span></span>Tell me when a report waits for my approval or was approved</label>
             <label class="ac-sw"><input type="checkbox" id="f-toast" <?= $prefs['toasts'] ? 'checked' : '' ?>><span></span>Show small pop-up notices (toasts)</label>

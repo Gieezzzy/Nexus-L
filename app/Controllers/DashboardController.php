@@ -283,11 +283,11 @@ class DashboardController extends BaseController
 
         // bonding samples collected (tracker) but without a test result yet
         $t['bonding']['ongoing'] += (int) ($this->q($db, "SELECT COUNT(*) n FROM tbl_dtr_bondingtracker k WHERE k.Shutdown = 0 AND k.CollectionDate BETWEEN ? AND ?
-            AND (k.LabRefNo IS NULL OR NOT EXISTS (SELECT 1 FROM tbl_dtr_bonding_info b WHERE b.LabRefNo COLLATE utf8mb4_general_ci = k.LabRefNo COLLATE utf8mb4_general_ci AND b.Result IS NOT NULL))", [$from, $to])[0]['n'] ?? 0);
+            AND (k.LabRefNo IS NULL OR NOT EXISTS (SELECT 1 FROM tbl_dtr_bonding_info b WHERE b.LabRefNo = k.LabRefNo COLLATE utf8mb4_unicode_ci AND b.Result IS NOT NULL))", [$from, $to])[0]['n'] ?? 0);
 
         // whole shoe: each test of each collected shoe
         $ws = $this->q($db, "SELECT w.LabRefNo, l.status, l.overall_result, l.lab_ref_no AS done_ref FROM tbl_dtr_wholeshoetracker w
-            LEFT JOIN tbl_dtr_unified_labrefs l ON l.lab_ref_no COLLATE utf8mb4_general_ci = w.LabRefNo COLLATE utf8mb4_general_ci WHERE w.CollectionDate BETWEEN ? AND ?", [$from, $to]);
+            LEFT JOIN tbl_dtr_unified_labrefs l ON l.lab_ref_no = w.LabRefNo WHERE w.CollectionDate BETWEEN ? AND ?", [$from, $to]);
         $w = ['ongoing' => 0, 'failed' => 0, 'for_report' => 0];
         foreach ($ws as $r) {
             if (! $r['done_ref'] || stripos((string) $r['status'], 'Complete') !== 0) {
@@ -394,11 +394,11 @@ class DashboardController extends BaseController
                 CONCAT_WS('', k.Building, '') building, k.LineNo line, k.ProductionDate prod_date, b.TestedDate test_date,
                 COALESCE(b.Technician, k.Technician, '') technician, COALESCE(b.Result, CASE WHEN k.Shutdown = 1 THEN 'SHUTDOWN' ELSE 'Waiting' END) result,
                 k.TestType test_type, x.id bonding_id
-            FROM tbl_dtr_bondingtracker k
-            LEFT JOIN (SELECT LabRefNo, MAX(BondingTestID) id FROM tbl_dtr_bonding_info WHERE Result IS NOT NULL GROUP BY LabRefNo) x
-                ON x.LabRefNo COLLATE utf8mb4_general_ci = k.LabRefNo COLLATE utf8mb4_general_ci
+            FROM (SELECT * FROM tbl_dtr_bondingtracker ORDER BY CollectionDate DESC, TrackerID DESC LIMIT 40) k
+            LEFT JOIN (SELECT k2.TrackerID, (SELECT MAX(i.BondingTestID) FROM tbl_dtr_bonding_info i WHERE i.LabRefNo = k2.LabRefNo COLLATE utf8mb4_unicode_ci AND i.Result IS NOT NULL) id
+                       FROM (SELECT TrackerID, LabRefNo FROM tbl_dtr_bondingtracker ORDER BY CollectionDate DESC, TrackerID DESC LIMIT 40) k2) x ON x.TrackerID = k.TrackerID
             LEFT JOIN tbl_dtr_bonding_info b ON b.BondingTestID = x.id
-            ORDER BY k.CollectionDate DESC, k.TrackerID DESC LIMIT 40");
+            ORDER BY k.CollectionDate DESC, k.TrackerID DESC");
     }
 
     /** Progress per test type: whole-shoe tests (tracker) and material categories with work open. */
@@ -406,14 +406,14 @@ class DashboardController extends BaseController
     {
         $out = [];
         $ws  = $this->q($db, "SELECT w.TestType t, COUNT(*) total, SUM(l.status LIKE 'Complete%') done, SUM(l.overall_result = 'Fail') fail
-            FROM tbl_dtr_wholeshoetracker w LEFT JOIN tbl_dtr_unified_labrefs l ON l.lab_ref_no COLLATE utf8mb4_general_ci = w.LabRefNo COLLATE utf8mb4_general_ci
+            FROM tbl_dtr_wholeshoetracker w LEFT JOIN tbl_dtr_unified_labrefs l ON l.lab_ref_no = w.LabRefNo
             WHERE w.CollectionDate BETWEEN ? AND ? GROUP BY w.TestType ORDER BY w.TestType", [$from, $to]);
         foreach ($ws as $r) {
             $out[] = ['group' => 'Whole Shoe', 'test' => $r['t'], 'total' => (int) $r['total'], 'done' => (int) $r['done'], 'fail' => (int) $r['fail']];
         }
         $bt = $this->q($db, "SELECT COUNT(*) total, SUM(b.Result IS NOT NULL) done, SUM(UPPER(b.Result) LIKE 'F%') fail FROM tbl_dtr_bondingtracker k
             LEFT JOIN (SELECT LabRefNo, MAX(Result) Result FROM tbl_dtr_bonding_info WHERE Result IS NOT NULL GROUP BY LabRefNo) b
-            ON b.LabRefNo COLLATE utf8mb4_general_ci = k.LabRefNo COLLATE utf8mb4_general_ci WHERE k.Shutdown = 0 AND k.CollectionDate BETWEEN ? AND ?", [$from, $to])[0] ?? null;
+            ON b.LabRefNo = k.LabRefNo COLLATE utf8mb4_unicode_ci WHERE k.Shutdown = 0 AND k.CollectionDate BETWEEN ? AND ?", [$from, $to])[0] ?? null;
         if ($bt && (int) $bt['total']) {
             array_unshift($out, ['group' => 'Bonding', 'test' => 'Daily bonding (tracker)', 'total' => (int) $bt['total'], 'done' => (int) $bt['done'], 'fail' => (int) $bt['fail']]);
         }

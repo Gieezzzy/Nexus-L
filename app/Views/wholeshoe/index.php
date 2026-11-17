@@ -49,21 +49,27 @@
             <button type="button" role="tab" class="dtr-subtab wst-cat-tab" data-wst-cat="washing"><svg class="ic" aria-hidden="true"><use href="#i-washing-machine"/></svg> Washing</button>
             <button type="button" role="tab" class="dtr-subtab wst-cat-tab" data-wst-cat="uv-light"><svg class="ic" aria-hidden="true"><use href="#i-lamp"/></svg> UV Light</button>
             <button type="button" role="tab" class="dtr-subtab wst-cat-tab" data-wst-cat="flexing"><svg class="ic" aria-hidden="true"><use href="#i-shoe-flex"/></svg> Flexing</button>
-            <button type="button" role="tab" class="dtr-subtab wst-cat-tab" data-wst-cat="deeptest"><svg class="ic" aria-hidden="true"><use href="#i-bucket"/></svg> Deep Test</button>
-            <button type="button" class="dtr-btn dtr-btn-primary dtr-subtabs-right" id="btn-wst-open-new-modal" style="font-weight:600">
-                <svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> + New Test
-            </button>
+            <button type="button" role="tab" class="dtr-subtab wst-cat-tab" data-wst-cat="deeptest"><svg class="ic" aria-hidden="true"><use href="#i-bucket"/></svg> Dip Test</button>
         </div>
 
         <div class="card glass dtr-section-card">
                 <div class="dtr-card-head" style="margin-bottom:14px">
-                <!-- Row 1: Search Input + Category + Outcome + Status Dropdowns -->
-                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                    <div style="position:relative;display:flex;align-items:center;flex:1;min-width:280px">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;width:100%">
+                    <div style="position:relative;display:flex;align-items:center;flex:1;min-width:260px;max-width:460px">
                         <svg style="position:absolute;left:11px;width:15px;height:15px;color:#94a3b8;pointer-events:none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                         <input type="text" id="wst-list-search" class="dtr-input" placeholder="Search Lab Reference, Technician, Operator, Specification, Machine..." style="width:100%;padding:8px 14px 8px 34px">
                     </div>
 
+                    <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
+                        <span class="muted sm" id="wst-pagination-count">0 record(s)</span>
+                        <div style="display:flex;align-items:center;gap:8px">
+                            <button class="dtr-btn-xs dtr-btn-outline" id="btn-wst-prev-page" style="padding:5px 12px;font-weight:600;border-radius:8px" disabled>&lsaquo; Prev</button>
+                            <span class="muted sm" id="wst-pagination-info" style="min-width:48px;text-align:center;font-weight:600">1 / 1</span>
+                            <button class="dtr-btn-xs dtr-btn-outline" id="btn-wst-next-page" style="padding:5px 12px;font-weight:600;border-radius:8px" disabled>Next &rsaquo;</button>
+                        </div>
+                    </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px">
                     <!-- Category Filter -->
                     <select id="wst-filter-category" class="dtr-input" style="padding:7px 12px;font-size:12.5px;min-width:160px">
                         <option value="all">All Categories</option>
@@ -72,7 +78,7 @@
                         <option value="washing">Washing</option>
                         <option value="uv-light">UV Light Exposure</option>
                         <option value="flexing">Whole Shoe Flexing</option>
-                        <option value="deeptest">Deep Test</option>
+                        <option value="deeptest">Dip Test</option>
                     </select>
 
                     <!-- Outcome Filter -->
@@ -92,12 +98,7 @@
                         <option value="RUNNING">Running</option>
                         <option value="PENDING">Pending</option>
                     </select>
-                </div>
-
-                <!-- Row 2: Showing X record(s) on Left, Date Range + Reset on Right -->
-                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid rgba(148,163,184,0.15)">
-                    <span class="muted sm" id="wst-record-count">Showing 0 record(s)</span>
-                    <div style="display:flex;align-items:center;gap:8px">
+                    <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
                         <span class="muted sm" style="font-size:12px;font-weight:600">Date Range:</span>
                         <input type="date" id="wst-filter-from" class="dtr-input" style="padding:5px 8px;font-size:12px" title="From Date">
                         <span class="muted sm">to</span>
@@ -127,14 +128,6 @@
                         <tr><td colspan="8" class="muted" style="text-align:center;padding:24px">Loading test sessions...</td></tr>
                     </tbody>
                 </table>
-            </div>
-
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:10px;border-top:1px solid rgba(148,163,184,0.18)">
-                <span class="muted sm" id="wst-pagination-info">Showing active records</span>
-                <div style="display:flex;gap:6px">
-                    <button class="dtr-btn-xs dtr-btn-outline" id="btn-wst-prev-page" disabled>&lt;</button>
-                    <button class="dtr-btn-xs dtr-btn-outline" id="btn-wst-next-page" disabled>&gt;</button>
-                </div>
             </div>
         </div>
     </div>
@@ -273,6 +266,16 @@
                             <div class="wst-progress-rail" style="height:10px;border-radius:5px">
                                 <div class="wst-progress-fill" id="wst-timer-progress-bar" style="width:0%;transition:width 0.3s ease"></div>
                             </div>
+                        </div>
+
+                        <!-- Daily Checkpoint Remarks (Hydro, Heat Aging, Washing, UV, Dip Test) -->
+                        <div id="wst-checkpoint-remarks-section" class="hidden" style="margin-top:14px;padding:14px 16px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+                                <span style="font-size:12px;font-weight:700;color:#0f172a;text-transform:uppercase;letter-spacing:0.04em">Daily Checkpoint Readings &amp; Remarks</span>
+                                <span class="sm muted" style="font-size:11.5px;color:#64748b">Click an elapsed day to input findings (concatenated for report)</span>
+                            </div>
+                            <div id="wst-checkpoint-day-buttons" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
+                            <div id="wst-checkpoint-remarks-list" style="font-size:12px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;max-height:110px;overflow-y:auto;white-space:pre-line">No daily checkpoint remarks recorded yet.</div>
                         </div>
 
                         <!-- Finished Banner Notification Alert -->

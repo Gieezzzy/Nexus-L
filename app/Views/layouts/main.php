@@ -1,13 +1,17 @@
-<?php helper('nx'); ?>
+<?php helper('nx');
+$nxAuthUser  = service('auth')->user() ?? [];
+$nxUserId    = (int) ($nxAuthUser['id'] ?? 0);
+$nxUserTheme = ($nxAuthUser['theme'] ?? '') === 'dark' ? 'dark' : 'light';
+?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="<?= $nxUserTheme ?>" data-uid="<?= $nxUserId ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <meta name="referrer" content="same-origin">
     <?= csrf_meta() ?>
-    <script>try{if(window.innerWidth>=1024&&localStorage.getItem('nx.side')==='1')document.documentElement.classList.add('side-collapsed')}catch(e){}</script>
+    <script>try{var r=document.documentElement;if(window.innerWidth>=1024&&localStorage.getItem('nx.side')==='1')r.classList.add('side-collapsed');var uid=r.dataset.uid||'0';var lt=localStorage.getItem('nx.theme.'+uid);if(lt==='dark'||lt==='light')r.dataset.theme=lt;else localStorage.setItem('nx.theme.'+uid,r.dataset.theme||'light');}catch(e){}</script>
     <meta name="base-url" content="<?= rtrim(base_url(), '/') . '/' ?>">
     <title><?= esc($title ?? 'NEXUS-L') ?> · NEXUS-L</title>
     <link rel="icon" type="image/png" href="<?= base_url('favicon.png') ?>">

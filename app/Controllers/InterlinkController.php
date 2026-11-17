@@ -2142,6 +2142,24 @@ JS;
      */
     public function ensureEtrfTables(): void
     {
+        // tables and the 6 templates only need to be made sure of now and then, not on every request (the inserts took up to 5 s each under load)
+        try {
+            if (cache()->get('etrf_tables_ok') !== null) {
+                return;
+            }
+        } catch (\Throwable $e) {
+            // no cache: carry on
+        }
+        $this->ensureEtrfTablesNow();
+        try {
+            cache()->save('etrf_tables_ok', 1, 300);
+        } catch (\Throwable $e) {
+            // not cached
+        }
+    }
+
+    private function ensureEtrfTablesNow(): void
+    {
         $db = $this->il();
         $db->query('CREATE TABLE IF NOT EXISTS tbl_interlink_etrf_templates (
             id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

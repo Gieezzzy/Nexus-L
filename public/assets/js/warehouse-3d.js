@@ -2017,7 +2017,7 @@
 
         html += `
           <tr>
-            <td><code class="font-mono">${escapeHtml(b.box_code)}</code></td>
+            <td><code class="font-mono wh-code-link" role="button" tabindex="0" data-code="${escapeHtml(b.box_code)}" title="Open the contents of this box">${escapeHtml(b.box_code)}</code></td>
             <td><b>${escapeHtml(b.label)}</b></td>
             <td><span class="wh-bi-cat-badge">${escapeHtml(b.category)}</span></td>
             <td>${escapeHtml(b.rack_name || b.rack_id)}</td>
@@ -2026,6 +2026,7 @@
             <td>${statusBadge}</td>
             <td style="white-space:nowrap;">
               <button type="button" class="wh-tbl-btn btn-locate" data-id="${b.id}" title="Locate & guide in 3D">Locate 3D</button>
+              <button type="button" class="wh-tbl-btn btn-contents" data-code="${escapeHtml(b.box_code)}" title="Put Lab References in this box">Add Contents</button>
               <button type="button" class="wh-tbl-btn btn-edit" data-id="${b.id}">Edit</button>
               <button type="button" class="wh-tbl-btn btn-delete" data-id="${b.id}">Delete</button>
             </td>

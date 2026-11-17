@@ -31,9 +31,9 @@ $sheets['wst'] = ['Webbing/Shoe Lace/Elastic Cord Test Results', '织带/ 鞋带
     ['Shoelace tip Retention', '鞋带头拉脱', 'VF-B24<br>(2019/05)', 'kgf', true, [['in' => $m('LaceTipRet', 6), 'ave' => 'LaceTipRetAve', 'std' => 'LaceTipRet_S', 'rate' => 'LaceTipRet_Rating']]],
     ['Knot Slip Resistance', '鞋带打结', 'VF-B23<br>(2019/05)', 'kgf', true, [['in' => $m('KnotSlip', 6), 'ave' => 'KnotSlipAve', 'std' => 'KnotSlip_S', 'rate' => 'KnotSlip_Rating']]],
     ['Lace Abrasion', '鞋带耐磨', 'VF-C09<br>(2022/09)', 'cycles', true, [
-        ['lab' => '1.', 'in' => ['LaceAbrasion1'], 'std' => 'LaceAbrasion_S', 'rate' => 'LaceAbrasiontxt_Rating'],
-        ['lab' => '2.', 'in' => ['LaceAbrasion2']], ['lab' => '3.', 'in' => ['LaceAbrasion3']],
-        ['lab' => '4.', 'in' => ['LaceAbrasion4']], ['lab' => '5.', 'in' => ['LaceAbrasion5']], ['lab' => '6.', 'in' => ['LaceAbrasion6']]]],
+        ['lab' => '1.', 'in' => ['LaceAbrasion1'], 'txt' => ['LaceAbrasiontxt1', 'lace'], 'std' => 'LaceAbrasion_S', 'rate' => 'LaceAbrasiontxt_Rating'],
+        ['lab' => '2.', 'in' => ['LaceAbrasion2'], 'txt' => ['LaceAbrasiontxt2', 'lace']], ['lab' => '3.', 'in' => ['LaceAbrasion3'], 'txt' => ['LaceAbrasiontxt3', 'lace']],
+        ['lab' => '4.', 'in' => ['LaceAbrasion4'], 'txt' => ['LaceAbrasiontxt4', 'lace']], ['lab' => '5.', 'in' => ['LaceAbrasion5'], 'txt' => ['LaceAbrasiontxt5', 'lace']], ['lab' => '6.', 'in' => ['LaceAbrasion6'], 'txt' => ['LaceAbrasiontxt6', 'lace']]]],
     ['Colorfastness to Perspiration<br>(Top Side/Finished Surface Only)', '耐汗渍测试(正面)', 'VF-E16<br>(2018/11)', 'AATCC', true, [['fib' => 'CtP', 'std' => 'CTP_S', 'rate' => 'CTPRating']]],
     ['Colorfastness to Perspiration<br>Back side', '耐汗渍测试(反面)', 'VF-E16<br>(2018/11)', 'AATCC', true, [['fib' => 'CtPB', 'std' => 'CtPB_S', 'rate' => 'CtPB_Rating']]],
     ['Colorfastness to Water<br>(Top Side/Finished Surface Only)', '耐水测试(正面)', 'VF-E01<br>(2008/05)', 'AATCC', true, [['fib' => 'CtW', 'std' => 'CTW_S', 'rate' => 'CTWRating']]],
@@ -70,6 +70,12 @@ $sheets['fthl'] = ['EVA &amp; Rubber Sponge &amp; Foam Test Results', 'EVA &amp;
     ['Colorfastness to Crocking', '摩擦褪色', 'VF-E02<br>(2024/08)', 'AATCC', true, [
         ['lab' => 'Dry 干=', 'in' => ['CTC_DRY'], 'std' => 'CTC_DRY_std', 'rate' => 'CTC_DRY_Rating'],
         ['lab' => 'Wet 湿=', 'in' => ['CTC_WET'], 'std' => 'CTC_WET_std', 'rate' => 'CTC_WET_Rating']]],
+    ['Abrasion Crocking Equipment', '摩擦褪色', 'VF-E02<br>(2024/08)', 'AATCC', true, [
+        ['lab' => 'Dry 干=', 'txt' => ['AbrasionCrockingDRYTXT', 'crock'], 'rate' => 'AbrasionCrockingDRYTXT_Rating']]],
+    ['Ink adhesion on Substrate<br>3M Scotch tape #600', '', 'VF-F05<br>(2014/07)', '', true, [
+        ['lab' => 'Dry 干=', 'txt' => ['IAOSDRYTXT', 'ink'], 'rate' => 'IAOSDRYTXT_Rating'],
+        ['lab' => 'Wet 湿=', 'txt' => ['IAOSWETTXT', 'ink'], 'rate' => 'IAOSWETTXT_Rating'],
+        ['lab' => 'Perspiration 汗液=', 'txt' => ['IAOSASWTXT', 'ink'], 'rate' => 'IAOSASWTXT_Rating']]],
     ['UV light (24hrs, 50°C)', '紫外光', 'VF-E03<br>(2019/05)', 'AATCC', true, [['in' => ['UV1', 'UV2'], 'std' => 'UV_std', 'rate' => 'UV_rate']]],
     ['Heat Aging (72hrs, 70°C)', '热老化', 'VF-E04<br>(2022/09)', 'AATCC', true, [['in' => ['HeatAging1', 'HeatAging2'], 'std' => 'HeatAging_Std', 'rate' => 'HeatAging_Rate']]],
     ['Blooming (7Days, 60°C 95%RH)', '吐霜', 'VF-E17<br>(2016/03)', '', true, [['in' => ['Blooming'], 'rate' => 'Blooming_Rate']]],

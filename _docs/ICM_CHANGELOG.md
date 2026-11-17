@@ -450,3 +450,41 @@
 - approve/<token>: the first approver holds the report (tbl_apv_presence, heartbeat every 2 s via POST approve/presence/<id>); others see "X is checking this report", controls locked, place in line. The holder sees who waits and can "Let in" exactly one (holder then waits). A holder silent for 12 s has left: the first in line gets it.
 - decide() refuses anyone but the holder (409) and a second simultaneous decision (status='pending' in the UPDATE). After a decision, the pages still open show "already approved/returned by X at hh:mm, closes in 20 s" and go to the dashboard. The approvals pill refreshes every 8 s (was 20 s). Decisions and hand-overs are in the activity log.
 - Late click on a decided approval link: the page says who approved / returned it and closes after the 20 s (used_token column keeps the spent link). The approvals pill refreshes every 3 s while it is showing.
+- Shoe Bonding (U60) Generate Report: draws the Bonding Test-VF graph report (readings tables + curve from tbl_dtr_bonding_points UTF/FTO/FiTO point, *Graph, *Spots columns) as an A4 PNG (bond-graph.js), dialog saves it to the report picture folder (= Lab Tracker picture) and/or downloads. Report Designer > Graph report (PNG): draggable page + toolbox of columns + series (readings/curve/spot columns, colours); layout in tbl_report_layouts slug bonding-graph; endpoints dtr/bonding-graph-data, dtr/bonding-graph-layout, designer/graph-layout/save.
+
+## Bonding PIC role - 2026-11-17
+- Roles.php / LabDocRoles.php: new role "Bonding PIC" (aliases bondingpic, bondingincharge). Edit on bonding + dtr, view on Quality Insights, Analytics, Calendar, ERP Finish, Lab docs, Warehouse; nothing on Materials / Whole shoe / Approvals. Roles::canManage(role, "bonding") is true for it. Admin can tune cells under Settings > Users & roles.
+
+## Garbled icons fix - 2026-11-17
+- inbox.js, approval.js, settings.js, vf_monitor_tabs.js, warehouse-multi.js, BotController.php had UTF-8 text saved as cp1252 mojibake (e.g. "âœ“" for a tick): repaired, assets rebuilt. InterLink service 1.3.35: openEtrfFromHome waits up to 20 s for the Submit a Request list to fill before reporting a form missing.
+- DtrController: the Whole Shoe tracker -L/-R rename no longer crashes the DTR page when two rows share one Lab Ref (second one becomes -L-2).
+- Removed the "+ New Test" button from Material Testing and Whole Shoe Test pages.
+
+## Speed pass - 2026-11-17
+- Apache restarted: gzip now served (pages and js/css about 5-10x smaller).
+- SQL: Dashboard ongoing-bonding list 3.8 s -> 1 ms (limit first, index-friendly collation); double COLLATE joins that blocked indexes fixed in Dashboard, Analytics, Dtr, Notifier, BotApprovals; indexes idx_mt_cat_date, idx_bt_coll_shut, idx_wt_coll (migration 2026-11-17-000001).
+- WstController::syncFromTracker runs at most every 20 s; InterlinkController::ensureEtrfTables seeds at most every 5 min (cache).
+- ux.js: timers of 3 s+ run 1 in 5 while the tab is hidden and 1 in 2 on slow / data-saver connections.
+- Not done: DTR hidden-tab HTML (Material forms 470 KB) still ships in the page; gzip makes it small on the wire.
+- Session: timeToUpdate 300 -> 0 (periodic id renewal made parallel background calls fail with session file errors = random 500s); login still renews the id.
+
+## Warehouse: auto box code / date, Add Contents, box contents list - 2026-11-17
+- Box Label drives Box Code (WarehouseLabel::code) and Date Range + FIFO month (WarehouseLabel::date; same rules in warehouse-contents.js). No date in the label: the date range is typed.
+- WarehouseContentsController + routes warehouse-tracker/labrefs, box-items (+/add, /save), item-cols (/add, /hide). Pick Lab Refs from tbl_dtr_unified_labrefs by tested date + test group (Material / Bonding / Whole Shoe); stored in tbl_warehouse_box_items (new columns flags JSON, item_status, item_note, added_by/at, updated_by/at). Check columns live in tbl_warehouse_item_cols (QIMA, CFA/Loading seeded); an Admin adds / hides columns, no DB structure change.
+- Box Code is a link (3D inspector and table): everyone can open the list; only Admin, Manager, Supervisor, Warehouse PIC, Bonding PIC, Encoding can add / tick / save. All saves go to the activity log.
+- Warehouse box list: Status Transferred asks for the destination box (rack / layer / slot shown); the source row stays locked as "Transferred to ..." and the new box gets the row marked "Transferred from ..."; Remove button takes a wrongly picked Lab Ref out (not allowed for a transferred row); new columns moved_to/from_code/label, moved_at/by (schema key wh_items_schema_ok2); route box-items/remove.
+- Analytics speed: the materials monthly query (EXISTS on tbl_interlink_reports with COLLATE on both sides) 0.9-1.5 s -> 18 ms, identical result (md5 checked); workload / encoding data cached 60 s. Analytics default page 1.27 s -> about 50 ms warm, 220-360 ms cold.
+
+## Material Test Report - 2026-11-17
+- Sidebar Lab Reports: "Material Tests" -> "Material Test Report".
+- Access V20261002.accdb (linked tables = same 10 material result tables, identical columns) vs dbnexus: 78 missing reports inserted (fabric 17, leather 5, hardware 4, rubber 5, label 6, fthl 14, sklfm 1, wst 26) and 15 reports (fabric 12, box 3) where Access was newer were updated, old rows saved in tbl_dtr_import_backup (batch access-20261117). Index: php spark dtr:sync-index --materials [--refresh]. Fabric sheet: Gauge VF-A01 (2016/12), Martindale VF-C04 (2024/06) as in the Access form.
+- Material sheets: description cells added (fabric / leather Martindale, Hydrolysis, Heat Aging, Taber; label and rubber Hydrolysis / Heat Aging) with the lab suggestions from Access (app/Views/dtr/lf_options.php). Fill-blanks merge from Access: 100 reports / 2009 cells filled (backup rows batch access-fill-20261117 in tbl_dtr_import_backup). Rubber DTP20261104RB-2 ref repaired. Known source duplicate: wst DTP20261030EG-3 appears twice in Access too.
+- Material sheets, remaining Access fields: Machine ID cell under the test name (MCTensile / MCBursting / MCOven / MCHydrolysis / MCHydro), ERP / SARGE / Tracker / Lab comments row under Comments (all 10 sheets), Foxing/Heel Abrasion Crocking and Ink adhesion description + rating cells, Webbing Lace Abrasion description cells (txt1-6); suggestion lists in app/Views/dtr/lf_options.php. Not added: hardware Shrinkage12_R / Shrinkage34_R (12 rows in Access).
+
+## Material Test Report: Material PIC, read-only + Edit, accurate view, Send report - 2026-11-17
+- New role "Material PIC" (Roles.php, LabDocRoles.php; canManage materials). Only Admin and Material PIC can edit the material report sheets: the sheet opens read only (View only tag), the Edit button unlocks it (Save / Refresh appear), a different record or a save locks it again; DtrController::save refuses material saves from anyone else (403).
+- The sheet shows the SAVED ratings and overall result of the Lab Ref (it used to re-calculate them on open: DTP20261030FBU-5 Elongation showed FAIL, the lab saved TOLERABLE).
+- Send report (Synology / e-mail) for a material Lab Ref attaches the lab report form filled with that Lab Ref (ReportPdf::material -> page image, GET dtr/material-report-image), further pages become pictures, up to 10 photos as in Bonding; the message uses the saved overall result and the date without time.
+- tools/pdf_pages.py adds the lab user site-packages to its path: PyMuPDF was invisible to the web server (this also fixes the report page images of the approval screens).
+- Lab Tracker > Lab Material Test Collection (bench log): the Lab Ref No is a link; click opens the Material Test Report with the form chosen from the classification of that Lab Ref (Fabric / Leather / Foxing Tape & Heel Logo ...) and its record loaded; a Whole Shoe ref opens the Whole Shoe report; a grouped ref of the bench log (DTP20261027F1-1-4) opens the first report of the group.
+- Report Designer > Pull Test Graphs tab: designer.js now shows / hides #dsg-pane-pull with the other tabs (the pane stayed hidden, the tab looked empty). Verified: 7 report options in Shoe Bonding > Generate Report, 6 pull-test designers (up to 3 tables, drag and drop columns), data endpoint dtr/pull-graph-data returns Peak/SampleNo/Graph 1-30 of the Lab Ref.

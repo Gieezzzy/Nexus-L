@@ -67,3 +67,55 @@
 .bt-cand { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; padding: 10px; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 8px; background: #f8fafc; }
 .bt-cand p { margin: 4px 0 0; color: #475569; }
 #bt-ans { width: 100%; margin: 8px 0; }
+
+
+/* ==========================================================================
+   Liquid Glass Dark Mode (html[data-theme="dark"]) — NEXUS-L Brain
+   ========================================================================== */
+html[data-theme="dark"] .br-tabs { border-bottom-color: rgba(148, 163, 184, .22); }
+html[data-theme="dark"] .br-tab { color: #94a3b8; }
+html[data-theme="dark"] .br-tab:hover { color: #f8fafc; }
+html[data-theme="dark"] .br-tab.active { color: #60a5fa; border-bottom-color: #60a5fa; }
+html[data-theme="dark"] .br-card,
+html[data-theme="dark"] .br-list,
+html[data-theme="dark"] .br-msgs,
+html[data-theme="dark"] .bt-cand,
+html[data-theme="dark"] .bu-stage,
+html[data-theme="dark"] .bu-feed,
+html[data-theme="dark"] .bu-stats {
+  background: rgba(17, 25, 44, .78);
+  border-color: rgba(148, 163, 184, .22);
+  color: #e2e8f0;
+  backdrop-filter: blur(14px);
+}
+html[data-theme="dark"] .br-head h2,
+html[data-theme="dark"] .br-n { color: #f1f5f9; }
+html[data-theme="dark"] .br-ev,
+html[data-theme="dark"] .bu-tip { color: #94a3b8; }
+html[data-theme="dark"] .br-row { border-bottom-color: rgba(148, 163, 184, .16); }
+html[data-theme="dark"] .br-row:hover { background: rgba(37, 99, 235, .16); }
+html[data-theme="dark"] .br-m.bot { background: rgba(30, 41, 59, .82); color: #e2e8f0; }
+html[data-theme="dark"] .br-m.user { background: rgba(37, 99, 235, .28); color: #f8fafc; }
+html[data-theme="dark"] .br-m.admin { background: rgba(16, 185, 129, .2); color: #6ee7b7; }
+html[data-theme="dark"] .br-table th {
+  background: rgba(15, 23, 42, .94);
+  color: #cbd5e1;
+  border-color: rgba(148, 163, 184, .22);
+}
+html[data-theme="dark"] .br-table td {
+  border-color: rgba(148, 163, 184, .16);
+  color: #e2e8f0;
+}
+html[data-theme="dark"] .br-filter input,
+html[data-theme="dark"] .br-filter select,
+html[data-theme="dark"] .bt-bar input,
+html[data-theme="dark"] .bt-q input {
+  background: rgba(15, 23, 42, .84);
+  border-color: rgba(148, 163, 184, .26);
+  color: #f1f5f9;
+}
+html[data-theme="dark"] .bu-chip {
+  background: rgba(30, 41, 59, .8);
+  border-color: rgba(148, 163, 184, .26);
+  color: #cbd5e1;
+}

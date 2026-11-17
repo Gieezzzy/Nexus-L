@@ -29,10 +29,10 @@ class QualityInsightsController extends BaseController
         ]);
     }
 
-    /** "DTP20261103SHA9-R-R01" -> "A9" (the building letter and the line number are part of the Lab Ref) */
+    /** "DTP20261103SHA9-R-R01" -> "A9", "DTP20261116FASHB14-R" (first article) -> "B14" (the building letter and the line number are part of the Lab Ref) */
     public static function lineOf(string $ref): string
     {
-        return preg_match('/^DTP\d{8}[A-Z]{2,3}([A-Z])(\d+)/', strtoupper($ref), $m) ? $m[1] . $m[2] : '';
+        return preg_match('/^DTP\d{8}(?:FA)?[A-Z]{2,3}([A-Z])(\d+)/', strtoupper($ref), $m) ? $m[1] . $m[2] : '';
     }
 
     private static function result(string $r): string
@@ -50,6 +50,51 @@ class QualityInsightsController extends BaseController
     private static function natural(string $a, string $b): int
     {
         return strnatcasecmp($a, $b);
+    }
+
+    // The line map counts the way Analytics does: by the day the shoes were PRODUCED on the line (ProductionDate, else the date inside the Lab Ref) and by
+    // the Result saved in tbl_dtr_bonding_info (one row per Lab Ref: the one that has a result). A test done two days later still belongs to its production day.
+    private const BOND_DATE  = "COALESCE((CASE WHEN ProductionDate REGEXP '^[0-9]{2}-[0-9]{2}-20[0-9]{2}' THEN CONCAT(SUBSTR(ProductionDate, 7, 4), '-', SUBSTR(ProductionDate, 1, 2), '-', SUBSTR(ProductionDate, 4, 2)) WHEN ProductionDate REGEXP '^20[0-9]{2}-[0-9]{2}-[0-9]{2}' THEN LEFT(ProductionDate, 10) WHEN LabRefNo REGEXP '^DTP20[0-9]{6}' THEN CONCAT(SUBSTR(LabRefNo, 4, 4), '-', SUBSTR(LabRefNo, 8, 2), '-', SUBSTR(LabRefNo, 10, 2)) END), LEFT(NULLIF(TestedDate, ''), 10), LEFT(NULLIF(ReceivedDate, ''), 10))";
+    private const BOND_DEDUP = "(LabRefNo IS NULL OR LabRefNo = '' OR BondingTestID IN (SELECT keep_id FROM (SELECT COALESCE(MAX(CASE WHEN Result IS NOT NULL AND Result <> '' THEN BondingTestID END), MAX(BondingTestID)) AS keep_id FROM tbl_dtr_bonding_info WHERE LabRefNo IS NOT NULL AND LabRefNo <> '' GROUP BY LabRefNo) k))";
+
+    /** the same normalising as BOND_DATE, for the TestedDate column: 2026-11-16, 16-11-2026 style (MM-DD-YYYY) or nothing */
+    private const TEST_DATE = "(CASE WHEN TestedDate REGEXP '^[0-9]{2}-[0-9]{2}-20[0-9]{2}' THEN CONCAT(SUBSTR(TestedDate, 7, 4), '-', SUBSTR(TestedDate, 1, 2), '-', SUBSTR(TestedDate, 4, 2)) WHEN TestedDate REGEXP '^20[0-9]{2}-[0-9]{2}-[0-9]{2}' THEN LEFT(TestedDate, 10) END)";
+
+    /** how the line map assigns a Lab Ref to a day: 'tested' (the day its result was tested; waiting shoes by their production day) or 'production' */
+    private function basis(): string
+    {
+        return $this->request->getGet('basis') === 'production' ? 'production' : 'tested';
+    }
+
+    /**
+     * @return array<string,array{ref:string,result:string,line:string,day:string}> the bonding Lab Refs of from..to (trials, shutdowns and LACKING rows left out), by Lab Ref.
+     * Result = the saved result of tbl_dtr_bonding_info (one row per Lab Ref: the one that has a result).
+     */
+    private function producedRefs(string $from, string $to, string $basis = 'tested'): array
+    {
+        $bd   = self::BOND_DATE;
+        $td   = self::TEST_DATE;
+        $rows = $this->db()->query("
+            SELECT LabRefNo ref, Result, {$bd} AS pd, {$td} AS td FROM tbl_dtr_bonding_info
+            WHERE LabRefNo IS NOT NULL AND LabRefNo <> '' AND LabRefNo NOT LIKE '%TRIAL%' AND LabRefNo NOT LIKE '%SHUTDOWN%' AND COALESCE(POLotNO, '') <> 'SHUTDOWN'
+              AND COALESCE(ModelStyle, '') <> 'SHUTDOWN' AND COALESCE(TestType, '') <> 'LACKING' AND " . self::BOND_DEDUP . "
+              AND EXISTS (SELECT 1 FROM tbl_dtr_unified_labrefs ul WHERE ul.form_slug = 'bonding' AND ul.lab_ref_no = LabRefNo)
+            HAVING (pd BETWEEN ? AND ?) OR (td BETWEEN ? AND ?)", [$from, $to, $from, $to])->getResultArray();
+        $out = [];
+        foreach ($rows as $r) {
+            $line = self::lineOf((string) $r['ref']);
+            if ($line === '') {
+                continue;
+            }
+            $res = self::result((string) $r['Result']);
+            // by tested date: a tested Lab Ref sits on the day it was tested; one with no result yet sits on its production day
+            $day = $basis === 'tested' && $res !== '' && $r['td'] ? (string) $r['td'] : (string) $r['pd'];
+            if ($day >= $from && $day <= $to) {
+                $out[(string) $r['ref']] = ['ref' => (string) $r['ref'], 'result' => $res, 'line' => $line, 'day' => $day];
+            }
+        }
+
+        return $out;
     }
 
     // ------------------------------------------------------------------------------------------------------------------ line map
@@ -72,7 +117,8 @@ class QualityInsightsController extends BaseController
     public function lineMap(): ResponseInterface
     {
         [$from, $to] = $this->period();
-        $payload = \App\Libraries\DataCache::remember("qi_linemap_{$from}_{$to}", 120, function () use ($from, $to) {
+        $basis   = $this->basis();
+        $payload = \App\Libraries\DataCache::remember("qi_linemap4_{$basis}_{$from}_{$to}", 120, function () use ($from, $to, $basis) {
             $db = $this->db();
 
             // every line the lab has ever collected from, grouped by building
@@ -90,28 +136,35 @@ class QualityInsightsController extends BaseController
                 $tiles[$l] = $tile($l);
             }
 
+            // tested: the saved results of the shoes produced in the period
+            $produced = $this->producedRefs($from, $to, $basis);
+            foreach ($produced as $r) {
+                $l = $r['line'];
+                $tiles[$l] ??= $tile($l);
+                if ($r['result'] === '') {
+                    $tiles[$l]['pending']++;      // collected from the line, no result saved yet
+                    continue;
+                }
+                $tiles[$l]['tested']++;
+                if ($r['result'] === 'PASS') {
+                    $tiles[$l]['pass']++;
+                } elseif ($r['result'] === 'FAIL') {
+                    $tiles[$l]['fail']++;
+                    $tiles[$l]['fail_refs'][] = $r['ref'];
+                } else {
+                    $tiles[$l]['tolerable']++;
+                    $tiles[$l]['tol_refs'][] = $r['ref'];
+                }
+            }
+            // collected from the line but not yet a bonding report at all (the tracker rows that are not tested)
             foreach ((new CalendarMonitoringController())->records($from, $to) as $r) {
-                if ($r['domain'] !== 'bonding' || stripos($r['lab_ref_no'], 'TRIAL') !== false) {
+                if ($r['domain'] !== 'bonding' || $r['status'] === 'completed' || stripos($r['lab_ref_no'], 'TRIAL') !== false || isset($produced[$r['lab_ref_no']])) {
                     continue;
                 }
                 $l = self::lineOf($r['lab_ref_no']);
-                if ($l === '') {
-                    continue;
-                }
-                $tiles[$l] ??= $tile($l);
-                if ($r['status'] === 'completed') {
-                    $tiles[$l]['tested']++;
-                    if ($r['result'] === 'PASS') {
-                        $tiles[$l]['pass']++;
-                    } elseif ($r['result'] === 'FAIL') {
-                        $tiles[$l]['fail']++;
-                        $tiles[$l]['fail_refs'][] = $r['lab_ref_no'];
-                    } elseif ($r['result'] === 'TOLERABLE') {
-                        $tiles[$l]['tolerable']++;
-                        $tiles[$l]['tol_refs'][] = $r['lab_ref_no'];
-                    }
-                } else {
-                    $tiles[$l]['pending']++;      // collected from the line, not tested yet
+                if ($l !== '') {
+                    $tiles[$l] ??= $tile($l);
+                    $tiles[$l]['pending']++;
                 }
             }
 
@@ -135,7 +188,7 @@ class QualityInsightsController extends BaseController
                 $buildings[] = ['building' => $b, 'lines' => $ls];
             }
 
-            return ['ok' => true, 'from' => $from, 'to' => $to, 'buildings' => $buildings, 'totals' => $tot];
+            return ['ok' => true, 'from' => $from, 'to' => $to, 'basis' => $basis, 'buildings' => $buildings, 'totals' => $tot];
         });
 
         return $this->response->setJSON($payload);
@@ -147,11 +200,57 @@ class QualityInsightsController extends BaseController
         [$from, $to] = $this->period();
         $line = strtoupper(trim((string) $this->request->getGet('line')));
         $items = [];
-        foreach ((new CalendarMonitoringController())->records($from, $to) as $r) {
+        // the Lab Refs of this line in the period (by the chosen date basis); a test may be done days later, so the Calendar rows are looked up over a longer window
+        $mine = array_filter($this->producedRefs($from, $to, $this->basis()), static fn ($r) => $r['line'] === $line);
+        $cal  = [];
+        foreach ((new CalendarMonitoringController())->records(date('Y-m-d', strtotime($from . ' -30 days')), date('Y-m-d', strtotime($to . ' +30 days'))) as $r) {
             if ($r['domain'] === 'bonding' && self::lineOf($r['lab_ref_no']) === $line && stripos($r['lab_ref_no'], 'TRIAL') === false) {
+                $cal[$r['lab_ref_no']] = $r;
+            }
+        }
+        // the tested ones come straight from the bonding report (tbl_dtr_bonding_info): style, colour, tested date, result, mode of failure, cause, cement, technician
+        if ($mine) {
+            $in   = implode(',', array_map(fn ($x) => $this->db()->escape($x), array_keys($mine)));
+            $rows = $this->db()->query("SELECT LabRefNo, ModelStyle, Color, TestedDate, Technician, Result, ModeOfFailure, PossibleCause, Remarks, AdhesiveSupplier, TestType, POLotNO, AgeCategory, STD
+                FROM tbl_dtr_bonding_info WHERE LabRefNo IN ({$in}) AND " . self::BOND_DEDUP)->getResultArray();
+            foreach ($rows as $r) {
+                $ref = (string) $r['LabRefNo'];
+                $res = self::result((string) $r['Result']);
+                if ($res === '') {
+                    continue;      // waiting: shown from the Calendar rows below
+                }
+                $c    = $cal[$ref] ?? [];
+                $bits = [];
+                if (trim((string) $r['ModeOfFailure']) !== '') {
+                    $bits[] = 'Mode of failure: ' . trim((string) $r['ModeOfFailure']);
+                }
+                if (trim((string) $r['PossibleCause']) !== '') {
+                    $bits[] = 'Possible cause: ' . trim((string) $r['PossibleCause']);
+                }
+                if (trim((string) $r['AdhesiveSupplier']) !== '') {
+                    $bits[] = 'Cement: ' . $this->alias((string) $r['AdhesiveSupplier']);
+                }
+                if (trim((string) $r['Remarks']) !== '') {
+                    $bits[] = 'Remarks: ' . trim((string) $r['Remarks']);
+                }
+                $items[] = [
+                    'id' => 'b_' . $ref, 'domain' => 'bonding', 'domain_label' => 'Bonding (U60)', 'category' => 'Whole Shoe Bonding (U60)',
+                    'lab_ref_no' => $ref, 'test_type' => trim((string) $r['TestType']) !== '' ? (string) $r['TestType'] : 'Bonding',
+                    'style' => trim((string) $r['ModelStyle'] . ' ' . (trim((string) $r['Color']) !== '' ? '/ ' . trim((string) $r['Color']) : '')),
+                    'test_date' => $mine[$ref]['day'] === '' ? substr((string) $r['TestedDate'], 0, 10) : (substr((string) $r['TestedDate'], 0, 10) ?: $mine[$ref]['day']),
+                    'status' => 'completed', 'result' => $res, 'technician' => (string) $r['Technician'], 'remarks' => implode("\n", $bits),
+                    'view_url' => (string) ($c['view_url'] ?? ''),
+                ];
+            }
+        }
+        // shoes collected from the line with no result yet
+        foreach ($cal as $ref => $r) {
+            if ($r['status'] !== 'completed' && (isset($mine[$ref]) || ($r['test_date'] >= $from && $r['test_date'] <= $to)) && ! array_filter($items, static fn ($i) => $i['lab_ref_no'] === $ref)) {
                 $items[] = $r;
             }
         }
+        $rank = ['FAIL' => 0, 'TOLERABLE' => 1, '' => 2, 'PASS' => 3];
+        usort($items, static fn ($x, $y) => [$rank[$x['result']] ?? 2, $x['lab_ref_no']] <=> [$rank[$y['result']] ?? 2, $y['lab_ref_no']]);   // failures first
 
         return $this->response->setJSON(['ok' => true, 'from' => $from, 'to' => $to, 'line' => $line, 'items' => $items]);
     }

@@ -1,4 +1,4 @@
-/* NEXUS-L Inbox: Messenger-style chat. All user text goes through textContent (no HTML injection). */
+﻿/* NEXUS-L Inbox: Messenger-style chat. All user text goes through textContent (no HTML injection). */
 (() => {
   'use strict';
   const root = document.getElementById('msgr');
@@ -52,7 +52,9 @@
       img.addEventListener('error', () => { img.remove(); node.textContent = initials(p.name); node.style.background = `hsl(${hue(p.key || p.id)} 55% 42%)`; });
       node.append(img);
     } else { node.textContent = initials(p.name); node.style.background = `hsl(${hue(p.key || p.id)} 55% 42%)`; }
-    node.classList.toggle('online', !!p.online);
+    const isDirect = !p.isGroup && p.src !== 'g' && p.src !== 'rg' && !node.classList.contains('xs') && !node.classList.contains('sm');
+    node.classList.toggle('online', isDirect && !!p.online);
+    node.classList.toggle('offline', isDirect && !p.online);
   };
   const parse = (s) => new Date(String(s).replace(' ', 'T').replace(/\.(\d{3})\d*$/, '.$1'));
   const fmtTime = (d) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -872,7 +874,19 @@
     const full = first || tick % 3 === 0;                 // every ~9s also refresh recent messages (reactions/edits by others)
     return api(`thread/${enc(k)}?after=${full && !first ? 0 : lastId}`).then((d) => {
       if (k !== key) return;
-      me = String(d.me); nicks = d.nicknames || nicks; headerFor();
+      me = String(d.me); nicks = d.nicknames || nicks;
+      if (d.peer && peer && !peer.isGroup && !!d.peer.online !== !!peer.online) {
+        peer.online = !!d.peer.online;
+        avatar(el.av, peer);
+        if (!inf.box.classList.contains('hidden')) {
+          avatar(inf.av, peer);
+          if (peer.src === 'r' || peer.src === 'n') {
+            inf.status.textContent = peer.online ? '● Online' : '● Offline';
+            inf.status.classList.toggle('on', !!peer.online);
+          }
+        }
+      }
+      headerFor();
       if (first) hasMore = !!d.hasMore;
       if (d.group) {
         const prevAv = peer && peer.avatar;
@@ -1260,7 +1274,7 @@
     if (key === null || !peer) return;
     const k = key; infErr(''); showView('main'); show($('inf-files-btn'), peer.src === 'n' || peer.src === 'g');
     inf.name.textContent = nicks.peer || peer.name; inf.user.textContent = peer.username ? '@' + peer.username : ''; avatar(inf.av, peer);
-    inf.status.textContent = peer.src === 'r' ? (peer.online ? '● Online' : '● Offline') : ''; inf.status.classList.toggle('on', !!peer.online);
+    inf.status.textContent = (peer.src === 'r' || peer.src === 'n') && !peer.isGroup ? (peer.online ? '● Online' : '● Offline') : ''; inf.status.classList.toggle('on', !!peer.online);
     api(`details/${enc(k)}`).then((d) => {
       if (k !== key) return;
       peer = Object.assign(peer, d.peer);
@@ -1268,7 +1282,7 @@
       avatar(el.av, peer);
       applySettings(d.settings);
       inf.name.textContent = nicks.peer || peer.name;
-      if (peer.src === 'r') {
+      if ((peer.src === 'r' || peer.src === 'n') && !peer.isGroup) {
         inf.status.textContent = peer.online ? '● Online' : '● Offline';
         inf.status.classList.toggle('on', !!peer.online);
       }
@@ -2049,7 +2063,7 @@
 
   // ---------- polling (paused while the tab is hidden) ----------
   updateSend(); loadList(); initNotifBanner();
-  setInterval(() => { if (!document.hidden) pull(false); }, 3000);
+  setInterval(() => { if (!document.hidden) pull(false); }, 4000);
   setInterval(() => { if (!document.hidden && !el.q.value.trim()) loadList(); }, 10000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { pull(false); loadList(); } });
 })();

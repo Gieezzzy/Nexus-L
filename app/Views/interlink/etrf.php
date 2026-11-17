@@ -72,6 +72,50 @@
 .et-CheckPill input{margin:0;width:auto}
 .et-quick-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
 @media (prefers-reduced-motion:reduce){.et-card{transition:none}}
+
+/* Liquid Glass Dark Mode */
+html[data-theme="dark"] .et-status{background:rgba(15,23,42,.68);border-color:rgba(148,163,184,.22);color:#e2e8f0}
+html[data-theme="dark"] .et-card{background:rgba(17,25,44,.76);border-color:rgba(148,163,184,.24);color:#f1f5f9}
+html[data-theme="dark"] .et-card:hover{border-color:rgba(96,165,250,.55);background:rgba(30,41,59,.85)}
+html[data-theme="dark"] .et-card.on{background:rgba(37,99,235,.22);border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.22)}
+html[data-theme="dark"] .et-card small{color:#94a3b8}
+html[data-theme="dark"] .et-tag{background:rgba(30,41,59,.82);border-color:rgba(148,163,184,.26);color:#cbd5e1}
+html[data-theme="dark"] .et input[type=text],html[data-theme="dark"] .et input[type=date],html[data-theme="dark"] .et input[type=email],html[data-theme="dark"] .et select,html[data-theme="dark"] .et textarea{background:rgba(15,23,42,.82);border-color:rgba(148,163,184,.26);color:#f1f5f9}
+html[data-theme="dark"] .et input.bad,html[data-theme="dark"] .et select.bad,html[data-theme="dark"] .et textarea.bad{border-color:#ef4444;background:rgba(127,29,29,.28)}
+html[data-theme="dark"] .et-list{border-color:rgba(148,163,184,.22);background:rgba(15,23,42,.55)}
+html[data-theme="dark"] .et th{background:rgba(15,23,42,.92);color:#cbd5e1}
+html[data-theme="dark"] .et th,html[data-theme="dark"] .et td{border-bottom-color:rgba(148,163,184,.16);color:#e2e8f0}
+html[data-theme="dark"] .et tr.pick:hover{background:rgba(37,99,235,.18)}
+html[data-theme="dark"] .et tr.pick.on{background:rgba(37,99,235,.3)}
+html[data-theme="dark"] .et tr.pick.match{background:rgba(234,179,8,.16)}
+html[data-theme="dark"] .et tr.pick.match:hover{background:rgba(234,179,8,.26)}
+html[data-theme="dark"] .et-grid label,html[data-theme="dark"] .et-sec label{color:#94a3b8}
+html[data-theme="dark"] .et-sec{background:rgba(17,25,44,.72);border-color:rgba(148,163,184,.22)}
+html[data-theme="dark"] .et-sec>h5{color:#f1f5f9;border-bottom-color:rgba(234,179,8,.65)}
+html[data-theme="dark"] .et-subsec{border-top-color:rgba(148,163,184,.24)}
+html[data-theme="dark"] .et-subsec-title{color:#cbd5e1}
+html[data-theme="dark"] .et-row-letter{background:rgba(234,179,8,.2);border-color:rgba(250,204,21,.45);color:#fde047}
+html[data-theme="dark"] .et-btn{background:rgba(30,41,59,.74);border-color:rgba(148,163,184,.28);color:#e2e8f0}
+html[data-theme="dark"] .et-btn:hover{border-color:rgba(96,165,250,.55);background:rgba(37,99,235,.22)}
+html[data-theme="dark"] .et-btn.xs{background:rgba(30,41,59,.85)}
+html[data-theme="dark"] .et-btn.warn{background:rgba(154,52,18,.3);border-color:rgba(251,146,60,.45);color:#fdba74}
+html[data-theme="dark"] .et-check{border-color:rgba(148,163,184,.24)}
+html[data-theme="dark"] .et-check.ok{background:rgba(16,185,129,.15);border-color:rgba(52,211,153,.35);color:#6ee7b7}
+html[data-theme="dark"] .et-check.no{background:rgba(239,68,68,.15);border-color:rgba(248,113,113,.35);color:#fca5a5}
+html[data-theme="dark"] .et-chip{background:rgba(51,65,85,.75);color:#e2e8f0}
+html[data-theme="dark"] .et-chip.done,html[data-theme="dark"] .et-chip.submitted{background:rgba(16,185,129,.22);color:#6ee7b7}
+html[data-theme="dark"] .et-chip.failed{background:rgba(239,68,68,.22);color:#fca5a5}
+html[data-theme="dark"] .et-chip.running,html[data-theme="dark"] .et-chip.queued{background:rgba(59,130,246,.24);color:#93c5fd}
+html[data-theme="dark"] .et-chip.match{background:rgba(234,179,8,.22);border-color:rgba(250,204,21,.4);color:#fde047}
+html[data-theme="dark"] .et-fixed{color:#94a3b8}
+html[data-theme="dark"] .et-dsr-box{background:rgba(37,99,235,.14);border-color:rgba(96,165,250,.32)}
+html[data-theme="dark"] .et-lkbar{border-bottom-color:rgba(96,165,250,.3)}
+html[data-theme="dark"] .et-lkbar button{color:#94a3b8}
+html[data-theme="dark"] .et-lkbar button:hover{background:rgba(37,99,235,.18);color:#e2e8f0}
+html[data-theme="dark"] .et-lkbar button.on{color:#93c5fd;background:rgba(37,99,235,.2);border-bottom-color:#3b82f6}
+html[data-theme="dark"] .et-dsr-hdr{background:rgba(37,99,235,.18);border-color:rgba(96,165,250,.35);color:#e2e8f0}
+html[data-theme="dark"] .et-CheckPill{background:rgba(30,41,59,.78);border-color:rgba(148,163,184,.26);color:#cbd5e1}
+html[data-theme="dark"] .et-CheckPill:hover{border-color:rgba(96,165,250,.55);background:rgba(37,99,235,.22)}
 </style>
 
 <div class="card glass et" id="et-root">
@@ -431,7 +475,9 @@
                             <?php endforeach ?>
                         </div>
                     </div>
-                    <div data-only="product"><label>Cargo Receive Date *</label><input type="text" data-f="cargo_receive_date" placeholder="e.g. 07 Nov 2026"></div>
+                    <div data-only="product"><label>Cargo Receive Date *</label>
+                        <div style="display:flex;gap:6px;align-items:center"><input type="text" data-f="cargo_receive_date" placeholder="e.g. 07 Nov 2026" style="flex:1;min-width:0">
+                        <input type="date" id="et-cargo-pick" aria-label="Pick the cargo receive date from a calendar" title="Pick the date from a calendar" style="flex:0 0 auto;width:150px"></div></div>
 
                     <!-- Shared Sourcing Office & Country of Origin -->
                     <div><label>Sourcing Office *</label><input type="text" data-f="sourcing_office" list="dl-sourcing-office" placeholder="ASO"></div>

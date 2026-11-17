@@ -1,4 +1,4 @@
-/* VF Test Monitoring: tabs (Email Submission / Transit Monitoring / Request Material Monitoring).
+﻿/* VF Test Monitoring: tabs (Email Submission / Transit Monitoring / Request Material Monitoring).
  * The "Email Submission" tab is the original page (vf_requests.js). This file adds the other two. */
 (() => {
   const root = document.getElementById('vfm-root');
@@ -476,7 +476,7 @@
     if (tab === 'material' && matStatus !== 'IN_TRANSIT') loadMaterial();
     if (tab === 'material' && matStatus === 'IN_TRANSIT') loadMaterial();
   };
-  transitTimer = setInterval(livePoll, 6000);
+  transitTimer = setInterval(livePoll, 10000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) livePoll(); });
   let startTab = 'email';
   try { startTab = localStorage.getItem('vfmTab') || 'email'; } catch (e) { /* private mode */ }

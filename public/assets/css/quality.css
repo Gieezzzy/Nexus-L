@@ -95,3 +95,104 @@
 .qi-table td .qi-stack { width: 110px; }
 
 .qi-hint { font-size: 13px; color: #64748b; }
+
+/* ---- Dark Liquid Glass Quality Insights (html[data-theme="dark"]) ---- */
+html[data-theme="dark"] .qi-root { color: #e2e8f0; }
+html[data-theme="dark"] .qi-tab,
+html[data-theme="dark"] .qi-seg button,
+html[data-theme="dark"] .qi-field,
+html[data-theme="dark"] .qi-legend,
+html[data-theme="dark"] .qi-building h3,
+html[data-theme="dark"] .qi-building h3 small,
+html[data-theme="dark"] .qi-note,
+html[data-theme="dark"] .qi-empty,
+html[data-theme="dark"] .qi-hint,
+html[data-theme="dark"] .qi-kpi span,
+html[data-theme="dark"] .qi-table th { color: #94a3b8; }
+html[data-theme="dark"] .qi-tab:hover { background: rgba(255, 255, 255, 0.08); color: #f1f5f9; }
+html[data-theme="dark"] .qi-tab.active,
+html[data-theme="dark"] .qi-seg button.active {
+  background: rgba(37, 99, 235, 0.34);
+  color: #93c5fd;
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.16);
+}
+html[data-theme="dark"] .qi-date,
+html[data-theme="dark"] .qi-seg,
+html[data-theme="dark"] .qi-field select,
+html[data-theme="dark"] .qi-field input {
+  background: rgba(15, 23, 42, 0.72);
+  border-color: rgba(148, 163, 184, 0.28);
+  color: #e2e8f0;
+}
+html[data-theme="dark"] .qi-kpi {
+  background: linear-gradient(135deg, rgba(17, 25, 44, 0.78), rgba(11, 18, 34, 0.68));
+  border-color: rgba(148, 163, 184, 0.22);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), inset 1px 1px 0 rgba(255, 255, 255, 0.1);
+}
+html[data-theme="dark"] .qi-kpi b { color: #f1f5f9; }
+html[data-theme="dark"] .qi-kpi.red b { color: #fb7185; }
+html[data-theme="dark"] .qi-kpi.amber b { color: #fbbf24; }
+html[data-theme="dark"] .qi-kpi.green b { color: #34d399; }
+html[data-theme="dark"] .qi-tile,
+html[data-theme="dark"] .qi-line {
+  color: #f1f5f9;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35), inset 1px 1px 0 rgba(255, 255, 255, 0.1);
+}
+html[data-theme="dark"] .qi-tile.green,
+html[data-theme="dark"] .qi-line.green {
+  background: linear-gradient(160deg, rgba(16, 185, 129, 0.2), rgba(6, 78, 59, 0.45));
+  border-color: rgba(52, 211, 153, 0.4);
+}
+html[data-theme="dark"] .qi-tile.amber,
+html[data-theme="dark"] .qi-line.amber {
+  background: linear-gradient(160deg, rgba(245, 158, 11, 0.2), rgba(120, 53, 15, 0.42));
+  border-color: rgba(251, 191, 36, 0.42);
+}
+html[data-theme="dark"] .qi-tile.red,
+html[data-theme="dark"] .qi-line.red {
+  background: linear-gradient(160deg, rgba(239, 68, 68, 0.24), rgba(127, 29, 29, 0.48));
+  border-color: rgba(248, 113, 113, 0.48);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.16), 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+html[data-theme="dark"] .qi-tile.grey,
+html[data-theme="dark"] .qi-line.grey {
+  background: rgba(15, 23, 42, 0.58);
+  border-color: rgba(148, 163, 184, 0.2);
+  color: #94a3b8;
+}
+html[data-theme="dark"] .qi-help {
+  background: rgba(15, 23, 42, 0.62);
+  border-color: rgba(148, 163, 184, 0.28);
+  color: #cbd5e1;
+}
+html[data-theme="dark"] .qi-table th { border-bottom-color: rgba(148, 163, 184, 0.2); }
+html[data-theme="dark"] .qi-table tr.click:hover td { background: rgba(45, 212, 191, 0.08); }
+html[data-theme="dark"] .qi-pill.low,
+html[data-theme="dark"] .qi-badge.grey { background: rgba(100, 116, 139, 0.28); color: #cbd5e1; }
+html[data-theme="dark"] .qi-pill.bad,
+html[data-theme="dark"] .qi-badge.red { background: rgba(239, 68, 68, 0.24); color: #fda4af; }
+html[data-theme="dark"] .qi-pill.ok,
+html[data-theme="dark"] .qi-badge.green { background: rgba(16, 185, 129, 0.22); color: #6ee7b7; }
+html[data-theme="dark"] .qi-pill.warn,
+html[data-theme="dark"] .qi-badge.amber { background: rgba(245, 158, 11, 0.24); color: #fcd34d; }
+html[data-theme="dark"] .qi-bar,
+html[data-theme="dark"] .qi-stack { background: rgba(148, 163, 184, 0.2); }
+html[data-theme="dark"] .qi-stack .w {
+  background: repeating-linear-gradient(45deg, rgba(148, 163, 184, 0.35), rgba(148, 163, 184, 0.35) 4px, rgba(30, 41, 59, 0.6) 4px, rgba(30, 41, 59, 0.6) 8px);
+}
+html[data-theme="dark"] .qi-alert span { color: #94a3b8; }
+html[data-theme="dark"] .qi-alert.bad { background: rgba(127, 29, 29, 0.35); border-color: rgba(248, 113, 113, 0.4); color: #fecaca; }
+html[data-theme="dark"] .qi-alert.ok { background: rgba(6, 78, 59, 0.35); border-color: rgba(52, 211, 153, 0.4); color: #a7f3d0; }
+html[data-theme="dark"] .qi-alert.none { background: rgba(15, 23, 42, 0.6); border-color: rgba(148, 163, 184, 0.24); color: #cbd5e1; }
+html[data-theme="dark"] .qi-chip { background: rgba(127, 29, 29, 0.45); border-color: rgba(248, 113, 113, 0.45); color: #fecaca; }
+html[data-theme="dark"] .qi-chip small { color: #fda4af; }
+html[data-theme="dark"] .qi-chip:hover { background: rgba(153, 27, 27, 0.65); }
+html[data-theme="dark"] .qi-building h3 small .r { color: #fb7185; }
+html[data-theme="dark"] .qi-line-nums .p { color: #6ee7b7; }
+html[data-theme="dark"] .qi-line-nums .t { color: #fcd34d; }
+html[data-theme="dark"] .qi-line-nums .f { color: #fda4af; }
+html[data-theme="dark"] .qi-line-nums .w { color: #94a3b8; }
+html[data-theme="dark"] .qi-skel {
+  background: linear-gradient(90deg, rgba(30, 41, 59, 0.8) 20%, rgba(51, 65, 85, 0.9) 45%, rgba(30, 41, 59, 0.8) 70%);
+  background-size: 200% 100%;
+}

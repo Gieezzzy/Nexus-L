@@ -24,6 +24,13 @@ $aiEnabled = \App\Libraries\SystemSettings::get('ai.enabled', '1') !== '0';
             </button>
         <?php endif; ?>
 
+        <?php $isDark = (($user['theme'] ?? '') === 'dark'); ?>
+        <button type="button" id="nx-theme-toggle" class="nx-theme-btn" data-theme="<?= $isDark ? 'dark' : 'light' ?>" aria-pressed="<?= $isDark ? 'true' : 'false' ?>" title="<?= $isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode' ?>" aria-label="Toggle dark mode">
+            <svg class="nx-theme-ico-moon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+            <svg class="nx-theme-ico-sun" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+            <span class="nx-theme-label"><?= $isDark ? 'Dark' : 'Light' ?></span>
+        </button>
+
         <a class="who" href="<?= site_url('account') ?>" title="Account Profile" style="text-decoration:none;color:inherit">
             <div class="who-t">
                 <b><?= esc($user['name'] ?? '') ?></b>

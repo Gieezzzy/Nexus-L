@@ -35,6 +35,19 @@
 .sc-btn:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
 .sc-send{min-height:46px;padding:0 24px;font-size:14.5px}
 @media (max-width:640px){.sc{padding:16px!important}.sc-head .sc-btn,.sc-send{width:100%}.sc-row>input,.sc-row>select{flex:1 1 100%}}
+
+/* Liquid Glass Dark Mode */
+html[data-theme="dark"] .sc-note{background:rgba(37,99,235,.18);color:#93c5fd;border:1px solid rgba(96,165,250,.3)}
+html[data-theme="dark"] .sc-status{background:rgba(15,23,42,.68);border-color:rgba(148,163,184,.22);color:#e2e8f0}
+html[data-theme="dark"] .sc-box{background:rgba(17,25,44,.72);border-color:rgba(148,163,184,.22)}
+html[data-theme="dark"] .sc input[type=text],html[data-theme="dark"] .sc select{background:rgba(15,23,42,.82);border-color:rgba(148,163,184,.26);color:#f1f5f9}
+html[data-theme="dark"] .sc-list{border-color:rgba(148,163,184,.22)}
+html[data-theme="dark"] .sc th{background:rgba(15,23,42,.92);color:#cbd5e1}
+html[data-theme="dark"] .sc th,html[data-theme="dark"] .sc td{border-bottom-color:rgba(148,163,184,.16);color:#e2e8f0}
+html[data-theme="dark"] .sc tbody tr:hover{background:rgba(51,65,85,.35)}
+html[data-theme="dark"] .sc tbody tr:has(input:checked){background:rgba(37,99,235,.22)}
+html[data-theme="dark"] .sc-btn{background:rgba(30,41,59,.74);border-color:rgba(148,163,184,.28);color:#e2e8f0}
+html[data-theme="dark"] .sc-btn:hover{background:rgba(37,99,235,.22)}
 </style>
 
 <div class="card glass sc" id="sc-moved">

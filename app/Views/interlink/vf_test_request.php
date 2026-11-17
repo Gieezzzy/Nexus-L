@@ -56,6 +56,43 @@
 .vfr-kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;font-size:12.5px}
 .vfr-kv div{background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:6px 9px}
 .vfr-kv small{display:block;color:#64748b;font-size:11px}
+
+/* Liquid Glass Dark Mode */
+html[data-theme="dark"] .vfr-controls select,html[data-theme="dark"] .vfr-controls input{background:rgba(15,23,42,.82);border-color:rgba(148,163,184,.26);color:#f1f5f9}
+html[data-theme="dark"] .vfr-btn{background:rgba(30,41,59,.74);border-color:rgba(148,163,184,.28);color:#e2e8f0}
+html[data-theme="dark"] .vfr-btn:hover{border-color:rgba(96,165,250,.55);background:rgba(37,99,235,.22)}
+html[data-theme="dark"] .vfr-btn.primary{background:linear-gradient(135deg,#2563eb,#1d4ed8);border-color:#3b82f6;color:#fff}
+html[data-theme="dark"] .vfr-tbl-wrap{background:rgba(15,23,42,.62);border-color:rgba(148,163,184,.22)}
+html[data-theme="dark"] .vfr-tbl th{background:rgba(15,23,42,.92);color:#cbd5e1;border-bottom-color:rgba(148,163,184,.25)}
+html[data-theme="dark"] .vfr-tbl td{color:#e2e8f0;border-bottom-color:rgba(148,163,184,.16)}
+html[data-theme="dark"] .vfr-tbl tr:hover td{background:rgba(51,65,85,.35)}
+html[data-theme="dark"] .vfr-link{color:#60a5fa}
+html[data-theme="dark"] .vfr-b-req{background:rgba(245,158,11,.2);color:#fcd34d}
+html[data-theme="dark"] .vfr-b-sub{background:rgba(59,130,246,.22);color:#93c5fd}
+html[data-theme="dark"] .vfr-b-ok{background:rgba(16,185,129,.2);color:#6ee7b7}
+html[data-theme="dark"] .vfr-b-err{background:rgba(239,68,68,.2);color:#fca5a5}
+html[data-theme="dark"] .vfr-tree .vfr-grp td{background:rgba(30,41,59,.68);color:#f1f5f9;border-bottom-color:rgba(148,163,184,.2)}
+html[data-theme="dark"] .vfr-tree .vfr-grp:hover td{background:rgba(37,99,235,.2)}
+html[data-theme="dark"] .vfr-tree .vfr-chev{color:#94a3b8}
+html[data-theme="dark"] .vfr-tree .vfr-cnt{background:rgba(51,65,85,.8);color:#e2e8f0}
+html[data-theme="dark"] .vfr-tree .vfr-kidwrap > td{background:rgba(11,18,34,.55)}
+html[data-theme="dark"] .vfr-kids th{color:#94a3b8;border-bottom-color:rgba(148,163,184,.2)}
+html[data-theme="dark"] .vfr-kids td{border-bottom-color:rgba(148,163,184,.14);color:#e2e8f0}
+html[data-theme="dark"] .vfr-kids tr.vfr-item:hover td{background:rgba(37,99,235,.18)}
+html[data-theme="dark"] .vfr-doc{background:rgba(37,99,235,.22);border-color:rgba(96,165,250,.4);color:#93c5fd}
+html[data-theme="dark"] .vfr-sub{color:#94a3b8}
+html[data-theme="dark"] .vfr-modal{background:rgba(2,6,23,.72);backdrop-filter:blur(6px)}
+html[data-theme="dark"] .vfr-card{background:rgba(15,23,42,.94);color:#f1f5f9;border:1px solid rgba(148,163,184,.26);box-shadow:inset 1px 1px 0 rgba(255,255,255,.1),0 24px 60px rgba(0,0,0,.65);backdrop-filter:blur(18px)}
+html[data-theme="dark"] .vfr-grid label{color:#94a3b8}
+html[data-theme="dark"] .vfr-grid input,html[data-theme="dark"] .vfr-grid select,html[data-theme="dark"] .vfr-grid textarea{background:rgba(15,23,42,.82);border-color:rgba(148,163,184,.26);color:#f1f5f9}
+html[data-theme="dark"] .vfr-erp-box{background:rgba(37,99,235,.16);border-color:rgba(96,165,250,.35)}
+html[data-theme="dark"] .vfr-erp-box[style*="#f0fdf4"]{background:rgba(16,185,129,.14)!important;border-color:rgba(52,211,153,.35)!important}
+html[data-theme="dark"] .vfr-erp-box [style*="#1e3a8a"]{color:#93c5fd!important}
+html[data-theme="dark"] .vfr-erp-box [style*="#166534"]{color:#6ee7b7!important}
+html[data-theme="dark"] .vfr-kv div{background:rgba(15,23,42,.72);border-color:rgba(148,163,184,.22);color:#e2e8f0}
+html[data-theme="dark"] .vfr-kv small{color:#94a3b8}
+html[data-theme="dark"] .vfr-modal [style*="color:#475569"]{color:#94a3b8!important}
+html[data-theme="dark"] .vfr-modal [style*="color:#0f172a"]{color:#f1f5f9!important}
 </style>
 
 <div class="card glass vfr-wrap" id="vfr-root" data-base="<?= esc(base_url(), 'attr') ?>">

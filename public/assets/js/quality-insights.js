@@ -115,8 +115,11 @@
     $('#qi-sub').textContent = periodTitle() + ' - ' + t.tested + ' tested, ' + t.fail + ' failed, ' + t.pending + ' waiting';
   }
 
+  // the line map counts by the day a result was TESTED (default) or by the day the shoes were PRODUCED on the line
+  const basis = () => { try { return localStorage.getItem('nxl:qi-basis') === 'production' ? 'production' : 'tested'; } catch (e) { return 'tested'; } };
+  const linesParams = () => Object.assign(period(), { basis: basis() });
   async function loadLines(force) {
-    const params = period();
+    const params = linesParams();
     $('#qi-line-hint').textContent = 'Each card adds up every test of ' + periodWords() + '.';
     const hit = peek('line-map', params);
     if (hit) drawLines(hit); else { $('#qi-line-kpis').innerHTML = skelKpis(5); $('#qi-line-body').innerHTML = skelTiles(); }
@@ -197,7 +200,7 @@
       return `<div class="cal-dcard"><div class="cal-dcard-head"><div><span class="cal-dcard-domain ${esc(i.domain)}">${esc(i.domain_label)}</span><div class="cal-dcard-ref">${esc(i.lab_ref_no || 'No Lab Ref')}</div></div><div style="display:flex;align-items:center;gap:6px">${st}${rp}</div></div>`
         + `<div class="cal-dcard-grid"><div class="cal-dcard-field"><span class="cal-df-label">Test</span><span class="cal-df-val">${esc(i.test_type || '–')}</span></div><div class="cal-dcard-field"><span class="cal-df-label">Style</span><span class="cal-df-val">${esc(i.style || '–')}</span></div>`
         + `<div class="cal-dcard-field"><span class="cal-df-label">Test Date</span><span class="cal-df-val">${esc(fmtDate(i.test_date))}</span></div><div class="cal-dcard-field"><span class="cal-df-label">Technician</span><span class="cal-df-val">${esc(i.technician || '–')}</span></div>`
-        + (i.remarks ? `<div class="cal-dcard-field" style="grid-column:span 2"><span class="cal-df-label">Remarks</span><span class="cal-df-val" style="color:#64748b;font-weight:400">${esc(i.remarks)}</span></div>` : '') + '</div>'
+        + (i.remarks ? `<div class="cal-dcard-field" style="grid-column:span 2"><span class="cal-df-label">Remarks</span><span class="cal-df-val" style="color:#64748b;font-weight:400;white-space:pre-line">${esc(i.remarks)}</span></div>` : '') + '</div>'
         + `<div class="cal-dcard-foot"><span style="font-size:11px;color:#94a3b8">${esc(i.category || '')}</span>${i.view_url ? `<a href="${esc(i.view_url)}" target="_blank" class="cal-dcard-link"><span>View Full Sheet</span><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></a>` : ''}</div></div>`;
     }).join('');
   }
@@ -232,10 +235,11 @@
   $$('.qi-tab').forEach((b) => b.addEventListener('click', () => show(b.dataset.tab)));
   $('#qi-refresh').addEventListener('click', () => { cache.clear(); show(state.tab); });
 
-  $('#qi-show-empty').addEventListener('change', () => { const h = peek('line-map', period()); if (h) drawLines(h); });
+  $('#qi-show-empty').addEventListener('change', () => { const h = peek('line-map', linesParams()); if (h) drawLines(h); });
+  { const sel = $('#qi-basis'); if (sel) { sel.value = basis(); sel.addEventListener('change', () => { try { localStorage.setItem('nxl:qi-basis', sel.value); } catch (e) { /* not saved */ } loadLines(); }); } }
   $('#qi-line-body').addEventListener('click', (e) => {
     const t = e.target.closest('[data-line]'); if (!t || t.disabled) return;
-    showDetails(periodTitle(), 'Line ' + t.dataset.line, 'Tests of ' + periodWords(), 'line-details', Object.assign({}, period(), { line: t.dataset.line }));
+    showDetails(periodTitle(), 'Line ' + t.dataset.line, 'Tests of ' + periodWords(), 'line-details', Object.assign({}, linesParams(), { line: t.dataset.line }));
   });
 
   $('#qi-group').addEventListener('change', (e) => { state.group = e.target.value; loadFail(); });

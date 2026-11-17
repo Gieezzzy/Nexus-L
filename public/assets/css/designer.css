@@ -86,3 +86,107 @@
 .dsg-sig-active { flex-direction: row; align-items: center; gap: 6px; align-self: end; }
 .sig-pad { display: block; width: 100%; max-width: 460px; height: 140px; border: 1px dashed #94a3b8; border-radius: 8px; background: #fff; touch-action: none; }
 .sig-thumb { height: 34px; max-width: 140px; object-fit: contain; background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; }
+
+
+/* ==========================================================================
+   Liquid Glass Dark Mode (html[data-theme="dark"]) — Report Designer
+   ========================================================================== */
+html[data-theme="dark"] .dsg-tabs { border-bottom-color: rgba(148, 163, 184, .22); }
+html[data-theme="dark"] .dsg-tab { color: #94a3b8; }
+html[data-theme="dark"] .dsg-tab:hover { color: #f8fafc; }
+html[data-theme="dark"] .dsg-tab.active { color: #60a5fa; border-bottom-color: #60a5fa; }
+html[data-theme="dark"] .dsg-side,
+html[data-theme="dark"] .dsg-props,
+html[data-theme="dark"] .dsg-bar,
+html[data-theme="dark"] .dsg-fields,
+html[data-theme="dark"] .dsg-x,
+html[data-theme="dark"] .dsg-xmap,
+html[data-theme="dark"] .dsg-xrb,
+html[data-theme="dark"] .dsg-xres,
+html[data-theme="dark"] .dsg-sig-grid {
+  background: rgba(17, 25, 44, .78);
+  border-color: rgba(148, 163, 184, .22);
+  color: #e2e8f0;
+  backdrop-filter: blur(14px);
+}
+html[data-theme="dark"] .dsg-head h2,
+html[data-theme="dark"] .dsg-xmh { color: #f1f5f9; }
+html[data-theme="dark"] .dsg-stage-wrap,
+html[data-theme="dark"] .dsg-work,
+html[data-theme="dark"] .dsg-xwork {
+  background: rgba(11, 18, 34, .78);
+  border-color: rgba(148, 163, 184, .22);
+}
+html[data-theme="dark"] .dsg-props input,
+html[data-theme="dark"] .dsg-props select,
+html[data-theme="dark"] .dsg-props textarea,
+html[data-theme="dark"] .dsg-xmh > input[type=text],
+html[data-theme="dark"] .dsg-x input,
+html[data-theme="dark"] .dsg-x select {
+  background: rgba(15, 23, 42, .84);
+  border-color: rgba(148, 163, 184, .26);
+  color: #f1f5f9;
+}
+html[data-theme="dark"] .dsg-xrule,
+html[data-theme="dark"] .dsg-row,
+html[data-theme="dark"] .dsg-pt {
+  background: rgba(30, 41, 59, .68);
+  border-color: rgba(148, 163, 184, .22);
+  color: #e2e8f0;
+}
+html[data-theme="dark"] .dsg-xrule.act,
+html[data-theme="dark"] .dsg-sig-active {
+  background: rgba(37, 99, 235, .22);
+  border-color: #3b82f6;
+}
+html[data-theme="dark"] .sig-pad {
+  background: rgba(15, 23, 42, .9);
+  border-color: rgba(148, 163, 184, .3);
+}
+html[data-theme="dark"] .sig-thumb {
+  background: rgba(30, 41, 59, .75);
+  border-color: rgba(148, 163, 184, .26);
+}
+
+/* ---- graph report (PNG) designer ---- */
+.dg-work{display:grid;grid-template-columns:260px minmax(0,1fr) 280px;gap:12px;align-items:start}
+@media (max-width:1100px){.dg-work{grid-template-columns:1fr}}
+.dg-tools,.dg-props{padding:12px;max-height:calc(100vh - 220px);overflow:auto}
+.dg-tools h4,.dg-props h4{margin:10px 0 6px}
+.dg-add{display:flex;flex-wrap:wrap;gap:6px}
+.dg-cols{display:flex;flex-wrap:wrap;gap:5px;max-height:240px;overflow:auto;margin-top:6px}
+.dg-grp{flex:0 0 100%;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-top:6px}
+.dg-chip{border:1px solid var(--line);background:#fff;border-radius:6px;padding:3px 8px;font-size:12px;cursor:grab;user-select:none}
+.dg-chip:hover{border-color:var(--brand);background:#eff6ff}
+.dg-stage-wrap{padding:12px;overflow:auto;max-height:calc(100vh - 220px)}
+.dg-stage{position:relative;display:inline-block;outline:none;border:1px solid var(--line);background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.12)}
+.dg-stage canvas{display:block}
+.dg-over{position:absolute;left:0;top:0;touch-action:none}
+.dg-frame{position:absolute;box-sizing:border-box;cursor:move;border:1px dashed transparent}
+.dg-frame:hover{border-color:#60a5fa}
+.dg-frame.sel{border:2px solid var(--brand);background:rgba(37,99,235,.06)}
+.dg-grip{position:absolute;right:-5px;bottom:-5px;width:10px;height:10px;background:var(--brand);border-radius:2px;cursor:nwse-resize}
+.dg-fld{display:flex;flex-direction:column;gap:2px;font-size:12px;margin:6px 0}
+.dg-fld input[type=text],.dg-fld input[type=number],.dg-fld select{width:100%;box-sizing:border-box}
+.dg-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.dg-grid .dg-fld{margin:0}
+.dg-chk{display:flex;align-items:center;gap:4px;font-size:12px;margin:3px 0}
+.dg-sers{display:flex;flex-direction:column}
+.dg-type{font-size:11px;font-weight:700;color:var(--muted);margin:0 0 6px}
+.dg-ser{border:1px solid var(--line);border-radius:8px;padding:8px;margin:6px 0;background:#fff}
+.dg-ser-h{display:flex;gap:6px;align-items:center}
+.dg-ser-h input[type=text]{flex:1;min-width:0}
+
+
+/* Pull Test Graph Designer: 3-table connector, join builder, drag-drop highlight */
+.pg-sources { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.pg-src-card { border: 1px solid rgba(148, 163, 184, .32); border-radius: 8px; padding: 7px 8px; background: rgba(248, 250, 252, .65); display: flex; flex-direction: column; gap: 5px; }
+.pg-src-head { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #475569; }
+.pg-src-sel, .pg-join-row select { width: 100%; padding: 4px 6px; font-size: 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #0f172a; }
+.pg-join-row { display: grid; grid-template-columns: auto 1fr; gap: 4px 6px; align-items: center; padding-top: 4px; border-top: 1px dashed rgba(148, 163, 184, .35); }
+.pg-pair-row { display: flex; gap: 4px; align-items: center; margin-bottom: 4px; }
+.pg-pair-row input { flex: 1; min-width: 0; padding: 4px 6px; font-size: 12px; border: 1px solid #cbd5e1; border-radius: 5px; }
+.dg-over.pg-drop-active { outline: 2px dashed #2563eb; background: rgba(37, 99, 235, .07); }
+html[data-theme="dark"] .pg-src-card { background: rgba(15, 23, 42, .68); border-color: rgba(148, 163, 184, .25); }
+html[data-theme="dark"] .pg-src-head { color: #94a3b8; }
+html[data-theme="dark"] .pg-src-sel, html[data-theme="dark"] .pg-join-row select, html[data-theme="dark"] .pg-pair-row input { background: rgba(30, 41, 59, .85); border-color: rgba(148, 163, 184, .28); color: #f1f5f9; }

@@ -890,13 +890,14 @@ async function openEtrfFromHome(etrf) {
   await sleep(300);
 
   const norm = (s) => String(s || '').toLowerCase().replace(/[\s\-_()]+/g, ' ').trim();
-  const links = [...document.querySelectorAll('a')].map((a) => {
+  const collect = () => [...document.querySelectorAll('a')].map((a) => {
     const text = (a.textContent || '').replace(/\s+/g, ' ').trim();
     const href = a.getAttribute('href') || '';
     const m = href.match(/window\.location\.href\s*=\s*'([^']+)'/i);
     const url = m ? m[1] : (/NormalForm/i.test(href) ? href : '');
     return { a, text, normText: norm(text), url };
   }).filter((x) => x.url && /NormalForm/i.test(x.url) && !/Edit eForm/i.test(x.text));
+  let links = collect();
 
   if (!links.length) {
     if (!/\/Portal2\/Home\.aspx/i.test(location.pathname)) {
@@ -911,14 +912,26 @@ async function openEtrfFromHome(etrf) {
     : [(etrf && etrf.template_label) || 'VF eTRF - PULLTESTTemplate', 'VF eTRF - Product', 'VF eTRF - Material'];
 
   // exactly the menu entry that was asked for: never another form (a "Product" request must not silently become a "WHOLE SHOE" one)
-  let chosen = null;
-  for (const t of targets) {
-    const nt = norm(t);
-    chosen = links.find((l) => l.normText === nt);
-    if (chosen) break;
+  const find = () => { for (const t of targets) { const nt = norm(t); const c = links.find((l) => l.normText === nt); if (c) return c; } return null; };
+  let chosen = find();
+  // The Home page fills the Submit a Request list in steps, so the first look can show only part of it: look again for up to 20 s
+  // (and open a collapsed "more / show all" link of the list if there is one) before saying the form is missing.
+  for (let i = 0; !chosen && i < 40; i++) {
+    await sleep(500);
+    if (i === 6 || i === 16) {
+      const more = [...document.querySelectorAll('a,button,span,div')].find((e) => e.children.length === 0 && /^(show |view |see )?(more|all)\b/i.test((e.textContent || '').trim()) && (e.textContent || '').trim().length < 20 && e.offsetParent !== null);
+      if (more) try { more.click(); } catch (e) { /* not clickable */ }
+    }
+    links = collect();
+    chosen = find();
   }
   if (!chosen) {
-    return { state: 'error', message: `The form "${targets[0]}" was not found under Submit a Request on InterLink Home. The entries found: ${links.map((l) => l.text).filter(Boolean).slice(0, 14).join(' | ') || 'none'}.` };
+    const seen = [...new Set(links.map((l) => l.text).filter(Boolean))];
+    // The bonding / WHOLE SHOE forms are saved templates of the Danica Agbuya account (dtp_qcasst); the PULL TEST ones belong to Faye Ann Elaysa (dtp_lab).
+    // When the list lacks them the saved InterLink session is most likely the other person's: say who it is.
+    const page = (document.body.innerText || '');
+    const who = /Danica\s+Agbuya/i.test(page) ? 'Danica Agbuya (dtp_qcasst)' : /Faye\s+Ann\s+Elaysa/i.test(page) ? 'Faye Ann Elaysa (dtp_lab)' : 'a person InterLink does not name on this page';
+    return { state: 'error', message: `The form "${targets[0]}" was not found under Submit a Request on InterLink Home. This InterLink session belongs to ${who}. The entries found: ${seen.slice(0, 14).join(' | ') || 'none'}. If this is not the account the form belongs to, click the Login button of the right account (dtp_qcasst for Material / Product / bonding / Whole Shoe) in NexusInterlinkService and sign in with that person.` };
   }
   location.href = chosen.url;
   return { state: 'navigating', matched: chosen.text, url: chosen.url };
@@ -1002,6 +1015,130 @@ async function fillNormalFormEtrf(etrf) {
     for (const [code, val] of Object.entries(fields)) {
       if (val === '' || val == null) continue;
       if (setField(code, val)) filled++;
+    }
+
+    // 4b. PULLTESTTemplate ONLY (the other templates are not touched): its Sourcing Office and Cargo Receive Date are DevExpress editors that are
+    //     empty in the saved template, and typing into the plain box does not reach the editor's own value, so InterLink says "Sourcing Office is
+    //     missing! Cargo Receive Date is missing!". They are set through the editor itself, found by its code or, when the code differs on this
+    //     template, by its caption; the result is read back, and what was found is reported if it still does not hold.
+    const isPull = /pull/i.test(String((etrf && (etrf.etrf_type || etrf.template_label)) || ''));
+    const pullReport = [];
+    if (isPull) {
+      const wantOffice = String(fields.E1_TEXT_023 || 'ASO').trim();
+      const wantDate = String(fields.INSP_SHIP_DATE || etrf.cargo_receive_date || '').trim();
+      const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+      const toDate = (t) => {
+        let m = /^(\d{1,2})[ -]([A-Za-z]{3})[a-z]*[ -,]*(\d{4})$/.exec(t);
+        if (m) return new Date(Number(m[3]), MONTHS.indexOf(m[2].toLowerCase()), Number(m[1]));
+        m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t);
+        if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+        const d = new Date(t);
+        return isNaN(d) ? null : d;
+      };
+      const ctrlOf = (el) => {
+        const id = String((el && el.id) || '').replace(/_I$/, '');
+        let c = id && window[id];
+        if (!c && window.ASPxClientControl && ASPxClientControl.GetControlCollection) {
+          try { c = ASPxClientControl.GetControlCollection().GetByName(id) || ASPxClientControl.GetControlCollection().Get(id); } catch (e) { /* no such editor */ }
+        }
+        return c && typeof c === 'object' ? c : null;
+      };
+      // the box of a field: by its code, else the box that sits beside the caption (a label cell) on the same row
+      const shown = (e) => !!e && e.offsetParent !== null && e.getBoundingClientRect().width > 0;
+      const boxFor = (codes, caption) => {
+        // the box people see: by a field code (the visible one first), else the box beside the caption
+        let el = null;
+        for (const code of [].concat(codes)) {
+          const all = [...document.querySelectorAll(`[id*="_TpEdr_${code}_"][type="text"], textarea[id*="_TpEdr_${code}_"], select[id*="_TpEdr_${code}_"], input[name*="$TpEdr_${code}$"][type="text"], select[name*="$TpEdr_${code}$"]`)];
+          el = all.find(shown) || null;
+          if (el) break;
+        }
+        if (el) return el;
+        const want = caption.toLowerCase();
+        const lab = [...document.querySelectorAll('label, td, th, span')].find((n) => n.children.length < 3 && String(n.textContent || '').replace(/[*:\s]+/g, ' ').trim().toLowerCase() === want);
+        if (!lab) return null;
+        const row = (lab.htmlFor && document.getElementById(lab.htmlFor)) || null;
+        if (row) return row;
+        let box = lab.closest('tr') || lab.parentElement;
+        for (let up = 0; up < 3 && box; up++, box = box.parentElement) {
+          const hit = [...box.querySelectorAll('input[type="text"], select, textarea')].find((i) => i.offsetParent !== null && !/_(DDD|DVS|CHK)/.test(i.id || ''));
+          if (hit) return hit;
+        }
+        return null;
+      };
+      const commit = async (codes, caption, want, kind) => {
+        const el = boxFor(codes, caption);
+        if (!el) { pullReport.push(`${caption}: box not found`); return; }
+        if (el.tagName === 'SELECT') {
+          const opt = [...el.options].find((o) => o.value === want || o.text.trim().toLowerCase() === want.toLowerCase());
+          if (opt) setNative(el, opt.value);
+        } else {
+          const c = ctrlOf(el);
+          if (c) {
+            try {
+              if (kind === 'date' && typeof c.SetDate === 'function') { const d = toDate(want); if (d) c.SetDate(d); else c.SetText(want); }
+              else if (typeof c.FindItemByText === 'function' && c.FindItemByText(want)) c.SetSelectedItem(c.FindItemByText(want));
+              else if (typeof c.FindItemByValue === 'function' && c.FindItemByValue(String(fields.DETOX_SUPPLIER_COUNTRY || want))) c.SetSelectedItem(c.FindItemByValue(String(fields.DETOX_SUPPLIER_COUNTRY || want)));
+              else if (typeof c.SetText === 'function') c.SetText(want);
+              else if (typeof c.SetValue === 'function') c.SetValue(want);
+              if (typeof c.RaiseValueChangedEvent === 'function') c.RaiseValueChangedEvent();
+            } catch (e) { /* the plain box below still gets the text */ }
+          }
+          if (!String(el.value || '').trim()) setNative(el, want);
+        }
+        await sleep(250);
+        const c2 = ctrlOf(el);
+        let now = String(el.value || '').trim();
+        try { if (c2 && typeof c2.GetText === 'function' && !now) now = String(c2.GetText() || '').trim(); } catch (e) { /* none */ }
+        pullReport.push(`${caption}: ${now ? 'set to "' + now + '"' : 'STILL EMPTY (box ' + (el.id || el.name) + (c2 ? ', editor ' + (c2.name || '') : ', no editor') + ')'}`);
+      };
+      if (wantOffice) await commit(['DETOX_SUPPLIER_COUNTRY', 'E1_TEXT_023'], 'Sourcing Office', wantOffice, 'list');
+      if (wantDate) {
+        // Cargo Receive Date is a DevExpress DateEdit: its value is the editor's date, not the text of its box. Find the editor (by its box, or by
+        // scanning every editor on the page), give it the date, press Enter in the box like a person would, and read the editor back.
+        const dateBox = boxFor('INSP_SHIP_DATE', 'Cargo Receive Date');
+        if (!dateBox) {
+          pullReport.push('Cargo Receive Date: box not found');
+        } else {
+          const want = toDate(wantDate);
+          const findEditor = () => {
+            let c = ctrlOf(dateBox);
+            if (c && typeof c.SetDate === 'function') return c;
+            c = null;
+            try {
+              ASPxClientControl.GetControlCollection().ForEachControl((x) => {
+                if (c || !x || typeof x.SetDate !== 'function') return;
+                let inp = null;
+                try { inp = typeof x.GetInputElement === 'function' ? x.GetInputElement() : null; } catch (e) { /* none */ }
+                const main = (() => { try { return x.GetMainElement ? x.GetMainElement() : null; } catch (e) { return null; } })();
+                if (inp === dateBox || (main && main.contains(dateBox)) || (x.name && String(dateBox.id || '').indexOf(x.name) === 0)) c = x;
+              });
+            } catch (e) { /* no collection */ }
+            return c;
+          };
+          const ed = findEditor();
+          const read = () => { try { const d = ed && typeof ed.GetDate === 'function' ? ed.GetDate() : null; return d && !isNaN(d) ? d : null; } catch (e) { return null; } };
+          if (ed && want) {
+            try { ed.SetDate(want); } catch (e) { /* tried below */ }
+            await sleep(200);
+            if (!read()) { try { ed.SetText(wantDate); } catch (e) { /* tried below */ } await sleep(200); }
+          }
+          if (!read()) {   // type it like a person: box text, Enter, leave the box
+            try {
+              dateBox.focus();
+              setNative(dateBox, wantDate);
+              for (const t of ['keydown', 'keypress', 'keyup']) dateBox.dispatchEvent(new KeyboardEvent(t, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+              dateBox.blur();
+            } catch (e) { /* read back tells */ }
+            await sleep(300);
+          }
+          if (ed && typeof ed.RaiseValueChangedEvent === 'function') { try { ed.RaiseValueChangedEvent(); } catch (e) { /* none */ } }
+          const got = read();
+          const shownTxt = String(dateBox.value || '').trim();
+          const ok = ed ? !!got : (!!shownTxt && !/^01 Jan 0100$/i.test(shownTxt));
+          pullReport.push(`Cargo Receive Date: ${ok ? 'set to "' + (got ? got.getDate() + ' ' + MONTHS[got.getMonth()] + ' ' + got.getFullYear() : shownTxt) + '"' : 'STILL EMPTY (box ' + (dateBox.id || dateBox.name) + (ed ? ', editor ' + (ed.name || '') + ' has no date, box shows "' + shownTxt + '"' : ', no date editor found') + ')'}`);
+        }
+      }
     }
 
     // 5. The JOB_DUMMY_009 table (Style Information on a product / Material Information on a material): one table row for EVERY row of the request
@@ -1143,7 +1280,11 @@ async function fillNormalFormEtrf(etrf) {
       return { state: 'error', message: `InterLink says these required boxes are empty or invalid, so nothing was submitted: ${[...new Set(invalid)].slice(0, 12).join('; ')}.` };
     }
 
-    return { state: 'filled', filled, rowsFilled, notSet, invalid: [...new Set(invalid)] };
+    if (isPull && String((etrf && etrf.action) || 'save').toLowerCase() === 'submit' && pullReport.some((t) => /STILL EMPTY|not found/.test(t))) {
+      // say exactly what the page looks like instead of letting InterLink refuse the submit with its short message
+      return { state: 'error', message: `PULLTESTTemplate: ${pullReport.join('; ')}. Nothing was submitted.` };
+    }
+    return { state: 'filled', filled, rowsFilled, notSet, invalid: [...new Set(invalid)], pull: pullReport };
   } catch (e) {
     return { state: 'error', message: 'Error filling eTRF form: ' + (e && e.message) };
   }

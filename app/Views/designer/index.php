@@ -8,6 +8,8 @@
     </div>
     <div class="dsg-tabs" role="tablist">
         <button type="button" class="dsg-tab active" data-tab="diagram">Shoe diagram</button>
+        <button type="button" class="dsg-tab" data-tab="graph">Graph report (PNG)</button>
+        <button type="button" class="dsg-tab" data-tab="pull">Pull Test Graphs</button>
         <button type="button" class="dsg-tab" data-tab="form">Form fields</button>
         <button type="button" class="dsg-tab" data-tab="excel">Excel readers</button>
         <button type="button" class="dsg-tab" data-tab="locations">File locations</button>
@@ -68,6 +70,90 @@
             </div>
             <p id="dsg-status" class="muted sm"></p>
         </aside>
+    </div>
+</section>
+
+<!-- ============================ GRAPH REPORT (PNG) ============================ -->
+<script>window.DSG_GRAPH_COLS = <?= json_encode($graphColumns ?? [], JSON_UNESCAPED_UNICODE) ?>;</script>
+<section id="dsg-pane-graph" class="dsg-pane" hidden>
+    <div class="card glass dsg-bar">
+        <label>Preview record
+            <select id="dg-record"><option value="">(loading...)</option></select>
+        </label>
+        <span class="dsg-sp"></span>
+        <button type="button" class="dsg-btn" id="dg-fit" title="Show the whole page in the window">Fit page</button>
+        <button type="button" class="dsg-btn" id="dg-png" title="Download what you see as a PNG">Download PNG</button>
+        <button type="button" class="dsg-btn dsg-primary" id="dg-save"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg> Save layout</button>
+        <button type="button" class="dsg-btn dsg-danger" id="dg-reset">Reset to default</button>
+        <span id="dg-status" class="muted sm"></span>
+    </div>
+    <p class="muted sm">This is the page that <b>Generate Report</b> in Shoe Bonding (U60) draws as a PNG for a Lab Ref: the title, the Test No. table, the readings tables, the curve and the footer.
+        Drag an item to move it, drag the square in its corner to resize, arrow keys nudge (Shift = 10 px), Delete removes it. Drag a <b>column</b> from the toolbox onto the page to show its value.</p>
+    <div class="dg-work">
+        <aside class="card glass dg-tools">
+            <h4>Toolbox</h4>
+            <div class="dg-add">
+                <button type="button" class="dsg-btn" data-add="text">+ Text</button>
+                <button type="button" class="dsg-btn" data-add="tests">+ Test No. table</button>
+                <button type="button" class="dsg-btn" data-add="points">+ Readings table</button>
+                <button type="button" class="dsg-btn" data-add="graph">+ Curve graph</button>
+                <button type="button" class="dsg-btn" data-add="line">+ Line</button>
+            </div>
+            <h4>Columns</h4>
+            <input type="search" id="dg-colq" placeholder="Search a column" autocomplete="off">
+            <div id="dg-cols" class="dg-cols"></div>
+            <h4>Curves and readings used</h4>
+            <p class="muted sm">Each line is one test (Upper To Foxing, Foxing To Outsole...): the columns that hold its readings, curve and spot marks, and its colour.</p>
+            <div id="dg-series"></div>
+        </aside>
+        <div class="card glass dg-stage-wrap"><div id="dg-stage" class="dg-stage" tabindex="0"><canvas id="dg-canvas"></canvas><div id="dg-over" class="dg-over"></div></div></div>
+        <aside class="card glass dg-props"><h4>Selected item</h4><div id="dg-props"><p class="muted sm">Click an item on the page.</p></div></aside>
+    </div>
+</section>
+
+<!-- ============================ PULL TEST GRAPHS (Rivet, Velcro, Eyelet, Lace Holder, Heel/Tongue Pull Tab) ============================ -->
+<section id="dsg-pane-pull" class="dsg-pane" hidden>
+    <div class="card glass dsg-bar">
+        <label>Category
+            <select id="pg-cat">
+                <option value="rivet">Rivet Graph</option>
+                <option value="velcro">Velcro Graph</option>
+                <option value="eyelet" selected>Eyelet Graph</option>
+                <option value="lace_holder">Lace Holder Graph</option>
+                <option value="heel_pull_tab">Heel Pull Tab Graph</option>
+                <option value="tongue_pull_tab">Tongue Pull Tab Graph</option>
+            </select>
+        </label>
+        <label>Preview record
+            <select id="pg-record"><option value="">(loading...)</option></select>
+        </label>
+        <span class="dsg-sp"></span>
+        <button type="button" class="dsg-btn" id="pg-fit" title="Show the whole page in the window">Fit page</button>
+        <button type="button" class="dsg-btn" id="pg-png" title="Download what you see as a PNG">Download PNG</button>
+        <button type="button" class="dsg-btn dsg-primary" id="pg-save"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg> Save layout</button>
+        <button type="button" class="dsg-btn dsg-danger" id="pg-reset">Reset to default</button>
+        <span id="pg-status" class="muted sm"></span>
+    </div>
+    <p class="muted sm">Design each pull-test category report independently. Connect up to <b>3 database tables</b> below, then <b>drag and drop columns</b> onto the page (or click to add). Saved layouts are automatically used by <b>Shoe Bonding (U60) → Generate Report</b>.</p>
+    <div class="dg-work">
+        <aside class="card glass dg-tools">
+            <h4>Database Tables (up to 3)</h4>
+            <div id="pg-sources" class="pg-sources"></div>
+            <h4>Toolbox</h4>
+            <div class="dg-add">
+                <button type="button" class="dsg-btn" data-padd="text">+ Text</button>
+                <button type="button" class="dsg-btn" data-padd="field">+ Field</button>
+                <button type="button" class="dsg-btn" data-padd="infogrid">+ Info Grid</button>
+                <button type="button" class="dsg-btn" data-padd="pulltable">+ Results Table</button>
+                <button type="button" class="dsg-btn" data-padd="pullgraph">+ Curve Graph</button>
+                <button type="button" class="dsg-btn" data-padd="line">+ Line</button>
+            </div>
+            <h4>Columns (drag onto page)</h4>
+            <input type="search" id="pg-colq" placeholder="Search table or column..." autocomplete="off">
+            <div id="pg-cols" class="dg-cols"></div>
+        </aside>
+        <div class="card glass dg-stage-wrap"><div id="pg-stage" class="dg-stage" tabindex="0"><canvas id="pg-canvas"></canvas><div id="pg-over" class="dg-over"></div></div></div>
+        <aside class="card glass dg-props"><h4>Selected item</h4><div id="pg-props"><p class="muted sm">Click an item on the page or drag a column here.</p></div></aside>
     </div>
 </section>
 

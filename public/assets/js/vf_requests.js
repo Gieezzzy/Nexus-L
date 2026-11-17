@@ -1,4 +1,4 @@
-(() => {
+﻿(() => {
   const root = document.getElementById('vfm-root');
   if (!root) return;
   const base = String(root.dataset.base || window.NEXUS_BASE || '/').replace(/\/?$/, '/');
@@ -455,6 +455,6 @@
     polling = true;
     try { await load(true); } catch (e) { /* next round */ } finally { polling = false; }
   };
-  setInterval(poll, 6000);
+  setInterval(poll, 10000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
 })();

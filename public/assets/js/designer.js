@@ -30,6 +30,8 @@
   $$('.dsg-tab').forEach((b) => b.addEventListener('click', () => {
     $$('.dsg-tab').forEach((x) => x.classList.toggle('active', x === b));
     $('#dsg-pane-diagram').hidden = b.dataset.tab !== 'diagram';
+    if ($('#dsg-pane-graph')) $('#dsg-pane-graph').hidden = b.dataset.tab !== 'graph';
+    if ($('#dsg-pane-pull')) $('#dsg-pane-pull').hidden = b.dataset.tab !== 'pull';
     $('#dsg-pane-form').hidden = b.dataset.tab !== 'form';
     $('#dsg-pane-excel').hidden = b.dataset.tab !== 'excel';
     $('#dsg-pane-locations').hidden = b.dataset.tab !== 'locations';
@@ -889,7 +891,7 @@
   }));
   sigLoad();
 
-  if (['form', 'excel', 'locations', 'signatories'].includes(startTab)) $(`.dsg-tab[data-tab="${startTab}"]`)?.click();
+  if (['form', 'excel', 'locations', 'signatories', 'graph'].includes(startTab)) $(`.dsg-tab[data-tab="${startTab}"]`)?.click();
 
   (async () => {
     try { const j = await api('dtr/layout?slug=bonding&variant=form'); if (j.layout) formCfg = Object.assign(formCfg, j.layout); } catch (e) { /* default */ }

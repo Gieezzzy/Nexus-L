@@ -1,4 +1,4 @@
-/** Report approval page (approve/<token>): sign and approve, or return the report with a remark. */
+﻿/** Report approval page (approve/<token>): sign and approve, or return the report with a remark. */
 (() => {
   const root = document.getElementById('apv-root');
   if (!root) return;
@@ -158,7 +158,7 @@
   // my decision is in flight: no "already decided" screen for myself
   ['#apv-approve', '#apv-reject'].forEach((s) => $(s)?.addEventListener('click', () => { deciding = true; setTimeout(() => { if (!busy) deciding = false; }, 1500); }, true));
   setLocked(true);                                                   // locked until the server says this page holds the report
-  tick(); timer = setInterval(tick, 2000);
+  tick(); timer = setInterval(tick, 4000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
   window.addEventListener('pagehide', () => { if (role && !closing) ping('leave').catch(() => {}); });
 })();

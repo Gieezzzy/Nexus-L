@@ -1505,3 +1505,218 @@ a.ld-btn { text-decoration: none; display: inline-flex; align-items: center; }
 .fl-sync{color:#b45309}
 .fl-tip{color:#64748b;font-size:12px}
 @media (prefers-color-scheme:dark){.fl-ctx{background:#0f172a;border-color:#334155}.fl-ctx-i{color:#e2e8f0}.fl-ctx-i:hover:not([disabled]){background:#1e293b}.fl-ctx-sep{background:#334155}}
+
+
+/* ==========================================================================
+   Liquid Glass Dark Mode (html[data-theme="dark"]) — Lab Docs & Other Docs
+   ========================================================================== */
+html[data-theme="dark"] .ld-bar,
+html[data-theme="dark"] .ld-head,
+html[data-theme="dark"] .ld-ribbon,
+html[data-theme="dark"] .ld-foot,
+html[data-theme="dark"] .bk-fs-topbar,
+html[data-theme="dark"] .bk-sw-bar,
+html[data-theme="dark"] .vd-head,
+html[data-theme="dark"] .vd-bar,
+html[data-theme="dark"] .vd-foot,
+html[data-theme="dark"] .fl-tools,
+html[data-theme="dark"] .fl-crumbs {
+  background: rgba(15, 23, 42, .82);
+  border-color: rgba(148, 163, 184, .22);
+  color: #e2e8f0;
+}
+html[data-theme="dark"] .ld-title,
+html[data-theme="dark"] .ld-ttl,
+html[data-theme="dark"] .bk-fs-title,
+html[data-theme="dark"] .bk-name,
+html[data-theme="dark"] .vd-head h2,
+html[data-theme="dark"] .dv-h,
+html[data-theme="dark"] .fl-name,
+html[data-theme="dark"] .vm-name {
+  color: #f1f5f9;
+}
+html[data-theme="dark"] .ld-meta,
+html[data-theme="dark"] .ld-hint,
+html[data-theme="dark"] .bk-sw-meta,
+html[data-theme="dark"] .fl-count,
+html[data-theme="dark"] .fl-path,
+html[data-theme="dark"] .fl-tip,
+html[data-theme="dark"] .vm-upd,
+html[data-theme="dark"] .vm-doc-k {
+  color: #94a3b8;
+}
+html[data-theme="dark"] .ld-btn,
+html[data-theme="dark"] .ld-tab,
+html[data-theme="dark"] .bk-tab,
+html[data-theme="dark"] .bk-edit,
+html[data-theme="dark"] .vm-btn,
+html[data-theme="dark"] .vm-chip,
+html[data-theme="dark"] .fl-more,
+html[data-theme="dark"] .fl-up,
+html[data-theme="dark"] .vd-back,
+html[data-theme="dark"] .vd-edit {
+  background: rgba(30, 41, 59, .78);
+  border-color: rgba(148, 163, 184, .28);
+  color: #cbd5e1;
+}
+html[data-theme="dark"] .ld-btn:hover,
+html[data-theme="dark"] .bk-tab:hover,
+html[data-theme="dark"] .vm-btn:hover,
+html[data-theme="dark"] .vm-chip:hover,
+html[data-theme="dark"] .fl-more:hover,
+html[data-theme="dark"] .vd-back:hover {
+  background: rgba(37, 99, 235, .24);
+  border-color: rgba(96, 165, 250, .5);
+  color: #f8fafc;
+}
+html[data-theme="dark"] .bk-tab.on,
+html[data-theme="dark"] .vm-chip.on,
+html[data-theme="dark"] .ld-primary {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  border-color: #3b82f6;
+  color: #fff;
+}
+html[data-theme="dark"] .bk-card,
+html[data-theme="dark"] .vm-card,
+html[data-theme="dark"] .fl-card,
+html[data-theme="dark"] .fl-folder,
+html[data-theme="dark"] .ld-revs,
+html[data-theme="dark"] .ld-dlg,
+html[data-theme="dark"] .ld-menu,
+html[data-theme="dark"] .ld-ctx,
+html[data-theme="dark"] .fl-ctx,
+html[data-theme="dark"] .vm-pop {
+  background: rgba(17, 25, 44, .88);
+  border-color: rgba(148, 163, 184, .24);
+  color: #e2e8f0;
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, .1), 0 12px 32px rgba(2, 6, 23, .5);
+  backdrop-filter: blur(16px);
+}
+html[data-theme="dark"] .ld-find-in,
+html[data-theme="dark"] .bk-sw-q,
+html[data-theme="dark"] .fl-search input,
+html[data-theme="dark"] .vm-search input {
+  background: rgba(15, 23, 42, .84);
+  border-color: rgba(148, 163, 184, .26);
+  color: #f1f5f9;
+}
+html[data-theme="dark"] .bk-stage,
+html[data-theme="dark"] .ld-stage,
+html[data-theme="dark"] .fv-stage,
+html[data-theme="dark"] .vd-body {
+  background: rgba(11, 18, 34, .75);
+  border-color: rgba(148, 163, 184, .2);
+}
+html[data-theme="dark"] .fv-text,
+html[data-theme="dark"] .fv-csv {
+  background: rgba(15, 23, 42, .85);
+  border-color: rgba(148, 163, 184, .24);
+  color: #e2e8f0;
+}
+html[data-theme="dark"] .fv-csv th {
+  background: rgba(15, 23, 42, .95);
+  color: #cbd5e1;
+  border-color: rgba(148, 163, 184, .22);
+}
+html[data-theme="dark"] .fv-csv td {
+  border-color: rgba(148, 163, 184, .16);
+  color: #e2e8f0;
+}
+html[data-theme="dark"] .fv-html-wrap,
+html[data-theme="dark"] .fv-html-wrap > div {
+  background: rgba(15, 23, 42, .88) !important;
+  color: #e2e8f0 !important;
+}
+html[data-theme="dark"] .fv-html-wrap h3 { color: #f1f5f9 !important; }
+html[data-theme="dark"] .fv-html-wrap p { color: #94a3b8 !important; }
+
+/* Word / Docx & Google-Doc-style Studio */
+html[data-theme="dark"] .gdoc-studio,
+html[data-theme="dark"] .docx-wrapper,
+html[data-theme="dark"] .gdoc-canvas-area {
+  background: rgba(11, 18, 34, .82);
+  color: #e2e8f0;
+}
+html[data-theme="dark"] .gdoc-header,
+html[data-theme="dark"] .gdoc-ribbon-bar,
+html[data-theme="dark"] .gdoc-ribbon-inner {
+  background: rgba(15, 23, 42, .9);
+  border-color: rgba(148, 163, 184, .22);
+  color: #e2e8f0;
+}
+html[data-theme="dark"] .gdoc-title-text { color: #f1f5f9; }
+html[data-theme="dark"] .gdoc-btn,
+html[data-theme="dark"] .gdoc-menu-btn,
+html[data-theme="dark"] .gdoc-select,
+html[data-theme="dark"] .docx-btn,
+html[data-theme="dark"] .docx-select {
+  background: rgba(30, 41, 59, .78);
+  border-color: rgba(148, 163, 184, .26);
+  color: #e2e8f0;
+}
+html[data-theme="dark"] .gdoc-btn:hover,
+html[data-theme="dark"] .gdoc-menu-btn:hover,
+html[data-theme="dark"] .docx-btn:hover {
+  background: rgba(37, 99, 235, .24);
+  color: #fff;
+}
+html[data-theme="dark"] .gdoc-btn.is-active,
+html[data-theme="dark"] .docx-btn.is-active {
+  background: #2563eb;
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+/* PowerPoint / Slides Studio */
+html[data-theme="dark"] .pptx-studio,
+html[data-theme="dark"] .pptx-edit-center {
+  background: rgba(11, 18, 34, .82);
+  color: #e2e8f0;
+}
+html[data-theme="dark"] .pptx-slides-nav,
+html[data-theme="dark"] .pptx-dock,
+html[data-theme="dark"] .pptx-notes-drawer {
+  background: rgba(15, 23, 42, .88);
+  border-color: rgba(148, 163, 184, .22);
+  color: #e2e8f0;
+}
+html[data-theme="dark"] .pptx-thumb-card {
+  background: rgba(30, 41, 59, .72);
+  border-color: rgba(148, 163, 184, .22);
+  color: #cbd5e1;
+}
+html[data-theme="dark"] .pptx-thumb-card.is-active {
+  border-color: #3b82f6;
+  background: rgba(37, 99, 235, .24);
+}
+html[data-theme="dark"] .pptx-title-input,
+html[data-theme="dark"] .pptx-bullet-input,
+html[data-theme="dark"] .pptx-notes-input {
+  background: rgba(15, 23, 42, .84);
+  border-color: rgba(148, 163, 184, .26);
+  color: #f1f5f9;
+}
+
+/* Excel / Luckysheet Chrome (keeps cell canvas crisp while theming UI chrome) */
+html[data-theme="dark"] .bk-lucky-wrap {
+  background: rgba(15, 23, 42, .85);
+  border-color: rgba(148, 163, 184, .24);
+}
+html[data-theme="dark"] .luckysheet-wa-editor,
+html[data-theme="dark"] .luckysheet-wa-calculate,
+html[data-theme="dark"] .luckysheet-stat-area,
+html[data-theme="dark"] .luckysheet-sheet-area,
+html[data-theme="dark"] .luckysheet-info-detail {
+  background: #0f172a !important;
+  border-color: rgba(148, 163, 184, .24) !important;
+  color: #e2e8f0 !important;
+}
+html[data-theme="dark"] .luckysheet-modal-dialog,
+html[data-theme="dark"] .luckysheet-context-menu,
+html[data-theme="dark"] .luckysheet-cols-menu,
+html[data-theme="dark"] .luckysheet-dropdown-menu,
+html[data-theme="dark"] .luckysheet-filter-menu {
+  background: rgba(15, 23, 42, .95) !important;
+  border-color: rgba(148, 163, 184, .28) !important;
+  color: #e2e8f0 !important;
+}

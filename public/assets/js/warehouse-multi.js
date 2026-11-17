@@ -1,4 +1,4 @@
-/**
+﻿/**
  * WAREHOUSE: several users in the same room.
  *  - every user is in the warehouse with the avatar of their own account; avatars of the others walk around and you can meet them
  *  - a Chat button: the messages are seen by everybody in the warehouse at that moment and are NOT saved anywhere (they live a couple of
@@ -370,7 +370,7 @@
     WH.rebuildAvatar(Multi.myLook);
     WH.onFrame((dt, time) => frameRemotes(dt, time));
     sendNow();
-    setInterval(() => { if (!document.hidden || Math.random() < 0.25) sendNow(); }, 110);
+    setInterval(() => { if (!document.hidden || Math.random() < 0.25) sendNow(); }, 250);
   }
   const WHref = () => window.WH;
   let WH = null;

@@ -293,11 +293,21 @@
 
   // my settings
   $('#f-save').addEventListener('click', async (e) => {
+    const themeSel = $('#f-theme') ? $('#f-theme').value : (document.documentElement.dataset.theme || 'light');
     const j = await run(e.currentTarget, 'f-msg', () => post('account/prefs', {
-      landing: $('#f-landing').value, sidebar: $('#f-sidebar').value, page_size: Number($('#f-page').value),
+      landing: $('#f-landing').value, sidebar: $('#f-sidebar').value, theme: themeSel, page_size: Number($('#f-page').value),
+      chat_active: $('#f-active') ? $('#f-active').checked : true,
       notify_chat: $('#f-chat').checked, notify_approval: $('#f-appr').checked, toasts: $('#f-toast').checked,
     }));
-    if (j) { try { localStorage.setItem('nx.side', $('#f-sidebar').value === 'collapsed' ? '1' : '0'); localStorage.setItem('nx.toasts', $('#f-toast').checked ? '1' : '0'); } catch (x) { /* private mode */ } }
+    if (j) {
+      try {
+        localStorage.setItem('nx.side', $('#f-sidebar').value === 'collapsed' ? '1' : '0');
+        localStorage.setItem('nx.toasts', $('#f-toast').checked ? '1' : '0');
+        const uid = document.documentElement.dataset.uid || '0';
+        localStorage.setItem('nx.theme.' + uid, themeSel);
+      } catch (x) { /* private mode */ }
+      if (window.nxSetTheme) window.nxSetTheme(themeSel, true);
+    }
   });
 
   // signature (Manager, Supervisor, Admin)

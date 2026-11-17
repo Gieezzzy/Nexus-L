@@ -668,6 +668,12 @@
     dom.backdrop.classList.add('active');
     dom.drawer.classList.add('active');
     dom.drawer.setAttribute('aria-hidden', 'false');
+    // the page behind stops scrolling (its scrollbar goes away) so the wheel and the scrollbar belong to the opened view
+    if (!document.documentElement.classList.contains('cal-drawer-open')) {
+      const sbw = window.innerWidth - document.documentElement.clientWidth;
+      document.documentElement.style.setProperty('--cal-sbw', sbw + 'px');
+      document.documentElement.classList.add('cal-drawer-open');
+    }
 
     const hit = dayCache.get(dateStr);
     if (hit) {
@@ -694,6 +700,7 @@
   }
 
   function closeDrawer() {
+    document.documentElement.classList.remove('cal-drawer-open');
     dom.backdrop.classList.remove('active');
     dom.drawer.classList.remove('active');
     dom.drawer.setAttribute('aria-hidden', 'true');
@@ -946,16 +953,23 @@
       });
     });
 
-    // Status chips filter
-    dom.statusChips.forEach(chip => {
-      chip.addEventListener('click', () => {
-        dom.statusChips.forEach(c => c.classList.remove('active'));
-        chip.classList.add('active');
-        state.statusFilter = chip.dataset.status;
-        if (state.eventsCache) {
-          drawView(state.eventsCache);
-        }
+    // Status filter: the chips and the KPI cards drive the same filter (a card is a shortcut for its chip)
+    const kpiCards = document.querySelectorAll('.cal-kpi-card[data-kpi-status]');
+    const setStatus = (status) => {
+      state.statusFilter = status;
+      dom.statusChips.forEach(c => c.classList.toggle('active', c.dataset.status === status));
+      kpiCards.forEach(k => {
+        const on = status !== 'all' && k.dataset.kpiStatus === status;
+        k.classList.toggle('is-active', on);
+        k.setAttribute('aria-pressed', on ? 'true' : 'false');
       });
+      if (state.eventsCache) drawView(state.eventsCache);
+    };
+    dom.statusChips.forEach(chip => chip.addEventListener('click', () => setStatus(chip.dataset.status)));
+    kpiCards.forEach(card => {
+      const act = () => setStatus(state.statusFilter === card.dataset.kpiStatus ? 'all' : card.dataset.kpiStatus);   // again = back to all
+      card.addEventListener('click', act);
+      card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });
     });
 
     // Quick search input

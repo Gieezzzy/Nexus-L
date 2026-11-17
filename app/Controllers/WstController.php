@@ -72,12 +72,12 @@ class WstController extends BaseController
             'remarkMode' => 'checkbox',
         ],
         'deeptest' => [
-            'name'       => 'Deep Test',
+            'name'       => 'Dip Test',
             'code'       => 'DPT',
             'remarkMode' => 'checkbox',
         ],
         'deep-test' => [
-            'name'       => 'Deep Test',
+            'name'       => 'Dip Test',
             'code'       => 'DPT',
             'remarkMode' => 'checkbox',
         ],
@@ -276,6 +276,15 @@ class WstController extends BaseController
 
     private function syncFromTracker(): void
     {
+        // the sync reads the whole tracker and every material test: once every 20 s is plenty (each page load and filter click used to run it)
+        try {
+            if (cache()->get('wst_sync_recent') !== null) {
+                return;
+            }
+            cache()->save('wst_sync_recent', 1, 20);
+        } catch (\Throwable $e) {
+            // no cache: just run it
+        }
         try {
             $db = \Config\Database::connect('default');
             if (! $db->tableExists('tbl_dtr_wholeshoetracker') || ! $db->tableExists('tbl_material_tests')) {
@@ -1067,6 +1076,21 @@ class WstController extends BaseController
             $defaultFindings = "45° degrees {$cycleVal} cycles - (L: {$latLen} mm, M: {$medLen} mm; D:{$latDep} mm, D:{$medDep} mm)";
             $findingsText = ! empty($payload['findings']) ? trim((string) $payload['findings']) : $defaultFindings;
 
+            $existingFindings = [];
+            if (! empty($record['findings_json'])) {
+                $decoded = is_string($record['findings_json'])
+                    ? json_decode($record['findings_json'], true)
+                    : (is_array($record['findings_json']) ? $record['findings_json'] : []);
+                if (is_array($decoded)) {
+                    $existingFindings = $decoded;
+                }
+            }
+
+            $cyclesMap = is_array($existingFindings['cycles'] ?? null) ? $existingFindings['cycles'] : [];
+            $cyclesMap[(string) $cycleVal] = $findingsText;
+            uksort($cyclesMap, static fn($a, $b) => (int) $a <=> (int) $b);
+            $concatenatedFindings = implode("\n", array_values($cyclesMap));
+
             $findings = [
                 'type'             => 'flexing',
                 'lat_len'          => $latLen,
@@ -1074,12 +1098,24 @@ class WstController extends BaseController
                 'lat_depth'        => $latDep,
                 'med_depth'        => $medDep,
                 'cycle'            => $cycleVal,
-                'findings'         => $findingsText,
+                'cycles'           => $cyclesMap,
+                'findings'         => $concatenatedFindings,
                 'outcome'          => $outcome,
                 'completed_at'     => date('Y-m-d H:i:s'),
             ];
-            $remarksText = $findingsText;
+            $remarksText = $concatenatedFindings;
         } else {
+            $existingFindings = [];
+            if (! empty($record['findings_json'])) {
+                $decoded = is_string($record['findings_json'])
+                    ? json_decode($record['findings_json'], true)
+                    : (is_array($record['findings_json']) ? $record['findings_json'] : []);
+                if (is_array($decoded)) {
+                    $existingFindings = $decoded;
+                }
+            }
+            $dailyRemarks = is_array($existingFindings['daily_remarks'] ?? null) ? $existingFindings['daily_remarks'] : [];
+
             $findings = [
                 'type'            => 'incubation',
                 'delamination'    => trim((string) ($payload['delamination'] ?? 'No delamination')),
@@ -1088,6 +1124,7 @@ class WstController extends BaseController
                 'outsole_warping' => trim((string) ($payload['outsole_warping'] ?? 'No Outsole warping')),
                 'blooming'        => trim((string) ($payload['blooming'] ?? 'No blooming')),
                 'other_findings'  => trim((string) ($payload['other_findings'] ?? '')),
+                'daily_remarks'   => $dailyRemarks,
                 'outcome'         => $outcome,
                 'completed_at'    => date('Y-m-d H:i:s'),
             ];
@@ -1101,9 +1138,15 @@ class WstController extends BaseController
                         if (! empty($findings['other_findings'])) {
                             $findingParts[] = $findings['other_findings'];
                         }
-                        $remarksText = ! empty($findingParts)
+                        $finalSummary = ! empty($findingParts)
                             ? implode(', ', $findingParts)
                             : 'No delamination, No bleeding, No color change, No Outsole warping, No blooming';
+                        if (! empty($dailyRemarks)) {
+                            $dailyLines = array_map(static fn($r) => trim((string) ($r['day'] ?? 'Checkpoint')) . ': ' . trim((string) ($r['remark'] ?? '')), $dailyRemarks);
+                            $remarksText = implode("\n", $dailyLines) . "\nFinal: " . $finalSummary;
+                        } else {
+                            $remarksText = $finalSummary;
+                        }
         }
 
         $now = date('Y-m-d H:i:s');
@@ -1462,6 +1505,86 @@ class WstController extends BaseController
             'current_cycles' => (int) ($record['current_cycles'] ?? 0),
             'timer'          => $timerState,
             'findings'       => ! empty($record['findings_json']) ? json_decode((string) $record['findings_json'], true) : null,
+        ]);
+    }
+
+    /**
+     * POST /wst/save-checkpoint-remark/{id}
+     * Records a daily checkpoint remark for hydrolysis / heat_aging and concatenates into remarks.
+     */
+    public function saveCheckpointRemark(int $id): ResponseInterface
+    {
+        $model  = new MaterialTestModel();
+        $record = $model->find($id);
+
+        if (! $record) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'message' => 'Record not found']);
+        }
+
+        $raw = method_exists($this->request, 'getJSON') ? $this->request->getJSON(true) : null;
+        if (! $raw && method_exists($this->request, 'getBody')) {
+            $raw = json_decode((string) $this->request->getBody(), true);
+        }
+        $payload = is_array($raw) ? $raw : (method_exists($this->request, 'getPost') ? $this->request->getPost() : []);
+
+        $dayLabel = trim((string) ($payload['day'] ?? 'Day 1'));
+        $remark   = trim((string) ($payload['remark'] ?? ''));
+
+        if ($remark === '') {
+            return $this->response->setStatusCode(422)->setJSON(['success' => false, 'message' => 'Remark cannot be empty.']);
+        }
+
+        $existingFindings = [];
+        if (! empty($record['findings_json'])) {
+            $decoded = is_string($record['findings_json'])
+                ? json_decode($record['findings_json'], true)
+                : (is_array($record['findings_json']) ? $record['findings_json'] : []);
+            if (is_array($decoded)) {
+                $existingFindings = $decoded;
+            }
+        }
+
+        $dailyRemarks = is_array($existingFindings['daily_remarks'] ?? null) ? $existingFindings['daily_remarks'] : [];
+        $tech = $this->getCurrentTechnician();
+        $entry = [
+            'day'         => $dayLabel,
+            'remark'      => $remark,
+            'technician'  => $tech,
+            'recorded_at' => date('Y-m-d H:i:s'),
+        ];
+
+        // Update existing entry for same day label if present, otherwise append
+        $updated = false;
+        foreach ($dailyRemarks as $idx => $item) {
+            if (strcasecmp(trim((string) ($item['day'] ?? '')), $dayLabel) === 0) {
+                $dailyRemarks[$idx] = $entry;
+                $updated = true;
+                break;
+            }
+        }
+        if (! $updated) {
+            $dailyRemarks[] = $entry;
+        }
+
+        $existingFindings['daily_remarks'] = $dailyRemarks;
+
+        $dailyLines = array_map(
+            static fn($r) => trim((string) ($r['day'] ?? 'Checkpoint')) . ': ' . trim((string) ($r['remark'] ?? '')),
+            $dailyRemarks
+        );
+        $concatenated = implode("\n", $dailyLines);
+
+        $model->update($id, [
+            'findings_json' => json_encode($existingFindings, JSON_UNESCAPED_UNICODE),
+            'remarks'       => $concatenated,
+            'updated_at'    => date('Y-m-d H:i:s'),
+        ]);
+
+        return $this->response->setJSON([
+            'success'       => true,
+            'message'       => 'Checkpoint remark saved.',
+            'daily_remarks' => $dailyRemarks,
+            'remarks'       => $concatenated,
         ]);
     }
 

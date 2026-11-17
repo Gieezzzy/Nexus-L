@@ -60,7 +60,8 @@
 
     <!-- ===== Line map ===== -->
     <section class="qi-panel" id="qi-panel-lines" role="tabpanel">
-        <div class="qi-toolbar cal-glass"><span class="qi-hint" id="qi-line-hint"></span><label class="qi-field"><input type="checkbox" id="qi-show-empty"> Show lines with no tests</label></div>
+        <div class="qi-toolbar cal-glass"><span class="qi-hint" id="qi-line-hint"></span><label class="qi-field"><input type="checkbox" id="qi-show-empty"> Show lines with no tests</label>
+            <label class="qi-field">Count by <select id="qi-basis" aria-label="Which date the line map counts by"><option value="tested">Tested date</option><option value="production">Production date</option></select></label></div>
         <div class="qi-kpis" id="qi-line-kpis"></div>
         <div class="qi-help"><b>How to read it:</b> each card is one assembly line, adding up every test in the period chosen above.
             <span class="qi-badge green">ALL PASSED</span> everything tested passed &middot;

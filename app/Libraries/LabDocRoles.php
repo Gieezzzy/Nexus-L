@@ -14,7 +14,7 @@ namespace App\Libraries;
 class LabDocRoles
 {
     /** the roles that can be given (the names shown to people) */
-    public const ROLES = ['Admin', 'Bonding', 'Encoding', 'Materials', 'Manager', 'Supervisor', 'Technician', 'Guest', 'SATRA', 'Warehouse PIC'];   // the same eight as Roles::ROLES (the old Encoder / Supervisor 1 / 2 still count)
+    public const ROLES = ['Admin', 'Bonding', 'Encoding', 'Materials', 'Manager', 'Supervisor', 'Technician', 'Guest', 'SATRA', 'Warehouse PIC', 'Bonding PIC', 'Material PIC'];   // the same eight as Roles::ROLES (the old Encoder / Supervisor 1 / 2 still count)
 
     private const EDIT = ['admin', 'manager', 'supervisor', 'supervisor1', 'supervisor2', 'encoder', 'encoders', 'encoding', 'satra'];
 

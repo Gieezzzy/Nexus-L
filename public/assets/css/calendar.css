@@ -510,15 +510,16 @@
   flex-direction: column;
   gap: 4px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  contain: layout style paint;
+  transition: transform 0.08s cubic-bezier(0.2, 0, 0, 1), border-color 0.08s ease, background-color 0.08s ease;
   overflow: hidden;
 }
 
 .cal-day-cell:hover {
   background: rgba(255, 255, 255, 0.96);
   border-color: rgba(37, 99, 235, 0.45);
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12);
-  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.12);
+  transform: translate3d(0, -1px, 0);
   z-index: 2;
 }
 
@@ -1269,3 +1270,196 @@ button.cal-dstat-item.is-active .dstat-num, button.cal-dstat-item.is-active .dst
 .cal-day-cols .cal-week-col { min-width: 0; }
 .cal-day-cols .cal-week-cards-stack { max-height: 62vh; overflow-y: auto; }
 @media (max-width: 900px) { .cal-day-cols { grid-template-columns: 1fr; } }
+
+/* ---- Dark Liquid Glass Calendar Monitoring (html[data-theme="dark"]) ---- */
+html[data-theme="dark"] .cal-root {
+  color: #e2e8f0;
+  --cal-glass-bg: linear-gradient(135deg, rgba(17, 25, 44, 0.78), rgba(11, 18, 34, 0.68));
+  --cal-glass-border: rgba(148, 163, 184, 0.22);
+}
+html[data-theme="dark"] .cal-bg i { opacity: 0.25; }
+html[data-theme="dark"] .cal-glass,
+html[data-theme="dark"] .cal-kpi-card,
+html[data-theme="dark"] .cal-calendar-sheet,
+html[data-theme="dark"] .cal-week-sheet,
+html[data-theme="dark"] .cal-day-strip {
+  background: linear-gradient(135deg, rgba(17, 25, 44, 0.84), rgba(11, 18, 34, 0.78));
+  border-color: rgba(148, 163, 184, 0.22);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.44), inset 1px 1px 0 rgba(255, 255, 255, 0.12);
+}
+html[data-theme="dark"] .cal-title-row h2,
+html[data-theme="dark"] .cal-period-title,
+html[data-theme="dark"] .cal-kpi-val,
+html[data-theme="dark"] .cal-day-num,
+html[data-theme="dark"] .cal-week-day-num,
+html[data-theme="dark"] .cal-tcard-title,
+html[data-theme="dark"] .cal-dcard-ref,
+html[data-theme="dark"] .cal-df-val,
+html[data-theme="dark"] .cal-drawer-title-box h3,
+html[data-theme="dark"] .cal-day-strip b {
+  color: #f1f5f9;
+}
+html[data-theme="dark"] .cal-sub,
+html[data-theme="dark"] .cal-kpi-label,
+html[data-theme="dark"] .cal-kpi-footer,
+html[data-theme="dark"] .cal-filter-label,
+html[data-theme="dark"] .cal-weekday,
+html[data-theme="dark"] .cal-week-day-name,
+html[data-theme="dark"] .cal-tcard-meta,
+html[data-theme="dark"] .cal-df-label,
+html[data-theme="dark"] .cal-drawer-title-box p,
+html[data-theme="dark"] .cal-drawer-foot-note,
+html[data-theme="dark"] .cal-day-strip {
+  color: #94a3b8;
+}
+html[data-theme="dark"] .cal-nav-btns,
+html[data-theme="dark"] .cal-view-toggle,
+html[data-theme="dark"] .cal-drawer-tabs {
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+html[data-theme="dark"] .cal-btn-icon,
+html[data-theme="dark"] .cal-btn-text,
+html[data-theme="dark"] .cal-toggle-btn,
+html[data-theme="dark"] .cal-tab-btn {
+  color: #cbd5e1;
+}
+html[data-theme="dark"] .cal-btn-icon:hover,
+html[data-theme="dark"] .cal-btn-text:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+html[data-theme="dark"] .cal-toggle-btn.active,
+html[data-theme="dark"] .cal-tab-btn.active {
+  background: rgba(37, 99, 235, 0.32);
+  color: #93c5fd;
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.15);
+}
+html[data-theme="dark"] .cal-btn-glass,
+html[data-theme="dark"] .cal-chip,
+html[data-theme="dark"] .cal-search-box,
+html[data-theme="dark"] .cal-drawer-search input,
+html[data-theme="dark"] .cal-retry {
+  background: rgba(15, 23, 42, 0.68);
+  border-color: rgba(148, 163, 184, 0.26);
+  color: #e2e8f0;
+}
+html[data-theme="dark"] .cal-btn-glass:hover,
+html[data-theme="dark"] .cal-chip:hover {
+  background: rgba(30, 41, 59, 0.85);
+  border-color: rgba(96, 165, 250, 0.45);
+  color: #fff;
+}
+html[data-theme="dark"] .cal-chip.active {
+  background: #2563eb;
+  border-color: #3b82f6;
+  color: #fff;
+}
+html[data-theme="dark"] .cal-search-box input {
+  color: #e2e8f0;
+}
+html[data-theme="dark"] .cal-search-box input::placeholder,
+html[data-theme="dark"] .cal-drawer-search input::placeholder {
+  color: #64748b;
+}
+html[data-theme="dark"] .cal-day-cell {
+  background: rgba(15, 23, 42, 0.52);
+  border-color: rgba(148, 163, 184, 0.18);
+}
+html[data-theme="dark"] .cal-day-cell:hover {
+  background: rgba(30, 41, 59, 0.78);
+  border-color: rgba(96, 165, 250, 0.45);
+}
+html[data-theme="dark"] .cal-day-cell.other-month {
+  background: rgba(9, 14, 28, 0.38);
+  opacity: 0.58;
+}
+html[data-theme="dark"] .cal-day-cell.is-today {
+  background: rgba(37, 99, 235, 0.18);
+  border-color: rgba(96, 165, 250, 0.55);
+}
+html[data-theme="dark"] .cal-badge-total {
+  background: rgba(148, 163, 184, 0.2);
+  color: #cbd5e1;
+}
+html[data-theme="dark"] .cal-event-chip,
+html[data-theme="dark"] .cal-more-chip {
+  background: rgba(30, 41, 59, 0.82);
+  border-color: rgba(148, 163, 184, 0.22);
+  color: #e2e8f0;
+}
+html[data-theme="dark"] .cal-event-chip:hover,
+html[data-theme="dark"] .cal-more-chip:hover {
+  background: rgba(51, 65, 85, 0.9);
+}
+html[data-theme="dark"] .cal-week-col {
+  background: rgba(15, 23, 42, 0.55);
+  border-color: rgba(148, 163, 184, 0.2);
+}
+html[data-theme="dark"] .cal-week-col.is-today {
+  background: rgba(37, 99, 235, 0.15);
+  border-color: rgba(96, 165, 250, 0.45);
+}
+html[data-theme="dark"] .cal-week-col-head,
+html[data-theme="dark"] .cal-week-sub-bar {
+  border-color: rgba(148, 163, 184, 0.18);
+}
+html[data-theme="dark"] .cal-test-card,
+html[data-theme="dark"] .cal-dcard,
+html[data-theme="dark"] .cal-dstat-item,
+html[data-theme="dark"] .cal-skel-card {
+  background: rgba(20, 30, 52, 0.82);
+  border-color: rgba(148, 163, 184, 0.22);
+  color: #e2e8f0;
+}
+html[data-theme="dark"] .cal-test-card:hover,
+html[data-theme="dark"] .cal-dcard:hover {
+  background: rgba(30, 41, 59, 0.92);
+  border-color: rgba(96, 165, 250, 0.42);
+}
+html[data-theme="dark"] .cal-drawer {
+  background: linear-gradient(160deg, rgba(13, 20, 38, 0.95), rgba(8, 14, 28, 0.92));
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+  border-left: 1px solid rgba(148, 163, 184, 0.24);
+  color: #e2e8f0;
+}
+html[data-theme="dark"] .cal-drawer-head,
+html[data-theme="dark"] .cal-drawer-toolbar,
+html[data-theme="dark"] .cal-drawer-stats,
+html[data-theme="dark"] .cal-drawer-foot,
+html[data-theme="dark"] .cal-dcard-foot {
+  background: rgba(15, 23, 42, 0.72);
+  border-color: rgba(148, 163, 184, 0.2);
+}
+html[data-theme="dark"] .cal-drawer-close {
+  background: rgba(51, 65, 85, 0.7);
+  color: #e2e8f0;
+}
+html[data-theme="dark"] .cal-drawer-close:hover {
+  background: rgba(71, 85, 105, 0.9);
+}
+html[data-theme="dark"] .cal-val-ongoing,
+html[data-theme="dark"] .cal-badge-ongoing { color: #22d3ee; }
+html[data-theme="dark"] .cal-val-pending { color: #fbbf24; }
+html[data-theme="dark"] .cal-val-completed { color: #34d399; }
+html[data-theme="dark"] .cal-val-rate { color: #a78bfa; }
+html[data-theme="dark"] .cal-dcard-link { color: #93c5fd; }
+html[data-theme="dark"] .cal-skel-cell .nx-shimmer,
+html[data-theme="dark"] .cal-skel-card .nx-shimmer,
+html[data-theme="dark"] .cal-skel-dcard .nx-shimmer,
+html[data-theme="dark"] .cal-week-col .nx-shimmer,
+html[data-theme="dark"] .cal-skel-grid .nx-shimmer,
+html[data-theme="dark"] .cal-kpis.is-loading .cal-kpi-val {
+  background: linear-gradient(90deg, rgba(30, 41, 59, 0.8) 20%, rgba(51, 65, 85, 0.9) 45%, rgba(30, 41, 59, 0.8) 70%);
+  background-size: 200% 100%;
+}
+
+/* an opened day panel owns the scrolling: the page behind it does not scroll and shows no scrollbar */
+html.cal-drawer-open{overflow:hidden;padding-right:var(--cal-sbw,0px)}
+.cal-drawer-body{overscroll-behavior:contain}
+
+/* KPI cards are filter shortcuts */
+.cal-kpi-card[data-kpi-status]{cursor:pointer}
+.cal-kpi-card[data-kpi-status]:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.cal-kpi-card.is-active{outline:2px solid #2563eb;outline-offset:-2px;box-shadow:0 6px 20px rgba(37,99,235,.2)}

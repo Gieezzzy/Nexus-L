@@ -271,7 +271,40 @@
   };
 
   // Fetch list of records from dbnexus
-  const loadWstRecords = async () => {
+  let wstPage = 1;
+  const wstPerPage = 15;
+  let wstAllRecords = [];
+
+  const updateWstPaginationUI = () => {
+    const total = wstAllRecords.length;
+    const totalPages = Math.max(1, Math.ceil(total / wstPerPage));
+    if (wstPage > totalPages) wstPage = totalPages;
+
+    const countEl = $('#wst-pagination-count');
+    if (countEl) countEl.textContent = `${total.toLocaleString()} record(s)`;
+    const infoEl = $('#wst-pagination-info');
+    if (infoEl) infoEl.textContent = `${wstPage} / ${totalPages}`;
+    const prevBtn = $('#btn-wst-prev-page');
+    const nextBtn = $('#btn-wst-next-page');
+    if (prevBtn) prevBtn.disabled = wstPage <= 1;
+    if (nextBtn) nextBtn.disabled = wstPage >= totalPages;
+  };
+
+  $('#btn-wst-prev-page')?.addEventListener('click', () => {
+    if (wstPage > 1) {
+      wstPage--;
+      loadWstRecords(currentWstCategory, true);
+    }
+  });
+  $('#btn-wst-next-page')?.addEventListener('click', () => {
+    const totalPages = Math.max(1, Math.ceil(wstAllRecords.length / wstPerPage));
+    if (wstPage < totalPages) {
+      wstPage++;
+      loadWstRecords(currentWstCategory, true);
+    }
+  });
+
+  const loadWstRecords = async (_cat = currentWstCategory, useCached = false) => {
     const tbody = $('#wst-list-tbody');
     const cntBadge = $('#wst-record-count');
     if (!tbody) return;
@@ -287,8 +320,16 @@
       if (wstFilters.from_date) params.set('from_date', wstFilters.from_date);
       if (wstFilters.to_date) params.set('to_date', wstFilters.to_date);
 
-      const res = await apiFetch(`wst/records?${params.toString()}`);
+      let res;
+      if (useCached && wstAllRecords.length > 0) {
+        res = { success: true, records: wstAllRecords };
+      } else {
+        res = await apiFetch(`wst/records?${params.toString()}`);
+        wstPage = 1;
+      }
       if (!res.success || !res.records || res.records.length === 0) {
+        wstAllRecords = [];
+        updateWstPaginationUI();
         tbody.innerHTML = '<tr><td colspan="8" class="muted" style="text-align:center;padding:28px">No test sessions match the current filter criteria.</td></tr>';
         if (cntBadge) cntBadge.textContent = 'Showing 0 records';
         $('#wst-kpi-total') && ($('#wst-kpi-total').textContent = '0');
@@ -313,12 +354,16 @@
       $('#wst-kpi-completed') && ($('#wst-kpi-completed').textContent = (res.kpis?.completed ?? doneCount).toLocaleString());
       $('#wst-kpi-pending') && ($('#wst-kpi-pending').textContent = (res.kpis?.pending ?? pendCount).toLocaleString());
 
-      if (cntBadge) cntBadge.textContent = `Showing ${res.records.length} record(s)`;
+      wstAllRecords = res.records;
+      updateWstPaginationUI();
+      const pageRecords = wstAllRecords.slice((wstPage - 1) * wstPerPage, wstPage * wstPerPage);
+
+      if (cntBadge) cntBadge.textContent = `Showing ${wstAllRecords.length} record(s)`;
       const thProg = $('#wst-th-progress');
       if (thProg) {
         thProg.textContent = (currentWstCategory === 'flexing') ? 'CYCLES / PROGRESS' : 'TIME / STATUS';
       }
-      tbody.innerHTML = res.records.map((r, i) => {
+      tbody.innerHTML = pageRecords.map((r, i) => {
         const cat = r.category || currentWstCategory;
         const catCfg = TIMED_CATEGORIES[cat] || { label: 'Whole Shoe', nominal: 'Standard', durationSec: 86400 };
         const timer = r.timer || {};
@@ -780,7 +825,7 @@
 
     const rawOutcome = (record.overall_outcome || fJson.outcome || 'PASSED').toUpperCase();
     currentFlexOutcome = (rawOutcome === 'PASS' || rawOutcome === 'PASSED' || rawOutcome === 'RUNNING') ? 'PASSED' : ((rawOutcome === 'FAIL' || rawOutcome === 'FAILED') ? 'FAILED' : 'PENDING');
-    $('.wst-flex-result-btn').forEach((btn) => {
+    $$('.wst-flex-result-btn').forEach((btn) => {
       const match = btn.dataset.flexResult.toUpperCase() === currentFlexOutcome;
       btn.classList.toggle('active', match);
       btn.style.background = match ? (currentFlexOutcome === 'PASSED' ? '#2563eb' : (currentFlexOutcome === 'FAILED' ? '#ef4444' : '#64748b')) : '#ffffff';
@@ -1044,6 +1089,48 @@
         }
         if (res.timer) {
           startCountdownTicker(res.timer, r);
+        }
+        const cpSection = $('#wst-checkpoint-remarks-section');
+        const isDailyCheckpointCat = ['hydrolysis', 'heat_aging', 'washing', 'uv-light', 'deeptest'].includes((r.category || '').toLowerCase());
+        if (cpSection) {
+          cpSection.classList.toggle('hidden', !isDailyCheckpointCat);
+          if (isDailyCheckpointCat) {
+            const dailyRemarks = res.findings?.daily_remarks || r.findings_json?.daily_remarks || [];
+            const listEl = $('#wst-checkpoint-remarks-list');
+            if (listEl) {
+              listEl.textContent = dailyRemarks.length
+                ? dailyRemarks.map((item) => `${item.day}: ${item.remark}`).join('\n')
+                : 'No daily checkpoint remarks recorded yet.';
+            }
+            const elapsedSec = Number(res.timer?.elapsed_sec || 0);
+            const elapsedDays = Math.max(1, Math.floor(elapsedSec / 86400) + 1);
+            const dayBtnsWrap = $('#wst-checkpoint-day-buttons');
+            if (dayBtnsWrap) {
+              const recordedSet = new Set(dailyRemarks.map((item) => String(item.day || '').trim().toLowerCase()));
+              dayBtnsWrap.innerHTML = '';
+              for (let d = 1; d <= elapsedDays; d++) {
+                const label = `Day ${d}`;
+                const isRecorded = recordedSet.has(label.toLowerCase());
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'dtr-btn';
+                btn.style.cssText = isRecorded
+                  ? 'font-size:12px;padding:5px 12px;font-weight:700;background:#ecfdf5;color:#047857;border:1px solid #10b981;border-radius:6px'
+                  : 'font-size:12px;padding:5px 12px;font-weight:700;background:#eff6ff;color:#1d4ed8;border:1px solid #3b82f6;border-radius:6px';
+                btn.textContent = isRecorded ? `✓ ${label}` : label;
+                btn.addEventListener('click', () => {
+                  openEvaluationModal(activeRecordForEval, label);
+                });
+                dayBtnsWrap.appendChild(btn);
+              }
+            }
+            const dayInput = $('#wst-checkpoint-day');
+            if (dayInput) {
+              dayInput.value = `Day ${elapsedDays}`;
+            }
+            const remarkInput = $('#wst-checkpoint-remark-input');
+            if (remarkInput) remarkInput.value = '';
+          }
         }
       }
 
@@ -1442,7 +1529,51 @@
       if (res.success) {
         showToast('Test session started successfully.', 'success');
         await openWstMonitorModal(currentWstTestId);
-        loadWstRecords(currentWstCategory);
+        $('#btn-wst-save-checkpoint-remark')?.addEventListener('click', async () => {
+    if (!currentWstTestId) return;
+    const dayInput = $('#wst-checkpoint-day');
+    const remarkInput = $('#wst-checkpoint-remark-input');
+    const saveBtn = $('#btn-wst-save-checkpoint-remark');
+    const day = dayInput?.value.trim() || 'Day 1';
+    const remark = remarkInput?.value.trim() || '';
+
+    if (!remark) {
+      showToast('Please enter a checkpoint remark.', 'warning');
+      return;
+    }
+
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+    }
+
+    try {
+      const res = await apiFetch(`wst/save-checkpoint-remark/${currentWstTestId}`, {
+        method: 'POST',
+        body: JSON.stringify({ day, remark }),
+      });
+
+      if (res.success) {
+        const listEl = $('#wst-checkpoint-remarks-list');
+        if (listEl) {
+          listEl.textContent = res.remarks || 'No daily checkpoint remarks recorded yet.';
+        }
+        if (remarkInput) remarkInput.value = '';
+        showToast('Checkpoint remark saved.', 'success');
+      } else {
+        showToast(res.message || 'Failed to save checkpoint remark', 'error');
+      }
+    } catch (err) {
+      showToast(`Error: ${err.message}`, 'error');
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = '+ Add Remark';
+      }
+    }
+  });
+
+  loadWstRecords(currentWstCategory);
       } else {
         showToast(res.message || 'Could not start test.', 'error');
       }
@@ -1526,7 +1657,51 @@
 
       if (res.success && res.id) {
         closeWstNewModal();
-        loadWstRecords(currentWstCategory);
+        $('#btn-wst-save-checkpoint-remark')?.addEventListener('click', async () => {
+    if (!currentWstTestId) return;
+    const dayInput = $('#wst-checkpoint-day');
+    const remarkInput = $('#wst-checkpoint-remark-input');
+    const saveBtn = $('#btn-wst-save-checkpoint-remark');
+    const day = dayInput?.value.trim() || 'Day 1';
+    const remark = remarkInput?.value.trim() || '';
+
+    if (!remark) {
+      showToast('Please enter a checkpoint remark.', 'warning');
+      return;
+    }
+
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+    }
+
+    try {
+      const res = await apiFetch(`wst/save-checkpoint-remark/${currentWstTestId}`, {
+        method: 'POST',
+        body: JSON.stringify({ day, remark }),
+      });
+
+      if (res.success) {
+        const listEl = $('#wst-checkpoint-remarks-list');
+        if (listEl) {
+          listEl.textContent = res.remarks || 'No daily checkpoint remarks recorded yet.';
+        }
+        if (remarkInput) remarkInput.value = '';
+        showToast('Checkpoint remark saved.', 'success');
+      } else {
+        showToast(res.message || 'Failed to save checkpoint remark', 'error');
+      }
+    } catch (err) {
+      showToast(`Error: ${err.message}`, 'error');
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = '+ Add Remark';
+      }
+    }
+  });
+
+  loadWstRecords(currentWstCategory);
         openWstMonitorModal(res.id);
         showToast(res.message || 'Created new Material Testing session!', 'success');
       } else {
@@ -1538,7 +1713,51 @@
   });
 
   $('#btn-wst-refresh-queue')?.addEventListener('click', () => {
-    loadWstRecords(currentWstCategory);
+    $('#btn-wst-save-checkpoint-remark')?.addEventListener('click', async () => {
+    if (!currentWstTestId) return;
+    const dayInput = $('#wst-checkpoint-day');
+    const remarkInput = $('#wst-checkpoint-remark-input');
+    const saveBtn = $('#btn-wst-save-checkpoint-remark');
+    const day = dayInput?.value.trim() || 'Day 1';
+    const remark = remarkInput?.value.trim() || '';
+
+    if (!remark) {
+      showToast('Please enter a checkpoint remark.', 'warning');
+      return;
+    }
+
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+    }
+
+    try {
+      const res = await apiFetch(`wst/save-checkpoint-remark/${currentWstTestId}`, {
+        method: 'POST',
+        body: JSON.stringify({ day, remark }),
+      });
+
+      if (res.success) {
+        const listEl = $('#wst-checkpoint-remarks-list');
+        if (listEl) {
+          listEl.textContent = res.remarks || 'No daily checkpoint remarks recorded yet.';
+        }
+        if (remarkInput) remarkInput.value = '';
+        showToast('Checkpoint remark saved.', 'success');
+      } else {
+        showToast(res.message || 'Failed to save checkpoint remark', 'error');
+      }
+    } catch (err) {
+      showToast(`Error: ${err.message}`, 'error');
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = '+ Add Remark';
+      }
+    }
+  });
+
+  loadWstRecords(currentWstCategory);
     // Queue refreshed silently
   });
 
@@ -1775,16 +1994,22 @@
   // Evaluation Modal Handlers
   let currentEvalOutcome = 'PASS';
   let activeRecordForEval = null;
+  let activeEvalDayLabel = null;
 
-  const openEvaluationModal = (record) => {
+  const openEvaluationModal = (record, dayLabel = null) => {
     activeRecordForEval = record;
+    activeEvalDayLabel = dayLabel;
     const modal = $('#wst-eval-modal-backdrop');
     if (!modal) return;
 
     const titleEl = $('#wst-eval-title');
     const cat = record.category || currentWstCategory;
     const catName = TIMED_CATEGORIES[cat]?.label || 'Whole Shoe';
-    if (titleEl) titleEl.textContent = `${catName.toUpperCase()} FINDINGS & EVALUATION (${record.labreference || ''})`;
+    if (titleEl) {
+      titleEl.textContent = dayLabel
+        ? `${catName.toUpperCase()} — ${dayLabel.toUpperCase()} FINDINGS (${record.labreference || ''})`
+        : `${catName.toUpperCase()} FINDINGS & EVALUATION (${record.labreference || ''})`;
+    }
 
     const endTimeInput = $('#wst-eval-end-time');
     if (endTimeInput) {
@@ -1892,6 +2117,31 @@
     };
 
     try {
+      if (activeEvalDayLabel) {
+        const parts = [
+          payload.delamination,
+          payload.bleeding,
+          payload.color_change,
+          payload.outsole_warping,
+          payload.blooming,
+          payload.other_findings,
+        ].filter(Boolean);
+        const dayRemark = `${parts.join(', ')} [${payload.outcome}]`;
+        const res = await apiFetch(`wst/save-checkpoint-remark/${currentWstTestId}`, {
+          method: 'POST',
+          body: JSON.stringify({ day: activeEvalDayLabel, remark: dayRemark }),
+        });
+        if (res.success) {
+          showToast(`${activeEvalDayLabel} findings saved!`, 'success');
+          activeEvalDayLabel = null;
+          closeEvaluationModal();
+          openWstMonitorModal(currentWstTestId);
+        } else {
+          showToast(res.message || 'Failed to save day findings', 'error');
+        }
+        return;
+      }
+
       const res = await apiFetch(`wst/save-eval/${currentWstTestId}`, {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -1923,7 +2173,51 @@
       if (res.success) {
         showToast('Timer paused successfully.', 'info');
         await openWstMonitorModal(currentWstTestId);
-        loadWstRecords(currentWstCategory);
+        $('#btn-wst-save-checkpoint-remark')?.addEventListener('click', async () => {
+    if (!currentWstTestId) return;
+    const dayInput = $('#wst-checkpoint-day');
+    const remarkInput = $('#wst-checkpoint-remark-input');
+    const saveBtn = $('#btn-wst-save-checkpoint-remark');
+    const day = dayInput?.value.trim() || 'Day 1';
+    const remark = remarkInput?.value.trim() || '';
+
+    if (!remark) {
+      showToast('Please enter a checkpoint remark.', 'warning');
+      return;
+    }
+
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+    }
+
+    try {
+      const res = await apiFetch(`wst/save-checkpoint-remark/${currentWstTestId}`, {
+        method: 'POST',
+        body: JSON.stringify({ day, remark }),
+      });
+
+      if (res.success) {
+        const listEl = $('#wst-checkpoint-remarks-list');
+        if (listEl) {
+          listEl.textContent = res.remarks || 'No daily checkpoint remarks recorded yet.';
+        }
+        if (remarkInput) remarkInput.value = '';
+        showToast('Checkpoint remark saved.', 'success');
+      } else {
+        showToast(res.message || 'Failed to save checkpoint remark', 'error');
+      }
+    } catch (err) {
+      showToast(`Error: ${err.message}`, 'error');
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = '+ Add Remark';
+      }
+    }
+  });
+
+  loadWstRecords(currentWstCategory);
       } else {
         showToast(res.message || 'Failed to pause timer.', 'error');
       }
@@ -2016,6 +2310,50 @@
       if (saveBtn) {
         saveBtn.disabled = false;
         saveBtn.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-check"/></svg> Save Flexing Result';
+      }
+    }
+  });
+
+  $('#btn-wst-save-checkpoint-remark')?.addEventListener('click', async () => {
+    if (!currentWstTestId) return;
+    const dayInput = $('#wst-checkpoint-day');
+    const remarkInput = $('#wst-checkpoint-remark-input');
+    const saveBtn = $('#btn-wst-save-checkpoint-remark');
+    const day = dayInput?.value.trim() || 'Day 1';
+    const remark = remarkInput?.value.trim() || '';
+
+    if (!remark) {
+      showToast('Please enter a checkpoint remark.', 'warning');
+      return;
+    }
+
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+    }
+
+    try {
+      const res = await apiFetch(`wst/save-checkpoint-remark/${currentWstTestId}`, {
+        method: 'POST',
+        body: JSON.stringify({ day, remark }),
+      });
+
+      if (res.success) {
+        const listEl = $('#wst-checkpoint-remarks-list');
+        if (listEl) {
+          listEl.textContent = res.remarks || 'No daily checkpoint remarks recorded yet.';
+        }
+        if (remarkInput) remarkInput.value = '';
+        showToast('Checkpoint remark saved.', 'success');
+      } else {
+        showToast(res.message || 'Failed to save checkpoint remark', 'error');
+      }
+    } catch (err) {
+      showToast(`Error: ${err.message}`, 'error');
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = '+ Add Remark';
       }
     }
   });

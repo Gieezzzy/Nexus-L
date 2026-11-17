@@ -35,6 +35,7 @@ class WarehouseTrackerController extends BaseController
                 'asylum-minigame.js',
                 'warehouse-3d.js',
                 'warehouse-multi.js',
+                'warehouse-contents.js',
             ],
             'myLook'      => $this->savedLook((int) ($user['id'] ?? 0)),
             'isAdmin'     => $isAdmin,
@@ -253,9 +254,17 @@ class WarehouseTrackerController extends BaseController
             ]);
         }
 
+        // the Box Code and the Date Range follow the Box Label: a date written in the label is the date range (and the FIFO month), otherwise what was typed stays
         if ($boxCode === '') {
-            $prefix = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $category) ?: 'BX', 0, 4));
-            $boxCode = 'BX-' . $prefix . '-' . date('Ymd-His');
+            $boxCode = \App\Libraries\WarehouseLabel::code($label);
+            if ($boxCode === '') {
+                $boxCode = 'BX-' . date('Ymd-His');
+            }
+        }
+        $fromLabel = \App\Libraries\WarehouseLabel::date($label);
+        if ($fromLabel) {
+            $dateRange = $fromLabel['range'];
+            $monthYear = $fromLabel['month_year'];
         }
 
         $rackNames = [

@@ -16,7 +16,6 @@ $menu = [
         ['label' => 'Report Submission', 'url' => url_to('interlink'), 'seg2' => ''],
     ]],
     ['label' => 'Analytics', 'url' => url_to('analytics'), 'match' => ['analytics'], 'icon' => 'M3 3v18h18M7 15l4-4 3 3 5-6', 'children' => [
-        'daily'     => 'Daily Works Monitoring',
         'bonding'   => 'Shoe Bonding',
         'wholeshoe' => 'Whole Shoe',
         'materials' => 'Materials',
@@ -60,7 +59,7 @@ $inArchives = ($segment === 'dtr' && $activeTabParam === 'labtracker' && in_arra
             <?php if (isset($item['roles']) && ! \App\Libraries\Roles::isAdmin($myRole)) continue; ?>
             <?php $modOf = ['Dashboard' => 'dashboard', 'Inbox' => 'inbox', 'QC Lab Reports (DTR)' => 'dtr', 'Analytics' => 'analytics', 'Help' => 'help', 'Calendar Monitoring' => 'calendar', 'Quality Insights' => 'insights'][$item['label']] ?? ''; if ($item['label'] === 'InterLink' ? (! $can('interlink') && ! $can('etrf')) : ($modOf !== '' && ! $can($modOf))) continue; ?>
             <?php if (! empty($item['children'])): ?>
-                <?php $grpOpen = in_array((string) $segment, $item['match'], true) || ! empty($item['openWhen']); $grpTab = (string) (service('request')->getGet('tab') ?? 'bonding'); $seg2 = (string) (service('uri')->getSegments()[1] ?? ''); ?>
+                <?php $grpOpen = in_array((string) $segment, $item['match'], true) || ! empty($item['openWhen']); $grpTab = (string) (service('request')->getGet('tab') ?? 'bonding'); if ($grpTab === 'daily') { $grpTab = 'bonding'; } $seg2 = (string) (service('uri')->getSegments()[1] ?? ''); ?>
                 <div class="nav-group" data-nav-group="<?= esc(strtolower($item['label']), 'attr') ?>">
                     <button type="button" class="nav-link nav-group-toggle" data-current="<?= $grpOpen ? '1' : '0' ?>" aria-expanded="false" style="width:100%;background:none;border:0;text-align:left;font:inherit;cursor:pointer">
                         <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="<?= esc($item['icon'], 'attr') ?>"/></svg>
@@ -111,7 +110,7 @@ $inArchives = ($segment === 'dtr' && $activeTabParam === 'labtracker' && in_arra
         </details>
 
         <!-- Lab Monitoring: Warehouse 3D Tracker & ERP Finish (Calendar Monitoring is in the main list above) -->
-        <?php $monOpen = in_array((string) $segment, ['lab-monitoring', 'warehouse-tracker', 'warehouse'], true) || ($segment === 'dtr' && ($activeTabParam === 'tracker' || ($activeTabParam === 'labtracker' && ! $inArchives))) || $segment === 'thirdparty'; ?>
+        <?php $monOpen = in_array((string) $segment, ['lab-monitoring', 'warehouse-tracker', 'warehouse'], true) || ($segment === 'dtr' && ($activeTabParam === 'tracker' || ($activeTabParam === 'labtracker' && ! $inArchives))); ?>
         <details class="side-group side-group-collapsible" data-grp="labmon"<?= $monOpen ? ' data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
             <summary class="side-group-h" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer;list-style:none">
                 <span>Lab Monitoring</span>
@@ -142,12 +141,6 @@ $inArchives = ($segment === 'dtr' && $activeTabParam === 'labtracker' && in_arra
                 VF Test Monitoring
             </a>
             <?php endif ?>
-            <?php if ($can('thirdparty')): ?>
-            <a href="<?= site_url('thirdparty') ?>" class="nav-link <?= $segment === 'thirdparty' ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
-                <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M9 12l2 2 4-4M12 3l8 3v6c0 4.5-3.2 8.2-8 9-4.8-.8-8-4.5-8-9V6l8-3z"/></svg>
-                Third Party Test
-            </a>
-            <?php endif ?>
             <?php if ($can('dtr')): ?>
             <a href="<?= site_url('dtr?tab=tracker') ?>" class="nav-link <?= ($segment === 'dtr' && $activeTabParam === 'tracker') ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
                 <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
@@ -159,14 +152,17 @@ $inArchives = ($segment === 'dtr' && $activeTabParam === 'labtracker' && in_arra
 
         <!-- Sub-navigation for QC Lab Digital Test Reports (#Digital Test Report) -->
         <?php
+        $tpSeg2 = (string) (service('uri')->getSegments()[1] ?? '');
         $labLinks = [
-            ['tab' => 'bonding',     'label' => 'Shoe Bonding (U60)',     'icon' => 'M13 10V3L4 14h7v7l9-11h-7z'],
-            ['tab' => 'wholeshoe',   'label' => 'Whole Shoe',             'icon' => 'M3 18h18v-2H3v2zm19-4c0-1.1-.9-2-2-2h-2.5l-3-4.5c-.4-.6-1-1-1.7-1H8c-.8 0-1.5.5-1.8 1.2L4 12H3c-1.1 0-2 .9-2 2v2h21v-2z'],
-            ['tab' => 'material',    'label' => 'Material Tests',         'icon' => 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10'],
+            ['tab' => 'bonding',   'label' => 'Shoe Bonding (U60)', 'icon' => 'M13 10V3L4 14h7v7l9-11h-7z'],
+            ['tab' => 'wholeshoe', 'label' => 'Whole Shoe',         'icon' => 'M3 18h18v-2H3v2zm19-4c0-1.1-.9-2-2-2h-2.5l-3-4.5c-.4-.6-1-1-1.7-1H8c-.8 0-1.5.5-1.8 1.2L4 12H3c-1.1 0-2 .9-2 2v2h21v-2z'],
+            ['tab' => 'material',  'label' => 'Material Test Report', 'icon' => 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10'],
+            ['tab' => 'qima',      'label' => 'QIMA',               'url' => site_url('thirdparty/qima'), 'active' => ($segment === 'thirdparty' && $tpSeg2 !== 'cfa'), 'icon' => 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z'],
+            ['tab' => 'cfa',       'label' => 'CFA Loading',        'url' => site_url('thirdparty/cfa'),  'active' => ($segment === 'thirdparty' && $tpSeg2 === 'cfa'), 'icon' => 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
         ];
-        $labMod = ['bonding' => 'bonding', 'wholeshoe' => 'wholeshoe', 'material' => 'materials', 'thirdparty' => 'thirdparty'];
+        $labMod = ['bonding' => 'bonding', 'wholeshoe' => 'wholeshoe', 'material' => 'materials', 'qima' => 'thirdparty', 'cfa' => 'thirdparty'];
         $labLinks = array_values(array_filter($labLinks, static fn ($l) => \App\Libraries\Roles::can($myRole, $labMod[$l['tab']] ?? 'dtr')));
-        $labReportsOpen = ($segment === 'dtr' && ! in_array($activeTabParam, ['labtracker', 'tracker', 'calculators'], true));
+        $labReportsOpen = ($segment === 'thirdparty') || ($segment === 'dtr' && ! in_array($activeTabParam, ['labtracker', 'tracker', 'calculators'], true));
         ?>
         <details class="side-group side-group-collapsible" data-grp="labreports"<?= $labReportsOpen ? ' data-here="1"' : '' ?> style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.18)">
             <summary class="side-group-h" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer;list-style:none">
@@ -174,7 +170,7 @@ $inArchives = ($segment === 'dtr' && $activeTabParam === 'labtracker' && in_arra
                 <svg class="side-group-c" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:14px;height:14px;transition:transform .15s ease-out" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
             </summary>
             <?php foreach ($labLinks as $ll): ?>
-            <a href="<?= $ll['url'] ?? site_url('dtr?tab=' . $ll['tab']) ?>" class="nav-link <?= (isset($ll['url']) ? $segment === $ll['tab'] : ($segment === 'dtr' && $activeTabParam === $ll['tab'])) ? 'active' : '' ?>" style="padding:7px 12px;font-size:12.5px">
+            <a href="<?= $ll['url'] ?? site_url('dtr?tab=' . $ll['tab']) ?>" class="nav-link <?= array_key_exists('active', $ll) ? ($ll['active'] ? 'active' : '') : ($segment === 'dtr' && $activeTabParam === $ll['tab'] ? 'active' : '') ?>" style="padding:7px 12px;font-size:12.5px">
                 <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="<?= esc($ll['icon'], 'attr') ?>"/></svg>
                 <?= esc($ll['label']) ?>
             </a>
@@ -291,11 +287,16 @@ $inArchives = ($segment === 'dtr' && $activeTabParam === 'labtracker' && in_arra
             html.side-collapsed .side-doc-no-match { display: none !important; }
         </style>
         <script>
-        /* All sidebar collapsible groups start collapsed on load */
+        /* All sidebar collapsible groups start collapsed on initial session, then remember user toggles across views */
         (function () {
           document.querySelectorAll('#sidebar .side-group').forEach(function (d) {
-            try { localStorage.removeItem('nx.side.grp.' + d.dataset.grp); } catch (e) {}
-            d.open = false;
+            var k = 'nx.side.grp.' + (d.dataset.grp || '');
+            var saved = null;
+            try { saved = sessionStorage.getItem(k); } catch (e) {}
+            d.open = saved === '1';
+            d.addEventListener('toggle', function () {
+              try { sessionStorage.setItem(k, d.open ? '1' : '0'); } catch (e) {}
+            });
           });
         })();
 
@@ -497,16 +498,18 @@ $inArchives = ($segment === 'dtr' && $activeTabParam === 'labtracker' && in_arra
 })();
 </script>
 <script>
-// expandable sidebar groups (InterLink, Analytics): always start collapsed
+// expandable sidebar groups (InterLink, Analytics): start collapsed on fresh session, remember toggles across views
 document.querySelectorAll('.nav-group').forEach(function (g) {
   var btn = g.querySelector('.nav-group-toggle'), box = g.querySelector('.nav-group-items'), chev = g.querySelector('.nav-chev');
   var key = 'nav-group-' + g.dataset.navGroup;
-  try { localStorage.removeItem(key); } catch (e) {}
+  var savedOpen = false;
+  try { savedOpen = sessionStorage.getItem(key) === '1'; } catch (e) {}
   var set = function (open) {
     box.hidden = !open; btn.setAttribute('aria-expanded', open ? 'true' : 'false');
     chev.style.transform = open ? 'rotate(90deg)' : '';
+    try { sessionStorage.setItem(key, open ? '1' : '0'); } catch (e) {}
   };
-  set(false);
+  set(savedOpen);
   btn.addEventListener('click', function () { set(box.hidden); });
   // collapsed sidebar: the sub-menu is a flyout next to the icon
   var root = document.documentElement, t;

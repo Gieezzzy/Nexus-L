@@ -50,9 +50,6 @@
             <button type="button" role="tab" class="dtr-subtab" data-wst-cat="crocking"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg> Crocking</button>
             <button type="button" role="tab" class="dtr-subtab" data-wst-cat="bally-flex"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg> Bally Flexing</button>
             <button type="button" role="tab" class="dtr-subtab" data-wst-cat="ross-flex"><svg class="ic" aria-hidden="true"><use href="#i-database"/></svg> Ross Flexing</button>
-            <button type="button" class="dtr-btn dtr-btn-primary dtr-subtabs-right" id="btn-wst-open-new-modal" style="font-weight:600">
-                <svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> + New Test
-            </button>
         </div>
 
         <div class="card glass dtr-section-card">

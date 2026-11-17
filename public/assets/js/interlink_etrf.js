@@ -979,4 +979,27 @@
   loadStatus(); setInterval(loadStatus, 20000);
   loadLabrefs();
   poll();
+
+  // Cargo Receive Date: a calendar next to the box. Picking a day writes "07 Nov 2026" (the format InterLink takes) into the box;
+  // opening the calendar starts at the day already in the box.
+  (() => {
+    const box = document.querySelector('[data-f="cargo_receive_date"]'), pick = document.getElementById('et-cargo-pick');
+    if (!box || !pick) return;
+    const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const parse = (t) => {
+      const m = /^(\d{1,2})[ -]([A-Za-z]{3})[a-z]*[ ,-]*(\d{4})$/.exec(String(t).trim());
+      if (m) { const i = MON.findIndex((x) => x.toLowerCase() === m[2].toLowerCase()); if (i >= 0) return new Date(Number(m[3]), i, Number(m[1])); }
+      const d = new Date(t); return isNaN(d) ? null : d;
+    };
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const sync = () => { const d = parse(box.value); pick.value = d ? iso(d) : ''; };
+    pick.addEventListener('focus', sync); pick.addEventListener('mousedown', sync);
+    pick.addEventListener('change', () => {
+      if (!pick.value) return;
+      const [y, m, d] = pick.value.split('-').map(Number);
+      box.value = `${String(d).padStart(2, '0')} ${MON[m - 1]} ${y}`;
+      ['input', 'change'].forEach((ev) => box.dispatchEvent(new Event(ev, { bubbles: true })));
+    });
+    box.addEventListener('change', sync); sync();
+  })();
 })();

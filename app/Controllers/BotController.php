@@ -5436,7 +5436,7 @@ private function labRefIntent(string $text): ?array
 
 
 
-                'text'          => "Report {$apv['lab_ref_no']} is pending, but no active signatories are currently registered in Report Designer â†’ Signatories.",
+                'text'          => "Report {$apv['lab_ref_no']} is pending, but no active signatories are currently registered in Report Designer → Signatories.",
 
 
 
@@ -5796,7 +5796,7 @@ private function labRefIntent(string $text): ?array
 
 
 
-        $replyText = "ðŸ”” **Approval Notification Sent to Signatories!**\n\n";
+        $replyText = "🔔 **Approval Notification Sent to Signatories!**\n\n";
 
 
 

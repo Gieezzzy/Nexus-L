@@ -85,6 +85,7 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->post('account/save', 'AccountController::save');
     $routes->post('account/password', 'AccountController::password');
     $routes->post('account/prefs', 'AccountController::prefs');
+    $routes->post('account/theme', 'AccountController::saveTheme');
     $routes->post('account/signature', 'AccountController::signature');
     $routes->post('account/avatar', 'AccountController::saveAvatar');
     $routes->get('account/avatar/(:num)', 'AccountController::avatar/$1');
@@ -267,7 +268,6 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('dtr/approval/feed', 'ApprovalController::feed');
     $routes->get('dtr/approval/name-format', 'ApprovalController::nameFormat');
     $routes->post('dtr/approval/name-format', 'ApprovalController::nameFormat');
-    $routes->post('approve/presence/(:num)', 'ApprovalController::presence/$1');   // one approver at a time (live)
     $routes->get('approve/(:segment)/pdf', 'ApprovalController::preview/$1');
     $routes->get('approve/(:segment)', 'ApprovalController::page/$1');
     $routes->post('approve/(:segment)', 'ApprovalController::decide/$1');
@@ -275,6 +275,10 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('dtr/photo-status', 'PhotoLinkController::status');
     $routes->get('dtr/photo-image', 'PhotoLinkController::image');
     $routes->get('dtr/layout', 'DesignerController::layout');
+    $routes->get('dtr/bonding-graph-layout', 'DesignerController::graphLayout');
+    $routes->get('dtr/bonding-graph-data', 'DtrController::bondingGraphData');
+    $routes->get('dtr/pull-graph-layout', 'DesignerController::pullGraphLayout');
+    $routes->get('dtr/pull-graph-data', 'DtrController::pullGraphData');
 
     $routes->get('dtr/bonding-access-pdf', 'DtrController::bondingAccessPdf');
     $routes->post('dtr/send-synology', 'DtrController::sendSynology');
@@ -303,7 +307,6 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('labdocs/(:segment)/thumb/(:num)', 'LabDocsController::thumb/$1/$2');
     // a folder of files (Admin, Manager, Supervisor, Encoder): new folder, upload, refresh from the share, delete a file
     $routes->post('labdocs/(:segment)/files/folder', 'LabDocsController::newFolder/$1');
-    $routes->post('labdocs/(:segment)/files/op', 'LabDocsController::fileOp/$1');            // SATRA / Admin: rename, move, copy, paste, delete folders, new file
     $routes->post('labdocs/(:segment)/files/upload', 'LabDocsController::upload/$1');
     $routes->post('labdocs/(:segment)/files/refresh', 'LabDocsController::refresh/$1');
     $routes->post('labdocs/(:segment)/files/(:num)/delete', 'LabDocsController::deleteFile/$1/$2');
@@ -326,7 +329,6 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('calendar-monitoring/quick-stats', 'CalendarMonitoringController::quickStats');
 
     // Warehouse & Specimen Retain Tracker (3D Model & Location Guide)
-    $routes->get('activity-log', 'ActivityLogController::index', ['as' => 'activity-log']);   // Admin: every recorded action
     $routes->get('warehouse-tracker', 'WarehouseTrackerController::index', ['as' => 'warehouse-tracker']);
     $routes->get('warehouse', 'WarehouseTrackerController::index');
     $routes->get('warehouse-tracker/boxes', 'WarehouseTrackerController::boxes');
@@ -365,6 +367,7 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->post('wst/log-findings/(:num)', 'WstController::logFindings/$1');
     $routes->post('wst/daily-checkin/(:num)', 'WstController::dailyCheckin/$1');
     $routes->post('wst/save-eval/(:num)', 'WstController::saveEvaluation/$1');
+    $routes->post('wst/save-checkpoint-remark/(:num)', 'WstController::saveCheckpointRemark/$1');
     // Help bot (local, system-only): chat, activity events
     $routes->post('bot/ask', 'BotController::ask');
     $routes->post('bot/events', 'BotController::events');
@@ -419,6 +422,12 @@ $routes->group('', ['filter' => 'auth:admin'], static function (RouteCollection 
     $routes->post('settings/transfer/start', 'SettingsController::transferStart');
     $routes->get('settings/transfer/status', 'SettingsController::transferStatus');
     $routes->get('designer', 'DesignerController::index', ['as' => 'designer']);
+    $routes->post('designer/graph-layout/save', 'DesignerController::graphLayoutSave');
+    $routes->get('designer/graph-records', 'DesignerController::graphRecords');
+    $routes->post('designer/pull-layout/save', 'DesignerController::pullLayoutSave');
+    $routes->get('designer/pull-records', 'DesignerController::pullRecords');
+    $routes->get('designer/db-tables', 'DesignerController::dbTables');
+    $routes->get('designer/db-columns', 'DesignerController::dbColumns');
     $routes->post('designer/save', 'DesignerController::save');
     $routes->post('designer/reset', 'DesignerController::reset');
     $routes->get('designer/maps', 'DesignerController::maps');

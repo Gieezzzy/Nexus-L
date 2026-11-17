@@ -162,10 +162,12 @@ class NexusStore extends ChatStore
 
     private function shapePerson(array $r): array
     {
-        $lastSeen = trim((string) ($r['LastSeenAt'] ?? ''));
-        $online   = $lastSeen !== '' && (time() - strtotime($lastSeen)) <= 120;
-        $uid      = (int) ($r['UserID'] ?? 0);
-        $avatar   = \App\Models\UserModel::avatarUrl($r['Avatar'] ?? null, $uid);
+        $prefs      = json_decode((string) ($r['Prefs'] ?? ''), true);
+        $chatActive = ! is_array($prefs) || ! array_key_exists('chat_active', $prefs) || ! empty($prefs['chat_active']);
+        $lastSeen   = trim((string) ($r['LastSeenAt'] ?? ''));
+        $online     = $chatActive && $lastSeen !== '' && (time() - strtotime($lastSeen)) <= 120;
+        $uid        = (int) ($r['UserID'] ?? 0);
+        $avatar     = \App\Models\UserModel::avatarUrl($r['Avatar'] ?? null, $uid);
 
         return [
             'id' => (string) $r['UserID'], 'name' => (string) $r['FullName'], 'username' => (string) ($r['Username'] ?? ''),
@@ -183,7 +185,7 @@ class NexusStore extends ChatStore
                 'online' => true, 'avatar' => null, 'src' => 'n', 'dept' => $b[1], 'synologyId' => null,
             ];
         }
-        $r = $this->run('SELECT UserID, FullName, Username, Department, Avatar, SynologyID, LastSeenAt FROM tbl_users WHERE UserID = ? AND IsActive = 1', [(int) $id])[0] ?? null;
+        $r = $this->run('SELECT UserID, FullName, Username, Department, Avatar, SynologyID, LastSeenAt, Prefs FROM tbl_users WHERE UserID = ? AND IsActive = 1', [(int) $id])[0] ?? null;
 
         return $r === null ? null : $this->shapePerson($r);
     }
@@ -193,7 +195,7 @@ class NexusStore extends ChatStore
         $like = '%' . addcslashes($q, '%_\\') . '%';
 
         return array_map([$this, 'shapePerson'], $this->run(
-            'SELECT UserID, FullName, Username, Department, Avatar, SynologyID, LastSeenAt FROM tbl_users WHERE IsActive = 1 AND UserID <> ? AND (FullName LIKE ? OR Username LIKE ?) ORDER BY FullName LIMIT 10',
+            'SELECT UserID, FullName, Username, Department, Avatar, SynologyID, LastSeenAt, Prefs FROM tbl_users WHERE IsActive = 1 AND UserID <> ? AND (FullName LIKE ? OR Username LIKE ?) ORDER BY FullName LIMIT 10',
             [(int) $me, $like, $like],
         ));
     }
@@ -210,7 +212,7 @@ class NexusStore extends ChatStore
         }
 
         return array_map([$this, 'shapePerson'], $this->run(
-            "SELECT UserID, FullName, Username, Department, Avatar, SynologyID, LastSeenAt FROM tbl_users WHERE IsActive = 1 AND UserID <> ?{$where} ORDER BY FullName LIMIT {$limit}",
+            "SELECT UserID, FullName, Username, Department, Avatar, SynologyID, LastSeenAt, Prefs FROM tbl_users WHERE IsActive = 1 AND UserID <> ?{$where} ORDER BY FullName LIMIT {$limit}",
             $params,
         ));
     }
@@ -228,7 +230,7 @@ class NexusStore extends ChatStore
             return $out;
         }
         $in = implode(',', $numIds);
-        foreach ($this->run("SELECT UserID, FullName, Username, Department, Avatar, SynologyID, LastSeenAt FROM tbl_users WHERE UserID IN ({$in})") as $r) {
+        foreach ($this->run("SELECT UserID, FullName, Username, Department, Avatar, SynologyID, LastSeenAt, Prefs FROM tbl_users WHERE UserID IN ({$in})") as $r) {
             $out[(string) $r['UserID']] = $this->shapePerson($r);
         }
 

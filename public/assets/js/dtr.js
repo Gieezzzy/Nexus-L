@@ -92,6 +92,16 @@
       else el.value = /^\d{4}-\d{2}-\d{2} 00:00:00$/.test(v) ? v.slice(0, 10) : v;
     });
     leatherSheetSync();
+    // The report shows what was SAVED for this Lab Ref: the ratings (PASS / TOLERABLE / FAIL) and the overall result the lab wrote are not replaced by the
+    // sheet's own re-calculation when the record opens (it can rate a reading differently from the lab). Editing a reading calculates again as before.
+    $$('.lf-out, .lf-std, [data-col="Remarks"]', leatherSheet).forEach((el) => {
+      const raw = record ? record[el.dataset.col] : null;
+      const v = raw == null ? '' : String(raw).trim();
+      if (v !== '' && el.value !== v && (Number.isNaN(parseFloat(v)) || el.dataset.col === 'Remarks')) {
+        el.value = v;
+        if (el.classList.contains('dtr-rate-inp')) styleRatingInput(el);
+      }
+    });
   };
   const applyLeatherView = () => {
     leatherSheet = $(`#dtr-sheet-${activeSlug}`) || null;
@@ -191,7 +201,7 @@
         ].filter(Boolean).join(' · ');
         const times = [r.started_at_fmt || '', r.finished_at ? `End: ${r.finished_at}` : ''].filter(Boolean).join(' / ');
         return `<tr>
-          <td class="mono"><b>${escHtml(r.lab_ref_no || '-')}</b></td>
+          <td class="mono">${r.lab_ref_no ? `<a href="#" class="dtr-labref-link" data-open-material="${escHtml(r.lab_ref_no)}" title="Open the report of this Lab Ref (Material Test Report)"><b>${escHtml(r.lab_ref_no)}</b></a>` : '<b>-</b>'}</td>
           <td>${escHtml(r.material_category_name || '-')}</td>
           <td>${escHtml(r.material_test_name || '-')}</td>
           <td class="mono">${escHtml(r.test_code || '-')}</td>
@@ -335,14 +345,40 @@
     const btn = $('#dtr-date-btn');
     const pop = $('#dtr-date-pop');
     if (!btn || !pop) return;
-    const kp = { total: $('#dtr-kpi-total'), pass: $('#dtr-kpi-pass'), tol: $('#dtr-kpi-tol'), fail: $('#dtr-kpi-fail'), shut: $('#dtr-kpi-shut'), sub: $('#dtr-kpi-shut-sub') };
-    const orig = { total: kp.total?.textContent, pass: kp.pass?.textContent, tol: kp.tol?.textContent, fail: kp.fail?.textContent, shut: kp.shut?.textContent, sub: kp.sub?.innerHTML };
+    const kp = { total: $('#dtr-kpi-total'), fin: $('#dtr-kpi-fin'), ongoing: $('#dtr-kpi-ongoing'), pass: $('#dtr-kpi-pass'), tol: $('#dtr-kpi-tol'), fail: $('#dtr-kpi-fail'), shut: $('#dtr-kpi-shut'), sub: $('#dtr-kpi-shut-sub') };
+    const orig = { total: kp.total?.textContent, fin: kp.fin?.textContent, ongoing: kp.ongoing?.textContent, pass: kp.pass?.textContent, tol: kp.tol?.textContent, fail: kp.fail?.textContent, shut: kp.shut?.textContent, sub: kp.sub?.innerHTML };
     const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const fmt = (n) => Number(n).toLocaleString('en-US');
     const fmtShort = (s) => {
       if (!s) return '';
       const d = new Date(`${s}T00:00:00`);
       return isNaN(d) ? s : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+    const smartRangeLabel = (a, b) => {
+      const t = new Date(); t.setHours(0, 0, 0, 0);
+      const todayS = ymd(t);
+      const yd = new Date(t); yd.setDate(yd.getDate() - 1);
+      const yestS = ymd(yd);
+      if (a === b) {
+        if (a === todayS) return `Today · ${t.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+        if (a === yestS) return `Yesterday · ${yd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+        return fmtShort(a);
+      }
+      if (/^\d{4}-01-01$/.test(a) && b === `${a.slice(0, 4)}-12-31`) {
+        return a.slice(0, 4) === String(t.getFullYear()) ? `This Year · ${a.slice(0, 4)}` : `Year ${a.slice(0, 4)}`;
+      }
+      if (/^\d{4}-\d{2}-01$/.test(a)) {
+        const [yy, mm] = a.split('-').map(Number);
+        const lastOfMo = ymd(new Date(yy, mm, 0));
+        if (b === lastOfMo) return new Date(yy, mm - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+      }
+      const d1 = new Date(`${a}T00:00:00`), d2 = new Date(`${b}T00:00:00`);
+      if (!isNaN(d1) && !isNaN(d2) && Math.round((d2 - d1) / 86400000) === 6 && d1.getDay() === 1) {
+        const sLbl = d1.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const eLbl = d2.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        return `Week · ${sLbl} – ${eLbl}`;
+      }
+      return `${fmtShort(a)} – ${fmtShort(b)}`;
     };
     const rangeOf = (key, day, customLabel) => {
       const t = new Date(); t.setHours(0, 0, 0, 0);
@@ -351,10 +387,11 @@
       if (key === 'yesterday') { const yd = add(t, -1); return { from: ymd(yd), to: ymd(yd), label: `Yesterday · ${yd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`, key: 'yesterday' }; }
       if (key === 'week') { const mon = add(t, -((t.getDay() + 6) % 7)); return { from: ymd(mon), to: ymd(add(mon, 6)), label: 'This Week', key: 'week' }; }
       if (key === 'month') return { from: ymd(new Date(t.getFullYear(), t.getMonth(), 1)), to: ymd(new Date(t.getFullYear(), t.getMonth() + 1, 0)), label: 'This Month', key: 'month' };
+      if (key === 'year') return { from: `${t.getFullYear()}-01-01`, to: `${t.getFullYear()}-12-31`, label: `This Year · ${t.getFullYear()}`, key: 'year' };
       if (key === 'day' && day) return { from: day, to: day, label: fmtShort(day), key: 'day' };
       if (key === 'range' && /^\d{4}-\d{2}-\d{2}\|\d{4}-\d{2}-\d{2}$/.test(day || '')) {
         const [a, b] = day.split('|');
-        const lbl = customLabel || (a === b ? fmtShort(a) : `${fmtShort(a)} – ${fmtShort(b)}`);
+        const lbl = customLabel || smartRangeLabel(a, b);
         return { from: a, to: b, label: lbl, key: 'range' };
       }
       if (key === 'weekpick' && /^(\d{4})-W(\d{2})$/.test(day || '')) {   // ISO week: Monday .. Sunday
@@ -375,8 +412,10 @@
       $('#dtr-date-label').textContent = rg ? rg.label : 'All dates';
       btn.classList.toggle('on', !!rg);
       if (clearBtn) clearBtn.hidden = !rg;
-      $('#dtr-dp-custom')?.classList.remove('on');
-      if (key !== 'range') { const w = $('#dtr-week-sel'); const m2 = $('#dtr-month-sel'); if (w) w.value = ''; if (m2) m2.value = ''; }
+      if (key !== 'range') {
+        const w = $('#dtr-week-sel'); const m2 = $('#dtr-month-sel'); const y2 = $('#dtr-year-sel');
+        if (w) w.value = ''; if (m2) m2.value = ''; if (y2) y2.value = '';
+      }
       pop.querySelectorAll('.dp-chip[data-range]').forEach((b) => b.classList.toggle('on', b.dataset.range === key));
       if (rg) { dp.from = rg.from; dp.to = rg.to; dp.view = new Date(`${rg.from}T00:00:00`); dpRender(); }
       else { dp.from = ''; dp.to = ''; dpRender(); }
@@ -386,9 +425,11 @@
       window.dtrReloadList?.();   // the open list loads every report of that range (pending ones too)
     };
     // the cards follow the open tab (Bonding / Whole Shoe / Lab Material Test Collection) and the date range chosen
-    const kpiState = window.dtrListState = { rg: null, scope: '', res: '' };
+    const defaultToday = $('#dtr-datefilter')?.dataset.defaultToday === '1';
+    // the default range is Today (the list adds the Daily shoes of the day before and the other test types of yesterday)
+    const kpiState = window.dtrListState = { rg: defaultToday ? rangeOf('today') : null, scope: '', res: '' };
     // clicking a card lists only the reports of that result (Total = all)
-    $$('.dtr-top-kpis .dtr-kpi').forEach((card, i) => {
+    $$('.dtr-top-kpis .dtr-kpi:not([data-kno])').forEach((card, i) => {
       const res = ['', 'pass', 'tol', 'fail'][i];
       if (res === undefined) return;
       card.dataset.kres = res || 'all';
@@ -401,10 +442,49 @@
     });
     const scopeOf = (sub) => ({ bonding: 'bonding', shoes: 'shoes', containers: 'materials' }[sub] || '');
     const setText = (el, v) => { if (el) el.textContent = v; };
+    // Bonding tab: "Total Lab Test Reports" = the total of the summary buttons Daily + Tech Trial + Sample + Retest + First Article + Advance (Lacking and Shutdown lines are not reports)
+    window.dtrSyncTotal = () => {
+      if (kpiState.scope !== 'bonding' || !kp.total) return;
+      const chips = $$('#lt-counts-bonding [data-lt-filter]');
+      if (!chips.length) return;
+      let sum = 0;
+      chips.forEach((c) => {
+        if (['daily', 'trial', 'sample', 'retest', 'first', 'advance'].includes(c.dataset.ltFilter)) sum += Number((c.querySelector('b')?.textContent || '0').replace(/[^\d]/g, '')) || 0;
+      });
+      kp.total.textContent = fmt(sum);
+      // Passed / Tolerable / Failed = the Result column of the listed rows (a row with a failed pull test is FAILED, the same for TOLERABLE)
+      const rc = $('#lt-res-counts');
+      if (rc) {
+        setText(kp.pass, fmt(Number(rc.dataset.pass || 0)));
+        setText(kp.tol, fmt(Number(rc.dataset.tol || 0)));
+        setText(kp.fail, fmt(Number(rc.dataset.fail || 0)));
+      }
+    };
+    const syncFinished = () => {
+      const numOf = (el) => Number((el?.textContent || '0').replace(/[^\d]/g, '')) || 0;
+      const pctOf = (n, d) => d > 0 ? ((n / d) * 100).toFixed(1).replace(/\.0$/, '') + '%' : '0%';
+      const pass = numOf(kp.pass);
+      const tol  = numOf(kp.tol);
+      const fail = numOf(kp.fail);
+      const fin  = pass + tol + fail;
+      const tot  = numOf(kp.total);
+      const ong  = Math.max(0, tot - fin);
+      if (kp.fin) kp.fin.textContent = fmt(fin);
+      if (kp.ongoing) kp.ongoing.textContent = fmt(ong);
+      setText($('#dtr-kpi-total-pct'), `${pctOf(fin, tot)} Done`);
+      setText($('#dtr-kpi-fin-pct'), pctOf(fin, tot));
+      setText($('#dtr-kpi-ongoing-pct'), pctOf(ong, tot));
+      setText($('#dtr-kpi-pass-pct'), pctOf(pass, tot));
+      setText($('#dtr-kpi-tol-pct'), pctOf(tol, tot));
+      setText($('#dtr-kpi-fail-pct'), pctOf(fail, tot));
+    };   // Finished Shoes Tested = Passed + Tolerable + Failed; On Going Testing = Total - Finished
+    const syncTotalBase = window.dtrSyncTotal;
+    window.dtrSyncTotal = () => { syncTotalBase(); syncFinished(); };
     const refreshKpis = async () => {
       const { rg, scope } = kpiState;
       if (!scope && !rg) {
-        setText(kp.total, orig.total); setText(kp.pass, orig.pass); setText(kp.tol, orig.tol); setText(kp.fail, orig.fail); setText(kp.shut, orig.shut);
+        setText(kp.total, orig.total); setText(kp.fin, orig.fin); setText(kp.ongoing, orig.ongoing); setText(kp.pass, orig.pass); setText(kp.tol, orig.tol); setText(kp.fail, orig.fail); setText(kp.shut, orig.shut);
+        syncFinished();
         if (kp.sub) kp.sub.innerHTML = orig.sub;
         return;
       }
@@ -412,12 +492,13 @@
         const r = await apiFetch(`dtr/kpis?scope=${scope}${rg ? `&from=${rg.from}&to=${rg.to}` : ''}`);
         if (!r || !r.ok) return;
         const names = { bonding: 'Bonding Shoe Collection', shoes: 'Whole Shoe Collection', materials: 'Lab Material Test Collection' };
-        setText(kp.total, fmt(r.total)); setText(kp.pass, fmt(r.pass)); setText(kp.tol, fmt(r.tol)); setText(kp.fail, fmt(r.fail));
+        setText(kp.total, fmt(r.total)); setText(kp.pass, fmt(r.pass)); setText(kp.tol, fmt(r.tol)); setText(kp.fail, fmt(r.fail)); syncFinished();
         setText(kp.shut, r.shut === null || r.shut === undefined ? '-' : fmt(r.shut));
         const tag = [names[scope] || '', rg ? rg.label : 'all dates'].filter(Boolean).join(' · ');
         const tt = document.querySelector('#dtr-kpi-total')?.parentElement?.querySelector('.dtr-kpi-sub');
         if (tt) tt.textContent = tag;
         if (kp.sub) kp.sub.textContent = r.shut === null || r.shut === undefined ? 'lines marked SHUTDOWN: Bonding tab only' : `lines marked SHUTDOWN · ${rg ? rg.label : 'all dates'}`;
+        window.dtrSyncTotal?.();
       } catch (e) { /* keep the numbers shown */ }
     };
     document.addEventListener('click', (e) => {
@@ -428,6 +509,7 @@
       if (kpiState.rg || kpiState.res) window.dtrReloadList?.();
     });
     kpiState.scope = scopeOf($('.dtr-subtab.active')?.dataset.subtab || $('.dtr-subpanel:not(.hidden)')?.dataset.subpanel || '');
+    window.dtrSyncTotal?.();
     if (kpiState.scope) refreshKpis();
     btn.addEventListener('click', (e) => {
       if (e.target.closest('#dtr-date-clear')) { e.stopPropagation(); apply(''); return; }
@@ -442,10 +524,11 @@
     // (composedPath: the calendar re-draws itself on a click, so the clicked day may already be detached from the page)
     document.addEventListener('click', (e) => { if (!pop.hidden && !e.composedPath().some((n) => n.classList?.contains('dtr-datefilter'))) { pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); } });
 
-    // Weekly / Monthly lists: the last 20 weeks (Monday to Sunday) and the last 12 months
+    // Weekly / Monthly / Yearly dropdown lists
     const nice = (d) => d.toLocaleString('en-US', { month: 'short', day: 'numeric' });
     const wk = $('#dtr-week-sel');
     const mo = $('#dtr-month-sel');
+    const yr = $('#dtr-year-sel');
     if (wk) {
       const t = new Date(); t.setHours(0, 0, 0, 0);
       const mon0 = new Date(t); mon0.setDate(t.getDate() - ((t.getDay() + 6) % 7));
@@ -456,7 +539,7 @@
       }).join('');
       wk.addEventListener('change', () => {
         if (wk.value) {
-          if (mo) mo.value = '';
+          if (mo) mo.value = ''; if (yr) yr.value = '';
           const optTxt = wk.options[wk.selectedIndex]?.textContent?.replace(/\s*\(this week\)$/, '') || '';
           apply('range', wk.value, optTxt);
         }
@@ -471,29 +554,98 @@
       }).join('');
       mo.addEventListener('change', () => {
         if (mo.value) {
-          if (wk) wk.value = '';
+          if (wk) wk.value = ''; if (yr) yr.value = '';
           const optTxt = mo.options[mo.selectedIndex]?.textContent?.replace(/\s*\(this month\)$/, '') || '';
           apply('range', mo.value, optTxt);
         }
       });
     }
+    if (yr) {
+      const curY = new Date().getFullYear();
+      const minY = Math.min(2020, curY - 6);
+      yr.innerHTML = '<option value="">Select Year…</option>' + Array.from({ length: curY - minY + 1 }, (_, i) => {
+        const yVal = curY - i;
+        return `<option value="${yVal}-01-01|${yVal}-12-31">${yVal}${i === 0 ? ' (this year)' : ''}</option>`;
+      }).join('');
+      yr.addEventListener('change', () => {
+        if (yr.value) {
+          if (wk) wk.value = ''; if (mo) mo.value = '';
+          const yNum = yr.value.slice(0, 4);
+          apply('range', yr.value, yNum === String(curY) ? `This Year · ${yNum}` : `Year ${yNum}`);
+        }
+      });
+    }
 
-    // Custom record: pick the first and the last day on the calendar, then Apply
-    const dp = { from: '', to: '', view: new Date() };
+    // Calendar Picker supporting 4 modes: Daily / Weekly / Monthly / Year
+    const dp = { mode: 'daily', from: kpiState.rg?.from || '', to: kpiState.rg?.to || '', view: new Date() };
     dp.view.setDate(1);
     const gridEl = $('#dtr-dp-grid');
     const hintEl = $('#dtr-dp-hint');
+    const headTitleEl = $('#dtr-dp-head-title');
+    const MODE_TITLES = {
+      daily: 'Daily / Custom Date Range',
+      weekly: 'Weekly Schedule (Mon–Sun)',
+      monthly: 'Monthly Schedule',
+      year: 'Yearly Schedule',
+    };
+    const MODE_HINTS = {
+      daily: 'Click a day, or click start → end date',
+      weekly: 'Click any day to select its Monday–Sunday week',
+      monthly: 'Click a month to filter that full month',
+      year: 'Click a year to filter that full year',
+    };
     function dpRender() {
       if (!gridEl) return;
+      const mode = dp.mode;
       const y = dp.view.getFullYear(); const m = dp.view.getMonth();
-      $('#dtr-dp-title').textContent = dp.view.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+      const now = new Date();
+      const curY = now.getFullYear();
+      const curM = now.getMonth();
+      const todayS = ymd(now);
+      pop.querySelectorAll('.dp-mode-btn').forEach((b) => {
+        const on = b.dataset.dpMode === mode;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      if (headTitleEl) headTitleEl.textContent = MODE_TITLES[mode] || MODE_TITLES.daily;
       $('#dtr-dp-from').value = dp.from; $('#dtr-dp-to').value = dp.to;
       if (hintEl) {
-        hintEl.textContent = !dp.from ? 'Click a start date on the calendar' : (!dp.to ? 'Now click an end date (or Apply for 1 day)' : `${fmtShort(dp.from)} → ${fmtShort(dp.to)}`);
+        if (!dp.from) hintEl.textContent = MODE_HINTS[mode] || '';
+        else if (mode === 'daily' && !dp.to) hintEl.textContent = 'Click an end date, or Apply Filter for 1 day';
+        else hintEl.textContent = smartRangeLabel(dp.from, dp.to || dp.from);
       }
+      gridEl.classList.toggle('dp-grid-period', mode === 'monthly' || mode === 'year');
+
+      if (mode === 'monthly') {
+        $('#dtr-dp-title').textContent = String(y);
+        const moNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        gridEl.innerHTML = moNames.map((mn, mi) => {
+          const sFrom = ymd(new Date(y, mi, 1));
+          const sTo = ymd(new Date(y, mi + 1, 0));
+          const sel = dp.from === sFrom && dp.to === sTo;
+          const isCur = y === curY && mi === curM;
+          return `<button type="button" class="dp-period-btn${sel ? ' edge' : ''}${isCur ? ' today' : ''}" data-from="${sFrom}" data-to="${sTo}">${mn} ${y}</button>`;
+        }).join('');
+        return;
+      }
+
+      if (mode === 'year') {
+        const startY = Math.floor(y / 12) * 12;
+        $('#dtr-dp-title').textContent = `${startY} – ${startY + 11}`;
+        gridEl.innerHTML = Array.from({ length: 12 }, (_, i) => {
+          const yy = startY + i;
+          const sFrom = `${yy}-01-01`;
+          const sTo = `${yy}-12-31`;
+          const sel = dp.from === sFrom && dp.to === sTo;
+          const isCur = yy === curY;
+          return `<button type="button" class="dp-period-btn${sel ? ' edge' : ''}${isCur ? ' today' : ''}" data-from="${sFrom}" data-to="${sTo}">${yy}</button>`;
+        }).join('');
+        return;
+      }
+
+      $('#dtr-dp-title').textContent = dp.view.toLocaleString('en-US', { month: 'long', year: 'numeric' });
       const first = new Date(y, m, 1);
       const start = new Date(y, m, 1 - first.getDay());
-      const todayS = ymd(new Date());
       let h = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => `<span class="dp-dow">${d}</span>`).join('');
       for (let i = 0; i < 42; i++) {
         const d = new Date(start); d.setDate(start.getDate() + i);
@@ -501,27 +653,75 @@
         const inM = d.getMonth() === m;
         const hi = dp.from && (dp.to ? (s >= dp.from && s <= dp.to) : s === dp.from);
         const edge = s === dp.from || s === dp.to;
-        h += `<button type="button" class="dp-day${inM ? '' : ' out'}${hi && inM ? ' in' : ''}${edge && inM ? ' edge' : ''}${s === todayS ? ' today' : ''}" data-d="${s}">${d.getDate()}</button>`;
+        const showHi = mode === 'weekly' ? hi : (hi && inM);
+        const showEdge = mode === 'weekly' ? edge : (edge && inM);
+        h += `<button type="button" class="dp-day${inM ? '' : ' out'}${showHi ? ' in' : ''}${showEdge ? ' edge' : ''}${s === todayS ? ' today' : ''}" data-d="${s}">${d.getDate()}</button>`;
       }
       gridEl.innerHTML = h;
     }
+    pop.querySelectorAll('.dp-mode-btn').forEach((mBtn) => {
+      mBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dp.mode = mBtn.dataset.dpMode || 'daily';
+        dpRender();
+      });
+    });
     gridEl?.addEventListener('click', (e) => {
+      const pBtn = e.target.closest('.dp-period-btn');
+      if (pBtn) {
+        dp.from = pBtn.dataset.from;
+        dp.to = pBtn.dataset.to;
+        dpRender();
+        return;
+      }
       const b = e.target.closest('.dp-day');
-      if (!b || b.classList.contains('out')) return;
+      if (!b || (dp.mode === 'daily' && b.classList.contains('out'))) return;
       const s = b.dataset.d;
+      if (dp.mode === 'weekly') {
+        const dt = new Date(`${s}T00:00:00`);
+        const mon = new Date(dt); mon.setDate(dt.getDate() - ((dt.getDay() + 6) % 7));
+        const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+        dp.from = ymd(mon);
+        dp.to = ymd(sun);
+        dpRender();
+        return;
+      }
       if (!dp.from || dp.to) { dp.from = s; dp.to = ''; }
       else if (s < dp.from) { dp.to = dp.from; dp.from = s; }
       else dp.to = s;
       dpRender();
     });
-    $('#dtr-dp-prev')?.addEventListener('click', () => { dp.view.setMonth(dp.view.getMonth() - 1); dpRender(); });
-    $('#dtr-dp-next')?.addEventListener('click', () => { dp.view.setMonth(dp.view.getMonth() + 1); dpRender(); });
-    $('#dtr-dp-custom')?.addEventListener('click', () => { $('#dtr-dp-custom').classList.add('on'); if (wk) wk.value = ''; if (mo) mo.value = ''; });
+    gridEl?.addEventListener('dblclick', (e) => {
+      const pBtn = e.target.closest('.dp-period-btn');
+      if (pBtn) {
+        if (wk) wk.value = ''; if (mo) mo.value = ''; if (yr) yr.value = '';
+        apply('range', `${pBtn.dataset.from}|${pBtn.dataset.to}`);
+        return;
+      }
+      const b = e.target.closest('.dp-day');
+      if (!b || (dp.mode === 'daily' && b.classList.contains('out'))) return;
+      if (dp.from) {
+        if (wk) wk.value = ''; if (mo) mo.value = ''; if (yr) yr.value = '';
+        apply('range', `${dp.from}|${dp.to || dp.from}`);
+      }
+    });
+    $('#dtr-dp-prev')?.addEventListener('click', () => {
+      if (dp.mode === 'monthly') dp.view.setFullYear(dp.view.getFullYear() - 1);
+      else if (dp.mode === 'year') dp.view.setFullYear(dp.view.getFullYear() - 12);
+      else dp.view.setMonth(dp.view.getMonth() - 1);
+      dpRender();
+    });
+    $('#dtr-dp-next')?.addEventListener('click', () => {
+      if (dp.mode === 'monthly') dp.view.setFullYear(dp.view.getFullYear() + 1);
+      else if (dp.mode === 'year') dp.view.setFullYear(dp.view.getFullYear() + 12);
+      else dp.view.setMonth(dp.view.getMonth() + 1);
+      dpRender();
+    });
     $('#dtr-dp-clear')?.addEventListener('click', () => { dp.from = ''; dp.to = ''; dpRender(); });
     $('#dtr-dp-apply')?.addEventListener('click', () => {
       if (!dp.from) return;
+      if (wk) wk.value = ''; if (mo) mo.value = ''; if (yr) yr.value = '';
       apply('range', `${dp.from}|${dp.to || dp.from}`);
-      $('#dtr-dp-custom')?.classList.add('on');
     });
     dpRender();
   })();
@@ -585,7 +785,7 @@
           <td><input type="text" class="ik-style" placeholder="Style" readonly tabindex="-1"></td>
           <td class="ik-imgcell"><img class="ik-img" alt="" hidden></td>
           <td class="ik-pulls"><label><input type="checkbox" class="ik-pt" value="HEEL PULL"> Heel Pull</label><label><input type="checkbox" class="ik-pt" value="EYELET"> Eyelet</label><label><input type="checkbox" class="ik-pt" value="D-RING"> D-Ring</label><label><input type="checkbox" class="ik-pt" value="RIVET"> Rivet</label></td>
-          <td class="ik-lackcell" style="text-align:center"><input type="checkbox" class="ik-lacking" aria-label="Lacking (1 = lacking, 0 = not)"${type === 'LACKING' ? ' checked' : ''}><input type="date" class="ik-lackdate" tabindex="-1" aria-label="Lacking date" value="${type === 'LACKING' ? ($('#dtr-intake-production')?.value || '') : ''}" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none"><div class="ik-lackshow">${type === 'LACKING' ? ($('#dtr-intake-production')?.value || '').slice(5) : ''}</div></td>
+          <td class="ik-lackcell" style="text-align:center"><span class="ik-lackbox"><input type="checkbox" class="ik-lacking" aria-label="Lacking (1 = lacking, 0 = not)"${type === 'LACKING' ? ' checked' : ''}><input type="checkbox" class="ik-advance" title="Advance shoes testing" aria-label="Advance shoes testing"></span><input type="date" class="ik-lackdate" tabindex="-1" aria-label="Lacking date" value="${type === 'LACKING' ? ($('#dtr-intake-production')?.value || '') : ''}" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none"><div class="ik-lackshow">${type === 'LACKING' ? ($('#dtr-intake-production')?.value || '').slice(5) : ''}</div></td>
           <td><textarea class="ik-retest-note" rows="2" placeholder="Remarks"></textarea></td>
         </tr>`;
   };
@@ -616,6 +816,7 @@
   const refreshIntakeLabRefs = () => {
     const prodDate = $('#dtr-intake-production')?.value || '';
     const seen = {};   // running number (-#) per Lab Ref base in the order shown (the server confirms the free number on save)
+    const trialNo = {}; let trialCount = 0;
     $$('#dtr-intake-tbody tr').forEach((tr) => {
       // every Lab Ref carries the Production Date selected at the top of the form
       // a lacking row carries the day it was lacking (the date picked in its Lacking box)
@@ -639,7 +840,13 @@
       const key = isStrip ? `DTP${d}${subV}` : `DTP${d}${pre}${ikNoLine(type) ? '' : tr.dataset.line}`;   // the number runs per line, whatever the side
       let ref;
       if (isRetest) ref = (tr.dataset.retestOf ? tr.dataset.retestOf.replace(/(-R\d+|-\d+)$/, '') : `DTP${d}SH${tr.dataset.line}-${side}`) + '-R01';
-      else {
+      else if (type === 'TECH TRIAL') {
+        // a trial is counted from 1 (the first entry is trial 1); the two shoes of a pair share the number: TRIALSH-L-1 / TRIALSH-R-1
+        const pk = tr.dataset.pair || '';
+        let tn;
+        if (pk && trialNo[pk]) tn = trialNo[pk]; else { trialCount += 1; tn = trialCount; if (pk) trialNo[pk] = tn; }
+        ref = `${key}-${side}-${tn}`;
+      } else {
         // no running number on a bonding Lab Ref (DTP<date>SH<line>-<side>); a second row of the same line and side gets -2, -3 ...
         const sk = isStrip ? key : `${key}-${side}`;
         seen[sk] = (seen[sk] || 0) + 1;
@@ -672,6 +879,35 @@
     });
   });
 
+  // Pop-up when TECH TRIAL is chosen: 'PAIR' (L + R rows), 'L' or 'R' (one shoe), or null when closed
+  const askTrialMode = () => new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px';
+    ov.innerHTML = `
+      <div style="background:#fff;color:#0f172a;border-radius:14px;max-width:460px;width:100%;padding:22px 24px;box-shadow:0 20px 50px rgba(0,0,0,.35)">
+        <h3 style="margin:0 0 6px;font-size:17px">Tech trial: pair or not?</h3>
+        <p style="margin:0 0 16px;font-size:13px;color:#475569">Did the tech trial team give a <b>pair</b> (left and right) or <b>one shoe</b> only? A pair is recorded as two rows that share the MTL # and trial number (trial 1 = first entry).</p>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button type="button" class="dtr-btn dtr-btn-primary" data-k="PAIR">Yes, a PAIR (L + R)</button>
+          <div style="display:flex;gap:8px"><button type="button" class="dtr-btn dtr-btn-outline" style="flex:1" data-k="L">Single: LEFT only</button><button type="button" class="dtr-btn dtr-btn-outline" style="flex:1" data-k="R">Single: RIGHT only</button></div>
+        </div>
+      </div>`;
+    ov.addEventListener('click', (e) => {
+      const k = e.target.closest('button[data-k]')?.dataset.k;
+      if (k) { ov.remove(); resolve(k); }
+    });
+    document.body.appendChild(ov);
+  });
+  // the two rows of a trial pair carry the same shoe: copy MTL # / code / style / colorway from the edited row to its partner
+  const syncTrialPair = (tr) => {
+    const pid = tr?.dataset.pair;
+    if (!pid) return;
+    $$('#dtr-intake-tbody tr').forEach((o) => {
+      if (o === tr || o.dataset.pair !== pid) return;
+      ['.ik-mtl', '.ik-code', '.ik-style', '.ik-color'].forEach((s) => { o.querySelector(s).value = tr.querySelector(s).value; });
+      setIntakeImage(o);
+    });
+  };
   // Test Type of a row can reshape the batch: FIRST CASE = one row (line chosen, + kept), TECH TRIAL = one row without Active / Line;
   // choosing DAILY / RETEST while the batch is reduced brings back every line
   intakeEl.tbody?.addEventListener('change', (e) => {
@@ -693,6 +929,23 @@
     if (v !== 'DAILY' || reduced) {
       intake.mode = v;
       renderIntakeRows();
+      if (v === 'TECH TRIAL') {
+        // the tech trial team gives a pair or one shoe: ask, a pair is two rows (L + R) that share the MTL # and the trial number
+        askTrialMode().then((pick) => {
+          const first = intakeEl.tbody.querySelector('tr');
+          if (!first || !pick) return;
+          if (pick === 'PAIR') {
+            const pid = `p${Date.now()}`;
+            first.dataset.pair = pid;
+            first.insertAdjacentHTML('afterend', intakeRowHtml(first.dataset.line, true, true, { type: 'TECH TRIAL', noLine: true }));
+            first.nextElementSibling.dataset.pair = pid;
+          } else {
+            first.querySelectorAll('.dtr-side-toggle button').forEach((x) => x.classList.toggle('active', x.dataset.side === pick));
+          }
+          refreshIntakeLabRefs();
+          first.querySelector('.ik-mtl')?.focus();
+        });
+      }
       if (v === 'RETEST') {
         retestRow = intakeEl.tbody.querySelector('tr');
         retestEl.search.value = '';
@@ -717,14 +970,6 @@
   };
   $('#dtr-intake-collection')?.addEventListener('change', syncIntakeDates);
   $('#dtr-intake-production')?.addEventListener('change', () => { intakeProdTouched = true; refreshIntakeLabRefs(); });
-  (() => {
-    const ico = $('#dtr-prod-ico'), inp = $('#dtr-intake-production');
-    if (!ico || !inp) return;
-    const tip = () => { ico.title = 'Production Date: ' + (inp.value || '-'); };
-    ico.addEventListener('mouseenter', tip);
-    inp.addEventListener('change', tip);
-    inp.addEventListener('click', () => { try { inp.showPicker(); } catch (e) {} });
-  })();
   // L / R toggle changes the -L / -R ending
   intakeEl.tbody?.addEventListener('click', (e) => { if (e.target.closest('.dtr-side-toggle')) setTimeout(refreshIntakeLabRefs, 0); });
 
@@ -833,6 +1078,7 @@
             tr.querySelector('.ik-style').value = s.StyleNo || '';
             tr.querySelector('.ik-color').value = s.Colorway || '';
             setIntakeImage(tr);
+            syncTrialPair(tr);
             closeLibrary();
             return;
           }
@@ -851,6 +1097,7 @@
           put(['.ik-color', '[data-f=Color]', '[data-f=Colorway]'], s.Colorway || '');
           put(['.ik-mtl', '[data-f=MTL]'], s.MTL || '');
           setIntakeImage(tr);
+          syncTrialPair(tr);
           closeLibrary();
           if (tr.closest('#dtr-mrec-tbody')) window.mrAutoMaterial?.(tr);   // Material Receive: the materials of this production order fill in
         };
@@ -868,6 +1115,7 @@
       const tr = e.target.closest('tr');
       ['.ik-code', '.ik-style', '.ik-color'].forEach((s) => { tr.querySelector(s).value = ''; });
       setIntakeImage(tr);
+      syncTrialPair(tr);
       if (e.target.value.trim()) suggestProdCode(tr, e.target);
       return;
     }
@@ -897,6 +1145,20 @@
     const sideBtn = e.target.closest('.dtr-side-toggle button');
     if (sideBtn) {
       tr.querySelectorAll('.dtr-side-toggle button').forEach((x) => x.classList.toggle('active', x === sideBtn));
+      return;
+    }
+    if (e.target.closest('.ik-addrow') && intake.mode === 'TECH TRIAL') {
+      // another trial entry (the team may hand over several different shoes): same pair / single question, added at the end as the next trial
+      const pick = await askTrialMode();
+      if (!pick) return;
+      const lastRow = intakeEl.tbody.lastElementChild;
+      const ln = lastRow.dataset.line;
+      const mk = (right) => { const t = document.createElement('tbody'); t.innerHTML = intakeRowHtml(ln, true, right, { type: 'TECH TRIAL', noLine: true }); return t.firstElementChild; };
+      const added = pick === 'PAIR' ? [mk(false), mk(true)] : [mk(pick === 'R')];
+      if (pick === 'PAIR') { const pid = `p${Date.now()}`; added.forEach((x) => { x.dataset.pair = pid; }); }
+      added.forEach((x) => intakeEl.tbody.appendChild(x));
+      refreshIntakeLabRefs();
+      added[0].querySelector('.ik-mtl')?.focus();
       return;
     }
     if (e.target.closest('.ik-addrow')) {
@@ -982,9 +1244,57 @@
   $('#btn-retest-close')?.addEventListener('click', closeRetest);
   $('#btn-retest-cancel')?.addEventListener('click', closeRetest);
 
+  // Lacking is saved the moment it is ticked (and again when its date changes / it is unticked): a LACKING marker of that line, side and
+  // production date is only updated (Lab Ref follows the date), never added twice. The Save Batch button keeps working the same way.
+  const lackPayload = (tr) => ({
+    line: tr.dataset.line,
+    side: tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L',
+    date: tr.querySelector('.ik-lackdate').value || $('#dtr-intake-production').value,
+    type: tr.querySelector('.ik-type').value,
+    code: tr.querySelector('.ik-code').value.trim(),
+    style: tr.querySelector('.ik-style').value.trim(),
+    color: tr.querySelector('.ik-color').value.trim(),
+    mtl: tr.querySelector('.ik-mtl').value.trim(),
+    pullTypes: [...tr.querySelectorAll('.ik-pt:checked')].map((c) => c.value),
+    remarks: tr.querySelector('.ik-retest-note').value.trim().replace(/\s*\n\s*/g, ' | '),
+  });
+  const autoSaveLacking = async (tr, wasDate) => {
+    const on = tr.querySelector('.ik-lacking').checked;
+    const body = {
+      building: intake.building,
+      collectionDate: $('#dtr-intake-collection').value,
+      productionDate: $('#dtr-intake-production').value,
+      encodedBy: $('#dtr-intake-encoder').value.trim(),
+      rows: [], shutdowns: [], lackings: [], dropLackings: [],
+    };
+    const side = tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L';
+    let nowDate = '';
+    if (on) { const p = lackPayload(tr); nowDate = p.date; body.lackings.push(p); }
+    if (wasDate && wasDate !== nowDate) body.dropLackings.push({ line: tr.dataset.line, side, date: wasDate });
+    if (!body.lackings.length && !body.dropLackings.length) return;
+    try {
+      const res = await apiFetch('dtr/intake-save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (res && res.ok) {
+        if (on) tr.dataset.lackSaved = nowDate; else delete tr.dataset.lackSaved;
+        showToast(on ? `Lacking saved: ${tr.querySelector('.ik-lr').textContent.trim()}` : 'Lacking removed.');
+      } else if (intakeEl.msg) intakeEl.msg.textContent = (res && res.message) || 'Lacking was not saved.';
+    } catch (err) {
+      if (intakeEl.msg) intakeEl.msg.textContent = 'Lacking was not saved: ' + err.message;
+    }
+  };
+  intakeEl.tbody?.addEventListener('focusin', (e) => {
+    if (e.target.classList?.contains('ik-lackdate')) {
+      const tr = e.target.closest('tr');
+      if (tr && !tr.dataset.lackSaved && tr.querySelector('.ik-lacking').checked && e.target.value) tr.dataset.lackSaved = e.target.value;
+    }
+  });
   intakeEl.tbody?.addEventListener('change', (e) => {
     const tr = e.target.closest('tr');
     if (!tr || !tr.isConnected) return;   // the batch was just re-rendered by the Test Type change: this row is gone
+    if (e.target.classList.contains('ik-lacking') || e.target.classList.contains('ik-lackdate')) {
+      const was = tr.dataset.lackSaved || '';
+      queueMicrotask(() => { if (tr.isConnected) autoSaveLacking(tr, was || (e.target.classList.contains('ik-lacking') && !e.target.checked ? (tr.dataset.lackWas || '') : '')); });
+    }
     if (e.target.classList.contains('ik-active')) tr.classList.toggle('inactive', !e.target.checked);
     if (e.target.classList.contains('ik-tech')) e.target.value = withMachineNo(e.target.value);
     if (e.target.classList.contains('ik-lacking')) {
@@ -1052,6 +1362,8 @@
         retestNote: tr.querySelector('.ik-retest-note').value.trim().replace(/\s*\n\s*/g, ' | '),
         retestOf: tr.dataset.retestOf || '',
         sub: tr.querySelector('.ik-sub')?.value || '',
+        pair: tr.dataset.pair || '',
+        advance: !!tr.querySelector('.ik-advance')?.checked,
         lacking: tr.querySelector('.ik-lacking').checked,
         lackingDate: tr.querySelector('.ik-lacking').checked ? tr.querySelector('.ik-lackdate').value : '',
       };
@@ -1059,17 +1371,15 @@
       // ticked pull types are never dropped silently: a row needs its shoe first, and SAMPLE rows take no pull tests
       if (row.pullTypes.length && row.type === 'SAMPLE') { pullIssue = `Line ${row.line}: pull types are not used for SAMPLE rows. Untick them.`; return; }
       if (row.pullTypes.length && !(row.code || row.style || row.color || row.mtl)) { pullIssue = `Line ${row.line}: pick a Production Code before ticking pull types (${row.pullTypes.join(', ')}).`; return; }
-      if (row.type === 'TECH TRIAL' && row.mtl && !row.style) { trialIssue = `MTL # ${row.mtl} was not found in the production orders. Pick it from the list.`; return; }
-      if (row.type === 'TECH TRIAL') {
-        // a trial is checked first: the same MTL # / Style on the same side must not be entered twice in this batch
-        const k = `${row.side}|${(row.mtl || row.style).toUpperCase()}`;
-        if (row.mtl || row.style) { if (trialSeen.has(k)) { trialIssue = `Trial ${row.mtl || row.style} (${row.side}) is entered twice.`; return; } trialSeen.add(k); }
-      }
+      // an MTL # not in the production orders can still be saved when the row has remarks (they describe the shoe)
+      if (row.type === 'TECH TRIAL' && row.mtl && !row.style && !row.retestNote) { trialIssue = `MTL # ${row.mtl} was not found in the production orders. Pick it from the list.`; return; }
+      // the same MTL # can be tried again: every entry is counted as the next trial (trial 1, 2, 3 ...), a pair shares one number
       if (row.code || row.style || row.color || row.mtl || row.type === 'SAMPLE') rows.push(row);
     });
-    if (trialIssue) { intakeEl.msg.textContent = trialIssue; return; }
-    if (pullIssue) { intakeEl.msg.textContent = pullIssue; return; }
-    if (!rows.length && !shutdowns.length && !lackings.length) { intakeEl.msg.textContent = 'Fill in at least one active line before saving.'; return; }
+    const warnIssue = (m) => { intakeEl.msg.textContent = m; successBox(m, null, 'Cannot save yet', true); };
+    if (trialIssue) { warnIssue(trialIssue); return; }
+    if (pullIssue) { warnIssue(pullIssue); return; }
+    if (!rows.length && !shutdowns.length && !lackings.length) { warnIssue('Fill in at least one active line before saving.'); return; }
     const sb = savingBox('Saving batch...');
     closeIntake();   // the window closes at once; a message box confirms the save
     try {
@@ -1091,10 +1401,12 @@
       } else {
         sb.fail(); intakeEl.back?.classList.remove('hidden');
         intakeEl.msg.textContent = (res && res.message) || 'Save failed.';
+        successBox(intakeEl.msg.textContent, null, /Already saved|Nothing new/.test(intakeEl.msg.textContent) ? 'Already saved' : 'Save failed', true);
       }
     } catch (err) {
       sb.fail(); intakeEl.back?.classList.remove('hidden');
       intakeEl.msg.textContent = 'Save failed: ' + err.message;
+      successBox(intakeEl.msg.textContent, null, 'Save failed', true);
     }
   });
 
@@ -1113,10 +1425,10 @@
   } catch (e) { /* ignore */ }
 
   // Message box shown after a save (and after a delete): stays until OK is pressed, then onClose runs (e.g. reload the list)
-  const successBox = (msg, onClose, title = 'Saved successfully') => {
+  const successBox = (msg, onClose, title = 'Saved successfully', warn = false) => {
     const ov = document.createElement('div');
     ov.className = 'dtr-msgbox-bd';
-    ov.innerHTML = `<div class="dtr-msgbox" role="alertdialog" aria-modal="true"><div class="dtr-msgbox-ic">&#10003;</div><h3>${escHtml(title)}</h3><p>${escHtml(msg || '')}</p><button type="button" class="dtr-btn dtr-btn-primary">OK</button></div>`;
+    ov.innerHTML = `<div class="dtr-msgbox" role="alertdialog" aria-modal="true"><div class="dtr-msgbox-ic"${warn ? ' style="background:#fef3c7;color:#b45309"' : ''}>${warn ? '!' : '&#10003;'}</div><h3>${escHtml(title)}</h3><p>${escHtml(msg || '')}</p><button type="button" class="dtr-btn dtr-btn-primary">OK</button></div>`;
     const done = () => { ov.remove(); document.removeEventListener('keydown', onKey); if (onClose) onClose(); };
     const onKey = (e) => { if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); done(); } };
     ov.querySelector('button').addEventListener('click', done);
@@ -1153,7 +1465,7 @@
   const editLocked = new Set(window.dtrEditLocked || []);
   // also called again after a list reload (date filter / search / KPI card) because the rows are replaced
   window.dtrAddEditButtons = (root) => (root || document).querySelectorAll('.dtr-del-btn').forEach((d) => {
-    if (!EDIT_COLS[d.dataset.del] || editLocked.has(d.dataset.del + ':' + d.dataset.id)) return;
+    if (d.closest('.ws-child-table') || !EDIT_COLS[d.dataset.del] || editLocked.has(d.dataset.del + ':' + d.dataset.id)) return;
     if (d.parentNode.querySelector('.dtr-edit-btn')) return;
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'dtr-edit-btn';
@@ -1326,6 +1638,7 @@
     bar.querySelector('[data-sel=edit]').hidden = !rows.some((r) => r.querySelector('.dtr-edit-btn') && !r.querySelector('.dtr-edit-btn[data-mode="save"]'));
   };
   window.dtrAddRowChecks = (root) => (root || document).querySelectorAll('.dtr-del-btn').forEach((d) => {
+    if (d.closest('.ws-child-table')) return;
     const table = d.closest('table');
     const th = table?.querySelector('thead tr:last-child th:last-child');
     if (th && !th.querySelector('.dtr-sel-all')) {
@@ -1809,7 +2122,7 @@
         const r = (p.result || '').toUpperCase();
         const cls = r.startsWith('FAIL') ? 'res-fail' : (r.startsWith('TOL') ? 'res-tol' : (r.startsWith('PASS') ? 'res-pass' : ''));
         const when = (p.completed || p.started || '').slice(0, 10);
-        return ` <span class="wsf-pr ${cls}">${escHtml(r || p.status || 'PENDING')}</span> <span class="wsf-ps">${escHtml([p.status, p.labRef, when].filter(Boolean).join(' · '))}</span>`;
+        return ` <span class="wsf-pr ${cls}">${escHtml(r || p.status || 'PENDING')}</span> <b class="wsf-pl">${escHtml(p.labRef || '')}</b> <span class="wsf-ps">${escHtml([p.status, when].filter(Boolean).join(' · '))}</span>`;   // the child Lab Ref of the test sits beside its result
       };
       $('#ws-sections').innerHTML = sections.map((s) => `
         <div class="ws-sec" data-sec="${s.id}">
@@ -1923,16 +2236,38 @@
     const cv = $('#bimg-canvas');
     if (!back || !cv) return;
     const ctx = cv.getContext('2d');
+    const baseSampleCv = document.createElement('canvas');
+    const baseSampleCtx = baseSampleCv.getContext('2d', { willReadFrequently: true });
     const txt = $('#bimg-text');
     const REPORT_FONT = '"Segoe UI", "Segoe UI Variable", Calibri, Arial, sans-serif';   // the font the machine report is printed in
     const STAMPS = { PASS: 'pass.png', FAILED: 'failed.png', TOLERABLE: 'tolerable.png' };
     const stampImgs = {};
     let base = null; let labRef = ''; let tool = 'circle'; let objs = []; let sel = -1; let drag = null; let temp = null; let editing = -1;
+    let txtBold = false; let txtAlign = 'center'; let copiedFmt = null;
     const msg = (t) => { $('#bimg-msg').textContent = t || ''; };
     const loadImg = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
     const stampImg = async (k) => stampImgs[k] || (stampImgs[k] = await loadImg(BASE_URL + 'assets/images/stamps/' + STAMPS[k]));
     const lw = () => Math.max(3, cv.width / 260);
     const hs = () => Math.max(16, cv.width / 60);   // size of the resize handle (canvas pixels)
+    const toHex = (r, g, b) => '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
+    const sampleReportColor = (px, py) => {
+      if (!baseSampleCv.width || !baseSampleCv.height) return '#000000';
+      const x0 = Math.max(0, Math.min(baseSampleCv.width - 1, Math.round(px)));
+      const y0 = Math.max(0, Math.min(baseSampleCv.height - 1, Math.round(py)));
+      const d0 = baseSampleCtx.getImageData(x0, y0, 1, 1).data;
+      if (d0[0] < 235 || d0[1] < 235 || d0[2] < 235) return toHex(d0[0], d0[1], d0[2]);
+      // Near thin report strokes, find the strongest ink pixel in a 5x5 neighborhood
+      let best = null; let bestScore = 0;
+      const sx = Math.max(0, x0 - 2); const sy = Math.max(0, y0 - 2);
+      const sw = Math.min(baseSampleCv.width - sx, 5); const sh = Math.min(baseSampleCv.height - sy, 5);
+      const blk = baseSampleCtx.getImageData(sx, sy, sw, sh).data;
+      for (let i = 0; i < blk.length; i += 4) {
+        const r = blk[i], g = blk[i + 1], b = blk[i + 2];
+        const score = (255 - r) + (255 - g) + (255 - b);
+        if (Math.min(r, g, b) < 225 && score > bestScore) { bestScore = score; best = [r, g, b]; }
+      }
+      return best ? toHex(best[0], best[1], best[2]) : toHex(d0[0], d0[1], d0[2]);
+    };
 
     const box = (o) => {
       if (o.t === 'circle') return { l: o.x - o.rx, t: o.y - o.ry, r: o.x + o.rx, b: o.y + o.ry };
@@ -1941,7 +2276,8 @@
     };
     const fontPx = (o) => {
       let f = Math.max(12, o.h * 0.62);
-      ctx.save(); ctx.font = `400 ${f}px ${o.font || REPORT_FONT}`;
+      const wt = o.bold ? '700' : '400';
+      ctx.save(); ctx.font = `${wt} ${f}px ${o.font || REPORT_FONT}`;
       const w = ctx.measureText(o.text || '').width;
       if (w > o.w - 10) f = Math.max(8, f * (o.w - 10) / w);
       ctx.restore();
@@ -1958,8 +2294,11 @@
       } else if (o.t === 'text') {
         ctx.fillStyle = '#fff'; ctx.fillRect(o.x, o.y, o.w, o.h);
         if (o.text) {
-          ctx.fillStyle = o.color || '#000'; ctx.font = `400 ${fontPx(o)}px ${o.font || REPORT_FONT}`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
-          ctx.fillText(o.text, o.x + o.w / 2, o.y + o.h / 2 + 1, o.w - 8);
+          const wt = o.bold ? '700' : '400';
+          const al = o.align === 'left' ? 'left' : 'center';
+          ctx.fillStyle = o.color || '#000'; ctx.font = `${wt} ${fontPx(o)}px ${o.font || REPORT_FONT}`; ctx.textBaseline = 'middle'; ctx.textAlign = al;
+          const tx = al === 'left' ? o.x + 5 : o.x + o.w / 2;
+          ctx.fillText(o.text, tx, o.y + o.h / 2 + 1, Math.max(8, o.w - 10));
         }
       } else if (o.t === 'stamp') {
         ctx.globalCompositeOperation = 'multiply';   // the white of the stamp picture disappears over the report
@@ -1987,7 +2326,7 @@
       if (o.t === 'circle') { const dx = (p.x - o.x) / Math.max(1, o.rx); const dy = (p.y - o.y) / Math.max(1, o.ry); return dx * dx + dy * dy <= 1.2; }
       const b = box(o); return p.x >= b.l && p.x <= b.r && p.y >= b.t && p.y <= b.b;
     };
-    const setTool = (t) => { tool = t; $$('.bimg-tool').forEach((b) => b.classList.toggle('active', b.dataset.tool === t)); cv.style.cursor = t === 'move' ? 'move' : 'crosshair'; };
+    const setTool = (t) => { tool = t; $$('.bimg-tool').forEach((b) => b.classList.toggle('active', b.dataset.tool === t)); cv.style.cursor = t === 'move' ? 'move' : (t === 'eyedropper' ? 'copy' : 'crosshair'); };
 
     // zoom: the canvas keeps its pixel size, only its displayed size changes (mouse maths uses the displayed size)
     const stage = $('.bimg-stage');
@@ -2027,13 +2366,30 @@
       if (o) { o.text = txt.value; if (!keep || (o.t === 'text' && !o.text.trim())) { objs.splice(editing, 1); sel = -1; } }
       editing = -1; txt.classList.add('hidden'); redraw();
     };
+    const syncFontUi = (src) => {
+      if (src.font !== undefined) $('#bimg-font').value = src.font || REPORT_FONT;
+      if (src.color !== undefined) $('#bimg-color').value = (src.color || '#000000').toLowerCase();
+      if (src.bold !== undefined) txtBold = !!src.bold;
+      if (src.align !== undefined) txtAlign = src.align === 'left' ? 'left' : 'center';
+      const boldBtn = $('#bimg-bold'); if (boldBtn) boldBtn.classList.toggle('active', txtBold);
+      const alignBtn = $('#bimg-align');
+      if (alignBtn) {
+        alignBtn.dataset.align = txtAlign;
+        alignBtn.textContent = txtAlign === 'left' ? 'Align: Left' : 'Align: Center';
+      }
+      const curCol = ($('#bimg-color').value || '#000000').toLowerCase();
+      $$('.bimg-swatch').forEach((s) => s.classList.toggle('active', (s.dataset.color || '').toLowerCase() === curCol));
+    };
     const startEdit = (i) => {
       const o = objs[i]; if (!o || o.t !== 'text') return;
-      editing = i; sel = i; redraw();
+      editing = i; sel = i; syncFontUi(o); redraw();
       const r = cv.getBoundingClientRect(); const k = r.width / cv.width;
       txt.style.left = (o.x * k) + 'px'; txt.style.top = (o.y * k) + 'px';
       txt.style.width = (o.w * k) + 'px'; txt.style.height = (o.h * k) + 'px';
       txt.style.fontSize = (fontPx(o) * k) + 'px'; txt.style.fontFamily = o.font || REPORT_FONT; txt.style.color = o.color || '#000';
+      txt.style.fontWeight = o.bold ? '700' : '400';
+      txt.style.textAlign = o.align === 'left' ? 'left' : 'center';
+      txt.style.padding = o.align === 'left' ? '0 5px' : '0 4px';
       txt.value = o.text || ''; txt.classList.remove('hidden'); txt.focus(); txt.select();
     };
     txt.addEventListener('input', () => { const o = objs[editing]; if (o) o.text = txt.value; });
@@ -2048,12 +2404,15 @@
       try {
         base = await loadImg(`${BASE_URL}dtr/bonding-image?tab=${imgTab}&lab_ref=${encodeURIComponent(labRef)}&t=${Date.now()}`);
         cv.width = base.naturalWidth; cv.height = base.naturalHeight;
+        baseSampleCv.width = base.naturalWidth; baseSampleCv.height = base.naturalHeight;
+        baseSampleCtx.clearRect(0, 0, baseSampleCv.width, baseSampleCv.height);
+        baseSampleCtx.drawImage(base, 0, 0);
         objs = []; sel = -1; temp = null; editing = -1; txt.classList.add('hidden'); redraw(); msg('');
         scale = fitScale(); applyScale(); stage.scrollTo(0, 0);
       } catch (e) { msg('No report picture found for this Lab Ref.'); base = null; }
     };
     let imgTab = 'bonding';
-    const open = (ref, tab) => { labRef = ref; imgTab = tab || 'bonding'; $('#bimg-title').textContent = 'Report - ' + ref; setTool('circle'); back.classList.remove('hidden'); load(); };
+    const open = (ref, tab) => { labRef = ref; imgTab = tab || 'bonding'; $('#bimg-title').textContent = 'Report - ' + ref; setTool('circle'); syncFontUi({ color: $('#bimg-color').value, bold: txtBold, align: txtAlign }); back.classList.remove('hidden'); load(); };
     const close = () => { stopEdit(true); back.classList.add('hidden'); base = null; };
 
     document.addEventListener('click', (e) => {
@@ -2079,15 +2438,46 @@
       const o = objs[sel]; if (!o || o.t !== 'stamp') return;
       const ratio = o.h / o.w; o.w = cv.width * (Number(e.target.value) / 100); o.h = o.w * ratio; redraw();
     });
-    // font style / colour: applied to the selected text box, and used for the next ones
+    // font style / colour / bold / align / format copy-paste: applied to the selected text box, and used for the next ones
     const applyFont = () => {
+      syncFontUi({ color: $('#bimg-color').value });
       const o = objs[sel]; if (!o || o.t !== 'text') return;
-      o.font = $('#bimg-font').value; o.color = $('#bimg-color').value;
-      if (editing === sel) { txt.style.fontFamily = o.font; txt.style.color = o.color; }
+      o.font = $('#bimg-font').value; o.color = $('#bimg-color').value; o.bold = txtBold; o.align = txtAlign;
+      if (editing === sel) {
+        txt.style.fontFamily = o.font; txt.style.color = o.color;
+        txt.style.fontWeight = o.bold ? '700' : '400';
+        txt.style.textAlign = o.align === 'left' ? 'left' : 'center';
+      }
       redraw();
     };
     $('#bimg-font').addEventListener('change', applyFont);
     $('#bimg-color').addEventListener('input', applyFont);
+    $$('.bimg-swatch').forEach((b) => b.addEventListener('click', () => {
+      $('#bimg-color').value = b.dataset.color || '#000000';
+      applyFont();
+      msg('Selected colour ' + $('#bimg-color').value);
+    }));
+    $('#bimg-bold')?.addEventListener('click', () => { txtBold = !txtBold; syncFontUi({ bold: txtBold }); applyFont(); });
+    $('#bimg-align')?.addEventListener('click', () => { txtAlign = txtAlign === 'left' ? 'center' : 'left'; syncFontUi({ align: txtAlign }); applyFont(); });
+    $('#bimg-copyfmt')?.addEventListener('click', () => {
+      const o = sel >= 0 && objs[sel]?.t === 'text' ? objs[sel] : null;
+      copiedFmt = {
+        font: o ? (o.font || REPORT_FONT) : $('#bimg-font').value,
+        color: o ? (o.color || '#000000') : $('#bimg-color').value,
+        bold: o ? !!o.bold : txtBold,
+        align: o ? (o.align === 'left' ? 'left' : 'center') : txtAlign,
+      };
+      syncFontUi(copiedFmt);
+      const pBtn = $('#bimg-pastefmt'); if (pBtn) pBtn.disabled = false;
+      msg('Format copied (' + copiedFmt.color + (copiedFmt.bold ? ', Bold' : '') + ') — next text box uses it, or select one & click Apply Format');
+    });
+    $('#bimg-pastefmt')?.addEventListener('click', () => {
+      if (!copiedFmt) return;
+      syncFontUi(copiedFmt);
+      applyFont();
+      if (sel >= 0 && objs[sel]?.t === 'text') msg('Copied format applied to selected text box.');
+      else msg('Copied format set for next text box.');
+    });
     // hamburger: all editing tools live in this menu
     const menu = $('#bimg-menu');
     $('#bimg-burger').addEventListener('click', (e) => { e.stopPropagation(); menu.classList.toggle('hidden'); });
@@ -2100,8 +2490,16 @@
     cv.addEventListener('pointerdown', (e) => {
       if (!base) return;
       if (editing >= 0) stopEdit(true);
-      cv.setPointerCapture(e.pointerId);
       const p = pt(e);
+      if (tool === 'eyedropper' || (tool === 'text' && e.altKey)) {
+        const hex = sampleReportColor(p.x, p.y);
+        $('#bimg-color').value = hex;
+        applyFont();
+        msg('Copied report colour ' + hex + (sel >= 0 && objs[sel]?.t === 'text' ? ' to selected text box.' : ' — ready to draw Text box.'));
+        if (tool === 'eyedropper' && !(sel >= 0 && objs[sel]?.t === 'text')) setTool('text');
+        return;
+      }
+      cv.setPointerCapture(e.pointerId);
       // the selected item can always be resized (corner) or moved, whatever the tool
       if (sel >= 0 && objs[sel] && inHandle(objs[sel], p)) { drag = { mode: 'resize' }; return; }
       if (sel >= 0 && objs[sel] && inBody(objs[sel], p) && tool !== 'move') { const b = box(objs[sel]); drag = { mode: 'move', dx: p.x - b.l, dy: p.y - b.t }; return; }
@@ -2109,7 +2507,7 @@
         sel = -1;
         for (let i = objs.length - 1; i >= 0; i--) {
           if (inHandle(objs[i], p) && i === sel) break;
-          if (inBody(objs[i], p)) { sel = i; const b = box(objs[i]); drag = { mode: 'move', dx: p.x - b.l, dy: p.y - b.t }; if (objs[i].t === 'stamp') $('#bimg-size').value = Math.round(objs[i].w / cv.width * 100); if (objs[i].t === 'text') { $('#bimg-font').value = objs[i].font || REPORT_FONT; $('#bimg-color').value = objs[i].color || '#000000'; } break; }
+          if (inBody(objs[i], p)) { sel = i; const b = box(objs[i]); drag = { mode: 'move', dx: p.x - b.l, dy: p.y - b.t }; if (objs[i].t === 'stamp') $('#bimg-size').value = Math.round(objs[i].w / cv.width * 100); if (objs[i].t === 'text') syncFontUi(objs[i]); break; }
         }
         redraw();
       } else { sel = -1; drag = { mode: 'draw', sx: p.x, sy: p.y }; redraw(); }
@@ -2134,7 +2532,7 @@
       }
       if (drag.mode === 'draw') {
         if (tool === 'circle') temp = { t: 'circle', x: (drag.sx + p.x) / 2, y: (drag.sy + p.y) / 2, rx: Math.abs(p.x - drag.sx) / 2, ry: Math.abs(p.y - drag.sy) / 2 };
-        else temp = { t: tool === 'text' ? 'text' : 'mark', text: '', font: $('#bimg-font').value, color: $('#bimg-color').value, x: Math.min(drag.sx, p.x), y: Math.min(drag.sy, p.y), w: Math.abs(p.x - drag.sx), h: Math.abs(p.y - drag.sy) };
+        else temp = { t: tool === 'text' ? 'text' : 'mark', text: '', font: $('#bimg-font').value, color: $('#bimg-color').value, bold: txtBold, align: txtAlign, x: Math.min(drag.sx, p.x), y: Math.min(drag.sy, p.y), w: Math.abs(p.x - drag.sx), h: Math.abs(p.y - drag.sy) };
         redraw();
       }
     });
@@ -2187,7 +2585,9 @@
     const wrap = panel.querySelector('.dtr-table-wrap');
     const params = new URLSearchParams({ tab: 'labtracker', lk: kind, lq: q, lp: String(page) });
     if (st.rg) { params.set('from', st.rg.from); params.set('to', st.rg.to); }
+    else { params.set('all', '1'); }
     if (st.res) params.set('res', st.res);
+    if (kind === 'bonding' && panel._ltFilter) params.set('lt', panel._ltFilter);
     if (panel._sort && panel._sort.key) { params.set('ls', panel._sort.key); params.set('ld', panel._sort.dir); }
     try {
       wrap?.classList.add('is-loading');
@@ -2211,6 +2611,12 @@
         curCnt.textContent = freshCnt.textContent;
         curCnt.dataset.total = freshCnt.dataset.total || '0';
       }
+      const freshCounts = freshPanel?.querySelector(`#lt-counts-${kind}`);
+      const curCounts = panel.querySelector(`#lt-counts-${kind}`);
+      if (freshCounts && curCounts) {
+        curCounts.innerHTML = freshCounts.innerHTML;
+        window.dtrSyncTotal?.();   // the Total Lab Test Reports card follows the buttons
+      }
       const freshPg = freshPanel?.querySelector(`#lt-page-${kind}`);
       const curPg = panel.querySelector(`#lt-page-${kind}`);
       if (freshPg && curPg) {
@@ -2225,7 +2631,7 @@
   // The sort runs on the server, so it covers every page, not only the 15 rows shown.
   const LIST_SORT_COLS = {
     bonding: ['labref', 'pull', 'prod', 'style', 'color', 'mtl', 'pdate', 'tdate', 'result', 'status', 'tech'],
-    shoes: ['labref', 'prod', 'style', 'color', 'mtl', 'line', 'test', 'pdate', 'tdate', 'result', 'status', 'tech'],
+    shoes: ['labref', 'line', 'prod', 'color', 'style', 'mtl', 'pdate', 'status'],
     materials: ['labref', 'type', 'code', 'name', 'supplier', 'tstatus', 'final'],
   };
   Object.keys(LIST_SORT_COLS).forEach((kind) => {
@@ -2245,6 +2651,26 @@
         window.dtrReloadList?.(kind, 1);
       });
     });
+  });
+
+  // Whole Shoe list: the mother Lab Ref row opens / closes the test type Lab Refs (children) under it
+  document.addEventListener('click', (e) => {
+    const row = e.target.closest('tr.ws-mother');
+    if (!row || e.target.closest('button, input, select, textarea') || e.target.closest('a:not(.ws-toggle)')) return;
+    e.preventDefault();
+    const kids = row.nextElementSibling;
+    if (!kids || !kids.classList.contains('ws-kids')) return;
+    kids.hidden = !kids.hidden;
+    row.classList.toggle('is-open', !kids.hidden);
+  });
+  // Summary buttons of the Bonding list (Daily, Tech Trial, Sample, Retest, First Article, Advance, Lacking, Shutdown lines): click = list only those rows, click again = every row
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-lt-filter]');
+    const panel = btn?.closest('.dtr-subpanel[data-subpanel="bonding"]');
+    if (!btn || !panel) return;
+    const key = btn.dataset.ltFilter;
+    panel._ltFilter = panel._ltFilter === key ? '' : key;
+    window.dtrReloadList?.('bonding', 1);
   });
 
   $$('.dtr-lt-prev').forEach((b) => b.addEventListener('click', () => {
@@ -2387,7 +2813,7 @@
     const id = a.dataset.openBonding;
     // a pull-test Lab Ref (DTP<date>EYA1-L = eyelet, DR = D-ring, HP = heel pull, RVT = rivet) opens as a Pull Footwear Test Result in Shoe Bonding (U60)
     const ref = (a.textContent || '').trim();
-    if (/^DTP\d{8}((HP|EY|DR|RVT)[A-Z]\d+|RIVET-\d+)/i.test(ref)) {
+    if (/^DTP\d{8}((HP|EY|DR|RVT|LLH)[A-Z]\d+|RIVET-\d+)/i.test(ref)) {
       switchTab('bonding');
       markDtrNav('bonding');
       setReportKind('pull');
@@ -2423,11 +2849,26 @@
     e.preventDefault();
     const ref = a.dataset.openMaterial;
     try {
-      const res = await apiFetch(`dtr/records?slug=all&q=${encodeURIComponent(ref)}`);
-      const row = ((res && res.rows) || []).find((r) => String(r.lab_ref_no).toLowerCase() === ref.toLowerCase());
+      // exact Lab Ref first; the bench log also writes a group of refs as one (DTP20261027F1-1-4, DTP20261022VH-VL-1-2): then the first report of that group
+      let row = null;
+      let q = ref;
+      for (let guard = 0; guard < 4 && !row && q.length > 8; guard++) {
+        const res = await apiFetch(`dtr/records?slug=all&q=${encodeURIComponent(q)}`);
+        const rows = (res && res.rows) || [];
+        row = rows.find((r) => String(r.lab_ref_no).toLowerCase() === q.toLowerCase())
+          || (guard > 0 ? rows.find((r) => String(r.lab_ref_no).toLowerCase().startsWith(q.toLowerCase())) : null) || null;
+        const cut = q.lastIndexOf('-');
+        if (!row) q = cut > 8 ? q.slice(0, cut) : '';
+      }
       if (!row) { showToast(`No test report has been started for ${ref} yet.`, true); return; }
       const slug = row.form_slug;
-      if (slug === 'bonding' || slug === 'pull') { showToast('That Lab Ref belongs to a shoe test, open it from Lab Tracker.', true); return; }
+      if (slug === 'bonding' || slug === 'pull' || slug === 'pulltest') { showToast('That Lab Ref belongs to a shoe test, open it from Lab Tracker.', true); return; }
+      if (slug === 'wholeshoe') {          // a Whole Shoe Lab Ref: its own report page
+        const sel = $('#ws-labref');
+        switchTab('wholeshoe'); markDtrNav('wholeshoe');
+        if (sel) { if (![...sel.options].some((o) => o.value === row.lab_ref_no)) sel.add(new Option(row.lab_ref_no, row.lab_ref_no)); sel.value = row.lab_ref_no; sel.dispatchEvent(new Event('change')); }
+        return;
+      }
       switchTab('material');
       markDtrNav('material');
       const formSel = $('#dtr-mat-form-slug');
@@ -3057,6 +3498,7 @@
       if (res && res.ok) {
         if ($('#mf_ID')) $('#mf_ID').value = res.recordId;
         showToast(`✓ ${res.message} (Ready in InterLink Sync ComboBox!)`);
+        window.nxMatLock && window.nxMatLock();   // the report is read only again after it was saved
         await loadMaterialRecordList(activeSlug, res.recordId);
       } else {
         showToast(res.error || 'Save failed.', true);
@@ -3065,6 +3507,54 @@
       showToast('Failed to save record.', true);
     }
   });
+
+  // Material Test Report: read only first. An Admin or a Material PIC presses Edit; everybody else only reads (the server refuses their saves too).
+  (() => {
+    const panel = $('#dtr-panel-material');
+    if (!panel) return;
+    const canEdit = panel.dataset.canEdit === '1';
+    const editBtn = $('#btn-mat-edit');
+    const keep = '#dtr-mat-form-slug, #dtr-mat-record-select, #dtr-mat-search, [data-keep-unlocked]';
+    const fields = () => $$('.lf-sheet input, .lf-sheet textarea, .lf-sheet select, #dtr-material-form input, #dtr-material-form textarea, #dtr-material-form select, #dtr-raw-cols-container input, #dtr-raw-cols-container textarea', panel)
+      .filter((el) => !el.matches(keep) && el.type !== 'hidden');
+    const actions = () => ['#btn-dtr-save', '#btn-dtr-refresh-calc', '#btn-dtr-load-machine'].map((s) => $(s)).filter(Boolean);
+    let editing = false;
+    let editRef = '';
+    const curRef = () => ($('#mf_LabRefNo')?.value || '').trim();
+    const apply = (on) => {
+      editing = on;
+      editRef = on ? curRef() : '';
+      fields().forEach((el) => {
+        const soft = el.tagName === 'SELECT' || el.type === 'radio' || el.type === 'checkbox' || el.type === 'file';
+        if (on) {
+          if (el.dataset.mlock === 'ro') { el.readOnly = false; }
+          if (el.dataset.mlock === 'dis') { el.disabled = false; }
+          delete el.dataset.mlock;
+        } else if (soft) {
+          if (!el.disabled) { el.disabled = true; el.dataset.mlock = 'dis'; }
+        } else if (!el.readOnly) { el.readOnly = true; el.dataset.mlock = 'ro'; }
+      });
+      actions().forEach((b) => { b.hidden = !on; b.style.display = on ? '' : 'none'; });
+      panel.classList.toggle('mat-readonly', !on);
+      const vo = $('#dtr-mat-viewonly'); if (vo) vo.hidden = on;
+      if (editBtn) { editBtn.hidden = on; }
+    };
+    window.nxMatLock = () => apply(false);
+    window.nxMatEditing = () => editing;
+    editBtn?.addEventListener('click', () => {
+      if (!canEdit) return;
+      if (!curRef()) { (window.nxToast || showToast)('Open a Lab Ref first, then press Edit.', 'warning'); return; }
+      apply(true);
+      (window.nxToast || showToast)('Editing ' + curRef() + '. Save report to NEXUS-L when you are done.', 'info');
+    });
+    // a different record or form: back to read only (also locks the fields the new record's sheet just drew)
+    ['#dtr-mat-record-select', '#dtr-mat-form-slug'].forEach((sel) => $(sel)?.addEventListener('change', () => { setTimeout(() => apply(false), 0); setTimeout(() => apply(false), 1200); }));
+    setInterval(() => { if (editing && curRef() !== editRef) apply(false); }, 700);
+    // first run: read only (the sheets are drawn by now; run again once the first record has loaded)
+    apply(false);
+    setTimeout(() => { if (!editing) apply(false); }, 1500);
+    setTimeout(() => { if (!editing) apply(false); }, 4000);
+  })();
 
   $('#btn-toggle-raw-cols')?.addEventListener('click', () => {
     $('#dtr-raw-cols-container')?.classList.toggle('hidden');
@@ -3099,10 +3589,21 @@
     return 'FAIL';
   };
 
+  // The standard (kgf/cm) of the report in front of you: the one the sheet shows (the style's row in tbl_bonding_test_std: UA 3.0, UY 2.5, TD 2.5 ...),
+  // else the Standard Spec box, else the age category's default. The preview, the print and the verdicts all use this one value.
+  const currentBondingStd = () => {
+    const shown = parseFloat(($('.vf-std-disp')?.textContent || '').replace(',', '.'));
+    if (Number.isFinite(shown) && shown > 0) return shown;
+    const box = parseFloat($('#bf_STD')?.value);
+    if (Number.isFinite(box) && box > 0) return box;
+    const age = parseFloat(AGE_STD_DEFAULTS[($('#bf_AgeCategory')?.value || '').toUpperCase()]);
+    return Number.isFinite(age) && age > 0 ? age : 2.5;
+  };
+
   const computeBondingPoints = () => {
     const ageCat = ($('#bf_AgeCategory')?.value || 'ADULT').toUpperCase();
     const maxSpots = AGE_SPOT_LIMITS[ageCat] || 35;
-    const stdVal = parseFloat($('#bf_STD')?.value ?? '2.5') || 2.5;
+    const stdVal = currentBondingStd();
 
     // Show/hide rows up to maxSpots
     $$('#dtr-bonding-points-tbody [data-spot-row]').forEach((tr) => {
@@ -3198,10 +3699,27 @@
   const toIsoDate = (v) => { const m = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(String(v || '').trim()); return m ? `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}` : String(v || ''); };
   const showBondDates = () => BOND_DATES.forEach((k) => { const el = $(`#bf_${k}`); if (el && el.value) el.value = toUsDate(el.value); });
   // PO/Lot No shows the order's PO number (production_orders.po_no, e.g. 5200676466); the Production Code stays in data-code for the lookup and the save
-  const bondProdCode = () => { const el = $('#bf_POLotNO'); return (el?.dataset.code || (el?.value || '').split('/')[0]).trim(); };
+  const bondProdCode = () => {
+    const el = $('#bf_POLotNO');
+    if (el?.dataset.code) return el.dataset.code.trim();
+    const parts = (el?.value || '').split('/').map((s) => s.trim()).filter(Boolean);
+    return parts.find((s) => /^VSP/i.test(s)) || parts[0] || '';
+  };
   $('#bf_POLotNO')?.addEventListener('input', (e) => { delete e.target.dataset.code; });
+  // Prod. Code line + shoe picture (\\ERP Image\<MTL #>.JPG, click to enlarge)
+  const showProdCode = (code, mtl) => {
+    const pv = $('#bf_ProdCodeView'), img = $('#bf_ProdImg');
+    if (pv) pv.value = code || '';
+    if (!img) return;
+    const m = (mtl || img.dataset.mtl || '').trim();
+    if (!/^[A-Za-z0-9_-]{3,40}$/.test(m)) { img.hidden = true; img.removeAttribute('src'); return; }
+    img.onload = () => { img.hidden = false; };
+    img.onerror = () => { img.hidden = true; };
+    img.src = `${BASE_URL}dtr/erp-image?mtl=${encodeURIComponent(m)}`;
+  };
   const fillFromErpOrder = async () => {
     const code = bondProdCode();
+    showProdCode(code);
     const ship = $('#bf_ShippedDate'), qty = $('#bf_POQuantity'), po = $('#bf_POLotNO');
     if (!code || !ship || !qty) return;
     try {
@@ -3209,7 +3727,8 @@
       if (!res || !res.ok || !res.order) return;
       if (res.order.shipped) ship.value = toUsDate(res.order.shipped);   // Shipped Date is always the order's CRD (production_orders.crd) of this Prod. Code
       if (!qty.value.trim() && res.order.qty) qty.value = res.order.qty;
-      if (po && res.order.po && bondProdCode() === code) { po.dataset.code = code; po.value = res.order.po; }
+      if (res.order.mtl && !($('#bf_ProdImg')?.dataset.mtl || '').trim()) showProdCode(code, res.order.mtl);
+      if (po && res.order.po && bondProdCode() === code) { po.dataset.code = code; po.value = `${res.order.po} / ${code}`; }
     } catch (e) { /* the ERP is not reachable: the boxes stay as they are */ }
   };
   $('#bf_POLotNO')?.addEventListener('change', fillFromErpOrder);
@@ -3265,6 +3784,14 @@
         const el = $(`#bf_${k}`);
         if (el) el.value = rec[k] ?? '';
       });
+      // a saved STD like "3" / "3.00" is not an option value ("3.0"): the select went blank and the result was judged against 2.5 (min 2.55 = PASS instead of TOLERABLE)
+      const stdSel = $('#bf_STD');
+      if (stdSel && stdSel.value === '') {
+        const n = parseFloat(rec.STD);
+        const byNum = Number.isFinite(n) ? [...stdSel.options].find((o) => Math.abs(parseFloat(o.value) - n) < 0.005) : null;
+        const byAge = AGE_STD_DEFAULTS[String(rec.AgeCategory || bp.AgeCategory || 'ADULT').toUpperCase()] || '3.0';
+        stdSel.value = byNum ? byNum.value : ([...stdSel.options].find((o) => parseFloat(o.value) === parseFloat(byAge))?.value || '3.0');
+      }
       $$('#dtr-bonding-form [name^="cf_"]').forEach((el) => { el.value = (res.customValues || {})[el.name] ?? ''; });
       // Specimen Intake records keep the Production Code in the ETRF box: show it beside PO/Lot No instead
       // PO/Lot No shows "Production Code / MTL #"
@@ -3279,6 +3806,7 @@
       if ($('#bf_Technician')) $('#bf_Technician').value = withMachineNo($('#bf_Technician').value);   // add the machine no. to older records
       if ($('#bf_POLotNO')) { delete $('#bf_POLotNO').dataset.code; $('#bf_POLotNO').dataset.code = ($('#bf_POLotNO').value || '').split('/')[0].trim(); }
       showBondDates();
+      if ($('#bf_ProdImg')) $('#bf_ProdImg').dataset.mtl = (rec.MTL || '').trim();
       fillFromErpOrder();
 
       for (let i = 1; i <= 35; i++) {
@@ -3459,6 +3987,11 @@
       if (rated) res.value = failed ? 'FAIL' : 'PASS';
       styleRatingInput(res);
     }
+    fitPullTextareas();
+  };
+  // the readings wrap onto as many lines as they need (the row grows), so every value can be read
+  const fitPullTextareas = () => {
+    $$('#dtr-pull-form textarea.pf-res-ta').forEach((ta) => { ta.style.height = 'auto'; ta.style.height = Math.max(ta.scrollHeight, 18) + 'px'; });
   };
   $('#dtr-pull-form')?.addEventListener('input', (e) => {
     if (e.target.matches('[data-pull]')) computePull();
@@ -3508,6 +4041,7 @@
       unlockForm('#dtr-pull-form');   // (the reset above wrote into locked fields of the previous report)
       computePull();
       lockForm('#dtr-pull-form');
+      setTimeout(fitPullTextareas, 60);
     } catch (err) {
       console.error(err);
     }
@@ -3556,7 +4090,8 @@
         const method = g === 'other' ? c(g, i, 'method') : 'VF-B04<br>(2019/05)';
         const unit = g === 'other' ? c(g, i, 'unit') : 'kgf';
         const rating = c(g, i, 'rating');
-        const lbl = i === 0 ? 'Lateral side : ' : (i === 1 ? 'Medial side : ' : '');
+        const mat = g !== 'other' && (i === 2 || i === 3) ? c(g, i, 'lbl') : '';   // material of a rivet row: Pearl / Diamond
+        const lbl = i === 0 ? 'Lateral side : ' : (i === 1 ? 'Medial side : ' : (mat ? mat.replace(/\s*:?\s*$/, '') + ' : ' : ''));
         const res = c(g, i, 'res');
         rows += `<tr>
           <td class="pf-p-l">${name}</td><td class="pf-p-c">${method}</td><td class="pf-p-c">${unit}</td>
@@ -4504,7 +5039,7 @@
     if (!leftEl || !rightEl) return;
     const seq = ++formSketchSeq;
     const isLeft = bondingIsLeft();
-    const std = parseFloat($('#bf_STD')?.value || '2.5') || 2.5;
+    const std = currentBondingStd();
     const IMG = BASE_URL + 'assets/images/bonding_sketches/';
 
     const utfVals = {}; const ftoVals = {}; const fitoVals = {};
@@ -4549,7 +5084,7 @@
     const isLeft = bondingIsLeft();
     const side = isLeft ? 'Left' : 'Right';
     const age = ($('#bf_AgeCategory')?.value || 'ADULT').toUpperCase();
-    const std = parseFloat($('#bf_STD')?.value || '2.5') || 2.5;
+    const std = currentBondingStd();
     const poLot = $('#bf_POLotNO')?.value || '-';
     const poQty = $('#bf_POQuantity')?.value || '-';
     const factory = $('#bf_Factory')?.value || 'DATIAN SUBIC SHOES INC. (DTP)';
@@ -6191,24 +6726,6 @@
       return new File([b], att.fileName || fallbackName, { type: b.type || 'image/png' });
     };
 
-    // the picture shown in the Lab Tracker thumbnail of this Lab Ref is the default image 1 (the generated snapshot only when there is none)
-    const useTrackerPicture = async (labRef) => {
-      if (!labRef) return;
-      try {
-        const r = await fetch(`${BASE_URL}dtr/bonding-image?tab=${{ wholeshoe: 'shoes', material: 'containers' }[reportKind()] || 'bonding'}&lab_ref=${encodeURIComponent(labRef)}&t=${Date.now()}`, { credentials: 'same-origin' });
-        if (!r.ok) return;
-        const blob = await r.blob();
-        if (!/^image\//.test(blob.type) || !blob.size) return;
-        if (!synoAttachment.auto || synoAttachment.lab !== labRef) return;   // the user chose another image meanwhile
-        const ext = /jpe?g/.test(blob.type) ? 'jpg' : 'png';
-        const file = new File([blob], `${labRef}.${ext}`, { type: blob.type });
-        const base64 = await new Promise((ok) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = () => ok(null); fr.readAsDataURL(file); });
-        if (!base64 || !synoAttachment.auto || synoAttachment.lab !== labRef) return;
-        synoAttachment = { file, base64, fileName: file.name, fileSize: (file.size / 1024).toFixed(1) + ' KB (Lab Tracker picture)', auto: false, lab: labRef };
-        updateSynoPreview();
-      } catch (e) { /* keep the generated snapshot */ }
-    };
-
     const updateSynoPreview = () => {
       renderEmailAttach();
       const wrap = $('#syno-preview-wrap');
@@ -6253,12 +6770,15 @@
         res = chips.some((c) => c.startsWith('FAIL')) ? 'FAIL' : (chips.some((c) => c.startsWith('TOL')) ? 'TOLERABLE' : (chips.length && chips.every((c) => c.startsWith('PASS')) ? 'PASS' : (chips.some((c) => c.startsWith('PASS')) ? 'PASS' : 'PENDING')));
       } else {
         title = ($('#mf_MaterialType')?.value || '').trim() || 'Material Test'; labRef = v('#mf_LabRefNo'); style = v('#mf_ModelNoStyle') || v('#mf_MaterialDescription'); color = v('#mf_Color');
-        prodDate = v('#mf_ReceivedDate'); testDate = v('#mf_TestedDate'); tech = v('#mf_TestedBy'); cement = v('#mf_SupplierFactory'); cause = v('#mf_Remarks');
-        const r = v('#mf_Remarks').toUpperCase();
+        const sheetV = (col) => (($(`#dtr-sheet-${($('#dtr-mat-form-slug')?.value || '').trim()} [data-col="${col}"]`))?.value || '').trim();
+        const day = (t) => String(t || '').slice(0, 10);
+        prodDate = day(sheetV('Received Date') || v('#mf_ReceivedDate')); testDate = day(sheetV('Tested Date') || v('#mf_TestedDate')); tech = sheetV('Technician') || v('#mf_TestedBy'); cement = v('#mf_SupplierFactory'); cause = v('#mf_Remarks');
+        style = sheetV('Model No/Style') || style; color = sheetV('Color') || color;
+        const r = (sheetV('Remarks') || v('#mf_Remarks')).toUpperCase();
         res = r.startsWith('FAIL') ? 'FAIL' : (r.startsWith('TOL') ? 'TOLERABLE' : (r ? 'PASS' : 'PENDING'));
         cause = '';
       }
-      const lm = labRef.match(/\d{8}[A-Z]{2}([A-Z]\d+)/i) || labRef.match(/([A-Z]\d+)/i);
+      const lm = labRef.match(/([A-Z]\d+)/i);
       const line = lm ? lm[1].toUpperCase() : '';
       return { kind, title, labRef, style, color, prodDate, testDate, res, cement, cause, tech, checkedBy: '', line, articleTitle: title };
     };
@@ -6279,7 +6799,7 @@
       // Line / Bldg extraction from LabRef (e.g. DTP20261031FAA5-R -> A5 or B3)
       let line = 'A1';
       let articleTitle = 'First Article';
-      const lm = labRef.match(/\d{8}[A-Z]{2}([A-Z]\d+)/i) || labRef.match(/([A-Z]\d+)/i);
+      const lm = labRef.match(/([A-Z]\d+)/i);
       if (lm) {
         line = lm[1].toUpperCase();
       }
@@ -6355,6 +6875,26 @@
       g.font = 'bold 9px Arial, sans-serif'; g.fillText('LABORATORY TESTED', 0, 13);
       g.restore();
       return canvas.toDataURL('image/png');
+    };
+    // Material Test Report: the attachment is the report itself, as the lab prints it (its report form filled with THIS Lab Ref's values, made on the
+    // server like the Bonding report card), not a plain card. Page 1 is the report image; further pages are added as pictures. Falls back to the simple card.
+    const upgradeToMaterialReport = async (ctx) => {
+      const slug = ($('#dtr-mat-form-slug')?.value || '').trim();
+      const info = $('#email-attach-summary');
+      try {
+        const r = await fetch(BASE_URL + 'dtr/material-report-image?slug=' + encodeURIComponent(slug) + '&lab_ref=' + encodeURIComponent(ctx.labRef), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok || !j.pages || !j.pages.length) throw new Error(j.error || 'no report pages');
+        if (($('#mf_LabRefNo')?.value || '').trim() !== ctx.labRef) return;      // another record was opened meanwhile
+        const safe = ctx.labRef.replace(/[^A-Za-z0-9_-]/g, '_');
+        synoAttachment = { file: null, base64: j.pages[0], fileName: `${safe}_report.png`, fileSize: `${j.pages.length} page report` };
+        synoPhotos = synoPhotos.filter((p) => !String(p.fileName).startsWith(`${safe}_report_p`));
+        j.pages.slice(1).forEach((pg, i) => { if (synoPhotos.length < MAX_PHOTOS) synoPhotos.push({ file: null, base64: pg, fileName: `${safe}_report_p${i + 2}.png`, fileSize: 'report page ' + (i + 2) }); });
+        updateSynoPreview();
+        updatePhotoPreview();
+      } catch (e) {
+        (window.nxToast || showToast)('The full report page could not be made (' + (e.message || 'error') + '): the result card is attached instead.', 'warning');
+      }
     };
     const generateBondingCardImage = (ctx) => {
       if (ctx.kind && ctx.kind !== 'bonding') return generateSimpleCardImage(ctx);
@@ -6562,14 +7102,12 @@
         file: null,
         base64: snapshotBase64,
         fileName: filename,
-        fileSize: '~115 KB (Generated Snapshot)',
-        auto: true,
-        lab: ctx.labRef
+        fileSize: '~115 KB (Generated Snapshot)'
       };
       keepPhotoFor(ctx.labRef);
       updateSynoPreview();
       updatePhotoPreview();
-      useTrackerPicture(ctx.labRef);
+      if (ctx.kind === 'material') upgradeToMaterialReport(ctx);
 
       // Pre-select template
       let defaultTpl = ctx.kind === 'bonding' ? 'first-article' : 'custom';
@@ -6663,6 +7201,7 @@
     // Capture card snapshot button
     $('#btn-syno-capture-card')?.addEventListener('click', () => {
       const ctx = getBondingContext();
+      if (ctx.kind === 'material') { upgradeToMaterialReport(ctx); return; }
       const base64 = generateBondingCardImage(ctx);
       synoAttachment = {
         file: null,
@@ -6707,32 +7246,32 @@
         if (statusEl) statusEl.textContent = 'Contacting Synology Chat Webhook...';
 
         const csrfToken = document.querySelector('meta[name="X-CSRF-TOKEN"]')?.content || '';
-        // Synology Chat takes one picture per message: the images go first (report picture, then the photos) and the message text goes with the LAST image
+        // Synology Chat takes one picture per message: the text goes with the report graph card, and each photo follows as its own message
         const post = async (body) => {
           const res = await fetch(BASE_URL + 'dtr/send-synology', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken }, body });
           const json = await res.json();
           if (!res.ok || !json.ok) throw new Error(json.error || 'Failed to dispatch message to Synology Chat.');
         };
         const hasCard = !!(synoAttachment.file || synoAttachment.base64);
-        const imgs = [];
-        if (hasCard) imgs.push({ card: true });
-        synoPhotos.slice(0, MAX_PHOTOS).forEach((p, i) => imgs.push({ photo: p, n: i + 1 }));
-        const ctx2 = getBondingContext();
-        if (!imgs.length) {   // no image at all: the text alone
-          const f0 = new FormData(); f0.append('text', text); await post(f0);
+        const photos = synoPhotos.slice(0, MAX_PHOTOS);
+        const f1 = new FormData();
+        f1.append('text', text);
+        let rest = photos;
+        if (hasCard) {
+          if (synoAttachment.file) f1.append('image', synoAttachment.file);
+          else { f1.append('image_base64', synoAttachment.base64); f1.append('file_name', synoAttachment.fileName || 'Bonding_Report.png'); }
+        } else if (photos.length) {   // no graph card: the first photo goes with the text
+          f1.append('image', await toFile(photos[0], 'photo1.jpg'));
+          rest = photos.slice(1);
         }
-        for (let i = 0; i < imgs.length; i++) {
-          const last = i === imgs.length - 1;
-          if (statusEl) statusEl.textContent = imgs.length > 1 ? `Sending image ${i + 1} of ${imgs.length}...` : 'Sending...';
-          const f = new FormData();
-          f.append('text', last ? text : `Image ${i + 1}/${imgs.length} - ${ctx2.labRef || 'report'}`);   // Synology needs some text on each message: a short caption, the real message is on the last image
-          if (imgs[i].card) {
-            if (synoAttachment.file) f.append('image', synoAttachment.file);
-            else { f.append('image_base64', synoAttachment.base64); f.append('file_name', synoAttachment.fileName || 'Bonding_Report.png'); }
-          } else {
-            f.append('image', await toFile(imgs[i].photo, `photo${imgs[i].n}.jpg`));
-          }
-          await post(f);
+        await post(f1);
+        const ctx2 = getBondingContext();
+        for (let i = 0; i < rest.length; i++) {
+          if (statusEl) statusEl.textContent = `Sending photo ${i + 1} of ${rest.length}...`;
+          const f2 = new FormData();
+          f2.append('text', `Photo ${hasCard ? i + 1 : i + 2}/${photos.length} - ${ctx2.labRef || 'report'}`);
+          f2.append('image', await toFile(rest[i], `photo${i + 1}.jpg`));
+          await post(f2);
         }
 
         synoModal?.classList.add('hidden');
@@ -6771,13 +7310,13 @@
         msgInput.value = `Dear Team,\n\nPlease see the ${ctx.title.toLowerCase()} results below:\n\nLab Ref No: ${ctx.labRef}\nStyle: ${ctx.style}\nColor: ${ctx.color}\nResult: ${ctx.res}\nProduction Date: ${ctx.prodDate}\nTested Date: ${ctx.testDate}\nPossible Cause: ${ctx.cause}\nTechnician: ${ctx.tech}\n\nBest regards,\nNEXUS-L QA Laboratory`;
       }
       keepPhotoFor(ctx.labRef);
-      if (!(synoAttachment.file || synoAttachment.base64) || (synoAttachment.auto && synoAttachment.lab !== ctx.labRef)) {   // not opened through Synology first (or another report): default image now
+      if (!(synoAttachment.file || synoAttachment.base64)) {   // not opened through Synology first: make the graph card now
         const cleanStyle = ctx.style.replace(/[^A-Za-z0-9_-]/g, '_'); const cleanColor = ctx.color.replace(/[^A-Za-z0-9_-]/g, '_');
-        synoAttachment = { file: null, base64: generateBondingCardImage(ctx), fileName: `FA_${ctx.line}_${ctx.res}_${cleanStyle}_${cleanColor}.png`, fileSize: '~115 KB (Generated Snapshot)', auto: true, lab: ctx.labRef };
+        synoAttachment = { file: null, base64: generateBondingCardImage(ctx), fileName: `FA_${ctx.line}_${ctx.res}_${cleanStyle}_${cleanColor}.png`, fileSize: '~115 KB (Generated Snapshot)' };
         updateSynoPreview();
-        useTrackerPicture(ctx.labRef);
       }
       renderEmailAttach();
+      if (ctx.kind === 'material') upgradeToMaterialReport(ctx);
 
       emailModal?.classList.remove('hidden');
     }));

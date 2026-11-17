@@ -60,7 +60,7 @@ class AccountController extends BaseController
     {
         $p = json_decode((string) ($u['Prefs'] ?? ''), true);
 
-        return (is_array($p) ? $p : []) + ['landing' => 'dashboard', 'sidebar' => 'expanded', 'notify_chat' => true, 'notify_approval' => true, 'toasts' => true, 'page_size' => 15];
+        return (is_array($p) ? $p : []) + ['landing' => 'dashboard', 'sidebar' => 'expanded', 'theme' => 'light', 'notify_chat' => true, 'notify_approval' => true, 'toasts' => true, 'page_size' => 15, 'chat_active' => true];
     }
 
     public function index()
@@ -178,17 +178,42 @@ class AccountController extends BaseController
             return $this->json(['ok' => false, 'error' => 'Preferences cannot be saved in a shared Guest session.'], 403);
         }
         $p   = $this->request->getJSON(true) ?? [];
+        $cur = self::prefsOf($this->me());
         $out = [
             'landing'         => in_array($p['landing'] ?? '', ['dashboard', 'inbox', 'dtr', 'interlink', 'analytics'], true) ? $p['landing'] : 'dashboard',
             'sidebar'         => ($p['sidebar'] ?? '') === 'collapsed' ? 'collapsed' : 'expanded',
+            'theme'           => isset($p['theme']) ? (($p['theme'] === 'dark') ? 'dark' : 'light') : ($cur['theme'] ?? 'light'),
             'notify_chat'     => ! empty($p['notify_chat']),
             'notify_approval' => ! empty($p['notify_approval']),
             'toasts'          => ! empty($p['toasts']),
             'page_size'       => in_array((int) ($p['page_size'] ?? 15), [10, 15, 25, 50, 100], true) ? (int) $p['page_size'] : 15,
+            'chat_active'     => isset($p['chat_active']) ? ! empty($p['chat_active']) : (bool) ($cur['chat_active'] ?? true),
         ];
         $this->users()->update((int) $this->auth->id(), ['Prefs' => json_encode($out)]);
+        $s = session(\App\Libraries\Auth::SESSION_KEY) ?? [];
+        $s['theme'] = $out['theme'];
+        session()->set(\App\Libraries\Auth::SESSION_KEY, $s);
 
         return $this->json(['ok' => true, 'message' => 'Preferences saved.', 'prefs' => $out]);
+    }
+
+    /** POST account/theme {theme: "dark" | "light"} quick per-user browser appearance toggle */
+    public function saveTheme()
+    {
+        $p     = $this->request->getJSON(true) ?? $this->request->getPost() ?? [];
+        $theme = (($p['theme'] ?? '') === 'dark') ? 'dark' : 'light';
+
+        $s = session(\App\Libraries\Auth::SESSION_KEY) ?? [];
+        $s['theme'] = $theme;
+        session()->set(\App\Libraries\Auth::SESSION_KEY, $s);
+
+        if (! $this->auth->isGuestSession() && ($uid = (int) $this->auth->id()) > 0) {
+            $prefs = self::prefsOf($this->me());
+            $prefs['theme'] = $theme;
+            $this->users()->update($uid, ['Prefs' => json_encode($prefs)]);
+        }
+
+        return $this->json(['ok' => true, 'theme' => $theme]);
     }
 
     /** POST account/signature {png: "data:image/png;base64,..."} (Manager, Supervisor, Admin); an empty png removes it */

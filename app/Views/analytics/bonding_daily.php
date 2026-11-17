@@ -35,6 +35,14 @@ $causeHints = [
 ?>
 <style>
 .bd-wrap{display:flex;flex-direction:column;gap:16px}
+.bd-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:1180px){.bd-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:600px){.bd-kpis{grid-template-columns:1fr}}
+.bd-kpis .ms-kpi-card{min-width:0;padding:13px 15px}
+.bd-kpis .ms-kpi-card>div{min-width:0}
+.bd-bldg-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:2px 0}
+.bd-bldg-item{display:inline-flex;align-items:baseline;gap:5px;white-space:nowrap;font-size:13px;font-weight:700;color:#475569}
+.bd-bldg-item b{font-size:19px !important;margin:0 !important}
 .bd-pill{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;padding:0 5px;border-radius:5px;font-size:10.5px;font-weight:800;letter-spacing:.02em}
 .bd-p{background:#dcfce7;color:#15803d;border:1px solid #bbf7d0}
 .bd-f{background:#fee2e2;color:#b91c1c;border:1px solid #fecaca}
@@ -97,11 +105,62 @@ $causeHints = [
 .bd-mx tr.sum-pass td{background:#f0fdf4;font-weight:800;color:#15803d}
 .bd-mx tr.sum-fail td{background:#fef2f2;font-weight:800;color:#b91c1c}
 .bd-mx tr.sum-tot td{background:#f1f5f9;font-weight:800;color:#0f172a}
+
+/* Liquid Glass Dark Mode Overrides */
+html[data-theme="dark"] .bd-card{background:rgba(17,25,44,.76);border-color:rgba(148,163,184,.22);box-shadow:inset 1px 1px 0 rgba(255,255,255,.1),0 8px 28px rgba(2,6,23,.4);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+html[data-theme="dark"] .bd-card-hd h3{color:#f1f5f9}
+html[data-theme="dark"] .bd-card-hd p{color:#94a3b8}
+html[data-theme="dark"] .bd-bar-top{color:#e2e8f0}
+html[data-theme="dark"] .bd-bar-hint{color:#94a3b8}
+html[data-theme="dark"] .bd-track{background:rgba(30,41,59,.85);border:1px solid rgba(148,163,184,.15)}
+html[data-theme="dark"] .bd-sup-box{background:rgba(15,23,42,.55);border-color:rgba(148,163,184,.2)}
+html[data-theme="dark"] .bd-sup-box .nm{color:#f1f5f9}
+html[data-theme="dark"] .bd-sup-nums{color:#94a3b8}
+html[data-theme="dark"] .bd-sup-pct{color:#f87171}
+html[data-theme="dark"] .bd-perf-box.top{background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.28)}
+html[data-theme="dark"] .bd-perf-box.low{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.28)}
+html[data-theme="dark"] .bd-perf-box.top h4{color:#6ee7b7}
+html[data-theme="dark"] .bd-perf-box.low h4{color:#fca5a5}
+html[data-theme="dark"] .bd-ltag{background:rgba(15,23,42,.72);border-color:rgba(148,163,184,.24);color:#e2e8f0}
+html[data-theme="dark"] .bd-rtbl th{background:rgba(15,23,42,.75);color:#cbd5e1;border-bottom-color:rgba(148,163,184,.2)}
+html[data-theme="dark"] .bd-rtbl td{color:#e2e8f0;border-bottom-color:rgba(148,163,184,.14)}
+html[data-theme="dark"] .bd-rtbl tr:hover td{background:rgba(51,65,85,.35)}
+html[data-theme="dark"] .bd-rank-b.gold{background:rgba(16,185,129,.18);color:#6ee7b7}
+html[data-theme="dark"] .bd-rank-b.warn{background:rgba(239,68,68,.18);color:#fca5a5}
+html[data-theme="dark"] .bd-seg{background:rgba(15,23,42,.68);border:1px solid rgba(148,163,184,.2)}
+html[data-theme="dark"] .bd-seg button{color:#cbd5e1}
+html[data-theme="dark"] .bd-seg button:hover{color:#f8fafc}
+html[data-theme="dark"] .bd-seg button.on{background:#2563eb;color:#fff;box-shadow:0 2px 8px rgba(37,99,235,.4)}
+html[data-theme="dark"] .bd-mx-scroll{border-color:rgba(148,163,184,.22);background:rgba(11,18,34,.55)}
+html[data-theme="dark"] .bd-mx th,html[data-theme="dark"] .bd-mx td{border-right-color:rgba(148,163,184,.16);border-bottom-color:rgba(148,163,184,.16)}
+html[data-theme="dark"] .bd-mx th{background:rgba(15,23,42,.92);color:#e2e8f0}
+html[data-theme="dark"] .bd-mx tr.subhd th{background:rgba(30,41,59,.88);color:#cbd5e1}
+html[data-theme="dark"] .bd-mx td.dt{background:rgba(15,23,42,.72);color:#f1f5f9}
+html[data-theme="dark"] .bd-mx td.dow{background:rgba(15,23,42,.6);color:#94a3b8}
+html[data-theme="dark"] .bd-mx tr.row-fail td.dt{background:rgba(127,29,29,.35);color:#fca5a5}
+html[data-theme="dark"] .bd-mx tr.sum-pass td{background:rgba(6,78,59,.35);color:#6ee7b7}
+html[data-theme="dark"] .bd-mx tr.sum-fail td{background:rgba(127,29,29,.35);color:#fca5a5}
+html[data-theme="dark"] .bd-mx tr.sum-tot td{background:rgba(30,41,59,.78);color:#f1f5f9}
+html[data-theme="dark"] .bd-p{background:rgba(16,185,129,.18);color:#6ee7b7;border-color:rgba(16,185,129,.32)}
+html[data-theme="dark"] .bd-f{background:rgba(239,68,68,.18);color:#fca5a5;border-color:rgba(239,68,68,.32)}
+html[data-theme="dark"] .bd-t{background:rgba(245,158,11,.18);color:#fcd34d;border-color:rgba(245,158,11,.32)}
+html[data-theme="dark"] .bd-sd{background:rgba(100,116,139,.25);color:#cbd5e1;border-color:rgba(148,163,184,.3)}
+html[data-theme="dark"] .bd-e{color:#475569}
+html[data-theme="dark"] .bd-wrap .ms-kpi-card{background:rgba(15,23,42,.65);border-color:rgba(148,163,184,.2);box-shadow:inset 1px 1px 0 rgba(255,255,255,.08)}
+html[data-theme="dark"] .bd-wrap .ms-kpi-card small{color:#94a3b8}
+html[data-theme="dark"] .bd-wrap .ms-kpi-card b{color:#f1f5f9}
+html[data-theme="dark"] .bd-wrap .ms-kpi-card span.sub{color:#94a3b8}
+html[data-theme="dark"] .bd-wrap .ms-kpi-card b[style*="#0f172a"]{color:#f1f5f9!important}
+html[data-theme="dark"] .bd-wrap .ms-kpi-card b[style*="#dc2626"]{color:#f87171!important}
+html[data-theme="dark"] .bd-wrap div[style*="color:#475569"]{color:#94a3b8!important}
+html[data-theme="dark"] .bd-wrap td[style*="color:#334155"]{color:#cbd5e1!important}
+html[data-theme="dark"] .bd-wrap td[style*="color:#15803d"],html[data-theme="dark"] .bd-wrap b[style*="color:#15803d"]{color:#6ee7b7!important}
+html[data-theme="dark"] .bd-wrap b[style*="color:#dc2626"],html[data-theme="dark"] .bd-wrap span[style*="color:#dc2626"]{color:#fca5a5!important}
 </style>
 
 <div class="bd-wrap">
     <!-- Executive KPI Cards -->
-    <div class="an-top-kpis">
+    <div class="bd-kpis">
         <div class="card glass ms-kpi-card">
             <div>
                 <small>Total Tested Shoes</small>
@@ -135,10 +194,10 @@ $causeHints = [
         <div class="card glass ms-kpi-card">
             <div>
                 <small>Building Failure Rate</small>
-                <div class="kpi-val-row" style="gap:10px;font-size:15px">
-                    <span>Bldg A: <b style="font-size:20px;color:<?= $bAFailPct > 5 ? '#dc2626' : '#0f172a' ?>"><?= $bAFailPct ?>%</b></span>
+                <div class="bd-bldg-row">
+                    <span class="bd-bldg-item">Bldg A: <b style="color:<?= $bAFailPct > 5 ? '#dc2626' : '#0f172a' ?>"><?= $bAFailPct ?>%</b></span>
                     <span style="color:#cbd5e1">|</span>
-                    <span>Bldg B: <b style="font-size:20px;color:<?= $bBFailPct > 5 ? '#dc2626' : '#0f172a' ?>"><?= $bBFailPct ?>%</b></span>
+                    <span class="bd-bldg-item">Bldg B: <b style="color:<?= $bBFailPct > 5 ? '#dc2626' : '#0f172a' ?>"><?= $bBFailPct ?>%</b></span>
                 </div>
                 <span class="sub">A: <?= $bA['fail'] ?>/<?= $bA['tested'] ?> failed &middot; B: <?= $bB['fail'] ?>/<?= $bB['tested'] ?> failed</span>
             </div>
@@ -261,151 +320,4 @@ $causeHints = [
             </div>
         <?php endforeach ?>
     </div>
-
-    <!-- Interactive Daily Bonding Test Result Matrix -->
-    <div class="bd-card">
-        <div class="bd-card-hd">
-            <div>
-                <h3>Daily Bonding Test Result Matrix (Left &amp; Right per Line)</h3>
-                <p>Day-by-day Left (<code>L</code>) and Right (<code>R</code>) shoe results for every assembly line, matching the lab daily sheet.</p>
-            </div>
-            <div class="bd-mx-controls">
-                <div class="bd-seg" id="bd-bldg-seg">
-                    <button type="button" class="on" data-bldg="A">Building A (A1–A12)</button>
-                    <button type="button" data-bldg="B">Building B (B1–B14)</button>
-                </div>
-                <div class="bd-seg" id="bd-filter-seg">
-                    <button type="button" class="on" data-flt="all">All Days</button>
-                    <button type="button" data-flt="fail">Failed Days Only</button>
-                </div>
-            </div>
-        </div>
-
-        <?php if (empty($dailyRows)): ?>
-            <p class="muted sm" style="margin:0">No daily bonding test records found for the selected date range.</p>
-        <?php else: ?>
-            <?php foreach (['A', 'B'] as $bKey): ?>
-                <?php $bLines = $lines[$bKey] ?? []; ?>
-                <div class="bd-mx-scroll bd-mx-panel" data-bldg-panel="<?= $bKey ?>" <?= $bKey === 'B' ? 'hidden' : '' ?>>
-                    <table class="bd-mx">
-                        <thead>
-                            <tr>
-                                <th rowspan="2">Tested Date</th>
-                                <th rowspan="2">Prod. Date</th>
-                                <th rowspan="2">Day</th>
-                                <?php foreach ($bLines as $n): ?>
-                                    <th colspan="2"><?= $bKey . $n ?></th>
-                                <?php endforeach ?>
-                                <th rowspan="2">Failed<br>/ Day</th>
-                                <th rowspan="2">Weekly<br>Failed</th>
-                                <th rowspan="2">Weekly<br>Tested</th>
-                            </tr>
-                            <tr class="subhd">
-                                <?php foreach ($bLines as $n): ?>
-                                    <th>L</th><th>R</th>
-                                <?php endforeach ?>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php
-                            $lineSidePass = []; $lineSideFail = [];
-                            foreach ($bLines as $n) { $lineSidePass[$n] = ['L' => 0, 'R' => 0]; $lineSideFail[$n] = ['L' => 0, 'R' => 0]; }
-                            ?>
-                            <?php foreach ($dailyRows as $dr): ?>
-                                <?php
-                                $bDayFail = 0;
-                                foreach ($bLines as $n) {
-                                    foreach (['L', 'R'] as $s) {
-                                        $st = $dr['cells'][$bKey][$n][$s] ?? '';
-                                        if ($st === 'PASS') $lineSidePass[$n][$s]++;
-                                        if ($st === 'FAIL') { $lineSideFail[$n][$s]++; $bDayFail++; }
-                                    }
-                                }
-                                ?>
-                                <tr class="bd-mx-row <?= $dr['fail'] > 0 ? 'row-fail' : '' ?>" data-has-fail="<?= $dr['fail'] > 0 ? '1' : '0' ?>">
-                                    <td class="dt"><?= esc($dr['testedDate'] ?: '—') ?></td>
-                                    <td class="dt"><?= esc($dr['prodDate']) ?></td>
-                                    <td class="dow"><?= esc($dr['dow']) ?></td>
-                                    <?php foreach ($bLines as $n): ?>
-                                        <?php $isSd = ! empty($dr['shut'][$bKey][$n]); ?>
-                                        <?php foreach (['L', 'R'] as $s): ?>
-                                            <?php $st = $dr['cells'][$bKey][$n][$s] ?? ''; ?>
-                                            <td>
-                                                <?php if ($st === 'PASS'): ?>
-                                                    <span class="bd-pill bd-p" title="PASS">P</span>
-                                                <?php elseif ($st === 'FAIL'): ?>
-                                                    <span class="bd-pill bd-f" title="FAILED">F</span>
-                                                <?php elseif ($st === 'TOL'): ?>
-                                                    <span class="bd-pill bd-t" title="TOLERABLE">T</span>
-                                                <?php elseif ($isSd): ?>
-                                                    <span class="bd-pill bd-sd" title="SHUTDOWN">SD</span>
-                                                <?php else: ?>
-                                                    <span class="bd-e">&middot;</span>
-                                                <?php endif ?>
-                                            </td>
-                                        <?php endforeach ?>
-                                    <?php endforeach ?>
-                                    <td style="font-weight:800;color:<?= $bDayFail > 0 ? '#dc2626' : '#94a3b8' ?>"><?= $bDayFail ?></td>
-                                    <td style="font-weight:800;color:<?= $dr['isWeekEnd'] && $dr['weeklyFailed'] > 0 ? '#dc2626' : '#475569' ?>"><?= $dr['isWeekEnd'] ? (int) $dr['weeklyFailed'] : '' ?></td>
-                                    <td style="font-weight:700;color:#334155"><?= $dr['isWeekEnd'] ? (int) $dr['weeklyTested'] : '' ?></td>
-                                </tr>
-                            <?php endforeach ?>
-                            <tr class="sum-pass">
-                                <td colspan="3" style="text-align:left;padding-left:8px">TOTAL PASSED PER LINE</td>
-                                <?php foreach ($bLines as $n): ?>
-                                    <td><?= $lineSidePass[$n]['L'] ?></td>
-                                    <td><?= $lineSidePass[$n]['R'] ?></td>
-                                <?php endforeach ?>
-                                <td colspan="3">Bldg <?= $bKey ?> Passed: <?= (int) ($bKey === 'A' ? $bA['pass'] : $bB['pass']) ?></td>
-                            </tr>
-                            <tr class="sum-fail">
-                                <td colspan="3" style="text-align:left;padding-left:8px">TOTAL FAILED PER LINE</td>
-                                <?php foreach ($bLines as $n): ?>
-                                    <td><?= $lineSideFail[$n]['L'] ?></td>
-                                    <td><?= $lineSideFail[$n]['R'] ?></td>
-                                <?php endforeach ?>
-                                <td colspan="3">Bldg <?= $bKey ?> Failed: <?= (int) ($bKey === 'A' ? $bA['fail'] : $bB['fail']) ?> (<?= $bKey === 'A' ? $bAFailPct : $bBFailPct ?>%)</td>
-                            </tr>
-                            <tr class="sum-tot">
-                                <td colspan="3" style="text-align:left;padding-left:8px">BLDG <?= $bKey ?> TOTAL TESTED</td>
-                                <?php foreach ($bLines as $n): ?>
-                                    <td colspan="2"><?= ($lineSidePass[$n]['L'] + $lineSidePass[$n]['R'] + $lineSideFail[$n]['L'] + $lineSideFail[$n]['R']) ?></td>
-                                <?php endforeach ?>
-                                <td colspan="3"><?= (int) ($bKey === 'A' ? $bA['tested'] : $bB['tested']) ?></td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            <?php endforeach ?>
-        <?php endif ?>
-    </div>
 </div>
-
-<script>
-(function(){
-    var bBtns = document.querySelectorAll('#bd-bldg-seg button');
-    var panels = document.querySelectorAll('.bd-mx-panel');
-    bBtns.forEach(function(btn){
-        btn.addEventListener('click', function(){
-            bBtns.forEach(function(b){ b.classList.remove('on'); });
-            btn.classList.add('on');
-            var target = btn.getAttribute('data-bldg');
-            panels.forEach(function(p){
-                p.hidden = p.getAttribute('data-bldg-panel') !== target;
-            });
-        });
-    });
-
-    var fBtns = document.querySelectorAll('#bd-filter-seg button');
-    fBtns.forEach(function(btn){
-        btn.addEventListener('click', function(){
-            fBtns.forEach(function(b){ b.classList.remove('on'); });
-            btn.classList.add('on');
-            var onlyFail = btn.getAttribute('data-flt') === 'fail';
-            document.querySelectorAll('.bd-mx-row').forEach(function(r){
-                r.style.display = (!onlyFail || r.getAttribute('data-has-fail') === '1') ? '' : 'none';
-            });
-        });
-    });
-})();
-</script>

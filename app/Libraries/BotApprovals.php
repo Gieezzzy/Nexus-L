@@ -135,7 +135,7 @@ class BotApprovals
         $count = (bool) preg_match('/\b(how many|ilan|count|number of|total)\b/i', $low);
         $b     = $db->table('tbl_dtr_report_approvals a')
             ->select('a.id, a.lab_ref_no, a.application_no, a.form_slug, a.status, a.requested_name, a.requested_at, a.expires_at, a.decided_name, a.decided_at, a.required_name, a.remarks, u.model_style, u.material_description, u.supplier')
-            ->join('tbl_dtr_unified_labrefs u', 'u.lab_ref_no COLLATE utf8mb4_general_ci = a.lab_ref_no COLLATE utf8mb4_general_ci', 'left', false);
+            ->join('tbl_dtr_unified_labrefs u', 'u.lab_ref_no = a.lab_ref_no COLLATE utf8mb4_unicode_ci', 'left', false);
         if ($what === 'pending') {
             $b->where('a.status', 'pending');
         } elseif ($what === 'expired') {

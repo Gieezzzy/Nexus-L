@@ -1,4 +1,4 @@
-(() => {
+﻿(() => {
   'use strict';
   const root = document.getElementById('lm-root');
   if (!root) return;
@@ -267,6 +267,6 @@
   loadReqs();
   agentBadge();
   setInterval(() => { if (!document.hidden) agentBadge(); }, 15000);
-  setInterval(() => { if (!document.hidden) loadReqs(); }, 8000);
+  setInterval(() => { if (!document.hidden) loadReqs(); }, 15000);
   setInterval(() => { if (!document.hidden) load(true); }, 45000);
 })();

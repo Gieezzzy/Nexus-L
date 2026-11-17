@@ -10,6 +10,8 @@ namespace App\Libraries;
  * The roles: Admin, Bonding, Encoding, Materials, Manager, Supervisor, Technician, Guest, SATRA, Warehouse PIC.
  *   SATRA          full control of Laboratory Documents and Other Documents (rename, move, copy / cut / paste, delete files and folders, new file ...)
  *   Warehouse PIC  full control of the Warehouse 3D Tracker (register, edit, transfer, dispose and delete boxes)
+ *   Material PIC   full control of the Material Test Report (the only role besides Admin that can edit the report sheets); reads the other lab pages
+ *   Bonding PIC    full control of Shoe Bonding (U60) and the Lab Tracker bonding collection; edits the QC Lab Reports; reads Quality Insights
  * A user whose Role is still the old plain "user" (nobody has assigned a role yet) keeps the access that every signed-in user had before,
  * except the admin pages, so introducing roles locks nobody out; assign a role and the matrix below applies.
  *
@@ -18,7 +20,7 @@ namespace App\Libraries;
  */
 class Roles
 {
-    public const ROLES = ['Admin', 'Bonding', 'Encoding', 'Materials', 'Manager', 'Supervisor', 'Technician', 'Guest', 'SATRA', 'Warehouse PIC'];
+    public const ROLES = ['Admin', 'Bonding', 'Encoding', 'Materials', 'Manager', 'Supervisor', 'Technician', 'Guest', 'SATRA', 'Warehouse PIC', 'Bonding PIC', 'Material PIC'];
 
     /** module key => label shown to people */
     public const MODULES = [
@@ -58,6 +60,8 @@ class Roles
         'Technician' => ['dashboard' => 1, 'inbox' => 2, 'warehouse' => 1, 'dtr' => 1, 'materials' => 2, 'wholeshoe' => 2, 'bonding' => 2, 'testsummary' => 1, 'labdocs' => 1, 'help' => 2, 'calendar' => 1],
         'SATRA'      => ['dashboard' => 1, 'inbox' => 2, 'labdocs' => 2, 'help' => 2, 'calendar' => 1],
         'Warehouse PIC' => ['dashboard' => 1, 'inbox' => 2, 'warehouse' => 2, 'help' => 2, 'calendar' => 1],
+        'Bonding PIC' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 1, 'warehouse' => 1, 'dtr' => 2, 'bonding' => 2, 'testsummary' => 1, 'analytics' => 1, 'insights' => 1, 'labdocs' => 1, 'help' => 2, 'calendar' => 1, 'erpfinish' => 1],
+        'Material PIC' => ['dashboard' => 1, 'inbox' => 2, 'interlink' => 1, 'warehouse' => 1, 'dtr' => 2, 'materials' => 2, 'testsummary' => 1, 'analytics' => 1, 'insights' => 1, 'labdocs' => 1, 'help' => 2, 'calendar' => 1, 'erpfinish' => 1],
         'Guest'      => ['dashboard' => 1, 'warehouse' => 1, 'dtr' => 1, 'materials' => 1, 'wholeshoe' => 1, 'bonding' => 1, 'calendar' => 1, 'insights' => 1, 'erpfinish' => 1, 'testsummary' => 1, 'analytics' => 1, 'labdocs' => 1, 'thirdparty' => 1, 'help' => 1],
     ];
 
@@ -96,6 +100,8 @@ class Roles
             $k === 'technician' || $k === 'tech' => 'Technician',
             in_array($k, ['guest', 'guests', 'visitor', 'readonly'], true) => 'Guest',
             $k === 'satra' => 'SATRA',
+            in_array($k, ['bondingpic', 'bondingincharge'], true) => 'Bonding PIC',
+            in_array($k, ['materialpic', 'materialincharge'], true) => 'Material PIC',
             in_array($k, ['warehousepic', 'warehouse', 'warehouseincharge', 'pic'], true) => 'Warehouse PIC',
             default => null,
         };
@@ -176,7 +182,7 @@ class Roles
             return true;
         }
         $clean = trim(strtolower($path), '/');
-        foreach (['dtr/sheet-pdf', 'dtr/approval/pdf-pages', 'interlink/fetch-live-page', 'interlink/pull-grid-html', 'interlink/fetch-live-form', 'labdocs/presence', 'warehouse-tracker/rt', 'bot/'] as $roPrefix) {
+        foreach (['dtr/sheet-pdf', 'dtr/approval/pdf-pages', 'interlink/fetch-live-page', 'interlink/pull-grid-html', 'interlink/fetch-live-form', 'labdocs/presence', 'warehouse-tracker/rt', 'warehouse-tracker/box-items', 'warehouse-tracker/item-cols', 'bot/'] as $roPrefix) {
             if ($clean === rtrim($roPrefix, '/') || str_starts_with($clean, $roPrefix)) {
                 return $module === '' || self::can($role, $module, 1);
             }
@@ -205,6 +211,8 @@ class Roles
         return match ($module) {
             'labdocs'   => in_array('SATRA', $r, true),
             'warehouse' => in_array('Warehouse PIC', $r, true),
+            'bonding'   => in_array('Bonding PIC', $r, true),
+            'materials' => in_array('Material PIC', $r, true),
             default     => false,
         };
     }

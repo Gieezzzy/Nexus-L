@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Settings page (Admin): saves the setting cards, tests the InterLink service, tests / switches the database and runs the transfer to
  * another database (a background job whose progress is polled).
  */
@@ -167,7 +167,7 @@
       try { const j = await api('settings/mail/test', { to }); say(msg, 'Test e-mail #' + j.id + ' queued. It goes out within a few seconds.', 'ok'); load(); } catch (e) { say(msg, e.message, 'bad'); }
     });
     load();
-    setInterval(() => { if (!document.hidden) load(); }, 8000);
+    setInterval(() => { if (!document.hidden) load(); }, 15000);
   }
 
   // ---- AI Assistant & Bot Engine test ------------------------------------------------------------------------------------------

@@ -1,7 +1,14 @@
 """Renders the pages of a PDF to PNG files:  python pdf_pages.py <in.pdf> <out_prefix> [zoom] [max_pages]
 Prints the written file names, one per line. Used to show a report exactly as it is printed (no PDF viewer needed)."""
+import os
 import sys
 import warnings
+
+# The web server runs as another Windows user: PyMuPDF lives in the lab user's own site-packages, so add that folder to the search path.
+for _p in (os.path.join(os.environ.get('APPDATA', ''), 'Python', 'Python314', 'site-packages'),
+           'C:/Users/AUDIT STAFF/AppData/Roaming/Python/Python314/site-packages'):
+    if os.path.isdir(_p) and _p not in sys.path:
+        sys.path.append(_p)
 
 warnings.filterwarnings('ignore')
 import fitz  # noqa: E402

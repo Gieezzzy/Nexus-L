@@ -17,8 +17,8 @@ class DesignerController extends BaseController
         return view('layouts/main', [
             'title'   => 'Report Designer',
             'withCss' => 'designer.css',
-            'withJs'  => ['designer.js'],
-            'content' => view('designer/index', ['formFields' => $this->bondingFormFields()]),
+            'withJs'  => ['bond-graph.js', 'pull-graph.js', 'designer.js', 'designer-graph.js', 'designer-pull.js'],
+            'content' => view('designer/index', ['formFields' => $this->bondingFormFields(), 'graphColumns' => $this->graphColumns()]),
         ]);
     }
 
@@ -43,6 +43,357 @@ class DesignerController extends BaseController
 ")];
             }
         }
+
+        return $out;
+    }
+
+    // ---------------------------------------------------------------- Bonding graph report (PNG)
+
+    private const GRAPH_SLUG = 'bonding-graph';
+
+    /** GET dtr/bonding-graph-layout : the saved layout of the graph report (any signed-in user; null = the built-in default) */
+    public function graphLayout()
+    {
+        $row = \Config\Database::connect()->table('tbl_report_layouts')->where(['slug' => self::GRAPH_SLUG, 'variant' => 'a4'])->get()->getRowArray();
+
+        return $this->response->setJSON(['ok' => true, 'layout' => $row ? json_decode($row['layout_json'], true) : null, 'csrf' => csrf_hash()]);
+    }
+
+    /** POST designer/graph-layout/save {layout} (admin) | {reset: true} */
+    public function graphLayoutSave()
+    {
+        $p     = $this->request->getJSON(true) ?? [];
+        $db    = \Config\Database::connect();
+        $where = ['slug' => self::GRAPH_SLUG, 'variant' => 'a4'];
+        if (! empty($p['reset'])) {
+            $db->table('tbl_report_layouts')->where($where)->delete();
+            \App\Libraries\ActivityLog::record('designer', 'graph-layout-reset', 'Bonding graph report');
+
+            return $this->response->setJSON(['ok' => true, 'csrf' => csrf_hash()]);
+        }
+        $lay = $p['layout'] ?? null;
+        if (! is_array($lay) || ! isset($lay['items']) || ! is_array($lay['items']) || count($lay['items']) > 200) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'error' => 'Invalid layout.', 'csrf' => csrf_hash()]);
+        }
+        // only known item types and plain values: numbers, short text, simple lists
+        $types = ['text', 'field', 'tests', 'points', 'graph', 'line'];
+        $items = [];
+        foreach ($lay['items'] as $it) {
+            if (! is_array($it) || ! in_array($it['type'] ?? '', $types, true)) {
+                continue;
+            }
+            $o = [];
+            foreach ($it as $k => $v) {
+                if (! is_string($k) || ! preg_match('/^[A-Za-z0-9_]{1,24}$/', $k)) {
+                    continue;
+                }
+                if (is_array($v)) {
+                    $o[$k] = array_values(array_filter(array_map(static fn ($x) => is_scalar($x) ? mb_substr((string) $x, 0, 40) : null, $v), static fn ($x) => $x !== null));
+                } elseif (is_bool($v) || is_int($v) || is_float($v)) {
+                    $o[$k] = $v;
+                } else {
+                    $o[$k] = mb_substr((string) $v, 0, 300);
+                }
+            }
+            $items[] = $o;
+        }
+        $series = [];
+        foreach ((array) ($lay['series'] ?? []) as $sr) {
+            if (! is_array($sr)) {
+                continue;
+            }
+            $one = [];
+            foreach (['key', 'label', 'points', 'count', 'graph', 'spots', 'color'] as $k) {
+                $one[$k] = mb_substr((string) ($sr[$k] ?? ''), 0, 60);
+            }
+            $one['on'] = ! isset($sr['on']) || (bool) $sr['on'];
+            if (preg_match('/^[A-Za-z0-9_]{1,20}$/', $one['key'])) {
+                $series[] = $one;
+            }
+        }
+        $clean = ['v' => 1, 'w' => max(600, min(4000, (int) ($lay['w'] ?? 1240))), 'h' => max(800, min(6000, (int) ($lay['h'] ?? 1754))), 'series' => $series, 'items' => $items];
+        $data  = ['layout_json' => json_encode($clean, JSON_UNESCAPED_UNICODE), 'updated_by' => (string) ($this->auth->user()['username'] ?? ''), 'updated_at' => date('Y-m-d H:i:s')];
+        if ($db->table('tbl_report_layouts')->where($where)->countAllResults() > 0) {
+            $db->table('tbl_report_layouts')->where($where)->update($data);
+        } else {
+            $db->table('tbl_report_layouts')->insert($where + $data);
+        }
+        \App\Libraries\ActivityLog::record('designer', 'graph-layout-save', 'Bonding graph report', count($items) . ' items');
+
+        return $this->response->setJSON(['ok' => true, 'csrf' => csrf_hash()]);
+    }
+
+    /** GET designer/graph-records : recent Lab Refs that have a curve, for the preview list */
+    public function graphRecords()
+    {
+        $rows = \Config\Database::connect()->query("SELECT LabRefNo, ShoeName, TestDate FROM tbl_dtr_bonding_points WHERE UTFGraph IS NOT NULL AND UTFGraph <> '' ORDER BY BondingPointstID DESC LIMIT 80")->getResultArray();
+
+        return $this->response->setJSON(['ok' => true, 'records' => $rows, 'csrf' => csrf_hash()]);
+    }
+
+    // ---------------------------------------------------------------- Pull Test Graph Reports (Rivet, Velcro, Eyelet, Lace Holder, Heel/Tongue Pull Tab)
+
+    private const PULL_CATS = ['rivet', 'velcro', 'eyelet', 'lace_holder', 'heel_pull_tab', 'tongue_pull_tab'];
+
+    private function pullSlug(string $cat): ?string
+    {
+        return in_array($cat, self::PULL_CATS, true) ? ('pull-graph-' . $cat) : null;
+    }
+
+    /** @return list<string> */
+    private function allDbTables(\CodeIgniter\Database\BaseConnection $db): array
+    {
+        $out = [];
+        foreach ($db->query('SHOW TABLES')->getResultArray() as $r) {
+            $t = (string) reset($r);
+            if ($t !== '' && ! str_starts_with($t, 'tbl_bot_')) {
+                $out[] = $t;
+            }
+        }
+        sort($out, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $out;
+    }
+
+    /** @return list<string> */
+    private function tableColumns(\CodeIgniter\Database\BaseConnection $db, string $table): array
+    {
+        if (! in_array($table, $this->allDbTables($db), true)) {
+            return [];
+        }
+        $cols = [];
+        foreach ($db->query('SHOW COLUMNS FROM `' . str_replace('`', '', $table) . '`')->getResultArray() as $c) {
+            $cols[] = (string) $c['Field'];
+        }
+
+        return $cols;
+    }
+
+    /** GET dtr/pull-graph-layout?cat=eyelet */
+    public function pullGraphLayout()
+    {
+        $cat  = trim((string) ($this->request->getGet('cat') ?? 'eyelet'));
+        $slug = $this->pullSlug($cat);
+        if (! $slug) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'error' => 'Invalid report category.', 'csrf' => csrf_hash()]);
+        }
+        $row = \Config\Database::connect()->table('tbl_report_layouts')->where(['slug' => $slug, 'variant' => 'a4'])->get()->getRowArray();
+
+        return $this->response->setJSON(['ok' => true, 'cat' => $cat, 'layout' => $row ? json_decode($row['layout_json'], true) : null, 'csrf' => csrf_hash()]);
+    }
+
+    /** GET designer/db-tables */
+    public function dbTables()
+    {
+        $db = \Config\Database::connect();
+
+        return $this->response->setJSON(['ok' => true, 'tables' => $this->allDbTables($db), 'csrf' => csrf_hash()]);
+    }
+
+    /** GET designer/db-columns?tables=t1,t2,t3 */
+    public function dbColumns()
+    {
+        $db     = \Config\Database::connect();
+        $valid  = $this->allDbTables($db);
+        $raw    = array_filter(array_map('trim', explode(',', (string) ($this->request->getGet('tables') ?? ''))));
+        $tables = array_values(array_slice(array_unique(array_intersect($raw, $valid)), 0, 3));
+        $out    = [];
+        foreach ($tables as $t) {
+            $out[$t] = $this->tableColumns($db, $t);
+        }
+
+        return $this->response->setJSON([
+            'ok'      => true,
+            'columns' => $out,
+            'special' => ['MaxPeak', 'MinPeak', 'AvgPeak', 'TestCountUsed', 'now'],
+            'csrf'    => csrf_hash(),
+        ]);
+    }
+
+    /** GET designer/pull-records?table=tbl_dtr_pull_tests&cat=eyelet */
+    public function pullRecords()
+    {
+        $db    = \Config\Database::connect();
+        $table = trim((string) ($this->request->getGet('table') ?? 'tbl_dtr_pull_tests'));
+        $cat   = trim((string) ($this->request->getGet('cat') ?? ''));
+        $cols  = $this->tableColumns($db, $table);
+        if (! $cols) {
+            return $this->response->setJSON(['ok' => true, 'records' => [], 'csrf' => csrf_hash()]);
+        }
+        $pick = [];
+        foreach (['LabRefNo', 'TestType', 'ModelStyle', 'TestedDate', 'Result'] as $c) {
+            if (in_array($c, $cols, true)) {
+                $pick[] = '`' . $c . '`';
+            }
+        }
+        $pk = $cols[0];
+        if (! in_array('`' . $pk . '`', $pick, true)) {
+            array_unshift($pick, '`' . $pk . '`');
+        }
+        $where = '';
+        $binds = [];
+        if ($table === 'tbl_dtr_pull_tests' && $cat !== '') {
+            $map = [
+                'rivet'           => 'RIVET',
+                'velcro'          => 'VELCRO',
+                'eyelet'          => 'EYELET',
+                'lace_holder'     => 'LACE',
+                'heel_pull_tab'   => 'HEEL',
+                'tongue_pull_tab' => 'TONGUE',
+            ];
+            if (isset($map[$cat])) {
+                $where = ' WHERE `TestType` LIKE ?';
+                $binds[] = '%' . $map[$cat] . '%';
+            }
+        }
+        $sql  = 'SELECT ' . implode(', ', $pick) . ' FROM `' . $table . '`' . $where . ' ORDER BY `' . $pk . '` DESC LIMIT 80';
+        $rows = $db->query($sql, $binds)->getResultArray();
+        if ($where !== '' && ! $rows) {
+            $rows = $db->query('SELECT ' . implode(', ', $pick) . ' FROM `' . $table . '` ORDER BY `' . $pk . '` DESC LIMIT 80')->getResultArray();
+        }
+
+        return $this->response->setJSON(['ok' => true, 'pk' => $pk, 'records' => $rows, 'csrf' => csrf_hash()]);
+    }
+
+    /** POST designer/pull-layout/save {cat, layout} | {cat, reset: true} */
+    public function pullLayoutSave()
+    {
+        $p    = $this->request->getJSON(true) ?? [];
+        $cat  = trim((string) ($p['cat'] ?? ''));
+        $slug = $this->pullSlug($cat);
+        if (! $slug) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'error' => 'Invalid report category.', 'csrf' => csrf_hash()]);
+        }
+        $db    = \Config\Database::connect();
+        $where = ['slug' => $slug, 'variant' => 'a4'];
+        if (! empty($p['reset'])) {
+            $db->table('tbl_report_layouts')->where($where)->delete();
+            \App\Libraries\ActivityLog::record('designer', 'pull-layout-reset', $slug);
+
+            return $this->response->setJSON(['ok' => true, 'csrf' => csrf_hash()]);
+        }
+        $lay = $p['layout'] ?? null;
+        if (! is_array($lay) || ! isset($lay['items']) || ! is_array($lay['items']) || count($lay['items']) > 200) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'error' => 'Invalid layout.', 'csrf' => csrf_hash()]);
+        }
+        $validTables = $this->allDbTables($db);
+        $rawSrc      = (array) ($lay['sources'] ?? []);
+        $tables      = ['', '', ''];
+        for ($i = 0; $i < 3; $i++) {
+            $t = trim((string) (($rawSrc['tables'] ?? [])[$i] ?? ''));
+            if ($t !== '' && in_array($t, $validTables, true)) {
+                $tables[$i] = $t;
+            }
+        }
+        $joins = [null, null, null];
+        for ($i = 1; $i < 3; $i++) {
+            $j = ($rawSrc['joins'] ?? [])[$i] ?? null;
+            if (is_array($j) && $tables[$i] !== '') {
+                $lt = (int) ($j['leftTable'] ?? 0);
+                if ($lt < 0 || $lt >= $i || $tables[$lt] === '') {
+                    $lt = 0;
+                }
+                $lc = trim((string) ($j['leftCol'] ?? ''));
+                $rc = trim((string) ($j['rightCol'] ?? ''));
+                $lCols = $tables[$lt] !== '' ? $this->tableColumns($db, $tables[$lt]) : [];
+                $rCols = $this->tableColumns($db, $tables[$i]);
+                $joins[$i] = [
+                    'leftTable' => $lt,
+                    'leftCol'   => in_array($lc, $lCols, true) ? $lc : '',
+                    'rightCol'  => in_array($rc, $rCols, true) ? $rc : '',
+                ];
+            } else {
+                $joins[$i] = ['leftTable' => 0, 'leftCol' => '', 'rightCol' => ''];
+            }
+        }
+
+        $types = ['text', 'field', 'infogrid', 'pulltable', 'pullgraph', 'line'];
+        $items = [];
+        foreach ($lay['items'] as $it) {
+            if (! is_array($it) || ! in_array($it['type'] ?? '', $types, true)) {
+                continue;
+            }
+            $items[] = $this->sanitizeLayoutNode($it, 0);
+        }
+
+        $clean = [
+            'v'       => 1,
+            'w'       => max(600, min(4000, (int) ($lay['w'] ?? 1240))),
+            'h'       => max(800, min(6000, (int) ($lay['h'] ?? 1754))),
+            'cat'     => $cat,
+            'sources' => ['tables' => $tables, 'joins' => $joins],
+            'items'   => $items,
+        ];
+        $data = [
+            'layout_json' => json_encode($clean, JSON_UNESCAPED_UNICODE),
+            'updated_by'  => (string) ($this->auth->user()['username'] ?? ''),
+            'updated_at'  => date('Y-m-d H:i:s'),
+        ];
+        if ($db->table('tbl_report_layouts')->where($where)->countAllResults() > 0) {
+            $db->table('tbl_report_layouts')->where($where)->update($data);
+        } else {
+            $db->table('tbl_report_layouts')->insert($where + $data);
+        }
+        \App\Libraries\ActivityLog::record('designer', 'pull-layout-save', $slug, count($items) . ' items');
+
+        return $this->response->setJSON(['ok' => true, 'csrf' => csrf_hash()]);
+    }
+
+    private function sanitizeLayoutNode($val, int $depth)
+    {
+        if ($depth > 4) {
+            return null;
+        }
+        if (is_bool($val) || is_int($val) || is_float($val)) {
+            return $val;
+        }
+        if (is_string($val)) {
+            return mb_substr($val, 0, 300);
+        }
+        if (! is_array($val)) {
+            return null;
+        }
+        $isList = array_is_list($val);
+        $out    = [];
+        $count  = 0;
+        foreach ($val as $k => $v) {
+            if ($count++ >= 60) {
+                break;
+            }
+            $sv = $this->sanitizeLayoutNode($v, $depth + 1);
+            if ($sv === null && $v !== null) {
+                continue;
+            }
+            if ($isList) {
+                $out[] = $sv;
+            } elseif (is_string($k) && preg_match('/^[A-Za-z0-9_]{1,24}$/', $k)) {
+                $out[$k] = $sv;
+            }
+        }
+
+        return $out;
+    }
+
+    /** the columns the toolbox offers: [{name, group, src}] */
+    private function graphColumns(): array
+    {
+        $db  = \Config\Database::connect();
+        $out = [];
+        foreach ($db->query('SHOW COLUMNS FROM tbl_dtr_bonding_points')->getResultArray() as $c) {
+            $n = $c['Field'];
+            if (preg_match('/^(UTF|FTO)point\d+$|^FiTO\d+$/', $n)) {
+                continue;   // the 45 + 45 + 13 point columns are used through a Points table item
+            }
+            $g = preg_match('/Graph$|Spots$|SpotEdits$/', $n) ? 'Curves and spots' : 'Report';
+            $out[] = ['name' => $n, 'group' => $g, 'src' => 'points'];
+        }
+        $have = array_column($out, 'name');
+        foreach (['Technician', 'Result', 'Side', 'Remarks', 'ModeOfFailure', 'POLotNO', 'MachineNumber', 'Report'] as $n) {
+            if (! in_array($n, $have, true)) {
+                $out[] = ['name' => $n, 'group' => 'From the bonding report', 'src' => 'info'];
+            }
+        }
+        $out[] = ['name' => 'now', 'group' => 'Special', 'src' => 'special'];
 
         return $out;
     }

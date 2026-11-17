@@ -94,3 +94,49 @@
 .hp-docs li { margin: 6px 0; } .hp-ext { color: #94a3b8; font-size: 12px; margin-left: 6px; }
 .hp-art summary small { font-weight: 500; color: #94a3b8; margin-left: 6px; }
 @media (max-width: 700px) { .hp-methods li { grid-template-columns: 74px minmax(0, 1fr); } .hp-methods i { grid-column: 1 / -1; justify-content: flex-start; } }
+
+
+/* ==========================================================================
+   Liquid Glass Dark Mode (html[data-theme="dark"]) — Help Center
+   ========================================================================== */
+html[data-theme="dark"] .hp-head,
+html[data-theme="dark"] .hp-nav,
+html[data-theme="dark"] .hp-main,
+html[data-theme="dark"] .hp-art,
+html[data-theme="dark"] .hp-note,
+html[data-theme="dark"] .hp-status {
+  background: rgba(17, 25, 44, .76);
+  border-color: rgba(148, 163, 184, .22);
+  color: #e2e8f0;
+  backdrop-filter: blur(14px);
+}
+html[data-theme="dark"] .hp-head h2,
+html[data-theme="dark"] .hp-topic-head h3,
+html[data-theme="dark"] .hp-art summary {
+  color: #f1f5f9;
+}
+html[data-theme="dark"] .hp-body,
+html[data-theme="dark"] .hp-empty {
+  color: #cbd5e1;
+}
+html[data-theme="dark"] .hp-search input {
+  background: rgba(15, 23, 42, .84);
+  border-color: rgba(148, 163, 184, .26);
+  color: #f1f5f9;
+}
+html[data-theme="dark"] .hp-nav a,
+html[data-theme="dark"] .hp-nav button {
+  color: #cbd5e1;
+}
+html[data-theme="dark"] .hp-nav a:hover,
+html[data-theme="dark"] .hp-nav button:hover,
+html[data-theme="dark"] .hp-nav a.active,
+html[data-theme="dark"] .hp-nav button.active {
+  background: rgba(37, 99, 235, .24);
+  color: #93c5fd;
+}
+html[data-theme="dark"] .hp-open {
+  background: rgba(30, 41, 59, .78);
+  border-color: rgba(148, 163, 184, .28);
+  color: #e2e8f0;
+}

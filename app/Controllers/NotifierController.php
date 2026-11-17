@@ -259,7 +259,7 @@ class NotifierController extends BaseController
                        MIN(t.CreatedAt) created
                 FROM tbl_dtr_bondingtracker t
                 WHERE t.CollectionDate = ?
-                  AND NOT EXISTS (SELECT 1 FROM tbl_dtr_bonding_info i WHERE i.LabRefNo COLLATE utf8mb4_general_ci = t.LabRefNo COLLATE utf8mb4_general_ci AND i.Result IS NOT NULL AND i.Result <> '')
+                  AND NOT EXISTS (SELECT 1 FROM tbl_dtr_bonding_info i WHERE i.LabRefNo = t.LabRefNo COLLATE utf8mb4_unicode_ci AND i.Result IS NOT NULL AND i.Result <> '')
                 GROUP BY t.LabRefNo ORDER BY created", [$date])->getResultArray();
             foreach ($rows as $x) {
                 $key = $x['LabRefNo'] . '|' . $date;
@@ -294,7 +294,7 @@ class NotifierController extends BaseController
                 }
                 arsort($by);
                 $rated = $c['pass'] + $c['fail'] + $c['tolerable'];
-                $coll  = (int) $db->query("SELECT COUNT(DISTINCT t.LabRefNo) n FROM tbl_dtr_bondingtracker t WHERE t.CollectionDate = ? AND NOT EXISTS (SELECT 1 FROM tbl_dtr_bonding_info i WHERE i.LabRefNo COLLATE utf8mb4_general_ci = t.LabRefNo COLLATE utf8mb4_general_ci AND i.Result IS NOT NULL AND i.Result <> '')", [$date])->getRow()->n;
+                $coll  = (int) $db->query("SELECT COUNT(DISTINCT t.LabRefNo) n FROM tbl_dtr_bondingtracker t WHERE t.CollectionDate = ? AND NOT EXISTS (SELECT 1 FROM tbl_dtr_bonding_info i WHERE i.LabRefNo = t.LabRefNo COLLATE utf8mb4_unicode_ci AND i.Result IS NOT NULL AND i.Result <> '')", [$date])->getRow()->n;
                 $ev[]  = ['key' => $fire !== '' ? $fire : $date, 'date' => $date, 'date_label' => date('D, M j', strtotime($date))] + $c + ['rated' => $rated, 'fail_rate' => $rated ? round($c['fail'] * 100 / $rated, 1) : 0,
                     'worst_lines' => implode(', ', array_map(static fn ($l, $n) => "$l ($n)", array_keys(array_slice($by, 0, 3, true)), array_slice($by, 0, 3, true))), 'uncollected' => $coll];
             }

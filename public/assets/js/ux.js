@@ -5,6 +5,24 @@
  *  - nxState(el, kind, message)  loading / empty / error state for lists and tables
  *  - labels are tied to their inputs automatically and icon-only buttons get an accessible name
  */
+// ------------------------------------------- background polling that spares a slow connection
+// Every page runs several checks in the background (unread messages, service feed, approvals, bot ...). Those checks (timers of 3 s or more) now run
+// 1 in 5 while the tab is hidden and 1 in 2 on a slow / data-saver connection, so they stop competing with the data the user is waiting for.
+(() => {
+  const native = window.setInterval.bind(window);
+  const slow = () => { const c = navigator.connection; return !!c && (c.saveData || /2g|3g/.test(c.effectiveType || '')); };
+  window.setInterval = function (fn, ms, ...args) {
+    if (typeof fn !== 'function' || !(ms >= 3000)) return native(fn, ms, ...args);
+    let n = 0;
+    return native(function () {
+      n += 1;
+      const every = document.hidden ? 5 : slow() ? 2 : 1;
+      if (n % every) return undefined;
+      return fn.apply(this, arguments);
+    }, ms, ...args);
+  };
+})();
+
 (() => {
   const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -197,7 +215,19 @@
   const nxIntervals = new Set();
   const nativeSetInterval = window.setInterval.bind(window);
   const nativeClearInterval = window.clearInterval.bind(window);
-  window.setInterval = (...a) => { const id = nativeSetInterval(...a); nxIntervals.add(id); return id; };
+  // Background polls (2 s to 60 s) skip their run while the browser tab is hidden: a forgotten tab no longer loads the server.
+  // Clocks / animations (under 2 s) and the bot scripts (not touched on purpose) keep their own behaviour.
+  window.setInterval = (fn, delay, ...rest) => {
+    if (typeof fn === 'function' && delay >= 2000 && delay <= 60000) {
+      let own = false;
+      try { own = /bot\.js|brain/i.test(String(new Error().stack || '')); } catch (_) { /* ignore */ }
+      if (!own) {
+        const inner = fn;
+        fn = function (...args) { if (document.hidden) return undefined; return inner.apply(this, args); };
+      }
+    }
+    const id = nativeSetInterval(fn, delay, ...rest); nxIntervals.add(id); return id;
+  };
   window.clearInterval = (id) => { nxIntervals.delete(id); nativeClearInterval(id); };
   window.nxNavSignal = () => nxNavCtl.signal;
   window.nxStopPage = () => {

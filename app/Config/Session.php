@@ -77,9 +77,10 @@ class Session extends BaseConfig
      * Session Time to Update
      * --------------------------------------------------------------------------
      *
-     * How many seconds between CI regenerating the session ID.
+     * How many seconds between CI regenerating the session ID. 0 = never (the id is renewed at sign-in). A page makes many background calls
+     * at once; when one of them renewed the id the others lost the session file ("filesize(): stat failed", "Permission denied") and got a 500.
      */
-    public int $timeToUpdate = 300;
+    public int $timeToUpdate = 0;
 
     /**
      * --------------------------------------------------------------------------

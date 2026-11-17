@@ -184,12 +184,7 @@
         .then((j) => { if (!j || !j.ok) return; (j.events || []).forEach(notify); showPill(j); cursor = j.cursor; })
         .catch(() => {});
     };
-    // every 8 s; every 3 s while the "waiting for your approval" pill is showing, so a report another approver decided disappears at once
-    if (document.querySelector('meta[name="base-url"]') && !/\/login\b/.test(location.pathname)) {
-      tick();
-      let last = 0;
-      setInterval(() => { const now = Date.now(); if (now - last >= (pill ? 3000 : 8000)) { last = now; tick(); } }, 1000);
-    }
+    if (document.querySelector('meta[name="base-url"]') && !/\/login\b/.test(location.pathname)) { tick(); setInterval(tick, 20000); }
   })();
 
   // ---- InterLink background service: unique Application No. toast + chat notification wherever the user is in NEXUS-L ----
@@ -502,6 +497,48 @@
       toggleBtn.disabled = false;
       toggleBtn.style.opacity = '1';
     }
+  });
+
+  // ---- Per-user Liquid Glass Dark / Light Mode Toggle ----
+  const applyThemeUI = (theme) => {
+    const dark = theme === 'dark';
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    const uid = document.documentElement.dataset.uid || '0';
+    try { localStorage.setItem('nx.theme.' + uid, dark ? 'dark' : 'light'); } catch (_) {}
+    const btn = document.getElementById('nx-theme-toggle');
+    if (btn) {
+      btn.dataset.theme = dark ? 'dark' : 'light';
+      btn.setAttribute('aria-pressed', dark ? 'true' : 'false');
+      btn.title = dark ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+      const lab = btn.querySelector('.nx-theme-label');
+      if (lab) lab.textContent = dark ? 'Dark' : 'Light';
+    }
+    const sel = document.getElementById('f-theme');
+    if (sel) sel.value = dark ? 'dark' : 'light';
+  };
+  window.nxSetTheme = (theme, skipSave) => {
+    const next = theme === 'dark' ? 'dark' : 'light';
+    applyThemeUI(next);
+    if (skipSave) return;
+    const base = (document.querySelector('meta[name="base-url"]')?.content || '/').replace(/\/?$/, '/');
+    const csrfMeta = document.querySelector('meta[name="X-CSRF-TOKEN"]');
+    fetch(base + 'account/theme', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRF-TOKEN': csrfMeta ? csrfMeta.content : '',
+      },
+      body: JSON.stringify({ theme: next }),
+    }).then((r) => r.json().catch(() => null)).then((j) => {
+      if (csrfMeta && j && j.csrf) csrfMeta.content = j.csrf;
+    }).catch(() => {});
+  };
+  applyThemeUI(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
+  document.getElementById('nx-theme-toggle')?.addEventListener('click', () => {
+    const cur = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+    window.nxSetTheme(cur === 'dark' ? 'light' : 'dark', false);
   });
 
 })();

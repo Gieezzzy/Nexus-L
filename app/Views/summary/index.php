@@ -169,6 +169,62 @@
     background: #1d4ed8;
     border-color: #1d4ed8;
 }
+
+/* Liquid Glass Dark Mode Overrides */
+html[data-theme="dark"] .sum-suite-wholeshoe {
+    background: rgba(14, 165, 233, .18);
+    color: #7dd3fc;
+    border-color: rgba(56, 189, 248, .35);
+}
+html[data-theme="dark"] .sum-suite-material {
+    background: rgba(168, 85, 247, .18);
+    color: #d8b4fe;
+    border-color: rgba(192, 132, 252, .35);
+}
+html[data-theme="dark"] .sum-outcome-pass {
+    background: rgba(16, 185, 129, .2);
+    color: #6ee7b7;
+    border-color: rgba(52, 211, 153, .35);
+}
+html[data-theme="dark"] .sum-outcome-fail {
+    background: rgba(239, 68, 68, .2);
+    color: #fca5a5;
+    border-color: rgba(248, 113, 113, .35);
+}
+html[data-theme="dark"] .sum-outcome-stopped {
+    background: rgba(245, 158, 11, .2);
+    color: #fcd34d;
+    border-color: rgba(251, 191, 36, .35);
+}
+html[data-theme="dark"] .sum-outcome-running {
+    background: rgba(56, 189, 248, .2);
+    color: #7dd3fc;
+    border-color: rgba(56, 189, 248, .35);
+}
+html[data-theme="dark"] .sum-outcome-pending {
+    background: rgba(100, 116, 139, .24);
+    color: #cbd5e1;
+    border-color: rgba(148, 163, 184, .3);
+}
+html[data-theme="dark"] .sum-progress-track {
+    background: rgba(30, 41, 59, .85);
+}
+html[data-theme="dark"] .sum-tech-tag {
+    color: #93c5fd;
+}
+html[data-theme="dark"] .sum-tech-tag svg {
+    color: #60a5fa;
+}
+html[data-theme="dark"] .sum-btn-action {
+    background: rgba(30, 41, 59, .78);
+    border-color: rgba(148, 163, 184, .28);
+    color: #e2e8f0;
+}
+html[data-theme="dark"] .sum-btn-action:hover {
+    background: rgba(51, 65, 85, .88);
+    border-color: rgba(96, 165, 250, .5);
+    color: #f8fafc;
+}
 </style>
 
 <section id="summary-panel" class="dtr-panel">

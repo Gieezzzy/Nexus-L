@@ -217,3 +217,66 @@
 #st-labreport .st-fs .st-row input[type=text]{width:100%;min-width:0;padding:7px 10px;box-sizing:border-box}
 #st-labreport .st-fs .st-row select{width:100%;padding:7px 10px;box-sizing:border-box}
 @media (max-width:1100px){#st-labreport .st-fs{grid-template-columns:1fr;gap:10px}}
+
+
+/* ==========================================================================
+   Liquid Glass Dark Mode (html[data-theme="dark"]) — System Settings
+   ========================================================================== */
+html[data-theme="dark"] .st-fs,
+html[data-theme="dark"] .st-nav,
+html[data-theme="dark"] .st-log,
+html[data-theme="dark"] .ml-prev,
+html[data-theme="dark"] .su-dlg {
+  background: rgba(17, 25, 44, .82);
+  border-color: rgba(148, 163, 184, .22);
+  color: #e2e8f0;
+  backdrop-filter: blur(16px);
+}
+html[data-theme="dark"] .st-label,
+html[data-theme="dark"] .st-now,
+html[data-theme="dark"] .ml-counts {
+  color: #94a3b8;
+}
+html[data-theme="dark"] .st-nav a,
+html[data-theme="dark"] .st-nav button {
+  color: #cbd5e1;
+}
+html[data-theme="dark"] .st-nav a:hover,
+html[data-theme="dark"] .st-nav button:hover,
+html[data-theme="dark"] .st-nav a.active,
+html[data-theme="dark"] .st-nav button.active {
+  background: rgba(37, 99, 235, .24);
+  color: #93c5fd;
+}
+html[data-theme="dark"] .st input[type=text],
+html[data-theme="dark"] .st input[type=number],
+html[data-theme="dark"] .st input[type=password],
+html[data-theme="dark"] .st input[type=email],
+html[data-theme="dark"] .st select,
+html[data-theme="dark"] .st textarea,
+html[data-theme="dark"] .st-find input,
+html[data-theme="dark"] .su-fgrid input,
+html[data-theme="dark"] .su-fgrid select {
+  background: rgba(15, 23, 42, .84);
+  border-color: rgba(148, 163, 184, .26);
+  color: #f1f5f9;
+}
+html[data-theme="dark"] .st-bar {
+  background: rgba(30, 41, 59, .85);
+}
+html[data-theme="dark"] .ml-tbl th {
+  background: rgba(15, 23, 42, .94);
+  color: #cbd5e1;
+}
+html[data-theme="dark"] .ml-tbl td {
+  border-color: rgba(148, 163, 184, .16);
+  color: #e2e8f0;
+}
+html[data-theme="dark"] .ml-pill.sent { background: rgba(16, 185, 129, .2); color: #6ee7b7; }
+html[data-theme="dark"] .ml-pill.queued { background: rgba(59, 130, 246, .22); color: #93c5fd; }
+html[data-theme="dark"] .ml-pill.failed { background: rgba(239, 68, 68, .2); color: #fca5a5; }
+html[data-theme="dark"] .su-dhead,
+html[data-theme="dark"] .su-dfoot {
+  background: rgba(15, 23, 42, .85);
+  border-color: rgba(148, 163, 184, .22);
+}

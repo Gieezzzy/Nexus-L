@@ -69,7 +69,7 @@ $u = service('auth')->user();
 
     <!-- Top KPI Liquid Glass Ribbon -->
     <section class="cal-kpis" id="cal-kpis" aria-label="Testing summary statistics">
-        <div class="cal-glass cal-kpi-card">
+        <div class="cal-glass cal-kpi-card" role="button" tabindex="0" aria-pressed="false" data-kpi-status="all" title="Show all tests">
             <div class="cal-kpi-header">
                 <span class="cal-kpi-icon cal-icon-total">
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
@@ -80,7 +80,7 @@ $u = service('auth')->user();
             <div class="cal-kpi-footer">Across Bonding, Material &amp; Whole Shoe</div>
         </div>
 
-        <div class="cal-glass cal-kpi-card">
+        <div class="cal-glass cal-kpi-card" role="button" tabindex="0" aria-pressed="false" data-kpi-status="ongoing" title="Show only ongoing tests in the calendar (click again to show all)">
             <div class="cal-kpi-header">
                 <span class="cal-kpi-icon cal-icon-ongoing">
                     <span class="cal-pulse-dot"></span>
@@ -92,7 +92,7 @@ $u = service('auth')->user();
             <div class="cal-kpi-footer">Active machine &amp; shift tests in progress</div>
         </div>
 
-        <div class="cal-glass cal-kpi-card">
+        <div class="cal-glass cal-kpi-card" role="button" tabindex="0" aria-pressed="false" data-kpi-status="pending" title="Show only pending tests in the calendar (click again to show all)">
             <div class="cal-kpi-header">
                 <span class="cal-kpi-icon cal-icon-pending">
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
@@ -103,7 +103,7 @@ $u = service('auth')->user();
             <div class="cal-kpi-footer">Queued or awaiting final sign-off</div>
         </div>
 
-        <div class="cal-glass cal-kpi-card">
+        <div class="cal-glass cal-kpi-card" role="button" tabindex="0" aria-pressed="false" data-kpi-status="completed" title="Show only completed tests in the calendar (click again to show all)">
             <div class="cal-kpi-header">
                 <span class="cal-kpi-icon cal-icon-completed">
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
@@ -114,7 +114,7 @@ $u = service('auth')->user();
             <div class="cal-kpi-footer">Logged with finalized test results</div>
         </div>
 
-        <div class="cal-glass cal-kpi-card">
+        <div class="cal-glass cal-kpi-card" role="button" tabindex="0" aria-pressed="false" data-kpi-status="completed" title="Show only completed tests in the calendar (click again to show all)">
             <div class="cal-kpi-header">
                 <span class="cal-kpi-icon cal-icon-rate">
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
