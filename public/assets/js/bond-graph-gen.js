@@ -14,7 +14,22 @@
   const api = (path, body) => fetch(BASE + path, Object.assign({ credentials: 'same-origin', headers: Object.assign({ 'X-Requested-With': 'XMLHttpRequest' }, body ? { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfMeta ? csrfMeta.content : '' } : {}) }, body ? { method: 'POST', body: JSON.stringify(body) } : {}))
     .then((r) => r.json().catch(() => ({})).then((j) => { if (csrfMeta && j.csrf) csrfMeta.content = j.csrf; if (!r.ok || j.ok === false) throw new Error(j.error || j.message || 'Request failed (' + r.status + ')'); return j; }));
 
-  const labRef = () => (document.getElementById('bf_LabRefNo')?.value || '').trim();
+  // A pull test (Rivet, Eyelet, D-ring ...) has its OWN Lab Ref (DTP20261116EYA3-L), different from the bonding one: when the report open is a pull test
+  // the pull form's Lab Ref is the one drawn and saved; the bonding Lab Ref is only used for a bonding report.
+  const isPull = () => (document.getElementById('dtr-report-kind')?.value || 'bonding') === 'pull';
+  const labRef = () => ((isPull() ? document.getElementById('pf_LabRefNo')?.value : document.getElementById('bf_LabRefNo')?.value) || '').trim();
+  // the kind of pull test from the letters of its Lab Ref (building letter A / B removed): EYA -> EY, RVTA -> RVT ...
+  const catOf = (ref) => {
+    const m = /^DTP\d{8}([A-Z]+?)(?:-|\d)/i.exec(ref) || /^DTP\d{8}([A-Z]+)/i.exec(ref);
+    const code = m ? m[1].toUpperCase().replace(/[AB]$/, '') : '';
+    if (/^(EY|EYE|DR)/.test(code)) return 'eyelet';          // eyelet, and the D-ring (same columns)
+    if (/^(RVT|RV|RIVET)/.test(code)) return 'rivet';
+    if (/^(LLH|LL|LH)/.test(code)) return 'lace_holder';
+    if (/^(HP|HPT)/.test(code)) return 'heel_pull_tab';
+    if (/^(TP|TPT|TT)/.test(code)) return 'tongue_pull_tab';
+    if (/^(VL|VEL)/.test(code)) return 'velcro';
+    return '';
+  };
 
   const REPORT_TYPES = [
     { key: 'ft_adhesion',     label: 'FT Adhesion Graph',     desc: 'Upper to Foxing / Foxing to Outsole / Filler to Outsole bonding curve' },
@@ -85,6 +100,8 @@
           api(`dtr/pull-graph-layout?cat=${encodeURIComponent(typeKey)}`).catch(() => ({ layout: null }))
         ]);
         const layout = l.layout && l.layout.items ? l.layout : PG.defaultLayout(typeKey);
+        const dd = d.data || {};
+        if (!dd.Peak1 && !dd.Graph1 && !Number(dd.TestCount || 0)) { toast(`${ref} has no machine results yet (no peaks / curves loaded): load the pull test results first.`, 'error'); return; }
         const canvas = document.createElement('canvas');
         PG.render(canvas, layout, Object.assign({}, d.data, { cat: typeKey }));
         openDialog(ref, canvas, PG.catMeta(typeKey).label, typeKey);
@@ -101,16 +118,19 @@
     const ov = el('div', 'bg-ov'); ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true'); ov.setAttribute('aria-label', 'Choose report graph type');
     const box = el('div', 'bg-box bg-pick-box');
     box.append(el('h3', '', `Generate Report - ${ref}`));
-    box.append(el('p', 'muted sm', 'Select which graph report layout to generate for this Lab Ref:'));
+    box.append(el('p', 'muted sm', isPull() ? 'Pull test Lab Ref: the report is drawn with the values of this pull test and its picture is saved to this Lab Ref. Select the layout:' : 'Select which graph report layout to generate for this Lab Ref:'));
     const list = el('div', 'bg-type-list');
     const close = () => { ov.remove(); document.removeEventListener('keydown', key); };
     const key = (e) => { if (e.key === 'Escape') close(); };
     document.addEventListener('keydown', key);
 
-    REPORT_TYPES.forEach((rt) => {
-      const b = el('button', 'bg-type-btn');
+    const pull = isPull();
+    const sug = pull ? catOf(ref) : '';
+    const types = (pull ? REPORT_TYPES.filter((t) => t.key !== 'ft_adhesion') : REPORT_TYPES).slice().sort((a, b) => (b.key === sug) - (a.key === sug));
+    types.forEach((rt) => {
+      const b = el('button', 'bg-type-btn' + (rt.key === sug ? ' is-suggested' : ''));
       b.type = 'button';
-      b.append(el('b', '', rt.label), el('small', '', rt.desc));
+      b.append(el('b', '', rt.label + (rt.key === sug ? '  (matches this Lab Ref)' : '')), el('small', '', rt.desc));
       b.addEventListener('click', () => { close(); generateReport(rt.key, ref); });
       list.append(b);
     });
@@ -128,7 +148,7 @@
 
   btn.addEventListener('click', () => {
     const ref = labRef();
-    if (!ref) { toast('Open a bonding report first: the Generate Report button draws the report of the open Lab Ref.', 'error'); return; }
+    if (!ref) { toast('Open a bonding or pull test report first: the Generate Report button draws the report of the open Lab Ref.', 'error'); return; }
     openTypePicker(ref);
   });
 })();
