@@ -2415,6 +2415,48 @@
     const open = (ref, tab) => { labRef = ref; imgTab = tab || 'bonding'; $('#bimg-title').textContent = 'Report - ' + ref; setTool('circle'); syncFontUi({ color: $('#bimg-color').value, bold: txtBold, align: txtAlign }); back.classList.remove('hidden'); load(); };
     const close = () => { stopEdit(true); back.classList.add('hidden'); base = null; };
 
+
+    // Hover over a report picture (or a shoe photo) of a list: a floating, larger preview follows the mouse. The small picture is shown at once,
+    // the full picture replaces it when it has loaded. Leaving the picture (or scrolling / pressing a key) closes it.
+    (() => {
+      let box = null; let img = null; let cap = null; let timer = 0; let cur = null; let token = 0;
+      const ensure = () => {
+        if (box) return;
+        box = document.createElement('div'); box.id = 'nx-hover-prev'; box.setAttribute('aria-hidden', 'true'); box.hidden = true;
+        img = document.createElement('img'); img.alt = ''; cap = document.createElement('div'); cap.className = 'nx-hp-cap';
+        box.append(img, cap); document.body.appendChild(box);
+      };
+      const place = (x, y) => {
+        if (!box || box.hidden) return;
+        const m = 16; const w = box.offsetWidth; const h = box.offsetHeight; const vw = window.innerWidth; const vh = window.innerHeight;
+        let left = x + 22; if (left + w + m > vw) left = Math.max(m, x - w - 22);
+        let top = y - h / 2; top = Math.min(Math.max(m, top), Math.max(m, vh - h - m));
+        box.style.left = left + 'px'; box.style.top = top + 'px';
+      };
+      const hide = () => { clearTimeout(timer); token += 1; cur = null; if (box) { box.hidden = true; img.removeAttribute('src'); } };
+      const fullSrc = (src) => src.replace(/([?&])thumb=1&?/, '$1').replace(/[?&]$/, '');
+      document.addEventListener('mouseover', (e) => {
+        const t = e.target.closest && e.target.closest('.bs-thumb, .dtr-prod-thumb');
+        if (!t || t === cur) return;
+        const wrap = t.closest('.bs-thumb-wrap');
+        if (wrap && wrap.classList.contains('none')) return;        // no picture for this Lab Ref
+        hide(); cur = t; const my = ++token; const mx = e.clientX; const mY = e.clientY;
+        timer = setTimeout(() => {
+          if (my !== token) return;
+          ensure();
+          const small = t.currentSrc || t.src; if (!small) return;
+          img.src = small; cap.textContent = t.dataset.labRef || t.getAttribute('alt') || '';
+          cap.hidden = !cap.textContent; box.hidden = false; place(mx, mY);
+          const big = t.classList.contains('bs-thumb') ? fullSrc(small) : small;
+          if (big !== small) { const pre = new Image(); pre.onload = () => { if (my === token) { img.src = big; place(mx, mY); } }; pre.src = big; }
+        }, 140);
+      });
+      document.addEventListener('mousemove', (e) => { if (cur && box && !box.hidden) place(e.clientX, e.clientY); });
+      document.addEventListener('mouseout', (e) => { const t = e.target.closest && e.target.closest('.bs-thumb, .dtr-prod-thumb'); if (t && t === cur && !(e.relatedTarget && t.contains(e.relatedTarget))) hide(); });
+      window.addEventListener('scroll', hide, true);
+      document.addEventListener('keydown', hide);
+      document.addEventListener('click', hide, true);
+    })();
     document.addEventListener('click', (e) => {
       const t = e.target.closest('.bs-thumb');
       if (t && t.dataset.labRef) { e.preventDefault(); open(t.dataset.labRef, t.dataset.tab); }
