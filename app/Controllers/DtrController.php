@@ -453,7 +453,7 @@ class DtrController extends BaseController
             $t = $db->escape($r[1]);
             $coll = "DATE_ADD({$px}CollectionDate, INTERVAL (CASE WHEN DAYOFWEEK({$px}CollectionDate) = 7 THEN 2 ELSE 1 END) DAY)";
             $ref  = ($px === '' ? 'tbl_dtr_BondingTracker.' : $px) . 'LabRefNo';
-            $done = "EXISTS (SELECT 1 FROM tbl_dtr_bonding_info bi WHERE bi.LabRefNo COLLATE utf8mb4_general_ci = {$ref} COLLATE utf8mb4_general_ci AND COALESCE(bi.Result, '') <> '')";
+            $done = "EXISTS (SELECT 1 FROM tbl_dtr_bonding_info bi WHERE bi.LabRefNo = {$ref} COLLATE utf8mb4_unicode_ci AND COALESCE(bi.Result, '') <> '')";
 
             return "((DATE({$px}CreatedAt) >= {$f} AND DATE({$px}CreatedAt) <= {$t}) OR ({$coll} >= {$f} AND {$coll} <= {$t} AND NOT {$done}))";
         };
@@ -783,7 +783,7 @@ class DtrController extends BaseController
         if ($lk === 'bonding' && $db->tableExists('tbl_dtr_pull_tests') && $lRes === '') {
             $rvCntQ = $db->table('tbl_dtr_pull_tests p')
                 ->where("p.LabRefNo REGEXP '^DTP[0-9]{8}RIVET-[0-9]+$'", null, false)
-                ->where('NOT EXISTS (SELECT 1 FROM tbl_dtr_bonding_info b WHERE b.LabRefNo COLLATE utf8mb4_general_ci = p.LabRefNo COLLATE utf8mb4_general_ci)', null, false);
+                ->where('NOT EXISTS (SELECT 1 FROM tbl_dtr_bonding_info b WHERE b.LabRefNo = p.LabRefNo COLLATE utf8mb4_unicode_ci)', null, false);
             if ($lRange) {
                 $rvD = "COALESCE(NULLIF(LEFT(p.CollectionDate, 10), ''), NULLIF(LEFT(p.ProductionDate, 10), ''), CONCAT(SUBSTRING(p.LabRefNo, 4, 4), '-', SUBSTRING(p.LabRefNo, 8, 2), '-', SUBSTRING(p.LabRefNo, 10, 2)))";
                 $rvCntQ->where($rvD . ' >= ' . $db->escape($rngOther[0]), null, false)->where($rvD . ' <= ' . $db->escape($rngOther[1]), null, false);   // RIVET samples: last day + the range
@@ -1026,6 +1026,7 @@ class DtrController extends BaseController
             'activeTab'        => $activeTab,
             'subTab'           => $subTab,
             'formConfig'       => self::FORM_CONFIG,
+            'canEditMaterial'  => self::canEditMaterial(),
             'catRows'          => $catRows,
             'totalReports'     => $totalReports,
             'totalPass'        => $totalPass,
@@ -4487,6 +4488,48 @@ class DtrController extends BaseController
      * Saves a Material or Bonding Test Report in dbnexus and updates tbl_dtr_unified_labrefs
      * so it is immediately available in the InterLink Pre-Sync Dialog ComboBox!
      */
+    /** Admin or Material PIC: may change the material test report sheets */
+    public static function canEditMaterial(): bool
+    {
+        return \App\Libraries\Roles::canManage((string) (service('auth')->user()['role'] ?? ''), 'materials');
+    }
+
+    /**
+     * GET dtr/material-report-image?slug=<form>&lab_ref=<Lab Ref>: the report of a material Lab Ref as it is printed (the lab's report form filled with the
+     * values of THAT Lab Ref, see ReportPdf::material) as page pictures, for the Send report dialog (Synology / e-mail), like the Bonding report card.
+     */
+    public function materialReportImage()
+    {
+        $slug = trim((string) $this->request->getGet('slug'));
+        $ref  = trim((string) $this->request->getGet('lab_ref'));
+        $cfg  = self::FORM_CONFIG[$slug] ?? null;
+        $fail = fn (string $m, int $c = 422) => $this->response->setStatusCode($c)->setJSON(['ok' => false, 'error' => $m]);
+        if (! $cfg || in_array($slug, ['bonding', 'pull'], true) || $ref === '') {
+            return $fail('Open a material report first.');
+        }
+        $row = \Config\Database::connect()->table($cfg['table'])->where('LabRefNo', $ref)->orderBy($cfg['pk'], 'DESC')->get()->getRowArray();
+        if (! $row) {
+            return $fail('That Lab Ref has no saved report.', 404);
+        }
+        $pdf = \App\Libraries\ReportPdf::material($slug, (int) $row[$cfg['pk']]);
+        if (! $pdf) {
+            return $fail('The report form of this material could not be made.', 500);
+        }
+        $tmp = tempnam(sys_get_temp_dir(), 'mri');
+        $py  = is_file('C:\\Python314\\python.exe') ? 'C:\\Python314\\python.exe' : 'python';
+        $out = (string) @shell_exec('"' . $py . '" "' . ROOTPATH . 'tools\\pdf_pages.py" "' . $pdf . '" "' . $tmp . '" 1.6 3 2>NUL');
+        $pages = [];
+        foreach (preg_split('/\R/', trim($out)) as $f) {
+            if ($f !== '' && is_file($f)) {
+                $pages[] = 'data:image/png;base64,' . base64_encode((string) file_get_contents($f));
+                @unlink($f);
+            }
+        }
+        @unlink($tmp);
+
+        return $pages ? $this->response->setJSON(['ok' => true, 'pages' => $pages, 'lab_ref' => $ref]) : $fail('The report pages could not be drawn.', 500);
+    }
+
     public function save()
     {
         $db      = \Config\Database::connect();
@@ -4496,6 +4539,10 @@ class DtrController extends BaseController
 
         if (! isset(self::FORM_CONFIG[$slug])) {
             return $this->response->setStatusCode(400)->setJSON(['ok' => false, 'error' => 'Invalid form category.']);
+        }
+        // the material report sheets can be changed only by an Admin or a Material PIC (everybody else reads them)
+        if (! in_array($slug, ['bonding', 'pull'], true) && ! self::canEditMaterial()) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'error' => 'Only an Admin or a Material PIC can change a material test report.']);
         }
 
         // a bonding report rated Fail / Tolerable must say how it failed (Quality Insights and the lab alerts read it)

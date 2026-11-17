@@ -252,6 +252,7 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->post('dtr/load-machine', 'DtrController::loadMachine');
     $routes->post('dtr/save', 'DtrController::save');
     $routes->post('dtr/sheet-pdf', 'DtrController::sheetPdf');
+    $routes->get('dtr/material-report-image', 'DtrController::materialReportImage');
     $routes->get('dtr/bonding-machine-pdf', 'DtrController::bondingMachinePdf');
     $routes->get('dtr/wholeshoe-report-pdf', 'DtrController::wholeShoeReportPdf');
     $routes->get('dtr/wholeshoe-labrefs', 'DtrController::wholeShoeLabRefs');
@@ -268,6 +269,7 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('dtr/approval/feed', 'ApprovalController::feed');
     $routes->get('dtr/approval/name-format', 'ApprovalController::nameFormat');
     $routes->post('dtr/approval/name-format', 'ApprovalController::nameFormat');
+    $routes->post('approve/presence/(:num)', 'ApprovalController::presence/$1');   // one approver at a time (live)
     $routes->get('approve/(:segment)/pdf', 'ApprovalController::preview/$1');
     $routes->get('approve/(:segment)', 'ApprovalController::page/$1');
     $routes->post('approve/(:segment)', 'ApprovalController::decide/$1');
@@ -309,6 +311,7 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->post('labdocs/(:segment)/files/folder', 'LabDocsController::newFolder/$1');
     $routes->post('labdocs/(:segment)/files/upload', 'LabDocsController::upload/$1');
     $routes->post('labdocs/(:segment)/files/refresh', 'LabDocsController::refresh/$1');
+    $routes->post('labdocs/(:segment)/files/op', 'LabDocsController::fileOp/$1');            // SATRA / Admin: rename, move, copy, paste, delete folders, new file
     $routes->post('labdocs/(:segment)/files/(:num)/delete', 'LabDocsController::deleteFile/$1/$2');
     $routes->get('labdocs/(:segment)', 'LabDocsController::show/$1');
     $routes->post('labdocs/(:segment)/save', 'LabDocsController::save/$1');
@@ -329,6 +332,7 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('calendar-monitoring/quick-stats', 'CalendarMonitoringController::quickStats');
 
     // Warehouse & Specimen Retain Tracker (3D Model & Location Guide)
+    $routes->get('activity-log', 'ActivityLogController::index', ['as' => 'activity-log']);   // Admin: every recorded action
     $routes->get('warehouse-tracker', 'WarehouseTrackerController::index', ['as' => 'warehouse-tracker']);
     $routes->get('warehouse', 'WarehouseTrackerController::index');
     $routes->get('warehouse-tracker/boxes', 'WarehouseTrackerController::boxes');
@@ -338,6 +342,13 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->post('warehouse-tracker/avatar', 'WarehouseTrackerController::avatarSave');
     $routes->post('warehouse-tracker/save-box', 'WarehouseTrackerController::saveBox');
     $routes->post('warehouse-tracker/delete-box', 'WarehouseTrackerController::deleteBox');
+    $routes->get('warehouse-tracker/labrefs', 'WarehouseContentsController::labrefs');
+    $routes->get('warehouse-tracker/box-items', 'WarehouseContentsController::items');
+    $routes->post('warehouse-tracker/box-items/add', 'WarehouseContentsController::add');
+    $routes->post('warehouse-tracker/box-items/save', 'WarehouseContentsController::save');
+    $routes->post('warehouse-tracker/box-items/remove', 'WarehouseContentsController::remove');
+    $routes->post('warehouse-tracker/item-cols/add', 'WarehouseContentsController::addCol');
+    $routes->post('warehouse-tracker/item-cols/hide', 'WarehouseContentsController::hideCol');
 
     // Material Testing & Cyclic Monitoring Suite (Marc)
     $routes->get('materials', 'MaterialsController::index', ['as' => 'materials']);
