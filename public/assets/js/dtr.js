@@ -5771,13 +5771,6 @@
   const bondingReady = applyBondingFormLayout().then(() => { newBondingRecord(false); loadBondingRecordList(); });
   runStandardsExplorer();
 
-  // ?openlab=<Lab Ref No> (from Material Testing): same as clicking that Lab Ref in the Lab Tracker
-  (() => {
-    const lab = new URLSearchParams(location.search).get('openlab');
-    if (!lab) return;
-    setTimeout(() => { const a = document.createElement('a'); a.href = '#'; a.dataset.openMaterial = lab; document.body.appendChild(a); a.click(); a.remove(); }, 1200);
-  })();
-
   // deep link from the assistant: ?open=<slug>:<id>  (+ &preview=1 opens the print preview)
   (() => {
     const q = new URLSearchParams(location.search);

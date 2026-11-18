@@ -109,10 +109,20 @@
 
     <!-- ===== Failed sample CAPA ===== -->
     <section class="qi-panel hidden" id="qi-panel-capa" role="tabpanel">
-        <div class="qi-toolbar cal-glass"><span class="qi-hint" id="qi-capa-hint"></span>
-            <div class="qi-seg" role="group" aria-label="Show" id="qi-capa-status"><button type="button" data-st="Open" class="active">Open</button><button type="button" data-st="Closed">Closed</button><button type="button" data-st="All">All</button></div></div>
+        <div class="qi-toolbar cal-glass">
+            <span class="qi-hint" id="qi-capa-hint"></span>
+            <div class="qi-capa-tools">
+                <label class="qi-field"><input type="search" id="qi-capa-q" class="qi-capa-search" placeholder="Search Lab Ref, line, style, cement…" autocomplete="off"></label>
+                <div class="qi-seg" role="group" aria-label="Show" id="qi-capa-status"><button type="button" data-st="Open" class="active">Open</button><button type="button" data-st="Closed">Closed</button><button type="button" data-st="All">All</button></div>
+            </div>
+        </div>
         <div class="qi-kpis" id="qi-capa-kpis"></div>
-        <div id="qi-capa-list"></div>
+        <div class="qi-help"><b>How it works:</b> each failed bonding report creates a CAPA case.
+            <span class="qi-badge amber">OPEN</span> needs root cause, corrective action &amp; passing retest &middot;
+            <span class="qi-badge red">OVERDUE 3+ DAYS</span> open 3 days or more &middot;
+            <span class="qi-badge green">CLOSED</span> passing retest verified and closed.</div>
+        <div id="qi-capa-list" class="qi-capa-list"></div>
+        <div id="qi-capa-pager" class="qi-capa-pager" hidden></div>
     </section>
 
     <!-- Side panel (same look as Calendar Monitoring) -->

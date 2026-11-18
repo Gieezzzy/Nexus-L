@@ -80,7 +80,7 @@
       + `<b class="mt-ref">${esc(r.lab_ref)}</b><span class="mt-name">${esc(r.name || r.code)}</span>`
       + `<span class="mt-type">${esc(r.category_name ? r.category_name + ' · ' : '')}${esc(r.type)}</span><span class="mt-date">${esc(day(r.received))}</span>`
       + `<span class="mt-prog" title="${r.done} of ${r.total} tests completed"><i style="width:${pct}%"></i></span><span class="mt-count">${r.done}/${r.total}</span>${r.fail ? `<span class="mt-res r-fail">${r.fail} fail</span>` : ''}${chip(r.state)}</button>`
-      + `<div class="mt-body"${open ? '' : ' hidden'}><div class="mt-info">${info}${r.tests.length && r.source !== 'bench' ? `<button type="button" class="dtr-btn dtr-btn-primary mt-opens" data-open-mother="${esc(r.lab_ref)}">Open test sheet</button>` : ''}<button type="button" class="dtr-btn mt-opens" data-open-report="${esc(r.lab_ref)}">Open Material Test Report</button></div>${childRows(r)}</div></article>`;
+      + `<div class="mt-body"${open ? '' : ' hidden'}><div class="mt-info">${info}${r.tests.length && r.source !== 'bench' ? `<button type="button" class="dtr-btn dtr-btn-primary mt-opens" data-open-mother="${esc(r.lab_ref)}">Open test sheet</button>` : ''}</div>${childRows(r)}</div></article>`;
   }
 
   function draw() {
@@ -96,8 +96,6 @@
       g.classList.toggle('open', on); head.setAttribute('aria-expanded', on ? 'true' : 'false'); $('.mt-body', g).hidden = !on;
       return;
     }
-    const rep = e.target.closest('[data-open-report]');
-    if (rep) { location.href = base.replace(/materials\/?$/, '') + 'dtr?openlab=' + encodeURIComponent(rep.dataset.openReport); return; }
     const cat = e.target.closest('.mt-cat');
     if (cat) { state.cat = cat.dataset.cat; $$('.mt-cat').forEach((b) => b.classList.toggle('active', b === cat)); load(); return; }
     const save = e.target.closest('[data-save]');
