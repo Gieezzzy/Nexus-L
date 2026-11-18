@@ -14,13 +14,16 @@
   const $$ = (s, c = root) => [...c.querySelectorAll(s)];
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const csrfMeta = document.querySelector('meta[name="X-CSRF-TOKEN"]');
-  const state = { cat: '', rows: [], open: new Set(), seq: 0 };
+  const state = { cat: '', st: 'pending', page: 1, rows: [], open: new Set(), seq: 0 };
+  const PER = 20;
+  const STS = [['pending', 'Pending'], ['completed', 'Completed'], ['failed', 'Failed']];
+  const stOf = (r) => (r.fail > 0 ? 'failed' : (r.state === 'Completed' ? 'completed' : 'pending'));   // failed first, so a material is in one tab only
   let timer = 0;
   const day = (d) => (d ? String(d).slice(0, 10) : '');
 
   async function load() {
     const my = ++state.seq;
-    const p = new URLSearchParams({ q: $('#mt-q').value.trim(), category: state.cat, status: $('#mt-status').value, from: $('#mt-from').value, to: $('#mt-to').value });
+    const p = new URLSearchParams({ q: $('#mt-q').value.trim(), category: state.cat, status: '', from: $('#mt-from').value, to: $('#mt-to').value });
     try {
       const r = await fetch(base + 'list?' + p, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
       const j = await r.json();
@@ -85,7 +88,15 @@
 
   function draw() {
     const list = $('#mt-list');
-    list.innerHTML = state.rows.length ? state.rows.map(group).join('') : '<p class="mt-empty">No received materials match. Materials are added in the Lab Tracker > Material Received.</p>';
+    const cnt = { pending: 0, completed: 0, failed: 0 };
+    state.rows.forEach((r) => { cnt[stOf(r)]++; });
+    $('#mt-stabs').innerHTML = STS.map(([k, l]) => `<button type="button" role="tab" class="mt-stab s-${k}${state.st === k ? ' active' : ''}" aria-selected="${state.st === k}" data-st="${k}">${l}<small>${cnt[k]}</small></button>`).join('');
+    const rows = state.rows.filter((r) => stOf(r) === state.st);
+    const pages = Math.max(1, Math.ceil(rows.length / PER));
+    if (state.page > pages) state.page = pages;
+    const from = (state.page - 1) * PER;
+    list.innerHTML = rows.length ? rows.slice(from, from + PER).map(group).join('') : `<p class="mt-empty">No ${state.st} materials${state.cat ? ' in this category' : ''}.</p>`;
+    $('#mt-pager').innerHTML = rows.length > PER ? `<button type="button" class="dtr-btn dtr-btn-outline" data-pg="-1"${state.page <= 1 ? ' disabled' : ''}>‹ Prev</button><span>Page ${state.page} of ${pages} · ${rows.length} materials</span><button type="button" class="dtr-btn dtr-btn-outline" data-pg="1"${state.page >= pages ? ' disabled' : ''}>Next ›</button>` : '';
   }
 
   root.addEventListener('click', async (e) => {
@@ -96,8 +107,12 @@
       g.classList.toggle('open', on); head.setAttribute('aria-expanded', on ? 'true' : 'false'); $('.mt-body', g).hidden = !on;
       return;
     }
+    const stb = e.target.closest('[data-st]');
+    if (stb) { state.st = stb.dataset.st; state.page = 1; draw(); return; }
+    const pg = e.target.closest('[data-pg]');
+    if (pg) { state.page += +pg.dataset.pg; draw(); $('#mt-stabs').scrollIntoView({ block: 'start' }); return; }
     const cat = e.target.closest('.mt-cat');
-    if (cat) { state.cat = cat.dataset.cat; $$('.mt-cat').forEach((b) => b.classList.toggle('active', b === cat)); load(); return; }
+    if (cat) { state.cat = cat.dataset.cat; state.page = 1; $$('.mt-cat').forEach((b) => b.classList.toggle('active', b === cat)); load(); return; }
     const save = e.target.closest('[data-save]');
     if (save) {
       const tr = save.closest('tr'); const msg = $('.mt-msg', tr); save.disabled = true; msg.textContent = '';
@@ -256,11 +271,11 @@
   root.addEventListener('input', (e) => { if (e.target.closest('.mt-sh') && e.target.matches('[data-f]')) { clearTimeout(sheet.timer); sheet.timer = setTimeout(recalc, 280); } });
   root.addEventListener('change', (e) => { if (e.target.closest('.mt-sh') && e.target.matches('select[data-f]')) recalc(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#mt-sheet').hidden) closeSheet(); });
-  const reload = () => { clearTimeout(timer); timer = setTimeout(load, 250); };
+  const reload = () => { state.page = 1; clearTimeout(timer); timer = setTimeout(load, 250); };
   $('#mt-q').addEventListener('input', reload);
-  ['#mt-status', '#mt-from', '#mt-to'].forEach((s) => $(s).addEventListener('change', load));
+  ['#mt-from', '#mt-to'].forEach((s) => $(s).addEventListener('change', () => { state.page = 1; load(); }));
   $('#mt-refresh').addEventListener('click', load);
-  $('#mt-expand').addEventListener('click', () => { state.rows.forEach((r) => state.open.add(r.id)); draw(); });
+  $('#mt-expand').addEventListener('click', () => { state.rows.filter((r) => stOf(r) === state.st).slice((state.page - 1) * PER, state.page * PER).forEach((r) => state.open.add(r.id)); draw(); });
   $('#mt-collapse').addEventListener('click', () => { state.open.clear(); draw(); });
   load();
 })();

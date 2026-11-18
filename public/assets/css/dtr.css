@@ -4225,3 +4225,10 @@ html[data-theme="dark"] .mt-calc{background:#111c33;border-color:#334155}html[da
 .mt-or{align-self:center;color:#64748b;font-size:12px;padding:0 2px}
 .mt-sh-unit{color:#475569;white-space:nowrap}
 .mt-sh-n{color:#0f766e!important;font-weight:600}
+.mt-stabs{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0}
+.mt-stab{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border:1px solid var(--line,#d8dee9);border-radius:10px;background:transparent;font-weight:600;cursor:pointer}
+.mt-stab small{padding:1px 8px;border-radius:99px;background:rgba(100,116,139,.15);font-size:.8em}
+.mt-stab.active{background:#2563eb;color:#fff;border-color:#2563eb}.mt-stab.active small{background:rgba(255,255,255,.25)}
+.mt-stab.s-failed:not(.active) small{background:rgba(220,38,38,.15);color:#dc2626}
+.mt-pager{display:flex;align-items:center;justify-content:center;gap:14px;padding:12px 0}
+

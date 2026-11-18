@@ -34,9 +34,6 @@
             <div class="mt-kpis" id="mt-kpis" aria-live="polite"></div>
             <div class="mt-toolbar card glass">
                 <input type="search" id="mt-q" class="mt-in" placeholder="Search Lab Ref, material, code, supplier, style, MTL..." aria-label="Search the materials">
-                <select id="mt-status" class="mt-in" aria-label="State of the material">
-                    <option value="">Any state</option><option>Pending</option><option>Ongoing</option><option>Completed</option>
-                </select>
                 <label class="mt-field">Received from <input type="date" id="mt-from" class="mt-in"></label>
                 <label class="mt-field">to <input type="date" id="mt-to" class="mt-in"></label>
                 <span class="mt-gap"></span>
@@ -44,7 +41,9 @@
                 <button type="button" class="dtr-btn dtr-btn-outline" id="mt-collapse">Collapse all</button>
                 <button type="button" class="dtr-btn dtr-btn-outline" id="mt-refresh">Refresh</button>
             </div>
+            <div class="mt-stabs" id="mt-stabs" role="tablist" aria-label="Status"></div>
             <div id="mt-list" class="mt-list" aria-live="polite"><p class="muted">Loading...</p></div>
+            <div class="mt-pager" id="mt-pager"></div>
         </div>
     </div>
     <div class="mt-modal" id="mt-sheet" hidden role="dialog" aria-modal="true" aria-labelledby="mt-sh-title">
