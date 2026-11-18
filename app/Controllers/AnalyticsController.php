@@ -592,6 +592,7 @@ class AnalyticsController extends BaseController
 
         // ---- A. materials received per month, encoded in INTERLINK, per material type ----
         $types  = ['Fabric', 'Leather', 'Synthetic', 'Accessories', 'Rubber'];
+        $months = \App\Libraries\DataCache::remember('analytics_months_' . $year, 600, function () use ($db, $year, $types) {   // two scans of the materials tables: kept 10 minutes
         $months = [];
         for ($i = 1; $i <= 12; $i++) {
             $months[$i] = ['recv' => 0, 'enc' => 0, 'types' => array_fill_keys($types, 0)];
@@ -646,6 +647,9 @@ class AnalyticsController extends BaseController
             $months[$mo]['enc']  += (int) $r['e'];
             $months[$mo]['types'][$r['tp']] = ($months[$mo]['types'][$r['tp']] ?? 0) + (int) $r['n'];
         }
+
+        return $months;
+        });
 
         // ---- B. day-by-day bonding workload (specimens collected that day) ----
         $isPull = static fn (string $lab): bool => (bool) preg_match('/^DTP\d{8}(EY|DR|RVT|HP|LLH)/i', $lab);

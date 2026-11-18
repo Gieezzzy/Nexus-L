@@ -1,11 +1,6 @@
 <?php
 
-
-
 namespace App\Commands;
-
-
-
 use App\Libraries\Brain;
 
 use App\Libraries\BrainLearn;
@@ -13,8 +8,6 @@ use App\Libraries\BrainLearn;
 use CodeIgniter\CLI\BaseCommand;
 
 use CodeIgniter\CLI\CLI;
-
-
 
 /**
 
@@ -38,8 +31,6 @@ class TrainVfMethods extends BaseCommand
 
     protected $description = 'Trains the AI Brain with 500+ diverse VF test method commands, synonyms, and queries.';
 
-
-
     public function run(array $params)
 
     {
@@ -59,17 +50,11 @@ class TrainVfMethods extends BaseCommand
         \App\Libraries\SystemWorkflowSeeder::run();
 
         $now = date('Y-m-d H:i:s');
-
-
-
         CLI::write("==================================================", 'cyan');
 
         CLI::write("  LEXIS AI Brain: VF Test Methods 500+ Trainer", 'yellow');
 
         CLI::write("==================================================", 'cyan');
-
-
-
         // Ensure weights table exists
 
         if (! $db->tableExists('tbl_bot_weights')) {
@@ -79,9 +64,6 @@ class TrainVfMethods extends BaseCommand
             return;
 
         }
-
-
-
         // Fetch all VF knowledge entries to map codes to kb_id
 
         $kbRows = $db->table('tbl_bot_knowledge')->where('kind', 'vf_method')->get()->getResultArray();
@@ -111,9 +93,6 @@ class TrainVfMethods extends BaseCommand
             }
 
         }
-
-
-
         $wfRows = $db->table('tbl_bot_knowledge')->where('source', 'workflow_seed')->get()->getResultArray();
 
         foreach ($wfRows as $row) {
@@ -139,9 +118,6 @@ class TrainVfMethods extends BaseCommand
             if (stripos($row['title'], 'Statistics') !== false) $codeToId['WF-STATS'] = (int) $row['id'];
 
         }
-
-
-
         $sysRows = $db->table('tbl_bot_knowledge')->where('source', 'system_workflow')->get()->getResultArray();
 
         foreach ($sysRows as $row) {
@@ -189,25 +165,13 @@ class TrainVfMethods extends BaseCommand
             if (stripos($t, 'Lab Reference Anatomy') !== false) $codeToId['TASK-LABREF-ANATOMY'] = $id;
 
         }
-
-
-
         CLI::write("Indexed " . count($codeToId) . " target knowledge targets (including workflows and system tasks).", 'green');
-
-
-
         // Master Dataset of 500+ diverse training queries
 
         $trainingCases = $this->generate500TrainingQueries();
-
-
-
         $totalQueries = count($trainingCases);
 
         CLI::write("Generated {$totalQueries} realistic training prompts & variations across VF test methods.", 'cyan');
-
-
-
         $epochs = (int) (CLI::getOption('epochs') ?? ($params[0] ?? 45));
 
         if ($epochs < 1) {
@@ -215,9 +179,6 @@ class TrainVfMethods extends BaseCommand
             $epochs = 45;
 
         }
-
-
-
         // Step 1: Train Term Weights (ML Epochs)
 
         CLI::write("Training weights with BrainLearn::train() across {$epochs} deep ML epochs...", 'yellow');
@@ -225,9 +186,6 @@ class TrainVfMethods extends BaseCommand
         $weightsUpdated = 0;
 
         $trainedCount = 0;
-
-
-
         for ($epoch = 1; $epoch <= $epochs; $epoch++) {
 
             foreach ($trainingCases as $item) {
@@ -237,17 +195,11 @@ class TrainVfMethods extends BaseCommand
                 $targetCode = $item['code'];
 
                 $kbId = $codeToId[$targetCode] ?? null;
-
-
-
                 if (! $kbId) {
 
                     continue;
 
                 }
-
-
-
                 $terms = Brain::tokens($query);
 
                 if (! $terms) {
@@ -255,9 +207,6 @@ class TrainVfMethods extends BaseCommand
                     continue;
 
                 }
-
-
-
                 $res = BrainLearn::train($terms, $kbId, 1);
 
                 if ($res !== null) {
@@ -273,9 +222,6 @@ class TrainVfMethods extends BaseCommand
                 }
 
             }
-
-
-
             if ($epoch === 1 || $epoch % 5 === 0 || $epoch === $epochs) {
 
                 CLI::write("  -> Epoch {$epoch}/{$epochs} completed ({$weightsUpdated} cumulative weight updates)...", 'light_gray');
@@ -283,13 +229,7 @@ class TrainVfMethods extends BaseCommand
             }
 
         }
-
-
-
         CLI::write("Completed training: {$trainedCount} unique queries, {$weightsUpdated} total weight updates applied.", 'green');
-
-
-
         // Step 2: Enrich keywords in tbl_bot_knowledge with user query phrases (comma-separated for phrase matching)
 
         CLI::write("Enriching comma-separated keyword phrases in tbl_bot_knowledge for +4.0 phrase bonuses...", 'yellow');
@@ -302,8 +242,6 @@ class TrainVfMethods extends BaseCommand
                 $priorityBenchmarkPhrases[$t['expected']][] = mb_strtolower(trim($t['q']));
             }
         }
-
-
         $groupedKeywords = [];
 
         foreach ($trainingCases as $item) {
@@ -313,9 +251,6 @@ class TrainVfMethods extends BaseCommand
             $groupedKeywords[$c][] = mb_strtolower($item['q']);
 
         }
-
-
-
         $enrichedCount = 0;
 
         foreach ($groupedKeywords as $code => $phrases) {
@@ -327,9 +262,6 @@ class TrainVfMethods extends BaseCommand
                 continue;
 
             }
-
-
-
             $current = $db->table('tbl_bot_knowledge')->where('id', $kbId)->get()->getRowArray();
 
             if (! $current) {
@@ -337,15 +269,9 @@ class TrainVfMethods extends BaseCommand
                 continue;
 
             }
-
-
-
             $existingKw = (string) ($current['keywords'] ?? '');
 
             $existingPhrases = array_filter(array_map('trim', explode(',', $existingKw)));
-
-
-
             $newPhrases = [];
 
             foreach ($phrases as $phrase) {
@@ -359,9 +285,6 @@ class TrainVfMethods extends BaseCommand
                 }
 
             }
-
-
-
             $benchmarkList = $priorityBenchmarkPhrases[$code] ?? [];
             $allPhrases = array_unique(array_merge($benchmarkList, array_keys($newPhrases), $existingPhrases));
 
@@ -384,9 +307,6 @@ class TrainVfMethods extends BaseCommand
                 }
 
             }
-
-
-
             $db->table('tbl_bot_knowledge')->where('id', $kbId)->update([
 
                 'keywords'   => $combinedKw,
@@ -398,21 +318,12 @@ class TrainVfMethods extends BaseCommand
             $enrichedCount++;
 
         }
-
-
-
         CLI::write("Enriched comma-separated keywords on {$enrichedCount} knowledge entries.", 'green');
-
-
-
         // Step 3: Flush Brain caches & Markdown playbooks
 
         CLI::write("Flushing Brain caches and synchronizing knowledge backups...", 'yellow');
 
         Brain::flush();
-
-
-
         // Step 4: Comprehensive Benchmark Verification Matrix (Technical, Non-Technical, Follow-Up, Workflows)
 
         CLI::write("==================================================", 'cyan');
@@ -422,9 +333,6 @@ class TrainVfMethods extends BaseCommand
         CLI::write("  Target: Accuracy >= 95%, Precision >= 95%, Calibrated Confidence >= 90%", 'yellow');
 
         CLI::write("==================================================", 'cyan');
-
-
-
         $benchmarkGroups = $this->getBenchmarkGroups();
 
         $overallTotal = 0;
@@ -436,9 +344,6 @@ class TrainVfMethods extends BaseCommand
         $overall90Plus = 0;
 
         $groupStats = [];
-
-
-
         $benchmarkGroups = $this->getBenchmarkGroups();
         foreach ($benchmarkGroups as $grpName => $tests) {
 
@@ -451,9 +356,6 @@ class TrainVfMethods extends BaseCommand
             $grpConfSum = 0;
 
             $grp90Plus = 0;
-
-
-
             foreach ($tests as $t) {
 
                 $sq = $t['q'];
@@ -461,9 +363,6 @@ class TrainVfMethods extends BaseCommand
                 $expCode = $t['expected'];
 
                 $expId = $codeToId[$expCode] ?? null;
-
-
-
                 $hits = Brain::search($sq, ['role' => 'user'], 3);
 
                 $conf = Brain::confidence($hits, $sq);
@@ -471,9 +370,6 @@ class TrainVfMethods extends BaseCommand
                 $topId = (int) ($hits[0]['row']['id'] ?? 0);
 
                 $topTitle = $hits[0]['row']['title'] ?? '(none)';
-
-
-
                 $isMatch = ($expId && $topId === $expId)
 
                     || ($topId > 0 && stripos($topTitle, str_replace(['VF-', 'TASK-', 'WF-'], '', $expCode)) !== false)
@@ -522,13 +418,7 @@ class TrainVfMethods extends BaseCommand
                     || ($expCode === 'VF-F01' && (stripos($topTitle, 'Sole Adhesion') !== false || stripos($topTitle, 'Bonding') !== false))
                     || ($expCode === 'TASK-REPORT-LEXUS' && (stripos($topTitle, 'PowerPoint') !== false || stripos($topTitle, 'Report') !== false))
                     || ($expCode === 'TASK-LABREF-ANATOMY' && stripos($topTitle, 'Lab Reference') !== false);
-
-
-
                 $isTargetConf = ($conf >= 90);
-
-
-
                 if ($isMatch) {
 
                     $grpCorrect++;
@@ -542,29 +432,17 @@ class TrainVfMethods extends BaseCommand
                 }
 
                 $grpConfSum += $conf;
-
-
-
                 $statusMarker = ($isMatch && $isTargetConf) ? '✓' : ($isMatch ? '~' : '✗');
 
                 $color = ($isMatch && $isTargetConf) ? 'green' : ($isMatch ? 'cyan' : 'red');
-
-
-
                 CLI::write("  {$statusMarker} [{$conf}%] {$sq} -> " . mb_substr($topTitle, 0, 44), $color);
 
             }
-
-
-
             $accuracy = round(($grpCorrect / $grpTotal) * 100, 1);
 
             $avgConf = round($grpConfSum / $grpTotal, 1);
 
             $pct90 = round(($grp90Plus / $grpTotal) * 100, 1);
-
-
-
             $groupStats[$grpName] = [
 
                 'total' => $grpTotal,
@@ -578,9 +456,6 @@ class TrainVfMethods extends BaseCommand
                 'pct_90' => $pct90,
 
             ];
-
-
-
             $overallTotal += $grpTotal;
 
             $overallCorrect += $grpCorrect;
@@ -590,17 +465,11 @@ class TrainVfMethods extends BaseCommand
             $overall90Plus += $grp90Plus;
 
         }
-
-
-
         $overallAccuracy = round(($overallCorrect / $overallTotal) * 100, 1);
 
         $overallAvgConf = round($overallConfSum / $overallTotal, 1);
 
         $overallPct90 = round(($overall90Plus / $overallTotal) * 100, 1);
-
-
-
         CLI::write("\n==================================================", 'cyan');
 
         CLI::write("  FINAL ACCURACY & PRECISION BENCHMARK SUMMARY", 'green');
@@ -622,9 +491,6 @@ class TrainVfMethods extends BaseCommand
         CLI::write(sprintf("%-34s | %6.1f%%    | %6.1f%%    | %6.1f%%", "OVERALL BENCHMARK (All Groups)", $overallAccuracy, $overallAvgConf, $overallPct90), 'green');
 
         CLI::write("==================================================", 'cyan');
-
-
-
         // Step 5: AI Vector Indexing
 
         if (\App\Libraries\AiBridge::isLive()) {
@@ -638,9 +504,6 @@ class TrainVfMethods extends BaseCommand
             CLI::write("AI Vector store re-indexed successfully.", 'green');
 
         }
-
-
-
         CLI::write("==================================================", 'cyan');
 
         CLI::write("  VF 500+ Training Pipeline Completed Successfully!", 'green');
@@ -648,8 +511,6 @@ class TrainVfMethods extends BaseCommand
         CLI::write("==================================================", 'cyan');
 
     }
-
-
 
     /**
 
@@ -664,9 +525,6 @@ class TrainVfMethods extends BaseCommand
     {
 
         $queries = [];
-
-
-
         // Helper to add query
 
         $add = function($code, $q) use (&$queries) {
@@ -674,9 +532,6 @@ class TrainVfMethods extends BaseCommand
             $queries[] = ['code' => $code, 'q' => trim($q)];
 
         };
-
-
-
         // 1. GENERAL DISCOVERY & CATALOG (45 queries)
 
         $catalogQueries = [
@@ -712,9 +567,6 @@ class TrainVfMethods extends BaseCommand
             $add('VF-INDEX', $q);
 
         }
-
-
-
         // 2. MASTER MANUALS & PARAMETERS (40 queries)
 
         $manualQueries = [
@@ -736,9 +588,6 @@ class TrainVfMethods extends BaseCommand
             $add('VF-MANUAL', $q);
 
         }
-
-
-
         $paramQueries = [
 
             'universal machine test parameters', 'utm test parameters', 'tensile machine parameters excel',
@@ -758,9 +607,6 @@ class TrainVfMethods extends BaseCommand
             $add('VF-PARAM-UTM', $q);
 
         }
-
-
-
         // 3. SERIES OVERVIEWS (50 queries)
 
         $seriesMap = [
@@ -796,9 +642,6 @@ class TrainVfMethods extends BaseCommand
             }
 
         }
-
-
-
         // 4. INDIVIDUAL VF METHOD QUERIES (300+ queries covering A to J series)
 
         $methodCases = [
@@ -1586,9 +1429,6 @@ class TrainVfMethods extends BaseCommand
             ],
 
         ];
-
-
-
         foreach ($methodCases as $code => $qList) {
 
             foreach ($qList as $q) {
@@ -1598,9 +1438,6 @@ class TrainVfMethods extends BaseCommand
             }
 
         }
-
-
-
         // 5. PROBLEM & DEFECT SYMPTOM QUERIES (80 queries mapping real floor problems to VF methods)
 
         $problemCases = [
@@ -1806,9 +1643,6 @@ class TrainVfMethods extends BaseCommand
             ],
 
         ];
-
-
-
         foreach ($problemCases as $code => $pList) {
 
             foreach ($pList as $p) {
@@ -1818,9 +1652,6 @@ class TrainVfMethods extends BaseCommand
             }
 
         }
-
-
-
                 // 6. NON-TECHNICAL, BROKEN ENGLISH, SLANG & BEGINNER QUERIES (400+ queries)
 
         $nonTechMap = [
@@ -2084,9 +1915,6 @@ class TrainVfMethods extends BaseCommand
             ],
 
         ];
-
-
-
         foreach ($nonTechMap as $code => $nList) {
 
             foreach ($nList as $nq) {
@@ -2096,9 +1924,6 @@ class TrainVfMethods extends BaseCommand
             }
 
         }
-
-
-
                 // 7. SYSTEM WORKFLOWS, REPORT GENERATION, UPLOADS & APPROVALS (250+ queries)
 
         $wfMap = [
@@ -2254,9 +2079,6 @@ class TrainVfMethods extends BaseCommand
             ],
 
         ];
-
-
-
         foreach ($wfMap as $code => $wList) {
 
             foreach ($wList as $wq) {
@@ -2266,9 +2088,6 @@ class TrainVfMethods extends BaseCommand
             }
 
         }
-
-
-
         // 8. HEAVY TYPOS & PHONETIC SLANG ACROSS VF TEST METHODS (150+ queries)
 
         $typoMap = [
@@ -2324,9 +2143,6 @@ class TrainVfMethods extends BaseCommand
             'VF-J01' => ['electrik shock 18000v', 'dieletric test 18kv', 'saftey sho voltag'],
 
         ];
-
-
-
         foreach ($typoMap as $code => $tList) {
 
             foreach ($tList as $tq) {
@@ -2336,9 +2152,6 @@ class TrainVfMethods extends BaseCommand
             }
 
         }
-
-
-
         // 9. COMPLEX MULTI-STEP REALISTIC TASKS (50 queries)
 
         $complexCases = [
@@ -2402,9 +2215,6 @@ class TrainVfMethods extends BaseCommand
             ],
 
         ];
-
-
-
         foreach ($complexCases as $code => $cList) {
 
             foreach ($cList as $cq) {
@@ -2414,9 +2224,6 @@ class TrainVfMethods extends BaseCommand
             }
 
         }
-
-
-
         // 10. MERGE 1,000+ DATA-SPECIFIC LABORATORY INQUIRIES
 
         $data1000 = \App\Commands\VfDataTrainingSet::get1000DataQueries();
@@ -2426,9 +2233,6 @@ class TrainVfMethods extends BaseCommand
             $add($dq['code'], $dq['q']);
 
         }
-
-
-
         // 11. MERGE 1,020+ SYSTEM TASKS & WEBSITE PROCESS INQUIRIES
 
         $task1000 = \App\Commands\SystemTaskTrainingSet::get1000SystemTaskQueries();
@@ -2484,11 +2288,6 @@ class TrainVfMethods extends BaseCommand
             }
 
         }
-
-
-
-
-
         // 12. DEDICATED FOLLOW-UP & CONVERSATIONAL MULTI-TURN QUERIES
 
         $followUpCases = [
@@ -2676,13 +2475,9 @@ class TrainVfMethods extends BaseCommand
             }
 
         }
-
-
-
         return $queries;
 
     }
-
 
     private function getBenchmarkGroups(): array
     {

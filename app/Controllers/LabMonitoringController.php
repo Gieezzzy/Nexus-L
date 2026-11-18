@@ -75,7 +75,7 @@ class LabMonitoringController extends BaseController
         }
         $rows = $db->query("SELECT u.id, u.lab_ref_no, u.etrf_bonding_app, u.etrf_bonding_hist, u.etrf_pull_app, u.etrf_pull_hist, u.erp_status, u.interlink_flag, u.po_lot_no, u.model_style, u.overall_result,
                 t.LineNo t_line, t.Side t_side, t.ProductionCode t_vsp, t.Shutdown t_shut, t.ProductionDate t_pd,
-                b.Result b_result, b.LabNotesComments b_notes, b.PossibleCause b_cause, COALESCE(b.TestedDate, u.tested_date) b_tested, b.POLotNO b_po, DATE_FORMAT({$day}, '%Y-%m-%d') pday
+                b.Result b_result, b.LabNotesComments b_notes, b.PossibleCause b_cause, COALESCE(NULLIF(b.TestedDate, ''), NULLIF(u.tested_date, '')) b_tested, b.POLotNO b_po, DATE_FORMAT({$day}, '%Y-%m-%d') pday
             {$base} AND DATE_FORMAT({$day}, '%Y-%m') = ? ORDER BY {$day}, u.lab_ref_no", [$date])->getResultArray();
 
         // the latest bonding / pull request per lab ref, to tell OK from pending from not submitted
@@ -119,7 +119,7 @@ class LabMonitoringController extends BaseController
 
             $row = [
                 'id' => (int) $r['id'], 'lab_ref' => $lab, 'line' => $line, 'side' => $sd, 'vsp' => $vsp, 'shutdown' => (int) $r['t_shut'] === 1,
-                'tested' => (string) ($r['b_tested'] ?? ''), 'day' => (string) $r['pday'],
+                'tested' => ($tt = strtotime((string) ($r['b_tested'] ?? ''))) ? date('Y-m-d', $tt) : '', 'day' => (string) $r['pday'],
                 'bonding' => trim((string) $r['etrf_bonding_app']), 'bonding_hist' => trim((string) $r['etrf_bonding_hist']),
                 'pull' => trim((string) $r['etrf_pull_app']), 'pull_hist' => trim((string) $r['etrf_pull_hist']),
                 'il' => $il, 'erp' => $erp, 'erp_raw' => $erpRaw,
@@ -173,10 +173,15 @@ class LabMonitoringController extends BaseController
         // the eTRF requests of the TESTS of each whole shoe (their own lab refs, linked by WholeshoeLabRefNo): ok / pending / bad per whole shoe and test
         $labs = array_column($rows, 'lab_ref_no');
         $reqs = [];
+        $testedBy = [];   // tested date fallback: the last test finished (else started) in the tracker
         if ($labs) {
             $tests = [];
-            foreach ($db->table('tbl_dtr_wholeshoetracker')->select('LabRefNo, WholeshoeLabRefNo')->whereIn('WholeshoeLabRefNo', $labs)->get()->getResultArray() as $t) {
+            foreach ($db->table('tbl_dtr_wholeshoetracker')->select('LabRefNo, WholeshoeLabRefNo, TimeStarted, TimeCompleted')->whereIn('WholeshoeLabRefNo', $labs)->get()->getResultArray() as $t) {
                 $tests[$t['LabRefNo']] = $t['WholeshoeLabRefNo'];
+                $d = substr((string) (($t['TimeCompleted'] ?? '') ?: ($t['TimeStarted'] ?? '')), 0, 10);
+                if ($d !== '' && $d > ($testedBy[$t['WholeshoeLabRefNo']] ?? '')) {
+                    $testedBy[$t['WholeshoeLabRefNo']] = $d;
+                }
             }
             $names = array_merge($labs, array_keys($tests));
             foreach ($db->table('tbl_interlink_etrf_requests')->select('lab_ref_no, status')->whereIn('lab_ref_no', $names)->orderBy('id')->get()->getResultArray() as $q) {
@@ -220,7 +225,7 @@ class LabMonitoringController extends BaseController
             $level  = str_contains($res, 'FAIL') ? 'fail' : (str_contains($res, 'TOLER') ? 'tol' : ($res !== '' ? 'pass' : ''));
             $row = [
                 'id' => (int) $r['id'], 'lab_ref' => $lab, 'line' => $line, 'side' => $sd, 'vsp' => trim((string) $r['po_lot_no']), 'shutdown' => false, 'style' => trim((string) $r['model_style']),
-                'tested' => $ymd((string) $r['tested_date']), 'day' => (string) $r['pday'],
+                'tested' => $ymd((string) $r['tested_date']) ?: ($testedBy[$lab] ?? ''), 'day' => (string) $r['pday'],
                 'flexing' => trim((string) $r['flexing_app']), 'flexing_hist' => trim((string) $r['flexing_hist']), 'aging' => trim((string) $r['aging_app']), 'aging_hist' => trim((string) $r['aging_hist']),
                 'hydrolysis' => trim((string) $r['hydrolysis_app']), 'hydrolysis_hist' => trim((string) $r['hydrolysis_hist']), 'washing' => trim((string) $r['washing_app']), 'washing_hist' => trim((string) $r['washing_hist']),
                 'uv' => trim((string) $r['uv_app']), 'uv_hist' => trim((string) $r['uv_hist']),

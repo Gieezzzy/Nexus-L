@@ -42,7 +42,7 @@
     const can = r.erp !== 'ok';   // ERP OK / Submitted lines are done: nothing to send again
     return `<tr class="lm-click" data-id="${r.id}" data-lab="${esc(r.lab_ref)}" tabindex="0" aria-label="Open ${esc(r.lab_ref)}">
       <td class="lm-sel"><input type="checkbox" data-pick="${r.id}" ${S.sel.has(r.id) ? 'checked' : ''} ${can ? '' : 'disabled'} aria-label="Select ${esc(r.lab_ref)} for ERP"></td>
-      <td>${esc(r.tested ? fmtDay(r.tested) : '')}</td>
+      <td>${r.tested ? esc(fmtDay(r.tested)) : '<span class="lm-none">-</span>'}</td>
       <td><b>${esc(fmtDay(r.day))}</b></td>
       <td>${esc(r.line)}</td>
       <td class="lm-lab">${esc(r.lab_ref)}${r.style ? `<small class="lm-style">${esc(r.style)}</small>` : ''}</td>
@@ -65,7 +65,7 @@
     const can = r.erp !== 'ok';   // ERP OK / Submitted rows are done: nothing to send again
     return `<tr class="lm-click" data-id="${r.id}" data-lab="${esc(r.lab_ref)}" tabindex="0" aria-label="Open ${esc(r.lab_ref)}">
       <td class="lm-sel"><input type="checkbox" data-pick="${r.id}" ${S.sel.has(r.id) ? 'checked' : ''} ${can ? '' : 'disabled'} aria-label="Select ${esc(r.lab_ref)} for ERP"></td>
-      <td>${esc(r.tested ? fmtDay(r.tested) : '')}</td>
+      <td>${r.tested ? esc(fmtDay(r.tested)) : '<span class="lm-none">-</span>'}</td>
       <td><b>${esc(fmtDay(r.day))}</b></td>
       <td>${esc(r.line)}</td>
       <td class="lm-lab">${esc(r.lab_ref)}</td>

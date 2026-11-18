@@ -1,10 +1,6 @@
 <?php
 
-
-
 namespace App\Libraries;
-
-
 
 /**
 
@@ -30,8 +26,6 @@ class BotArtifacts
 
     public const MAX_FILES_PER_HOUR = 20;
 
-
-
     public const CATEGORIES = [
 
         'bonding' => 'Whole Shoe Bonding', 'fabric' => 'Fabric', 'leather' => 'Leather', 'rubber' => 'Rubber Outsole',
@@ -42,13 +36,9 @@ class BotArtifacts
 
     ];
 
-
-
     private const RESULT_EXPR = "CASE WHEN LOWER(overall_result) IN ('pass','passed','p') THEN 'Pass' WHEN LOWER(overall_result) IN ('fail','failed','f') THEN 'Fail' WHEN LOWER(overall_result) = 'tolerable' THEN 'Tolerable' ELSE 'Other' END";
 
     private const DATE_EXPR   = "STR_TO_DATE(tested_date, '%d %b %Y')";
-
-
 
     /** dimension => [SQL expression (fixed text), label] */
 
@@ -74,8 +64,6 @@ class BotArtifacts
 
     ];
 
-
-
     private static function db(): \CodeIgniter\Database\BaseConnection
 
     {
@@ -83,12 +71,7 @@ class BotArtifacts
         return \Config\Database::connect();
 
     }
-
-
-
     // ----------------------------------------------------------------------------------------------- understanding the request
-
-
 
     /** @return array<string,mixed> the filters a sentence asks for: category, result, period */
 
@@ -137,9 +120,6 @@ class BotArtifacts
             $f['result'] = 'Tolerable';
 
         }
-
-
-
         $today = new \DateTimeImmutable('today');
 
         if (preg_match('/\b(this|current)\s*month\b/', $low)) {
@@ -209,14 +189,9 @@ class BotArtifacts
             }
 
         }
-
-
-
         return $f;
 
     }
-
-
 
     /** @return array{kind:string,dim:string,split:?string,title:string}|null null = this is not a chart request */
 
@@ -313,14 +288,9 @@ class BotArtifacts
         $dimLabel = self::DIMS[$dim][1];
 
         $title    = ($f['result'] ? $f['result'] . ' reports' : 'Reports') . ' by ' . $dimLabel . ($f['slug'] ? ' - ' . self::CATEGORIES[$f['slug']] : '') . ($f['period'] !== 'all time' ? ' (' . $f['period'] . ')' : '');
-
-
-
         return ['kind' => $kind, 'dim' => $dim, 'split' => $split, 'title' => $title];
 
     }
-
-
 
     /** @return array{format:string,subject:string,labref:?string}|null null = this is not an export request */
 
@@ -367,18 +337,10 @@ class BotArtifacts
         $one = $ref !== null || (bool) preg_match('/\b(this|that|the|current|last)\s+(report|result|test)\b/', $low);
 
         $many = (bool) preg_match('/\b(list|all|reports|results|data|table|summary|failed|passed|failures|statistics|stats|by\s+\w+)\b/', $low) && $ref === null;
-
-
-
         return ['format' => $format, 'subject' => $many && ! preg_match('/\b(this|that)\s+report\b/', $low) ? 'list' : ($one ? 'one' : 'list'), 'labref' => $ref];
 
     }
-
-
-
     // ----------------------------------------------------------------------------------------------- data
-
-
 
     private static function base(array $f): \CodeIgniter\Database\BaseBuilder
 
@@ -411,14 +373,9 @@ class BotArtifacts
             $b->where(self::DATE_EXPR . ' <= ' . $db->escape($f['to']), null, false);
 
         }
-
-
-
         return $b;
 
     }
-
-
 
     /**
 
@@ -453,9 +410,6 @@ class BotArtifacts
         }
 
         $rows = $b->groupBy($split ? 'd, s' : 'd')->get()->getResultArray();
-
-
-
         // dimension values -> labels
 
         $labelOf = static function (string $d, ?string $v): string {
@@ -475,9 +429,6 @@ class BotArtifacts
             if ($d === 'month') {
 
                 $t = strtotime($v . '-01');
-
-
-
                 return $t ? date('M Y', $t) : $v;
 
             }
@@ -485,15 +436,9 @@ class BotArtifacts
             if ($d === 'day') {
 
                 $t = strtotime($v);
-
-
-
                 return $t ? date('d M', $t) : $v;
 
             }
-
-
-
             return $v;
 
         };
@@ -541,9 +486,6 @@ class BotArtifacts
             $labels[] = 'Others (' . count($other) . ')';
 
         }
-
-
-
         $series = [];
 
         if ($split) {
@@ -613,14 +555,9 @@ class BotArtifacts
             $series[] = ['name' => 'Reports', 'data' => $data];
 
         }
-
-
-
         return ['kind' => $req['kind'], 'title' => $req['title'], 'labels' => $labels, 'series' => $series, 'total' => array_sum($totals), 'dimension' => $req['dim']];
 
     }
-
-
 
     /** Rows for a list export (fixed, non-sensitive columns). @return list<array<string,mixed>> */
 
@@ -634,19 +571,12 @@ class BotArtifacts
 
     }
 
-
-
     public const COLUMNS = ['lab_ref_no' => 'Lab Ref No.', 'tr_no' => 'Application / TR No.', 'form_category' => 'Category', 'material_type' => 'Material type', 'material_description' => 'Material',
 
         'supplier' => 'Supplier', 'model_style' => 'Model / Style', 'color' => 'Color', 'po_lot_no' => 'PO / Lot', 'received_date' => 'Received', 'tested_date' => 'Tested',
 
         'finished_date' => 'Finished', 'technician' => 'Technician', 'status' => 'Status', 'overall_result' => 'Result'];
-
-
-
     // ----------------------------------------------------------------------------------------------- files
-
-
 
     public static function dir(): string
 
@@ -663,14 +593,9 @@ class BotArtifacts
             @file_put_contents($d . '.htaccess', "Require all denied\n");
 
         }
-
-
-
         return $d;
 
     }
-
-
 
     /** Gives a finished file a download token. @return array{token:string,name:string,url:string,size:int}|null null = too many files */
 
@@ -719,9 +644,6 @@ class BotArtifacts
         if ($recent >= self::MAX_FILES_PER_HOUR) {
 
             @unlink($path);
-
-
-
             return null;
 
         }
@@ -735,14 +657,9 @@ class BotArtifacts
         rename($path, $dir . $file);
 
         file_put_contents($dir . $token . '.json', json_encode(['file' => $file, 'name' => $downloadName, 'mime' => $mime, 'user_id' => $userId, 'created' => time(), 'expires' => time() + self::TTL]));
-
-
-
         return ['token' => $token, 'name' => $downloadName, 'url' => site_url('bot/file/' . $token), 'size' => (int) filesize($dir . $file)];
 
     }
-
-
 
     /** @return array{path:string,name:string,mime:string}|null null = unknown, expired, or somebody else's */
 
@@ -765,14 +682,9 @@ class BotArtifacts
             return null;
 
         }
-
-
-
         return ['path' => $dir . $meta['file'], 'name' => (string) $meta['name'], 'mime' => (string) $meta['mime']];
 
     }
-
-
 
     private static function tmp(string $ext): string
 
@@ -782,8 +694,6 @@ class BotArtifacts
 
     }
 
-
-
     /** Spreadsheet-formula safe: a cell that starts with = + - @ would be run by Excel. */
 
     private static function cell(?string $v): string
@@ -791,14 +701,9 @@ class BotArtifacts
     {
 
         $v = (string) $v;
-
-
-
         return $v !== '' && strpos("=+-@\t\r", $v[0]) !== false ? "'" . $v : $v;
 
     }
-
-
 
     /** @param list<string> $head @param list<list<string>> $rows */
 
@@ -821,14 +726,9 @@ class BotArtifacts
         }
 
         fclose($fh);
-
-
-
         return $p;
 
     }
-
-
 
     /** A real .xlsx (zip of XML) without any library. @param list<string> $head @param list<list<string>> $rows */
 
@@ -851,9 +751,6 @@ class BotArtifacts
                 $s = chr(65 + ($i - 1) % 26) . $s;
 
             }
-
-
-
             return $s;
 
         };
@@ -933,14 +830,9 @@ class BotArtifacts
         $zip->addFromString('xl/worksheets/sheet1.xml', $xml);
 
         $zip->close();
-
-
-
         return $p;
 
     }
-
-
 
     /** Headless Chrome / Edge on the server prints HTML to PDF (same engine as the report sheet). @return string|null path of the PDF */
 
@@ -995,34 +887,21 @@ class BotArtifacts
         if (! is_file($pdf) || filesize($pdf) < 500) {
 
             @unlink($pdf);
-
-
-
             return null;
 
         }
-
-
-
         return $pdf;
 
     }
-
-
 
     private static function resultClass(string $r): string
 
     {
 
         $l = strtolower($r);
-
-
-
         return in_array($l, ['pass', 'passed', 'p'], true) ? 'pass' : (in_array($l, ['fail', 'failed', 'f'], true) ? 'fail' : ($l === 'tolerable' ? 'tol' : ''));
 
     }
-
-
 
     /** A PDF of a list of reports. @return string|null */
 
@@ -1059,14 +938,9 @@ class BotArtifacts
         }
 
         $h .= '</table>' . (count($rows) > 1500 ? '<p class="foot">Only the first 1,500 rows are printed; the Excel export has all of them.</p>' : '') . '<p class="foot">NEXUS-L QC Lab - generated by the assistant from live data.</p>';
-
-
-
         return self::pdfFromHtml($h, $title, true);
 
     }
-
-
 
     /** One report on one page: header facts and every test with its reading and result. @return array{pdf:?string,error?:string} */
 
@@ -1119,14 +993,9 @@ class BotArtifacts
         }
 
         $h .= '<p class="foot">Summary made ' . date('d M Y H:i') . ' by the NEXUS-L assistant from the saved report. The official report sheet is the signed document.</p>';
-
-
-
         return ['pdf' => self::pdfFromHtml($h, $labRef), 'row' => $r];
 
     }
-
-
 
     /** A chart picture (PNG data URL made by the page) as a one-page PDF. */
 
@@ -1147,9 +1016,6 @@ class BotArtifacts
             return null;
 
         }
-
-
-
         return self::pdfFromHtml('<h1>' . htmlspecialchars($title) . '</h1><p class="meta">Made ' . date('d M Y H:i') . ' from live NEXUS-L data</p><img style="max-width:100%" src="data:image/png;base64,' . $m[1] . '">', $title, true);
 
     }

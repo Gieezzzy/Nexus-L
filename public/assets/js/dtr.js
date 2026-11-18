@@ -2271,7 +2271,8 @@
         // the Lab Ref is not editable: it is the one opened from the Lab Tracker lists (or ?labref=); the sheet is blank until then
         const j = await apiFetch('dtr/wholeshoe-labrefs');
         if (!wsSel.value) wsRenderSections(j.sections || [], {});   // blank sheet with every test section
-        const want = new URLSearchParams(location.search).get('labref');
+        const qs = new URLSearchParams(location.search);
+        const want = qs.get('labref') || (qs.get('open') === 'wholeshoe' ? qs.get('ref') : '');
         if (want && !wsSel.value) { wsSel.value = want; wsLoad(want); }
       } catch (err) { wsMsg.textContent = 'Could not load the report form.'; }
     })();
@@ -5778,10 +5779,8 @@
         switchTab('wholeshoe');
         if (typeof markDtrNav === 'function') markDtrNav('wholeshoe');
         if (!want) return;
-        const sel = $('#ws-labref');
-        for (let i = 0; i < 40 && sel && sel.options.length < 2 && !/Could not|no whole shoe/i.test(sel.textContent); i++) await new Promise((r) => setTimeout(r, 150));   // the picker is filled by its own request
-        if (!sel) return;
-        if (![...sel.options].some((o) => o.value === want)) sel.add(new Option(want, want));   // older / not in the picker's newest-100 list
+        const sel = $('#ws-labref');   // a read-only box now (the Lab Ref comes from the Lab Tracker lists), not a picker
+        if (!sel || sel.value === want) return;   // the report form already picked it up from the address
         sel.value = want;
         sel.dispatchEvent(new Event('change'));
       }, 500);

@@ -4,6 +4,11 @@
 
 ---
 
+## Phase 217 - ERP Finish Monitoring: Whole Shoe report dialog, Tested date on every row, speed pass 2 (2026-11-18)
+- **Whole Shoe row click:** the dialog opens `dtr?open=wholeshoe&ref=<lab ref>&embed=1`; the report form takes the lab ref from the address (`?ref` / `?labref`) and loads it, read only (inert) like Bonding. The old handler still expected a picker (`sel.options`) and broke since `#ws-labref` became a read-only box.
+- **Tested date:** Bonding = `COALESCE(NULLIF(b.TestedDate,''), NULLIF(u.tested_date,''))` normalised to Y-m-d; Whole Shoe = unified `tested_date`, else the last test finished/started in `tbl_dtr_wholeshoetracker`; rows with none show "-".
+- **Slow-down causes found:** (1) `BotController.php` had 17k empty lines (20k lines, 198 KB) - squeezed to 3.4k lines with `tools/squeeze_blank.php` (token-checked; also TrainVfMethods, BotArtifacts); (2) `GET dtr/retest-list` ran a correlated `NOT EXISTS ... LIKE '%Retest of %'` (5.8M rows read, ~6 s) - now one scan + filter in PHP (40 ms); (3) Analytics monthly material scan (10-40 s) cached 10 min; (4) `brain/live` (every 4 s per open page) and `bot/events` held the session file lock - `session_write_close()` early; (5) not changed: `brain:train-night --resume` (Brain Trainer, 3900+ rounds, copies 1.5M rows of `tbl_bot_weights` every round) runs all day on the same MySQL/CPU.
+
 ## Phase 216 - ERP Finish Monitoring Whole Shoe: Flexing/Aging/Hydrolysis/Washing/UV TR columns + ERP Agent boxes (2026-11-18)
 - **DB:** `tbl_dtr_unified_labrefs` got `etrf_{flexing,aging,hydrolysis,washing,uv}_app/_hist` (created by `EtrfAppNos::ensureColumns`); old whole/adult/prod/mat columns untouched. `EtrfAppNos::linkToLabRef` also calls `recordWholeShoeTest` (test lab ref -> tracker TestType / letters FX AG HY WS UV -> WH ref rows; previous TR to `_hist`).
 - **Whole Shoe tab (`labmon.js`, `LabMonitoringController::dataWholeShoe`):** columns match the ERP list (Flexing, Aging, Hydrolysis, Washing, UV Light), tick + Submit to ERP enabled; `erpSubmit(kind=wholeshoe)` builds one payload per WH lab ref (`erpSubmitWholeShoe`); `ErpAgentController` callback updates all rows of the lab ref.

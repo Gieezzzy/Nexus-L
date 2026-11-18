@@ -3849,16 +3849,33 @@ class DtrController extends BaseController
         $db = \Config\Database::connect();
         $q  = trim((string) ($this->request->getGet('q') ?? ''));
 
+        // one scan for the notes that mention a retest (a correlated NOT EXISTS ... LIKE '%..%' per failed row read millions of rows), then the filter in PHP
+        $retested = [];
+        foreach ($db->query("SELECT LabNotesComments FROM tbl_dtr_bonding_info WHERE LabNotesComments LIKE '%Retest of %'")->getResultArray() as $n) {
+            if (preg_match_all('/Retest of\s+([A-Za-z0-9._-]+)/i', (string) $n['LabNotesComments'], $mm)) {
+                foreach ($mm[1] as $ref) {
+                    $retested[strtoupper($ref)] = true;
+                }
+            }
+        }
+
         $builder = $db->table('tbl_dtr_bonding_info')
             ->select("LabRefNo, ModelStyle, Color, POLotNO, MTL, Result, ModeOfFailure, TestedDate, COALESCE(NULLIF(PossibleCause, ''), NULLIF(Remarks, ''), NULLIF(LabNotesComments, '')) AS Analysis", false)
-            ->like('Result', 'FAIL', 'after')
-            ->where("NOT EXISTS (SELECT 1 FROM tbl_dtr_bonding_info r WHERE r.LabNotesComments LIKE CONCAT('%Retest of ', tbl_dtr_bonding_info.LabRefNo, '%'))", null, false);
+            ->like('Result', 'FAIL', 'after');
 
         if ($q !== '') {
             $builder->groupStart()->like('LabRefNo', $q)->orLike('ModelStyle', $q)->orLike('Color', $q)->groupEnd();
         }
 
-        $rows = $builder->orderBy('BondingTestID', 'DESC')->limit(60)->get()->getResultArray();
+        $rows = [];
+        foreach ($builder->orderBy('BondingTestID', 'DESC')->limit(600)->get()->getResultArray() as $r) {
+            if (! isset($retested[strtoupper((string) $r['LabRefNo'])])) {
+                $rows[] = $r;
+                if (count($rows) >= 60) {
+                    break;
+                }
+            }
+        }
 
         return $this->response->setJSON(['ok' => true, 'rows' => $rows, 'csrf' => csrf_hash()]);
     }
