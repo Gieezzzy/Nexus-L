@@ -363,6 +363,7 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->post('materials/test-update', 'MaterialsController::testUpdate');
     $routes->get('materials/machines', 'MaterialsController::machines');
     $routes->get('materials/sheet', 'MaterialsController::sheet');
+    $routes->post('materials/to-report', 'MaterialsController::toReport');
     $routes->post('materials/sheet-calc', 'MaterialsController::sheetCalc');
     $routes->post('materials/sheet-save', 'MaterialsController::sheetSave');
 

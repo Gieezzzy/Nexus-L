@@ -2985,6 +2985,19 @@
     e.preventDefault();
     const ref = a.dataset.openMaterial;
     try {
+      // a material received in the Lab Tracker: its report is made (or completed) from the material info and the test sheet results, then opened
+      const pr = await apiFetch('materials/to-report', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name="X-CSRF-TOKEN"]')?.content || '' }, body: JSON.stringify({ lab: ref }) }).catch(() => null);
+      if (pr && pr.csrf) { const m = document.querySelector('meta[name="X-CSRF-TOKEN"]'); if (m) m.content = pr.csrf; }
+      if (pr && pr.ok && pr.slug && pr.id) {
+        switchTab('material'); markDtrNav('material');
+        const fs = $('#dtr-mat-form-slug'); if (fs) fs.value = pr.slug;
+        activeSlug = pr.slug;
+        await loadMaterialRecordList(pr.slug, pr.id);
+        await loadSingleMaterialRecord(pr.slug, pr.id);
+        showToast(pr.created ? 'Material Test Report made from the material and its test sheet.' : 'Material Test Report updated from the test sheet.');
+        return;
+      }
+      if (pr && pr.ok === false && /No report was made/.test(pr.message || '')) { showToast(pr.message, true); return; }
       // exact Lab Ref first; the bench log also writes a group of refs as one (DTP20261027F1-1-4, DTP20261022VH-VL-1-2): then the first report of that group
       let row = null;
       let q = ref;
@@ -5757,6 +5770,13 @@
   loadMaterialRecordList('fabric');
   const bondingReady = applyBondingFormLayout().then(() => { newBondingRecord(false); loadBondingRecordList(); });
   runStandardsExplorer();
+
+  // ?openlab=<Lab Ref No> (from Material Testing): same as clicking that Lab Ref in the Lab Tracker
+  (() => {
+    const lab = new URLSearchParams(location.search).get('openlab');
+    if (!lab) return;
+    setTimeout(() => { const a = document.createElement('a'); a.href = '#'; a.dataset.openMaterial = lab; document.body.appendChild(a); a.click(); a.remove(); }, 1200);
+  })();
 
   // deep link from the assistant: ?open=<slug>:<id>  (+ &preview=1 opens the print preview)
   (() => {

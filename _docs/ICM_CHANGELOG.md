@@ -4,6 +4,11 @@
 
 ---
 
+## Phase 228 - Material Testing <-> Lab Material Test Collection <-> Material Test Report (2026-11-19)
+- **Material Testing lists the whole Collection:** the received materials (Material Receive, one line per Lab Ref even if the tracker holds duplicates) plus the AppSheet bench-log groups (category mapped to the catalog, tests read only with machine, technician, PASS/FAIL). Group ids are strings (`L:<labref>` for the bench log).
+- **Lab Tracker > Lab Material Test Collection shows what is received** (`MaterialsController::collectionRows`, page 1 of `dtr/appsheet-archive?type=bench`): the material with its test list.
+- **Click a Lab Ref -> report:** `POST materials/to-report` (`MaterialReport::push`) creates or completes the Material Test Report with the material info, the material type form auto selected and the sheet results, then `dtr.js` opens it. Read-only users only open an existing report. Material Testing has an Open Material Test Report button (`dtr?openlab=`). Bench-log refs keep the existing lookup.
+
 ## Phase 227 - Material test sheet: samples, labels, units, number or words, classes (2026-11-18)
 - **Every test row now says what is entered:** the number of samples ("Sample 1..n", Dry / Wet, Length (L) / Width (W), Top / Back side, After hydrolysis, 6 fibres), the **Unit** column, and a one-line rule (number or words, what passes). A line "Samples: ..." in each test header. Read from all 10 Access forms (control by control) and their VBA.
 - **Word classes:** "No damage / No abrasion / No delamination / No Visible Wear / didn't hydrolyze / No Corrosion / No Blooming / Lamination tore" = PASS; "Slight ... / Partial ... / Up to 50 % wear / Lamination partially peeled" = TOLERABLE (blue); "Severe ... / hydrolyzed / 50-100 % wear / Lace broken / Blooming observed / peeled" = FAIL. (The Access code treated "Slight" as PASS for Martindale and crocking abrasion; here it is TOLERABLE as asked - only "No ..." passes.)

@@ -1150,6 +1150,9 @@ class DtrController extends BaseController
                 $where .= " AND (UPPER(COALESCE(m.result, '')) LIKE 'FAIL%' OR UPPER(COALESCE(m.result, '')) = 'REJECTED')";
             }
             $total = (int) $db->query("SELECT COUNT(*) AS cnt FROM tbl_dtr_material_bench_log m WHERE $where", $binds)->getRow()->cnt;
+            // what was received in the Lab Tracker (Material Receive) belongs to this collection too: listed first, with its tests (page 1, no date / result filter)
+            $received = ($page === 1 && ! $hasRg && $res === '') ? \App\Controllers\MaterialsController::collectionRows($q) : [];
+            $total   += count($received);
             $rows  = $db->query("
                 SELECT m.id, m.appsheet_material_id, m.lab_ref_no, m.test_code, m.material_category_name,
                        m.material_test_name, m.technician, m.machine_number, m.result, m.possible_cause, m.remarks,
@@ -1170,6 +1173,7 @@ class DtrController extends BaseController
                 ORDER BY COALESCE(DATE(m.finished_at), DATE(m.started_at), m.iqc_received_date, DATE(m.created_at), '1970-01-01') DESC, m.id DESC
                 LIMIT $limit OFFSET $offset
             ", $binds)->getResultArray();
+            $rows = array_merge($received, $rows);
         } elseif ($type === 'erp' && $db->tableExists('tbl_erp_test_orders')) {
             $b = $db->table('tbl_erp_test_orders');
             if ($q !== '') {

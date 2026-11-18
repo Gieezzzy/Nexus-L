@@ -107,7 +107,13 @@ class MaterialsController extends BaseController
         if ($to !== '') {
             $b->where('ReceivedDate <=', $to);
         }
-        $mothers = $b->get()->getResultArray();
+        $mothers = [];
+        foreach ($b->get()->getResultArray() as $m0) {      // one line per Lab Ref (the tracker may hold a Lab Ref on several rows)
+            if (! isset($mothers[$m0['LabRefNo']])) {
+                $mothers[$m0['LabRefNo']] = $m0;
+            }
+        }
+        $mothers = array_values($mothers);
         $kids    = [];
         if ($mothers) {
             foreach ($db->table('tbl_dtr_MaterialTrackerTests')->whereIn('MotherLabRefNo', array_column($mothers, 'LabRefNo'))->orderBy('SortNo')->orderBy('TestID')->get()->getResultArray() as $k) {
@@ -119,6 +125,7 @@ class MaterialsController extends BaseController
             }
         }
         $names  = array_column(\App\Libraries\MaterialCatalog::categories(), 'name', 'slug');
+        $mine   = array_flip(array_column($mothers, 'LabRefNo'));
         $counts = array_fill_keys(array_keys($names), 0);
         $rows   = [];
         foreach ($mothers as $m) {
@@ -148,7 +155,21 @@ class MaterialsController extends BaseController
             ];
         }
 
-        return $this->response->setJSON(['ok' => true, 'can_edit' => self::canEdit(), 'rows' => $rows, 'counts' => $counts, 'names' => $names, 'total' => count($mothers)]);
+        // the Lab Material Test Collection of the Lab Tracker (the bench log of the machines: tests with machine, technician, result) is part of this list too
+        foreach (self::benchGroups($q, $from, $to) as $g) {
+            if (isset($mine[$g['lab_ref']])) {
+                continue;
+            }
+            if ($g['category'] !== '') {
+                $counts[$g['category']] = ($counts[$g['category']] ?? 0) + 1;
+            }
+            if (($cat !== '' && $cat !== $g['category']) || ($st !== '' && $st !== $g['state'])) {
+                continue;
+            }
+            $rows[] = $g;
+        }
+
+        return $this->response->setJSON(['ok' => true, 'can_edit' => self::canEdit(), 'rows' => $rows, 'counts' => $counts, 'names' => $names, 'total' => count($mothers) + count(array_filter(self::benchGroups($q, $from, $to), static fn ($g) => ! isset($mine[$g['lab_ref']])))]);
     }
 
     /** POST /materials/test-update {id, status, result, tested_date, technician, remarks}: Admin, Supervisor, Manager, Material PIC, Materials, Technician */
@@ -318,5 +339,128 @@ class MaterialsController extends BaseController
         \App\Libraries\ActivityLog::record('materials', 'sheet-save', (string) $t['ChildLabRefNo'], $status . ($calc['result'] !== '' ? ' ' . $calc['result'] : ''));
 
         return $this->response->setJSON(['ok' => true, 'message' => 'Saved: ' . $status . ($calc['result'] !== '' ? ' - ' . $calc['result'] : '') . '.', 'status' => $status, 'result' => $calc['result'], 'calc' => $calc, 'csrf' => csrf_hash()]);
+    }
+
+    // ------------------------------------------------------------------------------------------------------------------ the Lab Material Test Collection (bench log)
+    /** category name of the bench log (AppSheet) -> category of the catalog */
+    private const BENCH_CAT = ['fabric' => 'fabric', 'leather' => 'leather', 'synthetic' => 'leather', 'foxing' => 'foxing-heel-logo', 'heel logo' => 'foxing-heel-logo', 'outsole' => 'rubber-outsole', 'rubber' => 'rubber-outsole',
+        'sockliner' => 'sockliner-foam', 'foam' => 'sockliner-foam', 'latex foam' => 'sockliner-foam', 'latex' => 'sockliner-foam', 'velcro' => 'velcro', 'nylon webbing' => 'webbing', 'webbing' => 'webbing',
+        'elastic gore' => 'elastic-gore', 'thread' => 'thread', 'shoelace' => 'shoelace', 'insole' => 'insole', 'carton' => 'box', 'box' => 'box', 'eyelet' => 'eyelet-grommet', 'grommet' => 'eyelet-grommet', 'label' => 'label'];
+
+    private static function resultOf(string $r): string
+    {
+        $u = strtoupper(trim($r));
+
+        return str_starts_with($u, 'PASS') ? 'PASS' : (str_starts_with($u, 'FAIL') || $u === 'REJECTED' ? 'FAIL' : (str_starts_with($u, 'TOL') ? 'TOLERABLE' : ''));
+    }
+
+    /**
+     * The Lab Refs of the bench log (tbl_dtr_material_bench_log) as groups like the received materials: the tests done on each one (machine, technician, result, details) as read-only children.
+     * @return list<array<string,mixed>>
+     */
+    private static function benchGroups(string $q, string $from, string $to): array
+    {
+        $db = \Config\Database::connect();
+        if (! $db->tableExists('tbl_dtr_material_bench_log')) {
+            return [];
+        }
+        $names = array_column(\App\Libraries\MaterialCatalog::categories(), 'name', 'slug');
+        $b = $db->table('tbl_dtr_material_bench_log m')->select("m.id, m.lab_ref_no, m.test_code, m.material_category_name, m.material_test_name, m.technician, m.machine_number, m.result, m.possible_cause, m.remarks, m.iqc_received_date,
+            LEFT(COALESCE(NULLIF(m.finished_at, ''), NULLIF(m.started_at, ''), NULLIF(m.iqc_received_date, ''), NULLIF(m.created_at, ''), ''), 10) AS test_date, COALESCE(m.finished_at, '') AS finished_at", false)
+            ->where("COALESCE(m.lab_ref_no, '') <>", '')->orderBy("COALESCE(DATE(m.finished_at), DATE(m.started_at), m.iqc_received_date, DATE(m.created_at), '1970-01-01')", 'DESC', false)->orderBy('m.id', 'DESC')->limit(2500);
+        if ($q !== '') {
+            $b->groupStart()->like('m.lab_ref_no', $q)->orLike('m.material_test_name', $q)->orLike('m.material_category_name', $q)->orLike('m.technician', $q)->orLike('m.machine_number', $q)->groupEnd();
+        }
+        $groups = [];
+        foreach ($b->get()->getResultArray() as $r) {
+            $ref = (string) $r['lab_ref_no'];
+            $groups[$ref]['rows'][] = $r;
+        }
+        $out = [];
+        foreach ($groups as $ref => $g) {
+            $rows  = $g['rows'];
+            $dates = array_filter(array_column($rows, 'test_date'));
+            if (($from !== '' && (! $dates || max($dates) < $from)) || ($to !== '' && (! $dates || min($dates) > $to))) {
+                continue;
+            }
+            $catName = trim((string) $rows[0]['material_category_name']);
+            $slug    = self::BENCH_CAT[strtolower($catName)] ?? '';
+            $tests   = [];
+            $done    = 0;
+            $fail    = 0;
+            $tol     = 0;
+            foreach (array_reverse($rows) as $r) {
+                $res = self::resultOf((string) $r['result']);
+                $done += $res !== '' ? 1 : 0;
+                $fail += $res === 'FAIL' ? 1 : 0;
+                $tol  += $res === 'TOLERABLE' ? 1 : 0;
+                $tests[] = ['id' => 'b' . $r['id'], 'child' => (string) $r['test_code'], 'code' => (string) $r['test_code'], 'name' => (string) $r['material_test_name'], 'method' => '', 'unit' => '', 'status' => $res !== '' ? 'Completed' : 'Pending',
+                    'result' => $res, 'tested' => (string) $r['test_date'], 'tech' => (string) $r['technician'], 'remarks' => trim(implode(' · ', array_filter([(string) $r['machine_number'] !== '' ? 'Machine ' . $r['machine_number'] : '', (string) $r['possible_cause'], (string) $r['remarks']])))];
+            }
+            $total = count($tests);
+            $out[] = ['id' => 'L:' . $ref, 'source' => 'bench', 'lab_ref' => $ref, 'received' => (string) ($rows[0]['iqc_received_date'] ?? ''), 'arrived' => '', 'code' => '', 'name' => $catName . ' · ' . $total . ' test' . ($total === 1 ? '' : 's'),
+                'type' => $catName, 'erp_type' => $catName, 'category' => $slug, 'category_name' => $names[$slug] ?? $catName, 'supplier' => '', 'style' => '', 'colorway' => '', 'mtl' => '', 'prod' => '', 'qty' => '', 'qcqty' => '', 'unit' => '',
+                'tests' => $tests, 'done' => $done, 'total' => $total, 'fail' => $fail, 'tol' => $tol, 'state' => $done === $total ? 'Completed' : ($done > 0 ? 'Ongoing' : 'Pending')];
+        }
+
+        return $out;
+    }
+
+    /** the received materials in the shape of the Collection's rows (Lab Tracker > Lab Material Test Collection), so what is received there shows there too */
+    public static function collectionRows(string $q = ''): array
+    {
+        \App\Libraries\MaterialCatalog::ensureTables();
+        $db    = \Config\Database::connect();
+        $names = array_column(\App\Libraries\MaterialCatalog::categories(), 'name', 'slug');
+        $b     = $db->table('tbl_dtr_MaterialTracker')->orderBy('ReceivedDate', 'DESC')->orderBy('TrackerID', 'DESC')->limit(300);
+        if ($q !== '') {
+            $b->groupStart()->like('LabRefNo', $q)->orLike('MaterialName', $q)->orLike('MaterialCode', $q)->orLike('Supplier', $q)->groupEnd();
+        }
+        $seen = [];
+        $out  = [];
+        foreach ($b->get()->getResultArray() as $m) {
+            if (isset($seen[$m['LabRefNo']])) {
+                continue;
+            }
+            $seen[$m['LabRefNo']] = true;
+            $spec = (string) ($db->query('SELECT MaterialType FROM tbl_dtr_material_type_status WHERE MaterialCode = ? LIMIT 1', [$m['MaterialCode']])->getRow('MaterialType') ?? '');
+            $res  = \App\Libraries\MaterialCatalog::resolve($spec !== '' ? $spec : (string) $m['MaterialType']) ?? \App\Libraries\MaterialCatalog::resolve((string) $m['MaterialType']);
+            $cat  = $names[$res['category'] ?? ''] ?? (string) $m['MaterialType'];
+            $kids = $db->table('tbl_dtr_MaterialTrackerTests')->where('MotherLabRefNo', $m['LabRefNo'])->orderBy('SortNo')->orderBy('TestID')->get()->getResultArray();
+            $base = ['appsheet_material_id' => '', 'lab_ref_no' => $m['LabRefNo'], 'material_category_name' => $cat, 'machine_number' => '', 'possible_cause' => '', 'detail_count' => 0, 'started_at_fmt' => '', 'finished_at' => ''];
+            if (! $kids) {
+                $out[] = $base + ['id' => 'm' . $m['TrackerID'], 'test_code' => '', 'material_test_name' => (string) $m['MaterialName'], 'technician' => (string) $m['EncodedBy'], 'result' => 'Pending', 'remarks' => 'Received ' . substr((string) $m['ReceivedDate'], 0, 10), 'test_date' => substr((string) $m['ReceivedDate'], 0, 10), 'details_summary' => 'No test list for this material type'];
+                continue;
+            }
+            foreach ($kids as $k) {
+                $out[] = $base + ['id' => 'k' . $k['TestID'], 'test_code' => (string) $k['TestCode'], 'material_test_name' => (string) $k['TestType'], 'technician' => (string) ($k['Technician'] ?: $m['EncodedBy']),
+                    'result' => (string) (($k['Result'] ?? '') ?: ($k['Status'] ?: 'Pending')), 'remarks' => (string) ($k['Remarks'] ?? ''), 'test_date' => substr((string) ($k['TestedDate'] ?: $m['ReceivedDate']), 0, 10),
+                    'details_summary' => 'Material Testing: ' . $m['MaterialName'], 'detail_count' => 0];
+            }
+        }
+
+        return $out;
+    }
+
+    /** POST /materials/to-report {lab}: the Material Test Report of a received material (created / completed from the material and its test sheet); returns the form and record to open */
+    public function toReport(): ResponseInterface
+    {
+        $p   = $this->request->getJSON(true) ?? [];
+        $lab = trim((string) ($p['lab'] ?? ''));
+        $db  = \Config\Database::connect();
+        $u   = service('auth')->user();
+        if ($lab === '' || ! $db->table('tbl_dtr_MaterialTracker')->where('LabRefNo', $lab)->countAllResults()) {
+            return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'Not a received material.', 'csrf' => csrf_hash()]);
+        }
+        if (! \App\Controllers\DtrController::canEditMaterial()) {            // others read the report that exists
+            $b   = \App\Libraries\MaterialReport::build($lab);
+            $row = $b ? $db->table($b['table'])->select('ID')->where('LabRefNo', $lab)->orderBy('ID', 'DESC')->get(1)->getRowArray() : null;
+
+            return $row ? $this->response->setJSON(['ok' => true, 'slug' => $b['slug'], 'id' => (int) $row['ID'], 'created' => false, 'csrf' => csrf_hash()])
+                : $this->response->setStatusCode(403)->setJSON(['ok' => false, 'message' => 'No report was made for this material yet. An Admin or a Material PIC makes it from the Material Testing sheet.', 'csrf' => csrf_hash()]);
+        }
+        $r = \App\Libraries\MaterialReport::push($lab, (string) ($u['name'] ?? $u['username'] ?? ''));
+
+        return $this->response->setStatusCode($r['ok'] ? 200 : 422)->setJSON($r + ['csrf' => csrf_hash()]);
     }
 }
