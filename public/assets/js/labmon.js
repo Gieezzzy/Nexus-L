@@ -12,10 +12,10 @@
   const hashKind = /kind=wholeshoe/.test(location.hash) ? 'wholeshoe' : (/kind=bonding/.test(location.hash) ? 'bonding' : '');
   const S = { kind: hashKind || (savedKind === 'wholeshoe' ? 'wholeshoe' : 'bonding'), date: '', side: '', status: '', q: '', rows: [], timer: 0, select: false, sel: new Set() };
   const isWS = () => S.kind === 'wholeshoe';
-  const COLS = () => (isWS() ? 12 : 11);
+  const COLS = () => (isWS() ? 14 : 11);
   const HEAD = {
     bonding: '<tr><th class="lm-sel"><input type="checkbox" id="lm-pick-all" aria-label="Select all"></th><th>Tested date</th><th>Production date</th><th>Line</th><th>Lab reference</th><th>VSP code</th><th>Bonding TR no.</th><th>Pull test TR no.</th><th>InterLink status</th><th>Result</th><th>ERP status</th></tr>',
-    wholeshoe: '<tr><th>Tested date</th><th>Production date</th><th>Line</th><th>Lab reference</th><th>VSP code</th><th>Whole Shoe TR no.</th><th>Product TR no.</th><th>Product (Adult) TR no.</th><th>Material TR no.</th><th>InterLink status</th><th>Result</th><th>ERP status</th></tr>',
+    wholeshoe: '<tr><th class="lm-sel"><input type="checkbox" id="lm-pick-all" aria-label="Select all"></th><th>Tested date</th><th>Production date</th><th>Line</th><th>Lab reference</th><th>VSP code</th><th>Flexing Test</th><th>Aging Test</th><th>Hydrolysis Test</th><th>Washing Test</th><th>UV Light Test</th><th>InterLink status</th><th>Result</th><th>ERP status</th></tr>',
   };
 
   const get = async (url) => {
@@ -39,16 +39,19 @@
 
   const rowHtmlWS = (r) => {
     const erpSel = ['OK', 'Submitted', 'Ongoing', 'Pending', ''].map((v) => `<option value="${v}" ${v === r.erp_raw ? 'selected' : ''}>${v === '' ? 'Not submitted' : v === 'OK' ? 'ERP OK' : v}</option>`).join('');
+    const can = r.erp !== 'ok';   // ERP OK / Submitted lines are done: nothing to send again
     return `<tr class="lm-click" data-id="${r.id}" data-lab="${esc(r.lab_ref)}" tabindex="0" aria-label="Open ${esc(r.lab_ref)}">
+      <td class="lm-sel"><input type="checkbox" data-pick="${r.id}" ${S.sel.has(r.id) ? 'checked' : ''} ${can ? '' : 'disabled'} aria-label="Select ${esc(r.lab_ref)} for ERP"></td>
       <td>${esc(r.tested ? fmtDay(r.tested) : '')}</td>
       <td><b>${esc(fmtDay(r.day))}</b></td>
       <td>${esc(r.line)}</td>
       <td class="lm-lab">${esc(r.lab_ref)}${r.style ? `<small class="lm-style">${esc(r.style)}</small>` : ''}</td>
       <td class="lm-num">${esc(r.vsp) || '<span class="lm-none">-</span>'}</td>
-      <td>${apps(r.whole, r.whole_hist)}</td>
-      <td>${apps(r.prod, r.prod_hist)}</td>
-      <td>${apps(r.adult, r.adult_hist)}</td>
-      <td>${apps(r.mat, r.mat_hist)}</td>
+      <td>${apps(r.flexing, r.flexing_hist)}</td>
+      <td>${apps(r.aging, r.aging_hist)}</td>
+      <td>${apps(r.hydrolysis, r.hydrolysis_hist)}</td>
+      <td>${apps(r.washing, r.washing_hist)}</td>
+      <td>${apps(r.uv, r.uv_hist)}</td>
       <td class="s ${r.il}">${IL[r.il]}</td>
       <td class="lm-res ${r.level}">${r.result ? `<b>${esc(r.result)}</b>` : '<span class="lm-none">-</span>'}</td>
       <td class="s ${r.erp}"><select data-id="${r.id}" aria-label="ERP status of ${esc(r.lab_ref)}">${erpSel}</select></td>
@@ -91,7 +94,6 @@
   const syncSelectUi = () => {
     $('#lm-table').classList.toggle('lm-selmode', S.select);
     const btn = $('#lm-submit'); const go = $('#lm-submit-go'); const cancel = $('#lm-submit-cancel');
-    if (isWS()) { btn.hidden = true; go.hidden = true; cancel.hidden = true; return; }   // the ERP PC enters bonding reports only: Whole Shoe is monitored here
     btn.hidden = S.select; go.hidden = !S.select; cancel.hidden = !S.select;
     go.textContent = S.sel.size ? `Submit ${S.sel.size} to ERP` : 'Submit to ERP';
     go.disabled = S.sel.size === 0;
@@ -105,7 +107,7 @@
     const r = await fetch(base + 'lab-monitoring/erp-submit', {
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf ? csrf.content : '' },
-      body: JSON.stringify({ ids, mode }),
+      body: JSON.stringify({ ids, mode, kind: S.kind }),
     });
     const j = await r.json(); if (csrf && j.csrf) csrf.content = j.csrf;
     if (!r.ok || !j.ok) throw new Error(j.error || 'Not sent');
@@ -133,7 +135,7 @@
     dlgRow = r; lastFocus = document.activeElement;
     $('#lm-dlg-title').textContent = r.lab_ref;
     $('#lm-dlg-meta').innerHTML = `<span class="lm-badge ${r.il}">InterLink: ${IL[r.il]}</span> <span class="lm-badge ${r.erp}">ERP: ${ERPL[r.erp]}</span>`;
-    $('#lm-dlg-send').hidden = isWS();
+    $('#lm-dlg-send').hidden = false;
     $('#lm-dlg-send').disabled = r.erp === 'ok';
     $('#lm-dlg-send').textContent = r.erp === 'ok' ? 'Already in ERP' : 'Submit to ERP';
     const ttl = root.querySelector('.lm-dlg-ttl small'); if (ttl) ttl.textContent = isWS() ? 'Whole Shoe report - read only' : 'Shoe Bonding (U60) - read only';
@@ -297,7 +299,7 @@
     $('#lm-thead').innerHTML = HEAD[S.kind];
     root.querySelectorAll('.lm-tab').forEach((b) => { const on = b.dataset.kind === S.kind; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });
     const sub = $('#lm-sub');
-    if (sub) sub.textContent = isWS() ? 'Whole shoe lab references per production day: the TR numbers of the Whole Shoe, Product, Product (Adult) and Material eTRFs, and the ERP status.' : 'Bonding lab references per production day: InterLink numbers and ERP status.';
+    if (sub) sub.textContent = isWS() ? 'Whole shoe lab references per production day: the TR numbers of the whole shoe tests (Flexing, Aging, Hydrolysis, Washing, UV Light) as the ERP keeps them, and the ERP status.' : 'Bonding lab references per production day: InterLink numbers and ERP status.';
     const pick = $('#lm-pick-all'); if (pick) pick.addEventListener('change', (e) => { eligible().forEach((r) => { if (e.target.checked) S.sel.add(r.id); else S.sel.delete(r.id); }); renderTable(); syncSelectUi(); });
   };
   root.querySelector('.lm-tabs').addEventListener('click', (e) => {

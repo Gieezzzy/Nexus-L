@@ -4,6 +4,12 @@
 
 ---
 
+## Phase 216 - ERP Finish Monitoring Whole Shoe: Flexing/Aging/Hydrolysis/Washing/UV TR columns + ERP Agent boxes (2026-11-18)
+- **DB:** `tbl_dtr_unified_labrefs` got `etrf_{flexing,aging,hydrolysis,washing,uv}_app/_hist` (created by `EtrfAppNos::ensureColumns`); old whole/adult/prod/mat columns untouched. `EtrfAppNos::linkToLabRef` also calls `recordWholeShoeTest` (test lab ref -> tracker TestType / letters FX AG HY WS UV -> WH ref rows; previous TR to `_hist`).
+- **Whole Shoe tab (`labmon.js`, `LabMonitoringController::dataWholeShoe`):** columns match the ERP list (Flexing, Aging, Hydrolysis, Washing, UV Light), tick + Submit to ERP enabled; `erpSubmit(kind=wholeshoe)` builds one payload per WH lab ref (`erpSubmitWholeShoe`); `ErpAgentController` callback updates all rows of the lab ref.
+- **NexusErpAgent:** `ErpPayload` reads `kind` + 5 `*_app`, boxes flexing/aging (x509, y146/174) hydrolysis/washing/uv (x695, y90/118/146), new `--dump-hidden`. Needs the new build copied to the ERP PC.
+- Verified: seeded WH row shown on the tab, dry-run payload, agent rehearsal OK (nothing saved; MTL mismatch correctly refused). Seed data removed. Not verified: a real save in the ERP; old `tbl_erp_test_orders` TRs are not back-filled.
+
 ## Phase 211 - VF Test Monitoring: tree of e-mail batches, tick rows, reply e-mail with the eTRF PDFs (2026-11-12)
 - **VF Test Request page:** Incoming Requested Items grouped by e-mail (tree), every request shown with its processing status (waiting / sending / submitted / already in InterLink / history / completed) and a Show filter; Copy as New dialog got a past-Application picker (`GET interlink/vf-test-request/past-apps`). The duplicate check ignores `HISTORY` rows.
 - **VF Test Monitoring (`labmonitor/vf_requests`):** "Email Request Batches & Outgoing PDF Notifications" is a tree (batch = parent, requests = children) with a check box per request and a select-all in the header row. **Send Batch PDF Email** opens a dialog (To / CC / Subject, reply tick box, attachment list, message preview). `POST lab-monitoring/vf-requests/email-preview` and `send-email` take `request_ids`.

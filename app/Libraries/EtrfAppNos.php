@@ -20,6 +20,15 @@ class EtrfAppNos
         'VF eTRF - Product (Adult)' => 'adult',
     ];
 
+    /** The whole shoe tests, one TR no. each in the ERP (Finished Product Test Report: Flexing, Aging, Hydrolysis, Washing, UV Light Test): column key => the tracker's test types */
+    public const TEST_KEYS = [
+        'flexing'   => ['FLEXING'],
+        'aging'     => ['HEAT AGING', 'AGING'],
+        'hydrolysis' => ['HYDROLYSIS'],
+        'washing'   => ['WASHING'],
+        'uv'        => ['UV', 'UV LIGHT'],
+    ];
+
     private static bool $ready = false;
 
     private static function db()
@@ -61,7 +70,7 @@ class EtrfAppNos
         }
         $have = array_column($db->query('SHOW COLUMNS FROM tbl_dtr_unified_labrefs')->getResultArray(), 'Field');
         $add  = [];
-        foreach (array_unique(self::KEYS) as $k) {
+        foreach (array_merge(array_unique(self::KEYS), array_keys(self::TEST_KEYS)) as $k) {
             if (! in_array("etrf_{$k}_app", $have, true)) {
                 $add[] = "ADD COLUMN `etrf_{$k}_app` VARCHAR(60) NOT NULL DEFAULT ''";
             }
@@ -120,6 +129,7 @@ class EtrfAppNos
         $db = self::db();
         $db->table('tbl_dtr_unified_labrefs')->where('lab_ref_no', $labRef)->update(['tr_no' => $appNo]);
         self::record($labRef, $type, $appNo);
+        self::recordWholeShoeTest($labRef, $appNo);
         $n = 0;
         foreach ($db->table('tbl_dtr_unified_labrefs')->where('lab_ref_no', $labRef)->get()->getResultArray() as $ur) {
             $n++;
@@ -136,6 +146,58 @@ class EtrfAppNos
         }
 
         return $n;
+    }
+
+    /** the test key (flexing, aging, hydrolysis, washing, uv) of a whole shoe TEST Lab Ref (DTP20261116FXA3-L-2): from its tracker row, else from the letters of the Lab Ref */
+    public static function testKeyOf(string $labRef): ?string
+    {
+        $db  = self::db();
+        $row = $db->table('tbl_dtr_wholeshoetracker')->select('TestType')->where('LabRefNo', $labRef)->orderBy('TrackerID', 'DESC')->get(1)->getRowArray();
+        $tt  = strtoupper(trim((string) ($row['TestType'] ?? '')));
+        if ($tt === '' && preg_match('/^DTP\d{8}(FX|AG|HY|WS|WG|UV)[A-Z]\d+/i', $labRef, $m)) {
+            $tt = ['FX' => 'FLEXING', 'AG' => 'HEAT AGING', 'HY' => 'HYDROLYSIS', 'WS' => 'WASHING', 'WG' => 'WASHING', 'UV' => 'UV'][strtoupper($m[1])];
+        }
+        foreach (self::TEST_KEYS as $k => $names) {
+            if (in_array($tt, $names, true)) {
+                return $k;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * An Application No. (TR) of a whole shoe TEST goes to its whole shoe's Lab Ref (DTP20261116WHA3-L, the WholeshoeLabRefNo of the test) in the column of that test
+     * (etrf_flexing_app ...), the earlier one to _hist, so the ERP Finish Monitoring (Whole Shoe tab) and the ERP agent have the five TR numbers on one line.
+     */
+    public static function recordWholeShoeTest(string $labRef, string $appNo): bool
+    {
+        $k = self::testKeyOf($labRef);
+        if ($k === null || $appNo === '') {
+            return false;
+        }
+        self::ensureColumns();
+        $db   = self::db();
+        $test = $db->table('tbl_dtr_wholeshoetracker')->select('WholeshoeLabRefNo')->where('LabRefNo', $labRef)->orderBy('TrackerID', 'DESC')->get(1)->getRowArray();
+        $wh   = trim((string) ($test['WholeshoeLabRefNo'] ?? ''));
+        if ($wh === '') {
+            return false;
+        }
+        $rows = $db->table('tbl_dtr_unified_labrefs')->select("id, etrf_{$k}_app AS cur, etrf_{$k}_hist AS hist")->where('lab_ref_no', $wh)->get()->getResultArray();
+        foreach ($rows as $r) {
+            $cur = trim((string) $r['cur']);
+            if ($cur === $appNo) {
+                continue;
+            }
+            $hist = array_values(array_filter(array_map('trim', explode(';', (string) $r['hist'])), 'strlen'));
+            if ($cur !== '' && ! in_array($cur, $hist, true)) {
+                $hist[] = $cur;
+            }
+            $hist = array_values(array_diff($hist, [$appNo]));
+            $db->table('tbl_dtr_unified_labrefs')->where('id', $r['id'])->update(["etrf_{$k}_app" => $appNo, "etrf_{$k}_hist" => implode(';', $hist)]);
+        }
+
+        return $rows !== [];
     }
 
     /** fills the columns from the submissions already saved in tbl_interlink_etrf_requests (oldest first, so the latest ends as current) */

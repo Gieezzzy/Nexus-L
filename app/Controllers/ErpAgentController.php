@@ -42,7 +42,12 @@ class ErpAgentController extends BaseController
         // the ERP status of the report in the monitoring view
         if ($row['labref_id']) {
             $erp = $status === 'submitted' ? 'Submitted' : ($status === 'sending' ? 'Ongoing' : '');
-            $db->table('tbl_dtr_unified_labrefs')->where('id', (int) $row['labref_id'])->update(['erp_status' => $erp]);
+            $one = $db->table('tbl_dtr_unified_labrefs')->select('lab_ref_no, form_slug')->where('id', (int) $row['labref_id'])->get()->getRowArray();
+            if ($one && $one['form_slug'] === 'wholeshoe') {      // one line per whole shoe lab ref in the monitoring view: every row of it gets the status
+                $db->table('tbl_dtr_unified_labrefs')->where('form_slug', 'wholeshoe')->where('lab_ref_no', $one['lab_ref_no'])->update(['erp_status' => $erp]);
+            } else {
+                $db->table('tbl_dtr_unified_labrefs')->where('id', (int) $row['labref_id'])->update(['erp_status' => $erp]);
+            }
         }
 
         return $this->response->setJSON(['ok' => true]);

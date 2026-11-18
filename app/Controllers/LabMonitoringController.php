@@ -147,7 +147,7 @@ class LabMonitoringController extends BaseController
 
     /**
      * The Whole Shoe tab: the same view as the Bonding one for the whole shoe lab references (tbl_dtr_unified_labrefs, form_slug 'wholeshoe'), one line per lab ref,
-     * with the TR numbers of the other eTRF types kept in the same table: Whole Shoe, Product, Product (Adult) and Material (etrf_<key>_app, the earlier ones in _hist).
+     * with the TR numbers of the whole shoe tests kept in the same table (the ERP's own boxes): Flexing, Aging, Hydrolysis, Washing and UV Light (etrf_<key>_app, the earlier ones in _hist).
      */
     private function dataWholeShoe()
     {
@@ -162,21 +162,26 @@ class LabMonitoringController extends BaseController
         }
         // one line per lab ref (the intake keeps one row per shoe, so a lab ref can appear on several rows): the first row's id, the TR numbers of whichever row holds them
         $rows = $db->query("SELECT MIN(u.id) id, u.lab_ref_no,
-                MAX(u.etrf_whole_app) whole_app, MAX(u.etrf_whole_hist) whole_hist, MAX(u.etrf_prod_app) prod_app, MAX(u.etrf_prod_hist) prod_hist,
-                MAX(u.etrf_adult_app) adult_app, MAX(u.etrf_adult_hist) adult_hist, MAX(u.etrf_mat_app) mat_app, MAX(u.etrf_mat_hist) mat_hist,
+                MAX(u.etrf_flexing_app) flexing_app, MAX(u.etrf_flexing_hist) flexing_hist, MAX(u.etrf_aging_app) aging_app, MAX(u.etrf_aging_hist) aging_hist,
+                MAX(u.etrf_hydrolysis_app) hydrolysis_app, MAX(u.etrf_hydrolysis_hist) hydrolysis_hist, MAX(u.etrf_washing_app) washing_app, MAX(u.etrf_washing_hist) washing_hist,
+                MAX(u.etrf_uv_app) uv_app, MAX(u.etrf_uv_hist) uv_hist,
                 MAX(NULLIF(u.erp_status, '')) erp_status, MAX(NULLIF(u.interlink_flag, '')) interlink_flag, MAX(NULLIF(u.po_lot_no, '')) po_lot_no, MAX(NULLIF(u.model_style, '')) model_style,
                 MAX(NULLIF(u.overall_result, '')) overall_result, MAX(NULLIF(u.tested_date, '')) tested_date, MAX(NULLIF(u.received_date, '')) received_date,
                 DATE_FORMAT({$day}, '%Y-%m-%d') pday
             {$from} AND DATE_FORMAT({$day}, '%Y-%m') = ? GROUP BY u.lab_ref_no ORDER BY pday, u.lab_ref_no", [$date])->getResultArray();
 
+        // the eTRF requests of the TESTS of each whole shoe (their own lab refs, linked by WholeshoeLabRefNo): ok / pending / bad per whole shoe and test
         $labs = array_column($rows, 'lab_ref_no');
         $reqs = [];
         if ($labs) {
-            foreach ($db->table('tbl_interlink_etrf_requests')->select('lab_ref_no, etrf_type, status')->whereIn('lab_ref_no', $labs)->orderBy('id')->get()->getResultArray() as $q) {
-                $k = \App\Libraries\EtrfAppNos::keyFor((string) $q['etrf_type']);
-                if (in_array($k, ['whole', 'prod', 'adult', 'mat'], true)) {
-                    $reqs[$q['lab_ref_no']][$k] = $this->reqState((string) $q['status']);
-                }
+            $tests = [];
+            foreach ($db->table('tbl_dtr_wholeshoetracker')->select('LabRefNo, WholeshoeLabRefNo')->whereIn('WholeshoeLabRefNo', $labs)->get()->getResultArray() as $t) {
+                $tests[$t['LabRefNo']] = $t['WholeshoeLabRefNo'];
+            }
+            $names = array_merge($labs, array_keys($tests));
+            foreach ($db->table('tbl_interlink_etrf_requests')->select('lab_ref_no, status')->whereIn('lab_ref_no', $names)->orderBy('id')->get()->getResultArray() as $q) {
+                $wh = $tests[$q['lab_ref_no']] ?? $q['lab_ref_no'];
+                $reqs[$wh][$q['lab_ref_no']] = $this->reqState((string) $q['status']);   // the later request of a test wins
             }
         }
         $ymd = static function (string $v): string {
@@ -199,7 +204,7 @@ class LabMonitoringController extends BaseController
             $line = $m[1] ?? '';
             $sd   = strtoupper($m[2] ?? '');
             $st   = array_values($reqs[$lab] ?? []);
-            $hasTr = trim((string) $r['whole_app'] . $r['prod_app'] . $r['adult_app'] . $r['mat_app']) !== '';
+            $hasTr = trim((string) $r['flexing_app'] . $r['aging_app'] . $r['hydrolysis_app'] . $r['washing_app'] . $r['uv_app']) !== '';
             if (in_array('bad', $st, true)) {
                 $il = 'bad';
             } elseif (in_array('pending', $st, true)) {
@@ -216,8 +221,9 @@ class LabMonitoringController extends BaseController
             $row = [
                 'id' => (int) $r['id'], 'lab_ref' => $lab, 'line' => $line, 'side' => $sd, 'vsp' => trim((string) $r['po_lot_no']), 'shutdown' => false, 'style' => trim((string) $r['model_style']),
                 'tested' => $ymd((string) $r['tested_date']), 'day' => (string) $r['pday'],
-                'whole' => trim((string) $r['whole_app']), 'whole_hist' => trim((string) $r['whole_hist']), 'prod' => trim((string) $r['prod_app']), 'prod_hist' => trim((string) $r['prod_hist']),
-                'adult' => trim((string) $r['adult_app']), 'adult_hist' => trim((string) $r['adult_hist']), 'mat' => trim((string) $r['mat_app']), 'mat_hist' => trim((string) $r['mat_hist']),
+                'flexing' => trim((string) $r['flexing_app']), 'flexing_hist' => trim((string) $r['flexing_hist']), 'aging' => trim((string) $r['aging_app']), 'aging_hist' => trim((string) $r['aging_hist']),
+                'hydrolysis' => trim((string) $r['hydrolysis_app']), 'hydrolysis_hist' => trim((string) $r['hydrolysis_hist']), 'washing' => trim((string) $r['washing_app']), 'washing_hist' => trim((string) $r['washing_hist']),
+                'uv' => trim((string) $r['uv_app']), 'uv_hist' => trim((string) $r['uv_hist']),
                 'il' => $il, 'erp' => $erp, 'erp_raw' => $erpRaw, 'result' => $res, 'level' => $level, 'notes' => '', 'cause' => '',
             ];
             $sum['total']++;
@@ -229,7 +235,7 @@ class LabMonitoringController extends BaseController
             if ($stat !== '' && $stat !== $il && $stat !== 'erp_' . $erp && $stat !== 'il_' . $il) {
                 continue;
             }
-            if ($q !== '' && ! str_contains(strtolower(implode(' ', [$lab, $line, $row['vsp'], $row['style'], $row['whole'], $row['prod'], $row['adult'], $row['mat'], $row['result']])), $q)) {
+            if ($q !== '' && ! str_contains(strtolower(implode(' ', [$lab, $line, $row['vsp'], $row['style'], $row['flexing'], $row['aging'], $row['hydrolysis'], $row['washing'], $row['uv'], $row['result']])), $q)) {
                 continue;
             }
             $out[] = $row;
@@ -273,6 +279,9 @@ class LabMonitoringController extends BaseController
         }
         ErpMonitor::ensureColumns();
         ErpMonitor::ensureLogTable();
+        if ((string) ($p['kind'] ?? '') === 'wholeshoe') {
+            return $this->erpSubmitWholeShoe($ids, ! empty($p['dry']));
+        }
         $db   = $this->db();
         $me   = (array) service('auth')->user();
         $mode = count($ids) > 1 ? 'bulk' : 'single';
@@ -332,6 +341,79 @@ class LabMonitoringController extends BaseController
             $subId = (int) $db->insertID();
             $db->table('tbl_dtr_unified_labrefs')->where('id', $r['id'])->update(['erp_status' => 'Pending']);
             $toSend[] = ['id' => $subId, 'lab_ref_no' => (string) $r['lab_ref_no'], 'by' => (string) ($me['name'] ?? $me['username'] ?? ''), 'payload' => $payload];
+            $queued++;
+        }
+        $dispatch = $toSend ? $this->dispatch($toSend) : null;
+
+        return $this->json(['ok' => true, 'queued' => $queued, 'skipped' => $skipped, 'invalid' => $invalid, 'batch' => $batch, 'dispatch' => $dispatch] + ($dry ? ['preview' => $preview] : []));
+    }
+
+    /**
+     * Whole Shoe lines to the ERP agent: one report per whole shoe lab ref (DTP20261116WHA3-L) with the TR numbers of its tests (Flexing, Aging, Hydrolysis, Washing, UV Light);
+     * the agent fills those boxes of the Finished Product Test Report (no Bonding / Pull TR). A line needs at least one test TR.
+     */
+    private function erpSubmitWholeShoe(array $ids, bool $dry)
+    {
+        $db   = $this->db();
+        $me   = (array) service('auth')->user();
+        $mode = count($ids) > 1 ? 'bulk' : 'single';
+        $batch = $mode === 'bulk' ? 'B' . date('ymdHis') . substr(bin2hex(random_bytes(2)), 0, 3) : '';
+        $now  = date('Y-m-d H:i:s');
+        $in   = implode(',', array_map('intval', $ids));
+        $labs = array_column($db->query("SELECT DISTINCT lab_ref_no FROM tbl_dtr_unified_labrefs WHERE form_slug = 'wholeshoe' AND id IN ({$in})")->getResultArray(), 'lab_ref_no');
+        $queued = $skipped = 0;
+        $invalid = $preview = $toSend = [];
+        foreach ($labs as $lab) {
+            $rows = $db->query("SELECT MIN(u.id) id, MAX(NULLIF(u.erp_status, '')) erp_status, MAX(NULLIF(u.po_lot_no, '')) po_lot_no, MAX(NULLIF(u.overall_result, '')) overall_result, MAX(NULLIF(u.tested_date, '')) tested_date,
+                    MAX(u.etrf_flexing_app) flexing, MAX(u.etrf_aging_app) aging, MAX(u.etrf_hydrolysis_app) hydrolysis, MAX(u.etrf_washing_app) washing, MAX(u.etrf_uv_app) uv
+                FROM tbl_dtr_unified_labrefs u WHERE u.form_slug = 'wholeshoe' AND u.lab_ref_no = ?", [$lab])->getRowArray();
+            $busy = $db->table('tbl_erp_submissions')->where('lab_ref_no', $lab)->whereIn('status', ['queued', 'sending'])->countAllResults() > 0;
+            if (in_array(strtolower((string) $rows['erp_status']), ['ok', 'submitted'], true) || $busy) {
+                $skipped++;
+                continue;
+            }
+            preg_match('/^DTP(\d{4})(\d{2})(\d{2})(?:WH|SH|FA)([A-Z]\d+)-([RL])\b/i', $lab, $m);
+            $done = $db->table('tbl_dtr_wholeshoetracker')->selectMax('TimeCompleted')->where('WholeshoeLabRefNo', $lab)->get()->getRowArray();
+            $vsp  = trim((string) $rows['po_lot_no']);
+            $payload = [
+                'kind'            => 'wholeshoe',
+                'lab_ref_no'      => $lab,
+                'vsp_code'        => $vsp,
+                'mtl'             => $this->mtlOf($db, $vsp),
+                'flexing_app'     => trim((string) $rows['flexing']), 'aging_app' => trim((string) $rows['aging']), 'hydrolysis_app' => trim((string) $rows['hydrolysis']),
+                'washing_app'     => trim((string) $rows['washing']), 'uv_app' => trim((string) $rows['uv']),
+                'bonding_app'     => '', 'pull_app' => '',
+                'line'            => (string) ($m[4] ?? ''),
+                'side'            => strtoupper((string) ($m[5] ?? '')),
+                'production_date' => isset($m[1]) ? $m[1] . '-' . $m[2] . '-' . $m[3] : '',
+                'tested_date'     => ErpMonitor::ymd($rows['tested_date'] ?: ($done['TimeCompleted'] ?? '')),
+                'result'          => ErpMonitor::erpResult((string) $rows['overall_result']),
+            ];
+            $missing = [];
+            foreach (['vsp_code' => 'VSP code', 'mtl' => 'MTL # of the VSP code (shoe list)', 'side' => 'L/R', 'production_date' => 'production date', 'tested_date' => 'tested date', 'result' => 'result (PASS / TOLERABLE / FAILED)'] as $k => $label) {
+                if ($payload[$k] === '') {
+                    $missing[] = $label;
+                }
+            }
+            if ($payload['flexing_app'] . $payload['aging_app'] . $payload['hydrolysis_app'] . $payload['washing_app'] . $payload['uv_app'] === '') {
+                $missing[] = 'at least one test TR no. (Flexing, Aging, Hydrolysis, Washing or UV Light)';
+            }
+            if ($missing) {
+                $invalid[] = ['lab_ref_no' => $lab, 'missing' => $missing];
+                continue;
+            }
+            if ($dry) {
+                $preview[] = $payload;
+                continue;
+            }
+            $db->table('tbl_erp_submissions')->insert([
+                'payload' => json_encode($payload, JSON_UNESCAPED_UNICODE), 'labref_id' => (int) $rows['id'], 'lab_ref_no' => $lab, 'production_date' => $payload['production_date'] ?: null,
+                'mode' => $mode, 'batch_id' => $batch, 'status' => 'queued', 'message' => 'Waiting to be sent', 'requested_by_id' => (int) ($me['id'] ?? 0),
+                'requested_by_name' => (string) ($me['name'] ?? $me['username'] ?? ''), 'created_at' => $now, 'updated_at' => $now,
+            ]);
+            $subId = (int) $db->insertID();
+            $db->table('tbl_dtr_unified_labrefs')->where('form_slug', 'wholeshoe')->where('lab_ref_no', $lab)->update(['erp_status' => 'Pending']);
+            $toSend[] = ['id' => $subId, 'lab_ref_no' => $lab, 'by' => (string) ($me['name'] ?? $me['username'] ?? ''), 'payload' => $payload];
             $queued++;
         }
         $dispatch = $toSend ? $this->dispatch($toSend) : null;
