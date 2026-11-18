@@ -16,8 +16,35 @@ class DashboardController extends BaseController
 
     private const OEE_TARGET = 80;
 
-    /** Lab-reference date stored as text ("27 Oct 2026"). */
-    private const LR_DATE = "STR_TO_DATE(tested_date, '%d %b %Y')";
+    /** Lab-reference date stored as text: "27 Oct 2026" (most rows) or "2026-11-18" (newer ones, e.g. pull tests). */
+    private const LR_DATE = "COALESCE(STR_TO_DATE(tested_date, '%d %b %Y'), STR_TO_DATE(LEFT(tested_date, 10), '%Y-%m-%d'))";
+
+    /** Both spellings of a failed report exist ("Fail" and "FAILED"). */
+    private const FAILED = "overall_result IN ('Fail', 'FAILED')";
+
+    /**
+     * A lab reference still being worked on. Whole shoe and pull test rows of the unified list are intake placeholders (their tests are counted
+     * from their own trackers), so they are never "ongoing".
+     */
+    private const OPEN = "(status NOT LIKE 'Complete%' AND form_slug NOT IN ('wholeshoe', 'pulltest'))";
+
+    /**
+     * The lab references the figures are made of, one row per lab reference and form:
+     * - bonding comes from tbl_dtr_bonding_info (the latest row of each lab reference): that is where the test result is entered, while the unified
+     *   list lags behind it (about 100 bonding results of the last 30 days differ, and 1,900 rows are still "Pending" after the result was entered);
+     * - every other form comes from tbl_dtr_unified_labrefs (the intake keeps one row per shoe / specimen, so the latest row of a lab reference is used).
+     */
+    private const LR = "(SELECT u.id, CONVERT(u.form_slug USING utf8mb4) COLLATE utf8mb4_unicode_ci form_slug, CONVERT(u.lab_ref_no USING utf8mb4) COLLATE utf8mb4_unicode_ci lab_ref_no, u.source_id,
+            CONVERT(u.overall_result USING utf8mb4) COLLATE utf8mb4_unicode_ci overall_result, CONVERT(u.tested_date USING utf8mb4) COLLATE utf8mb4_unicode_ci tested_date,
+            CONVERT(u.status USING utf8mb4) COLLATE utf8mb4_unicode_ci status, CONVERT(u.technician USING utf8mb4) COLLATE utf8mb4_unicode_ci technician,
+            CONVERT(u.supplier USING utf8mb4) COLLATE utf8mb4_unicode_ci supplier, u.test_items_json
+            FROM tbl_dtr_unified_labrefs u JOIN (SELECT MAX(id) mid FROM tbl_dtr_unified_labrefs WHERE form_slug <> 'bonding' GROUP BY form_slug, lab_ref_no) d ON d.mid = u.id
+        UNION ALL
+        SELECT b.BondingTestID, CONVERT('bonding' USING utf8mb4) COLLATE utf8mb4_unicode_ci, CONVERT(b.LabRefNo USING utf8mb4) COLLATE utf8mb4_unicode_ci, b.BondingTestID,
+            CONVERT(CASE UPPER(LEFT(b.Result, 1)) WHEN 'P' THEN 'Pass' WHEN 'T' THEN 'Tolerable' WHEN 'F' THEN 'Fail' ELSE '' END USING utf8mb4) COLLATE utf8mb4_unicode_ci,
+            CONVERT(LEFT(CAST(b.TestedDate AS CHAR), 10) USING utf8mb4) COLLATE utf8mb4_unicode_ci, CONVERT(IF(COALESCE(b.Result, '') = '', 'Pending', 'Complete') USING utf8mb4) COLLATE utf8mb4_unicode_ci,
+            CONVERT(b.Technician USING utf8mb4) COLLATE utf8mb4_unicode_ci, CONVERT(b.Factory USING utf8mb4) COLLATE utf8mb4_unicode_ci, NULL
+            FROM tbl_dtr_bonding_info b JOIN (SELECT MAX(BondingTestID) mid FROM tbl_dtr_bonding_info GROUP BY LabRefNo) x ON x.mid = b.BondingTestID) lr";
 
     public function index(): string
     {
@@ -74,7 +101,7 @@ class DashboardController extends BaseController
         }
         // one row per lab reference, so each point of the chart can list the lab references behind it
         $rows   = $this->q($db, 'SELECT ' . self::LR_DATE . " d, lab_ref_no, form_slug, source_id, overall_result
-            FROM tbl_dtr_unified_labrefs WHERE " . self::LR_DATE . ' BETWEEN ? AND ? ORDER BY lab_ref_no', [$start, $to]);
+            FROM " . self::LR . " WHERE " . self::LR_DATE . ' BETWEEN ? AND ? ORDER BY lab_ref_no', [$start, $to]);
         $weekly = (strtotime($to) - strtotime($start)) / 86400 > 60;      // 90-day / year views are grouped per week
         $names  = $this->categoryNames();
         $out    = [];
@@ -91,7 +118,8 @@ class DashboardController extends BaseController
             if (! isset($out[$key])) {
                 continue;
             }
-            $res = in_array($r['overall_result'], ['Pass', 'P'], true) ? 'Pass' : (in_array($r['overall_result'], ['Tolerable', 'Fail'], true) ? $r['overall_result'] : 'Other');
+            $ov  = strtoupper(trim((string) $r['overall_result']));
+            $res = in_array($ov, ['PASS', 'P'], true) ? 'Pass' : ($ov === 'TOLERABLE' ? 'Tolerable' : (in_array($ov, ['FAIL', 'FAILED'], true) ? 'Fail' : 'Other'));
             $o   = &$out[$key];
             $o['total']++;
             $o['fail'] += $res === 'Fail' ? 1 : 0;
@@ -142,7 +170,7 @@ class DashboardController extends BaseController
     /** Every test item inside the reports of the period (tensile, tear, crocking, bonding parts...), with pass / fail counts. */
     private function testItems($db, string $from, string $to): array
     {
-        $rows  = $this->q($db, "SELECT form_slug, test_items_json FROM tbl_dtr_unified_labrefs
+        $rows  = $this->q($db, "SELECT form_slug, test_items_json FROM " . self::LR . "
             WHERE test_items_json LIKE '{%' AND " . self::LR_DATE . ' BETWEEN ? AND ?', [$from, $to]);
         $names = $this->categoryNames();
         $items = [];
@@ -236,14 +264,14 @@ class DashboardController extends BaseController
 
     private function technicians($db, string $from, string $to): array
     {
-        return $this->q($db, "SELECT COALESCE(NULLIF(TRIM(technician), ''), 'Not recorded') name, COUNT(*) n, SUM(overall_result = 'Fail') f
-            FROM tbl_dtr_unified_labrefs WHERE " . self::LR_DATE . ' BETWEEN ? AND ? GROUP BY name ORDER BY n DESC LIMIT 8', [$from, $to]);
+        return $this->q($db, "SELECT COALESCE(NULLIF(TRIM(technician), ''), 'Not recorded') name, COUNT(*) n, SUM(overall_result IN ('Fail', 'FAILED')) f
+            FROM " . self::LR . " WHERE " . self::LR_DATE . ' BETWEEN ? AND ? GROUP BY name ORDER BY n DESC LIMIT 8', [$from, $to]);
     }
 
     private function suppliers($db, string $from, string $to): array
     {
-        return $this->q($db, "SELECT COALESCE(NULLIF(TRIM(supplier), ''), 'Not recorded') name, COUNT(*) n, SUM(overall_result = 'Fail') f, SUM(overall_result = 'Tolerable') t
-            FROM tbl_dtr_unified_labrefs WHERE " . self::LR_DATE . ' BETWEEN ? AND ? GROUP BY name HAVING n > 0 ORDER BY f DESC, n DESC LIMIT 8', [$from, $to]);
+        return $this->q($db, "SELECT COALESCE(NULLIF(TRIM(supplier), ''), 'Not recorded') name, COUNT(*) n, SUM(overall_result IN ('Fail', 'FAILED')) f, SUM(overall_result = 'Tolerable') t
+            FROM " . self::LR . " WHERE " . self::LR_DATE . ' BETWEEN ? AND ? GROUP BY name HAVING n > 0 ORDER BY f DESC, n DESC LIMIT 8', [$from, $to]);
     }
 
     /** InterLink applications by job status and report approvals waiting. */
@@ -259,7 +287,8 @@ class DashboardController extends BaseController
     private function categoryNames(): array
     {
         return ['bonding' => 'Whole Shoe Bonding', 'fabric' => 'Fabric', 'wst' => 'Webbing / Lace / Thread', 'hardware' => 'Hardware', 'fthl' => 'Foxing Tape & Heel Logo',
-            'leather' => 'Leather', 'label' => 'Labels', 'sklfm' => 'Sockliner & Foam', 'rubber' => 'Rubber Outsole', 'box' => 'Carton Box', 'insole' => 'Insole Board'];
+            'leather' => 'Leather', 'label' => 'Labels', 'sklfm' => 'Sockliner & Foam', 'rubber' => 'Rubber Outsole', 'box' => 'Carton Box', 'insole' => 'Insole Board',
+            'wholeshoe' => 'Whole Shoe', 'pulltest' => 'Pull Test'];
     }
 
     /** Ongoing / failed / waiting-for-report counts for Bonding, Material and Whole Shoe. */
@@ -268,8 +297,8 @@ class DashboardController extends BaseController
         // the approved lab references are read once (a few dozen rows) instead of a per-row sub-query across two collations
         $approved = array_flip(array_column($this->q($db, "SELECT DISTINCT lab_ref_no FROM tbl_dtr_report_approvals WHERE status = 'approved'"), 'lab_ref_no'));
         $lr = $this->q($db, "SELECT CASE WHEN form_slug = 'bonding' THEN 'bonding' ELSE 'material' END AS grp, lab_ref_no,
-                status NOT LIKE 'Complete%' AS open_, overall_result = 'Fail' AS fail_, " . self::LR_DATE . ' BETWEEN ? AND ? AS in_period
-            FROM tbl_dtr_unified_labrefs WHERE status NOT LIKE \'Complete%\' OR ' . self::LR_DATE . ' BETWEEN ? AND ?', [$from, $to, $from, $to]);
+                " . self::OPEN . " AND NOT (form_slug = 'bonding' AND EXISTS (SELECT 1 FROM tbl_dtr_bondingtracker tk WHERE tk.LabRefNo = lab_ref_no COLLATE utf8mb4_unicode_ci)) AS open_, " . self::FAILED . " AS fail_, " . self::LR_DATE . ' BETWEEN ? AND ? AS in_period
+            FROM ' . self::LR . ' WHERE form_slug NOT IN (\'wholeshoe\', \'pulltest\') AND (status NOT LIKE \'Complete%\' OR ' . self::LR_DATE . ' BETWEEN ? AND ?)', [$from, $to, $from, $to]);
         $t = ['bonding' => ['ongoing' => 0, 'failed' => 0, 'for_report' => 0], 'material' => ['ongoing' => 0, 'failed' => 0, 'for_report' => 0]];
         foreach ($lr as $r) {
             $g = $r['grp'];
@@ -285,17 +314,17 @@ class DashboardController extends BaseController
         $t['bonding']['ongoing'] += (int) ($this->q($db, "SELECT COUNT(*) n FROM tbl_dtr_bondingtracker k WHERE k.Shutdown = 0 AND k.CollectionDate BETWEEN ? AND ?
             AND (k.LabRefNo IS NULL OR NOT EXISTS (SELECT 1 FROM tbl_dtr_bonding_info b WHERE b.LabRefNo = k.LabRefNo COLLATE utf8mb4_unicode_ci AND b.Result IS NOT NULL))", [$from, $to])[0]['n'] ?? 0);
 
-        // whole shoe: each test of each collected shoe
-        $ws = $this->q($db, "SELECT w.LabRefNo, l.status, l.overall_result, l.lab_ref_no AS done_ref FROM tbl_dtr_wholeshoetracker w
-            LEFT JOIN tbl_dtr_unified_labrefs l ON l.lab_ref_no = w.LabRefNo WHERE w.CollectionDate BETWEEN ? AND ?", [$from, $to]);
+        // whole shoe: each test of each collected shoe, by the tracker's own status (a test lab ref has no row in the unified list)
+        $ws = $this->q($db, "SELECT UPPER(COALESCE(Status, '')) st, UPPER(COALESCE(FinalResult, '')) fr, COUNT(*) n FROM tbl_dtr_wholeshoetracker
+            WHERE CollectionDate BETWEEN ? AND ? GROUP BY st, fr", [$from, $to]);
         $w = ['ongoing' => 0, 'failed' => 0, 'for_report' => 0];
         foreach ($ws as $r) {
-            if (! $r['done_ref'] || stripos((string) $r['status'], 'Complete') !== 0) {
-                $w['ongoing']++;
-            } elseif ($r['overall_result'] === 'Fail') {
-                $w['failed']++;
+            if ($r['st'] !== 'COMPLETED') {
+                $w['ongoing'] += (int) $r['n'];
+            } elseif (str_starts_with($r['fr'], 'FAIL')) {
+                $w['failed'] += (int) $r['n'];
             } else {
-                $w['for_report']++;
+                $w['for_report'] += (int) $r['n'];
             }
         }
         $t['wholeshoe'] = $w;
@@ -375,16 +404,28 @@ class DashboardController extends BaseController
     private function categories($db, string $from, string $to): array
     {
         $rows = $this->q($db, "SELECT form_slug,
-                SUM(overall_result IN ('Pass','P')) pass, SUM(overall_result = 'Tolerable') tol, SUM(overall_result = 'Fail') fail,
-                SUM(status NOT LIKE 'Complete%') ongoing, COUNT(*) total
-            FROM tbl_dtr_unified_labrefs WHERE " . self::LR_DATE . ' BETWEEN ? AND ? OR status NOT LIKE \'Complete%\' GROUP BY form_slug ORDER BY total DESC', [$from, $to]);
-        $names = ['bonding' => 'Whole Shoe Bonding', 'fabric' => 'Fabric', 'wst' => 'Webbing / Lace / Thread', 'hardware' => 'Hardware', 'fthl' => 'Foxing Tape & Heel Logo',
-            'leather' => 'Leather', 'label' => 'Labels', 'sklfm' => 'Sockliner & Foam', 'rubber' => 'Rubber Outsole', 'box' => 'Carton Box', 'insole' => 'Insole Board'];
+                SUM(overall_result IN ('Pass','PASS','P')) pass, SUM(overall_result = 'Tolerable') tol, SUM(overall_result IN ('Fail', 'FAILED')) fail,
+                SUM(" . self::OPEN . ") ongoing, COUNT(*) total
+            FROM " . self::LR . " WHERE " . self::LR_DATE . " BETWEEN ? AND ? OR (form_slug <> 'bonding' AND " . self::OPEN . ') GROUP BY form_slug ORDER BY total DESC', [$from, $to]);
+        $names = $this->categoryNames();
+        $bondOpen = $this->bondingOpen($db, $from, $to);   // same number as the Bonding tile: samples on the tracker without a result + bonding rows without one
 
         return array_map(static fn ($r) => [
             'slug' => $r['form_slug'], 'name' => $names[$r['form_slug']] ?? ucfirst((string) $r['form_slug']),
-            'pass' => (int) $r['pass'], 'tolerable' => (int) $r['tol'], 'fail' => (int) $r['fail'], 'ongoing' => (int) $r['ongoing'], 'total' => (int) $r['total'],
+            'pass' => (int) $r['pass'], 'tolerable' => (int) $r['tol'], 'fail' => (int) $r['fail'],
+            'ongoing' => $r['form_slug'] === 'bonding' ? $bondOpen : (int) $r['ongoing'], 'total' => (int) $r['total'] + ($r['form_slug'] === 'bonding' ? $bondOpen : 0),
         ], $rows);
+    }
+
+    /** Bonding still without a result: tracker samples of the period + bonding rows (retests, first articles) that are not on the tracker. */
+    private function bondingOpen($db, string $from, string $to): int
+    {
+        $a = (int) ($this->q($db, 'SELECT COUNT(*) n FROM ' . self::LR . " WHERE form_slug = 'bonding' AND status NOT LIKE 'Complete%'
+            AND NOT EXISTS (SELECT 1 FROM tbl_dtr_bondingtracker tk WHERE tk.LabRefNo = lab_ref_no COLLATE utf8mb4_unicode_ci)")[0]['n'] ?? 0);
+        $b = (int) ($this->q($db, "SELECT COUNT(*) n FROM tbl_dtr_bondingtracker k WHERE k.Shutdown = 0 AND k.CollectionDate BETWEEN ? AND ?
+            AND (k.LabRefNo IS NULL OR NOT EXISTS (SELECT 1 FROM tbl_dtr_bonding_info b WHERE b.LabRefNo = k.LabRefNo COLLATE utf8mb4_unicode_ci AND b.Result IS NOT NULL))", [$from, $to])[0]['n'] ?? 0);
+
+        return $a + $b;
     }
 
     /** Bonding samples on the tracker (newest first) with their result when tested. */
@@ -405,9 +446,9 @@ class DashboardController extends BaseController
     private function tracking($db, string $from, string $to): array
     {
         $out = [];
-        $ws  = $this->q($db, "SELECT w.TestType t, COUNT(*) total, SUM(l.status LIKE 'Complete%') done, SUM(l.overall_result = 'Fail') fail
-            FROM tbl_dtr_wholeshoetracker w LEFT JOIN tbl_dtr_unified_labrefs l ON l.lab_ref_no = w.LabRefNo
-            WHERE w.CollectionDate BETWEEN ? AND ? GROUP BY w.TestType ORDER BY w.TestType", [$from, $to]);
+        $ws  = $this->q($db, "SELECT CASE WHEN TestType IN ('UV', 'UV Light') THEN 'UV Light' ELSE TestType END t, COUNT(*) total, SUM(UPPER(Status) = 'COMPLETED') done,
+                SUM(UPPER(COALESCE(FinalResult, '')) LIKE 'FAIL%') fail
+            FROM tbl_dtr_wholeshoetracker WHERE CollectionDate BETWEEN ? AND ? AND COALESCE(TestType, '') <> '' GROUP BY t ORDER BY t", [$from, $to]);
         foreach ($ws as $r) {
             $out[] = ['group' => 'Whole Shoe', 'test' => $r['t'], 'total' => (int) $r['total'], 'done' => (int) $r['done'], 'fail' => (int) $r['fail']];
         }

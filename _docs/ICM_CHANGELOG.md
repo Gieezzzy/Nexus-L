@@ -4,6 +4,11 @@
 
 ---
 
+## Phase 218 - Dashboard figures matched to the database (2026-11-18)
+- **Causes:** the unified list (`tbl_dtr_unified_labrefs`) now also holds `wholeshoe` (2,860 intake rows, 2,300 "Pending" with no date) and `pulltest` rows, ISO dates (`2026-11-18`) next to `27 Oct 2026`, and "FAILED" next to "Fail"; the bonding result lives in `tbl_dtr_bonding_info`, which the unified list lags behind (~100 results of 30 days differ, 1,900 bonding rows "Pending" after the result was entered); whole shoe test refs are not in the unified list at all.
+- **`DashboardController`:** `LR` = one row per lab ref and form, bonding read from `tbl_dtr_bonding_info`, other forms from the unified list; `LR_DATE` reads both date formats; `FAILED` covers Fail/FAILED; whole shoe tile and test tracking use `tbl_dtr_wholeshoetracker` Status/FinalResult (UV and UV Light merged); whole shoe / pull test placeholders are no longer "Material ongoing"; Bonding ongoing = tracker samples without a result + bonding rows not on the tracker, same number in the tile and the category list; category names for Whole Shoe and Pull Test.
+- Before -> after (30 days): Material ongoing 2,000+ -> 22; Bonding ongoing 2,241 -> 285; Whole Shoe ongoing counted every test as ongoing -> 179 / failed 4 / for report 107 (matches the tracker). Verified by direct SQL.
+
 ## Phase 217 - ERP Finish Monitoring: Whole Shoe report dialog, Tested date on every row, speed pass 2 (2026-11-18)
 - **Whole Shoe row click:** the dialog opens `dtr?open=wholeshoe&ref=<lab ref>&embed=1`; the report form takes the lab ref from the address (`?ref` / `?labref`) and loads it, read only (inert) like Bonding. The old handler still expected a picker (`sel.options`) and broke since `#ws-labref` became a read-only box.
 - **Tested date:** Bonding = `COALESCE(NULLIF(b.TestedDate,''), NULLIF(u.tested_date,''))` normalised to Y-m-d; Whole Shoe = unified `tested_date`, else the last test finished/started in `tbl_dtr_wholeshoetracker`; rows with none show "-".
