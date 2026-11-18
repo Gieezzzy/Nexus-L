@@ -4077,3 +4077,12 @@ html[data-theme="dark"] .bg-type-btn small { color: #94a3b8; }
 /* pull types ticked in the Pull Test LabRefNo cell of a bonding row (Edit) */
 .dtr-edit-pulls{display:flex;flex-wrap:wrap;gap:4px 10px;min-width:170px}
 .dtr-edit-pulls label{display:inline-flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap;cursor:pointer}
+
+/* Lab Material Test Collection: padded cells and the Lab Ref in blue, like the Bonding Shoe Collection */
+#dtr-bench-table th{padding:10px 10px !important;font-size:11px !important;font-weight:700 !important;letter-spacing:.04em;color:#334155 !important;background:#f1f5f9 !important}
+#dtr-bench-table > tbody > tr > td{padding:11px 12px !important;font-size:12.5px !important;color:#1e293b}
+#dtr-bench-table .pc-row > td:first-child{padding-left:14px !important;white-space:nowrap}
+#dtr-bench-table .pc-toggle{margin-right:8px}
+#dtr-bench-table .dtr-labref-link b{font-weight:700 !important;color:#1d4ed8}
+#dtr-bench-table .dtr-labref-link:hover b{text-decoration:underline}
+html[data-theme="dark"] #dtr-bench-table .dtr-labref-link b{color:#60a5fa}
