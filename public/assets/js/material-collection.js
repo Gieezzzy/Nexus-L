@@ -45,6 +45,7 @@
   }
 
   const chip = (s) => `<span class="mt-chip s-${esc(String(s).toLowerCase().replace(/\s+/g, '-'))}">${esc(s)}</span>`;
+  const tint = (r) => ({ FAIL: 't-fail', TOLERABLE: 't-tol', PASS: 't-pass' }[String(r || '').toUpperCase()] || '');
   const resChip = (r) => (r ? `<span class="mt-res r-${esc(r.toLowerCase())}">${esc(r)}</span>` : '<span class="mt-none">-</span>');
 
   function childRows(r) {
@@ -55,7 +56,7 @@
       const name = `<b>${esc(t.name)}</b>${meta ? `<small>${esc(meta)}</small>` : ''}`;
       const link = `<button type="button" class="mt-link mono" data-open-test="${t.id}" data-mother="${esc(r.lab_ref)}" title="Open the test sheet">${esc(t.child)}</button>`;
       {
-        return `<tr><td>${i + 1}</td><td>${name}</td><td>${link}</td><td>${chip(t.status)}</td><td>${resChip(t.result)}</td><td>${esc(day(t.tested)) || '-'}</td><td>${esc(t.tech) || '-'}</td></tr>`;
+        return `<tr class="${tint(t.result)}"><td>${i + 1}</td><td>${name}</td><td>${link}</td><td>${chip(t.status)}</td><td>${resChip(t.result)}</td><td>${esc(day(t.tested)) || '-'}</td><td>${esc(t.tech) || '-'}</td></tr>`;
       }
       const sel = (opts, cur) => opts.map((o) => `<option value="${esc(o)}"${o === cur ? ' selected' : ''}>${o || '-'}</option>`).join('');
       return `<tr data-tid="${t.id}"><td>${i + 1}</td><td>${name}</td><td>${link}</td>`
@@ -73,7 +74,8 @@
     const pct = r.total ? Math.round((r.done * 100) / r.total) : 0;
     const info = [['Material code', r.code], ['Supplier', r.supplier], ['Style', r.style], ['Colorway', r.colorway], ['MTL #', r.mtl], ['Prod. code', r.prod], ['Quantity', [r.qty, r.unit].filter(Boolean).join(' ')], ['QC quantity', r.qcqty], ['Arrived', day(r.arrived)]]
       .filter(([, v]) => v).map(([l, v]) => `<span><em>${l}</em> ${esc(v)}</span>`).join('');
-    return `<article class="mt-group card glass${open ? ' open' : ''}" data-id="${r.id}">`
+    const gt = r.fail ? 't-fail' : (r.tol ? 't-tol' : (r.state === 'Completed' ? 't-pass' : ''));   // red: a test failed, blue: tolerable, green: every test passed
+    return `<article class="mt-group card glass${open ? ' open' : ''} ${gt}" data-id="${r.id}">`
       + `<button type="button" class="mt-head" aria-expanded="${open}"><svg class="mt-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>`
       + `<b class="mt-ref">${esc(r.lab_ref)}</b><span class="mt-name">${esc(r.name || r.code)}</span>`
       + `<span class="mt-type">${esc(r.category_name ? r.category_name + ' · ' : '')}${esc(r.type)}</span><span class="mt-date">${esc(day(r.received))}</span>`
@@ -167,7 +169,7 @@
       return `<tr data-k="${esc(r.k)}"><td class="mt-sh-lab">${esc(r.label || '')}</td><td>${inputCells(t, r)}</td><td class="mt-sh-mm">${mm}</td><td class="mt-sh-ave">${ave}</td>`
         + `<td class="mt-sh-std" data-out="std">${stdText(r, c)}</td><td class="mt-sh-rt" data-out="rating">${ratingCell(t, r, c)}</td></tr>`;
     }).join('');
-    return `<section class="mt-sh" data-id="${t.id}" data-code="${esc(t.code)}">${head}<table class="mt-sh-t"><thead><tr><th></th><th>Test items</th><th>Max / Min</th><th>Average</th><th>Standard</th><th>Rating</th></tr></thead><tbody>${body}</tbody></table></section>`;
+    return `<section class="mt-sh ${tint(t.result)}" data-id="${t.id}" data-code="${esc(t.code)}">${head}<table class="mt-sh-t"><thead><tr><th></th><th>Test items</th><th>Max / Min</th><th>Average</th><th>Standard</th><th>Rating</th></tr></thead><tbody>${body}</tbody></table></section>`;
   }
 
   function sheetHtml(j) {
@@ -207,7 +209,7 @@
       if (!j.ok || my !== sheet.seq) return;
       $$('.mt-sh').forEach((sec) => {
         const t = sheet.tests.find((x) => x.id === +sec.dataset.id); const c = j.tests[+sec.dataset.id]; if (!t || !c) return;
-        $('[data-state]', sec).innerHTML = ratingChip(c.result);
+        $('[data-state]', sec).innerHTML = ratingChip(c.result); sec.classList.remove('t-fail', 't-pass', 't-tol'); if (tint(c.result)) sec.classList.add(tint(c.result));
         $$('tbody tr', sec).forEach((tr) => {
           const r = t.layout.find((x) => x.k === tr.dataset.k); const rc = c.rows[tr.dataset.k]; if (!r || !rc) return;
           const set = (n, h) => { const el = $(`[data-out="${n}"]`, tr); if (el) el.innerHTML = h; };

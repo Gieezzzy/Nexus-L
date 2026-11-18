@@ -136,6 +136,7 @@ class MaterialsController extends BaseController
             $any   = count(array_filter($tests, static fn ($t) => $t['status'] === 'Ongoing'));
             $state = ! $tests ? 'No tests' : ($done === count($tests) ? 'Completed' : ($done > 0 || $any > 0 ? 'Ongoing' : 'Pending'));
             $fail  = count(array_filter($tests, static fn ($t) => strtoupper($t['result']) === 'FAIL'));
+            $tol   = count(array_filter($tests, static fn ($t) => strtoupper($t['result']) === 'TOLERABLE'));
             if ($st !== '' && $st !== $state) {
                 continue;
             }
@@ -143,7 +144,7 @@ class MaterialsController extends BaseController
                 'id' => (int) $m['TrackerID'], 'lab_ref' => (string) $m['LabRefNo'], 'received' => (string) $m['ReceivedDate'], 'arrived' => (string) $m['DateArrived'], 'code' => (string) $m['MaterialCode'],
                 'name' => (string) $m['MaterialName'], 'type' => $res['type'] ?? (string) $m['MaterialType'], 'erp_type' => (string) $m['MaterialType'], 'category' => $slug, 'category_name' => $names[$slug] ?? '',
                 'supplier' => (string) $m['Supplier'], 'style' => (string) $m['Style'], 'colorway' => (string) $m['Colorway'], 'mtl' => (string) $m['MTL'], 'prod' => (string) $m['ProductionCode'],
-                'qty' => (string) $m['Qty'], 'qcqty' => (string) $m['QCQty'], 'unit' => (string) ($m['Unit'] ?? ''), 'tests' => $tests, 'done' => $done, 'total' => count($tests), 'fail' => $fail, 'state' => $state,
+                'qty' => (string) $m['Qty'], 'qcqty' => (string) $m['QCQty'], 'unit' => (string) ($m['Unit'] ?? ''), 'tests' => $tests, 'done' => $done, 'total' => count($tests), 'fail' => $fail, 'tol' => $tol, 'state' => $state,
             ];
         }
 

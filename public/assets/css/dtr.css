@@ -4197,3 +4197,15 @@ html[data-theme="dark"] .mt-num,html[data-theme="dark"] .mt-sh select,html[data-
 .mt-calc-v{display:flex;flex-direction:column;min-width:64px;padding-left:6px;border-left:1px solid #cbd5e1}
 .mt-calc-v small{font-size:10.5px;color:#64748b}.mt-calc-v b{font-size:14px;color:#0f172a}
 html[data-theme="dark"] .mt-calc{background:#111c33;border-color:#334155}html[data-theme="dark"] .mt-calc-v b{color:#e2e8f0}
+
+/* result colours (as the Lab Tracker lists): fail red, pass green, tolerable blue */
+.mt-group{border-left:4px solid transparent}
+.mt-group.t-fail{border-left-color:#e11d48}.mt-group.t-fail .mt-head{background:rgba(225,29,72,.07)}
+.mt-group.t-pass{border-left-color:#16a34a}.mt-group.t-pass .mt-head{background:rgba(22,163,74,.08)}
+.mt-group.t-tol{border-left-color:#2563eb}.mt-group.t-tol .mt-head{background:rgba(37,99,235,.08)}
+.mt-t tr.t-fail td,.mt-sh-t tr.t-fail td{background:rgba(225,29,72,.07)}
+.mt-t tr.t-pass td,.mt-sh-t tr.t-pass td{background:rgba(22,163,74,.08)}
+.mt-t tr.t-tol td,.mt-sh-t tr.t-tol td{background:rgba(37,99,235,.08)}
+.mt-t tr.t-fail td:first-child{box-shadow:inset 3px 0 #e11d48}.mt-t tr.t-pass td:first-child{box-shadow:inset 3px 0 #16a34a}.mt-t tr.t-tol td:first-child{box-shadow:inset 3px 0 #2563eb}
+.mt-res.r-tolerable{background:rgba(37,99,235,.15);color:#1d4ed8}
+.mt-sh.t-fail{border-left:4px solid #e11d48}.mt-sh.t-pass{border-left:4px solid #16a34a}.mt-sh.t-tol{border-left:4px solid #2563eb}
