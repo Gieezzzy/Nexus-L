@@ -1,0 +1,1649 @@
+{
+ "source": "V20261002.accdb (Access)",
+ "tests": {
+  "GAU": {
+   "name": "Gauge (Thickness)",
+   "method": "VF-A01 / VF-A03",
+   "unit": "mm"
+  },
+  "WGT": {
+   "name": "Weight",
+   "method": "VF-A02",
+   "unit": "g/m2"
+  },
+  "YRN": {
+   "name": "Yarn Count (Warp / Weft)",
+   "method": "VF-A07",
+   "unit": "# of yarns"
+  },
+  "HRD": {
+   "name": "Hardness",
+   "method": "VF-A01",
+   "unit": "C"
+  },
+  "SPG": {
+   "name": "Specific Gravity",
+   "method": "VF-A04",
+   "unit": "g/cm3"
+  },
+  "TEN": {
+   "name": "Tensile",
+   "method": "VF-B01",
+   "unit": "kgf/cm"
+  },
+  "TAA": {
+   "name": "Tensile after Abrasion",
+   "method": "VF-B01",
+   "unit": "kgf/cm"
+  },
+  "ELO": {
+   "name": "Elongation",
+   "method": "VF-B01",
+   "unit": "%"
+  },
+  "DIC": {
+   "name": "Die-C Tear",
+   "method": "VF-B05",
+   "unit": "kgf/cm"
+  },
+  "SPT": {
+   "name": "Split Tear",
+   "method": "VF-B07",
+   "unit": "kgf/cm"
+  },
+  "TRT": {
+   "name": "Trouser Tear",
+   "method": "VF-B07",
+   "unit": "kgf"
+  },
+  "STT": {
+   "name": "Stitch Tear",
+   "method": "VF-B08",
+   "unit": "kgf/cm"
+  },
+  "BAU": {
+   "name": "Baumann Tear",
+   "method": "VF-B09",
+   "unit": "kgf"
+  },
+  "MUL": {
+   "name": "Mullen Burst",
+   "method": "VF-B02",
+   "unit": "kgf/cm2"
+  },
+  "CMP": {
+   "name": "Compression",
+   "method": "VF-B10",
+   "unit": "%"
+  },
+  "PLS": {
+   "name": "Peel Strength",
+   "method": "VF-B03",
+   "unit": "kgf/cm"
+  },
+  "SHS": {
+   "name": "Shear Strength",
+   "method": "VF-B03",
+   "unit": "kgf/cm2"
+  },
+  "KNT": {
+   "name": "Knot Slip Resistance",
+   "method": "VF-B23",
+   "unit": "kgf"
+  },
+  "TIP": {
+   "name": "Shoelace Tip Retention",
+   "method": "VF-B24",
+   "unit": "kgf"
+  },
+  "MBI": {
+   "name": "Mullen Burst - Inside",
+   "method": "VF-B27",
+   "unit": "kgf/cm2"
+  },
+  "MBO": {
+   "name": "Mullen Burst - Outside",
+   "method": "VF-B27",
+   "unit": "kgf/cm2"
+  },
+  "EDG": {
+   "name": "Edge Crush Test",
+   "method": "VF-F11",
+   "unit": "kgf/cm2"
+  },
+  "CAD": {
+   "name": "Cardboard Adhesion - Dry (L / W)",
+   "method": "VF-F11",
+   "unit": ""
+  },
+  "CAW": {
+   "name": "Cardboard Adhesion - Wet (L / W)",
+   "method": "VF-F11",
+   "unit": ""
+  },
+  "MAR": {
+   "name": "Martindale Abrasion",
+   "method": "VF-C04",
+   "unit": "cycles"
+  },
+  "TAB": {
+   "name": "Taber Abrasion",
+   "method": "VF-C05",
+   "unit": "cycles"
+  },
+  "LAB": {
+   "name": "Lace Abrasion",
+   "method": "VF-C09",
+   "unit": "cycles"
+  },
+  "DIN": {
+   "name": "DIN Abrasion",
+   "method": "VF-C01",
+   "unit": "mm3"
+  },
+  "BAL": {
+   "name": "Bally Flex",
+   "method": "VF-D01",
+   "unit": "cycles"
+  },
+  "RFX": {
+   "name": "Ross Flex (23+/-2 C)",
+   "method": "VF-D02",
+   "unit": "% growth"
+  },
+  "SHR": {
+   "name": "Shrinkage",
+   "method": "VF-E13",
+   "unit": "%"
+  },
+  "SHA": {
+   "name": "Shrinkage after Aging (72 hr, 70 C)",
+   "method": "VF-E13",
+   "unit": "%"
+  },
+  "SHH": {
+   "name": "Shrinkage after Hydrolysis (168 hr, 60 C)",
+   "method": "VF-E13",
+   "unit": "%"
+  },
+  "CTP": {
+   "name": "Colorfastness to Perspiration (Top / Back)",
+   "method": "VF-E16",
+   "unit": "AATCC"
+  },
+  "CTW": {
+   "name": "Colorfastness to Water (Top / Back)",
+   "method": "VF-E01",
+   "unit": "AATCC"
+  },
+  "CRK": {
+   "name": "Colorfastness to Crocking (Dry / Wet)",
+   "method": "VF-E02",
+   "unit": "AATCC"
+  },
+  "ACK": {
+   "name": "Abrasion Crocking (Dry / Wet / Sea Water)",
+   "method": "VF-E02",
+   "unit": "rating"
+  },
+  "INK": {
+   "name": "Ink Adhesion on Substrate (3M tape #600)",
+   "method": "VF-F05",
+   "unit": "rating"
+  },
+  "UVA": {
+   "name": "UV Light (24 hrs, 50 C)",
+   "method": "VF-E03",
+   "unit": "AATCC"
+  },
+  "HAG": {
+   "name": "Heat Aging (72 hrs, 70 C)",
+   "method": "VF-E04",
+   "unit": "AATCC"
+  },
+  "HYD": {
+   "name": "Hydrolysis (7 days, 70 C 95%RH)",
+   "method": "VF-E19",
+   "unit": "rating"
+  },
+  "BLM": {
+   "name": "Blooming Test (7 days, 70 C 95%RH)",
+   "method": "VF-E03",
+   "unit": ""
+  },
+  "LAM": {
+   "name": "Laminar Peel Strength (Dry / Wet)",
+   "method": "VF-F04",
+   "unit": "kgf/cm"
+  },
+  "PVC": {
+   "name": "PVC Migration Fastness",
+   "method": "VF-E06",
+   "unit": "AATCC"
+  },
+  "COR": {
+   "name": "Corrosion Resistance",
+   "method": "VF-E19",
+   "unit": ""
+  },
+  "WAT": {
+   "name": "Water Absorption / Resistance",
+   "method": "",
+   "unit": ""
+  },
+  "AGU": {
+   "name": "Aglet - UV Light",
+   "method": "VF-E03",
+   "unit": "AATCC"
+  },
+  "AGH": {
+   "name": "Aglet - Heat Aging",
+   "method": "VF-E04",
+   "unit": "AATCC"
+  },
+  "AGY": {
+   "name": "Aglet - Hydrolysis",
+   "method": "VF-E19",
+   "unit": "rating"
+  },
+  "PER": {
+   "name": "Perspiration (Sockliner / Foam)",
+   "method": "VF-E16",
+   "unit": "AATCC"
+  },
+  "DIS": {
+   "name": "Dip Staining",
+   "method": "",
+   "unit": ""
+  }
+ },
+ "categories": [
+  {
+   "slug": "fabric",
+   "name": "Fabric",
+   "form": "Form - Fabric",
+   "result_table": "FabricTestResults",
+   "all_tests": [
+    "GAU",
+    "WGT",
+    "YRN",
+    "TEN",
+    "ELO",
+    "TRT",
+    "STT",
+    "MAR",
+    "MUL",
+    "CTP",
+    "CTW",
+    "UVA",
+    "CRK",
+    "ACK",
+    "INK",
+    "HAG",
+    "HYD",
+    "LAM"
+   ],
+   "base": [
+    "GAU",
+    "WGT",
+    "YRN"
+   ],
+   "types": [
+    {
+     "name": "Fabric Lining",
+     "tests": [
+      "GAU",
+      "WGT",
+      "YRN",
+      "TEN",
+      "ELO",
+      "TRT",
+      "STT",
+      "MAR",
+      "MUL",
+      "CTP",
+      "UVA",
+      "CRK",
+      "HAG",
+      "LAM"
+     ]
+    },
+    {
+     "name": "Fabric Lining - Light",
+     "tests": [
+      "GAU",
+      "WGT",
+      "YRN",
+      "UVA"
+     ]
+    },
+    {
+     "name": "Fabric Lining - Neon",
+     "tests": [
+      "GAU",
+      "WGT",
+      "YRN",
+      "UVA"
+     ]
+    },
+    {
+     "name": "Fabric Upper",
+     "tests": [
+      "GAU",
+      "WGT",
+      "YRN",
+      "TEN",
+      "ELO",
+      "TRT",
+      "STT",
+      "MAR",
+      "MUL",
+      "CTP",
+      "CTW",
+      "UVA",
+      "CRK",
+      "HAG",
+      "HYD",
+      "LAM"
+     ]
+    },
+    {
+     "name": "Fabric Upper - Light",
+     "tests": [
+      "GAU",
+      "WGT",
+      "YRN",
+      "TEN",
+      "ELO",
+      "TRT",
+      "STT",
+      "MAR",
+      "MUL",
+      "CTP",
+      "CTW",
+      "UVA",
+      "CRK",
+      "HAG",
+      "HYD"
+     ]
+    },
+    {
+     "name": "Ink & Print",
+     "tests": [
+      "GAU",
+      "WGT",
+      "YRN",
+      "TEN",
+      "ELO",
+      "TRT",
+      "STT",
+      "MAR",
+      "MUL",
+      "CTP",
+      "CTW",
+      "UVA",
+      "CRK",
+      "INK",
+      "HAG",
+      "HYD"
+     ]
+    },
+    {
+     "name": "Ink & Print - ASW",
+     "tests": [
+      "GAU",
+      "WGT",
+      "YRN",
+      "MAR"
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "leather",
+   "name": "Leather",
+   "form": "Form - Leather",
+   "result_table": "LeatherTestResults",
+   "all_tests": [
+    "GAU",
+    "WGT",
+    "TEN",
+    "ELO",
+    "TRT",
+    "STT",
+    "BAU",
+    "BAL",
+    "MAR",
+    "MUL",
+    "TAB",
+    "CTP",
+    "CTW",
+    "UVA",
+    "CRK",
+    "ACK",
+    "INK",
+    "PVC",
+    "HAG",
+    "HYD"
+   ],
+   "base": [
+    "GAU",
+    "WGT"
+   ],
+   "types": [
+    {
+     "name": "Leather Lininig",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN",
+      "ELO",
+      "STT",
+      "BAU",
+      "BAL",
+      "MUL",
+      "PVC",
+      "HAG",
+      "HYD"
+     ]
+    },
+    {
+     "name": "Leather Lininig - Lining",
+     "tests": [
+      "GAU",
+      "WGT",
+      "UVA"
+     ]
+    },
+    {
+     "name": "Leather Lininig - Neon",
+     "tests": [
+      "GAU",
+      "WGT",
+      "UVA"
+     ]
+    },
+    {
+     "name": "Leather Lininig - Pig Skin/Lamb/Goat",
+     "tests": [
+      "GAU",
+      "WGT",
+      "MAR"
+     ]
+    },
+    {
+     "name": "Leather Lininig - PU Coated/Full Grain",
+     "tests": [
+      "GAU",
+      "WGT",
+      "CTP",
+      "CRK"
+     ]
+    },
+    {
+     "name": "Leather Lininig - Suede/ Nubuck / Aniline",
+     "tests": [
+      "GAU",
+      "WGT",
+      "CTP",
+      "CRK"
+     ]
+    },
+    {
+     "name": "Leather Upper",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN",
+      "ELO",
+      "STT",
+      "BAU",
+      "BAL",
+      "MUL",
+      "PVC",
+      "HAG",
+      "HYD"
+     ]
+    },
+    {
+     "name": "Leather Upper - EmbossedLeather",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TAB"
+     ]
+    },
+    {
+     "name": "Leather Upper - Full Grain/Naked",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TAB"
+     ]
+    },
+    {
+     "name": "Leather Upper - Light",
+     "tests": [
+      "GAU",
+      "WGT",
+      "UVA"
+     ]
+    },
+    {
+     "name": "Leather Upper - Neon",
+     "tests": [
+      "GAU",
+      "WGT",
+      "UVA"
+     ]
+    },
+    {
+     "name": "Leather Upper - PU Coated/Full Grain",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TAB",
+      "CTP",
+      "CTW",
+      "CRK"
+     ]
+    },
+    {
+     "name": "Leather Upper - Suede/Nubuck/Aniline",
+     "tests": [
+      "GAU",
+      "WGT",
+      "CTP",
+      "CTW",
+      "CRK"
+     ]
+    },
+    {
+     "name": "Synthetic Lining",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN",
+      "ELO",
+      "TRT",
+      "STT",
+      "BAL",
+      "MAR",
+      "MUL",
+      "CTP",
+      "CTW",
+      "UVA",
+      "CRK",
+      "PVC",
+      "HAG",
+      "HYD"
+     ]
+    },
+    {
+     "name": "Synthetic Lining - Dark Colored synthetic suede and synthetic Nubuc",
+     "tests": [
+      "GAU",
+      "WGT",
+      "CTW",
+      "CRK"
+     ]
+    },
+    {
+     "name": "Synthetic Lining - Light",
+     "tests": [
+      "GAU",
+      "WGT",
+      "UVA"
+     ]
+    },
+    {
+     "name": "Synthetic Lining - Neon",
+     "tests": [
+      "GAU",
+      "WGT",
+      "UVA"
+     ]
+    },
+    {
+     "name": "Synthetic Upper",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN",
+      "ELO",
+      "TRT",
+      "STT",
+      "BAL",
+      "MUL",
+      "TAB",
+      "CTW",
+      "UVA",
+      "CRK",
+      "PVC",
+      "HAG",
+      "HYD"
+     ]
+    },
+    {
+     "name": "Synthetic Upper - Dark Colored synthetic suede and synthetic Nubuc",
+     "tests": [
+      "GAU",
+      "WGT",
+      "CTW",
+      "CRK"
+     ]
+    },
+    {
+     "name": "Synthetic Upper - Light",
+     "tests": [
+      "GAU",
+      "WGT",
+      "UVA"
+     ]
+    },
+    {
+     "name": "Synthetic Upper - Neon",
+     "tests": [
+      "GAU",
+      "WGT",
+      "UVA"
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "sockliner-foam",
+   "name": "Sockliner / Foam",
+   "form": "Form - Sockliner and Foam",
+   "result_table": "SocklinerFoamTestResults",
+   "all_tests": [
+    "HRD",
+    "SPG",
+    "TEN",
+    "ELO",
+    "DIC",
+    "SPT",
+    "SHR",
+    "CMP",
+    "RFX",
+    "MAR",
+    "PER",
+    "INK",
+    "LAM",
+    "CRK",
+    "ACK",
+    "UVA",
+    "HAG",
+    "HYD"
+   ],
+   "base": [
+    "HRD",
+    "SPG"
+   ],
+   "types": [
+    {
+     "name": "PU Foam - Low",
+     "tests": [
+      "HRD",
+      "SPG",
+      "TEN",
+      "ELO",
+      "DIC",
+      "SPT",
+      "CMP",
+      "UVA",
+      "HAG"
+     ]
+    },
+    {
+     "name": "Sockliner - EVA",
+     "tests": [
+      "HRD",
+      "SPG",
+      "TEN",
+      "ELO",
+      "DIC",
+      "SPT",
+      "SHR",
+      "CMP",
+      "LAM",
+      "CRK",
+      "UVA",
+      "HAG"
+     ]
+    },
+    {
+     "name": "Sockliner - Latex",
+     "tests": [
+      "HRD",
+      "SPG",
+      "TEN",
+      "ELO",
+      "DIC",
+      "SPT",
+      "SHR",
+      "CMP",
+      "LAM",
+      "CRK",
+      "UVA",
+      "HAG"
+     ]
+    },
+    {
+     "name": "Sockliner - PU",
+     "tests": [
+      "HRD",
+      "SPG",
+      "TEN",
+      "ELO",
+      "DIC",
+      "SPT",
+      "SHR",
+      "CMP",
+      "LAM",
+      "CRK",
+      "UVA",
+      "HAG"
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "foxing-heel-logo",
+   "name": "Foxing Tape / Heel Logo",
+   "form": "Form - Foxing Tape/Heel Logo",
+   "result_table": "FoxingTapeHeelLogoTestResults",
+   "all_tests": [
+    "HRD",
+    "SPG",
+    "TEN",
+    "ELO",
+    "DIC",
+    "SHR",
+    "CRK",
+    "ACK",
+    "INK",
+    "UVA",
+    "HAG",
+    "HYD",
+    "BLM"
+   ],
+   "base": [
+    "HRD",
+    "SPG"
+   ],
+   "types": [
+    {
+     "name": "FoxingTape",
+     "tests": [
+      "HRD",
+      "SPG",
+      "TEN",
+      "ELO",
+      "DIC",
+      "SHR",
+      "UVA",
+      "HAG"
+     ]
+    },
+    {
+     "name": "Heel Logo",
+     "tests": [
+      "HRD",
+      "SPG",
+      "TEN",
+      "ELO",
+      "DIC",
+      "SHR",
+      "CRK",
+      "ACK",
+      "INK",
+      "UVA",
+      "HAG"
+     ]
+    },
+    {
+     "name": "Heel Logo - Light",
+     "tests": [
+      "HRD",
+      "SPG",
+      "CRK"
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "rubber-outsole",
+   "name": "Rubber Outsole",
+   "form": "Form - Rubber Outsole",
+   "result_table": "RubberTestResults",
+   "all_tests": [
+    "HRD",
+    "SPG",
+    "TEN",
+    "ELO",
+    "DIC",
+    "DIN",
+    "RFX",
+    "SHR",
+    "SHA",
+    "SHH",
+    "UVA",
+    "HAG",
+    "HYD",
+    "BLM"
+   ],
+   "base": [
+    "HRD",
+    "SPG",
+    "DIN",
+    "RFX",
+    "SHR",
+    "SHA",
+    "SHH",
+    "HYD",
+    "BLM"
+   ],
+   "types": [
+    {
+     "name": "Rubber",
+     "tests": [
+      "HRD",
+      "SPG",
+      "TEN",
+      "ELO",
+      "DIC",
+      "DIN",
+      "RFX",
+      "SHR",
+      "SHA",
+      "SHH",
+      "UVA",
+      "HAG",
+      "HYD",
+      "BLM"
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "shoelace",
+   "name": "Shoelace",
+   "form": "Form - Webbing/Shoe Lace/Thread",
+   "result_table": "WebbingShoelaceThreadTestResults",
+   "all_tests": [
+    "GAU",
+    "WGT",
+    "TEN",
+    "TAA",
+    "ELO",
+    "STT",
+    "KNT",
+    "TIP",
+    "LAB",
+    "CTP",
+    "CTW",
+    "CRK",
+    "UVA",
+    "HAG",
+    "HYD",
+    "AGU",
+    "AGH",
+    "AGY"
+   ],
+   "base": [
+    "GAU",
+    "WGT"
+   ],
+   "types": [
+    {
+     "name": "Shoe lace -  Colored",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TAA",
+      "HYD",
+      "AGY"
+     ]
+    },
+    {
+     "name": "Shoe lace -  Light neon",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN",
+      "TAA",
+      "HYD",
+      "AGY"
+     ]
+    },
+    {
+     "name": "Shoe lace -  neon",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TAA",
+      "HYD",
+      "AGY"
+     ]
+    },
+    {
+     "name": "Shoe lace -  Polyester",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN",
+      "TAA",
+      "HYD",
+      "AGY"
+     ]
+    },
+    {
+     "name": "Shoe lace -  Polyester neon",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN",
+      "TAA",
+      "HYD",
+      "AGY"
+     ]
+    },
+    {
+     "name": "Shoe lace - Colored",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN",
+      "KNT",
+      "TIP",
+      "LAB",
+      "CTW",
+      "CRK",
+      "HAG",
+      "HYD",
+      "AGH",
+      "AGY"
+     ]
+    },
+    {
+     "name": "Shoe lace - Cotton",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN",
+      "TAA",
+      "KNT",
+      "TIP",
+      "LAB",
+      "CTW",
+      "CRK",
+      "UVA",
+      "HYD",
+      "AGU",
+      "AGY"
+     ]
+    },
+    {
+     "name": "Shoe lace - Cotton Light",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN",
+      "TAA",
+      "KNT",
+      "TIP",
+      "LAB",
+      "CTW",
+      "CRK",
+      "UVA",
+      "HYD",
+      "AGU",
+      "AGY"
+     ]
+    },
+    {
+     "name": "Shoe lace - Cotton Light Neon",
+     "tests": [
+      "GAU",
+      "WGT",
+      "UVA",
+      "HYD",
+      "AGU",
+      "AGY"
+     ]
+    },
+    {
+     "name": "Shoe lace - light",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN",
+      "TAA",
+      "KNT",
+      "TIP",
+      "LAB",
+      "CTW",
+      "CRK",
+      "UVA",
+      "HAG",
+      "HYD",
+      "AGU",
+      "AGH",
+      "AGY"
+     ]
+    },
+    {
+     "name": "Shoe lace - Light neon",
+     "tests": [
+      "GAU",
+      "WGT",
+      "KNT",
+      "TIP",
+      "LAB",
+      "CTW",
+      "CRK",
+      "HAG",
+      "HYD",
+      "AGH",
+      "AGY"
+     ]
+    },
+    {
+     "name": "Shoe lace - neon",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN",
+      "KNT",
+      "TIP",
+      "LAB",
+      "CTW",
+      "CRK",
+      "UVA",
+      "HAG",
+      "HYD",
+      "AGU",
+      "AGH",
+      "AGY"
+     ]
+    },
+    {
+     "name": "Shoe lace - Polyester",
+     "tests": [
+      "GAU",
+      "WGT",
+      "KNT",
+      "TIP",
+      "LAB",
+      "CTW",
+      "CRK",
+      "HAG",
+      "HYD",
+      "AGH",
+      "AGY"
+     ]
+    },
+    {
+     "name": "Shoe lace - Polyester neon",
+     "tests": [
+      "GAU",
+      "WGT",
+      "KNT",
+      "TIP",
+      "LAB",
+      "CTW",
+      "CRK",
+      "HAG",
+      "HYD",
+      "AGH",
+      "AGY"
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "thread",
+   "name": "Thread",
+   "form": "Form - Webbing/Shoe Lace/Thread",
+   "result_table": "WebbingShoelaceThreadTestResults",
+   "all_tests": [
+    "GAU",
+    "WGT",
+    "TEN",
+    "CTW",
+    "CRK",
+    "CTP",
+    "UVA",
+    "HAG",
+    "HYD"
+   ],
+   "base": [
+    "GAU",
+    "WGT"
+   ],
+   "types": [
+    {
+     "name": "Thread - Cotton - M40",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN"
+     ]
+    },
+    {
+     "name": "Thread - CottonM40",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN"
+     ]
+    },
+    {
+     "name": "Thread - light",
+     "tests": [
+      "GAU",
+      "WGT",
+      "CTW",
+      "CRK",
+      "CTP",
+      "UVA",
+      "HAG"
+     ]
+    },
+    {
+     "name": "Thread - neon",
+     "tests": [
+      "GAU",
+      "WGT",
+      "CTW",
+      "CRK",
+      "CTP",
+      "UVA",
+      "HAG"
+     ]
+    },
+    {
+     "name": "Thread - Nylon - Embroidery",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN"
+     ]
+    },
+    {
+     "name": "Thread - Nylon - M20",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN"
+     ]
+    },
+    {
+     "name": "Thread - Nylon - M30",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN"
+     ]
+    },
+    {
+     "name": "Thread - Nylon - M40",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN"
+     ]
+    },
+    {
+     "name": "Thread - Nylon - M8",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN"
+     ]
+    },
+    {
+     "name": "Thread - Polyester - Cupsole",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN"
+     ]
+    },
+    {
+     "name": "Thread - Polyester - Embroidery",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN"
+     ]
+    },
+    {
+     "name": "Thread - Polyester - M20",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN"
+     ]
+    },
+    {
+     "name": "Thread - Polyester - M30",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN"
+     ]
+    },
+    {
+     "name": "Thread - Polyester - M40",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN"
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "webbing",
+   "name": "Webbing",
+   "form": "Form - Webbing/Shoe Lace/Thread",
+   "result_table": "WebbingShoelaceThreadTestResults",
+   "all_tests": [
+    "GAU",
+    "WGT",
+    "TEN",
+    "ELO",
+    "STT",
+    "CTW",
+    "CRK",
+    "CTP",
+    "UVA",
+    "HAG",
+    "HYD"
+   ],
+   "base": [
+    "GAU",
+    "WGT"
+   ],
+   "types": [
+    {
+     "name": "Webbing - light",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN",
+      "STT",
+      "CTW",
+      "CRK",
+      "CTP",
+      "UVA",
+      "HAG",
+      "HYD"
+     ]
+    },
+    {
+     "name": "Webbing - neon",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN",
+      "STT",
+      "CTW",
+      "CRK",
+      "CTP",
+      "UVA",
+      "HAG",
+      "HYD"
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "elastic-gore",
+   "name": "Elastic Gore",
+   "form": "Form - Webbing/Shoe Lace/Thread",
+   "result_table": "WebbingShoelaceThreadTestResults",
+   "all_tests": [
+    "GAU",
+    "WGT",
+    "TEN",
+    "STT",
+    "CTW",
+    "CRK",
+    "CTP",
+    "UVA",
+    "HAG",
+    "HYD"
+   ],
+   "base": [
+    "GAU",
+    "WGT"
+   ],
+   "types": [
+    {
+     "name": "Elastic Gore - light",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN",
+      "STT",
+      "CTW",
+      "CRK",
+      "CTP",
+      "UVA",
+      "HAG",
+      "HYD"
+     ]
+    },
+    {
+     "name": "Elastic Gore - neon",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN",
+      "STT",
+      "CTW",
+      "CRK",
+      "CTP",
+      "UVA",
+      "HAG",
+      "HYD"
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "insole",
+   "name": "Insole",
+   "form": "Form - Insole",
+   "result_table": "InsoleTestResults",
+   "all_tests": [
+    "GAU",
+    "WGT",
+    "TEN",
+    "ELO",
+    "MUL",
+    "SHR",
+    "UVA",
+    "HAG"
+   ],
+   "base": [
+    "GAU",
+    "WGT"
+   ],
+   "types": [
+    {
+     "name": "Insole",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN",
+      "ELO",
+      "MUL",
+      "SHR",
+      "UVA",
+      "HAG"
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "velcro",
+   "name": "Velcro Hook and Loop",
+   "form": "Form - Webbing/Shoe Lace/Thread",
+   "result_table": "WebbingShoelaceThreadTestResults",
+   "all_tests": [
+    "GAU",
+    "WGT",
+    "TEN",
+    "ELO",
+    "STT",
+    "PLS",
+    "SHS",
+    "CTW",
+    "CRK",
+    "UVA",
+    "HAG"
+   ],
+   "base": [
+    "GAU",
+    "WGT"
+   ],
+   "types": [
+    {
+     "name": "Velcro - light",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN",
+      "ELO",
+      "STT",
+      "PLS",
+      "SHS",
+      "CTW",
+      "CRK",
+      "UVA",
+      "HAG"
+     ]
+    },
+    {
+     "name": "Velcro - neon",
+     "tests": [
+      "GAU",
+      "WGT",
+      "TEN",
+      "ELO",
+      "STT",
+      "PLS",
+      "SHS",
+      "CTW",
+      "CRK",
+      "UVA",
+      "HAG"
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "label",
+   "name": "Label",
+   "form": "Form - Label",
+   "result_table": "LabelTestResults",
+   "all_tests": [
+    "STT",
+    "CRK",
+    "CTP",
+    "CTW",
+    "UVA",
+    "HAG",
+    "HYD"
+   ],
+   "base": [],
+   "types": [
+    {
+     "name": "Size Label - LIGHT",
+     "tests": [
+      "STT",
+      "CRK",
+      "CTP",
+      "CTW",
+      "UVA"
+     ]
+    },
+    {
+     "name": "Size Label - NEON",
+     "tests": [
+      "STT",
+      "CRK",
+      "CTP",
+      "CTW",
+      "UVA"
+     ]
+    },
+    {
+     "name": "Transfer Label  - LIGHT",
+     "tests": [
+      "HYD"
+     ]
+    },
+    {
+     "name": "Transfer Label - LIGHT",
+     "tests": [
+      "STT",
+      "CRK",
+      "CTP",
+      "CTW",
+      "UVA",
+      "HAG"
+     ]
+    },
+    {
+     "name": "Transfer Label - NEON",
+     "tests": [
+      "STT",
+      "CRK",
+      "CTP",
+      "CTW",
+      "UVA",
+      "HAG",
+      "HYD"
+     ]
+    },
+    {
+     "name": "Woven Label - LIGHT w/ Perspiration",
+     "tests": [
+      "STT",
+      "CRK",
+      "CTP",
+      "CTW",
+      "UVA",
+      "HAG",
+      "HYD"
+     ]
+    },
+    {
+     "name": "Woven Label - LIGHT w/o Perspiration",
+     "tests": [
+      "STT",
+      "CRK",
+      "CTP",
+      "CTW",
+      "UVA",
+      "HAG",
+      "HYD"
+     ]
+    },
+    {
+     "name": "Woven Label - NEON w/ Perspiration",
+     "tests": [
+      "STT",
+      "CRK",
+      "CTP",
+      "CTW",
+      "UVA",
+      "HAG",
+      "HYD"
+     ]
+    },
+    {
+     "name": "Woven Label - NEON w/o Perspiration",
+     "tests": [
+      "STT",
+      "CRK",
+      "CTP",
+      "CTW",
+      "UVA",
+      "HAG",
+      "HYD"
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "box",
+   "name": "Box",
+   "form": "Form - Box",
+   "result_table": "BoxTestResults",
+   "all_tests": [
+    "MBI",
+    "MBO",
+    "EDG",
+    "CAD",
+    "CAW",
+    "CRK"
+   ],
+   "base": [],
+   "types": [
+    {
+     "name": "Inner Box",
+     "tests": [
+      "MBI",
+      "MBO",
+      "EDG",
+      "CAD",
+      "CRK"
+     ]
+    },
+    {
+     "name": "Outer Box",
+     "tests": [
+      "MBI",
+      "MBO",
+      "EDG",
+      "CAD",
+      "CRK"
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "eyelet-grommet",
+   "name": "Eyelet / Grommet",
+   "form": "Form - Hardware",
+   "result_table": "HardwareTestResults",
+   "all_tests": [
+    "CRK",
+    "UVA",
+    "HAG",
+    "HYD",
+    "COR",
+    "CTW",
+    "SHR"
+   ],
+   "base": [
+    "COR"
+   ],
+   "types": [
+    {
+     "name": "Eyelet",
+     "tests": [
+      "UVA",
+      "HAG",
+      "COR"
+     ]
+    },
+    {
+     "name": "Grommet",
+     "tests": [
+      "UVA",
+      "HAG",
+      "COR"
+     ]
+    },
+    {
+     "name": "Zipper",
+     "tests": [
+      "CRK",
+      "UVA",
+      "HAG",
+      "COR",
+      "CTW",
+      "SHR"
+     ]
+    }
+   ]
+  }
+ ]
+}

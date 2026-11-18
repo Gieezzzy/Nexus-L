@@ -3825,23 +3825,18 @@ class DtrController extends BaseController
                 'EncodedDate'       => $now,
             ]);
 
-            // the tests of this material type: each one gets its own Lab Ref (<Lab Ref>-<test code>)
+            // the tests of this material type (Access material test system: see App\Libraries\MaterialCatalog): each one is a child of the material's Lab Ref (<Lab Ref>-<test code>)
             $specific = strtoupper($type);
             $ts = $db->table('tbl_dtr_material_type_status')->select('MaterialType')->where('MaterialCode', $code)->get()->getRowArray();
             if ($ts && trim((string) $ts['MaterialType']) !== '') {
                 $specific = strtoupper(trim((string) $ts['MaterialType']));
             }
-            $key = (str_contains($specific, 'OUTSOLE') || str_contains($specific, 'RUBBER')) ? 'RUBBER' : $specific;
-            $list = $db->table('tbl_dtr_material_type_tests')->where('MaterialType', $key)->orderBy('SortNo')->get()->getResultArray();
-            foreach ($list as $t) {
-                $db->table('tbl_dtr_MaterialTrackerTests')->insert([
-                    'TrackerID' => $trackerId, 'MotherLabRefNo' => $labRef, 'ChildLabRefNo' => $labRef . '-' . $t['TestCode'], 'MaterialCode' => $code,
-                    'MaterialType' => $specific, 'TestType' => $t['TestName'], 'TestCode' => $t['TestCode'], 'Status' => 'Pending', 'CreatedAt' => $now,
-                ]);
-                $tests++;
-            }
-            if ($list) {
-                $db->table('tbl_dtr_material_receipts')->where('LabReference', $labRef)->update(['MaterialTest' => $str(implode(', ', array_column($list, 'TestName')))]);
+            \App\Libraries\MaterialCatalog::ensureTables();
+            $added = \App\Libraries\MaterialCatalog::addChildren(['TrackerID' => $trackerId, 'LabRefNo' => $labRef, 'MaterialCode' => $code, 'MaterialType' => $type], $specific);
+            $tests += $added;
+            if ($added) {
+                $names = array_column($db->query('SELECT TestType FROM tbl_dtr_MaterialTrackerTests WHERE MotherLabRefNo = ? ORDER BY SortNo, TestID', [$labRef])->getResultArray(), 'TestType');
+                $db->table('tbl_dtr_material_receipts')->where('LabReference', $labRef)->update(['MaterialTest' => $str(implode(', ', $names), 188) . (mb_strlen(implode(', ', $names)) > 188 ? '...' : '')]);   // the column holds 191 characters
             }
             $saved++;
         }

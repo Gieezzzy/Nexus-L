@@ -359,6 +359,9 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     // Material Testing & Cyclic Monitoring Suite (Marc)
     $routes->get('materials', 'MaterialsController::index', ['as' => 'materials']);
     $routes->get('material-testing', 'MaterialsController::index');
+    $routes->get('materials/list', 'MaterialsController::list');
+    $routes->post('materials/test-update', 'MaterialsController::testUpdate');
+    $routes->get('materials/machines', 'MaterialsController::machines');
 
     // Whole Shoe Physical & Monitoring Test Suite (Marc)
     $routes->get('wholeshoe', 'WstController::wholeshoe', ['as' => 'wholeshoe']);
