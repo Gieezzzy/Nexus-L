@@ -1404,7 +1404,19 @@ class DtrController extends BaseController
         $factory = 'DATIAN SUBIC SHOES INC. (DTP)';
         $made    = [];
         $skipped = [];
+        // a bonding row can carry at most 4 pull tests (Heel Pull, Eyelet, D-Ring, Rivet): the ones it already has count
+        $maxPulls = 4;
+        $existing = $db->table('tbl_dtr_BondingTracker')
+            ->where(['Building' => $building, 'LineNo' => $building . $lineNo, 'Side' => $side, 'ProductionDate' => $prod, 'PullTest' => 1, 'Shutdown' => 0])
+            ->where('ProductionCode', $code)->countAllResults();
+        if ($existing >= $maxPulls) {
+            return $fail($ref . ' already has ' . $existing . ' pull tests: 4 is the maximum.');
+        }
         foreach ($types as $pt) {
+            if ($existing + count($made) >= $maxPulls) {
+                $skipped[] = $pt . ' (maximum of ' . $maxPulls . ' pull tests per row)';
+                continue;
+            }
             // the same pull type of the same shoe (code / line / date / side) is never added twice
             $dup = $db->table('tbl_dtr_BondingTracker')->select('LabRefNo')
                 ->where(['Building' => $building, 'LineNo' => $building . $lineNo, 'Side' => $side, 'ProductionDate' => $prod, 'PullTestType' => $pt, 'Shutdown' => 0])

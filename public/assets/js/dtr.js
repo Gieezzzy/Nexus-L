@@ -1513,9 +1513,16 @@
     const heads = [...tr.closest('table').querySelectorAll('thead th')].map((th) => th.textContent.replace(/[▲▼]/g, '').trim());   // the sort arrows of a header are not part of its name
     const i = heads.indexOf('Pull Test LabRefNo');
     const td = i >= 0 ? tr.children[i] : null;
-    if (!td || td.querySelector('.dtr-labref-link, input')) return null;
-    const t = td.textContent.trim();
-    return t === '' || t === '-' ? td : null;
+    if (!td || td.querySelector('input')) return null;
+    return pullRoom(td).left > 0 ? td : null;
+  };
+  // a bonding row carries at most 4 pull tests (one of each type): what its Pull Test LabRefNo cell already lists is subtracted
+  const PULL_CODES = { HP: 'HEEL PULL', EY: 'EYELET', DR: 'D-RING', RVT: 'RIVET' };
+  const pullRoom = (td) => {
+    const refs = [...td.querySelectorAll('.dtr-ref-item')].map((x) => x.textContent.trim()).filter(Boolean);
+    const have = new Set(refs.map((r) => PULL_CODES[(r.match(/^DTP\d{8}(HP|EY|DR|RVT)/) || [])[1]]).filter(Boolean));
+    const left = Math.min(4 - refs.length, PULL_TYPES.filter(([v]) => !have.has(v)).length);
+    return { have, left, count: refs.length };
   };
   // also called again after a list reload (date filter / search / KPI card) because the rows are replaced
   window.dtrAddEditButtons = (root) => (root || document).querySelectorAll('.dtr-del-btn').forEach((d) => {
@@ -1560,6 +1567,7 @@
           msg = (msg ? msg + ' ' : '') + pr.message;
         }
         tr.querySelectorAll('td[data-edit-orig]').forEach((td) => {
+          if (td.dataset.editHtml !== undefined) { td.innerHTML = td.dataset.editHtml; delete td.dataset.editHtml; td.removeAttribute('data-edit-orig'); return; }   // the pull cell keeps its Lab Refs (the list reloads with the new ones)
           const i = td.querySelector('.dtr-edit-in');
           td.textContent = i && i.value.trim() !== '' ? i.value.trim() : '';
           td.removeAttribute('data-edit-orig');
@@ -1579,7 +1587,14 @@
     if (pullTd) {
       pullTd.dataset.editOrig = '1';
       pullTd.dataset.editHtml = pullTd.innerHTML;
-      pullTd.innerHTML = '<div class="dtr-edit-pulls">' + PULL_TYPES.map(([v, l]) => `<label><input type="checkbox" class="ik-pt" value="${v}"> ${l}</label>`).join('') + '</div>';
+      const room = pullRoom(pullTd);
+      pullTd.innerHTML = pullTd.dataset.editHtml.replace(/<span class="muted">-<\/span>/, '')
+        + '<div class="dtr-edit-pulls">' + (room.count ? `<div class="muted sm">Add ${room.left} more at most (4 per row)</div>` : '')
+        + PULL_TYPES.filter(([v]) => !room.have.has(v)).map(([v, l]) => `<label><input type="checkbox" class="ik-pt" value="${v}"> ${l}</label>`).join('') + '</div>';
+      pullTd.querySelector('.dtr-edit-pulls').addEventListener('change', (ev) => {   // never more than the room left
+        const box = ev.currentTarget; const on = box.querySelectorAll('.ik-pt:checked').length;
+        box.querySelectorAll('.ik-pt:not(:checked)').forEach((c) => { c.disabled = on >= room.left; });
+      });
       n++;
     }
     [...tr.children].forEach((td, i) => {

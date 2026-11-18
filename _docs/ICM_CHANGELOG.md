@@ -4,6 +4,11 @@
 
 ---
 
+## Phase 220 - Lab Tracker: more pull tests on a bonding row, max 4 (2026-11-18)
+- The Edit button of a Bonding Shoe Collection row now also works when the Pull Test LabRefNo column already holds 1-3 Lab Refs: the listed Lab Refs stay, and checkboxes appear for the pull types it does not have yet (Heel Pull, Eyelet, D-Ring, Rivet), limited to the room left (4 per row). `dtr.js` `pullRoom()`; the cell keeps its content on save/cancel.
+- `DtrController::addPullTests` enforces it: counts the row's existing pull tests (tracker, same code/line/date/side) and refuses beyond 4. Same roles as before (Admin, Supervisor, Bonding PIC).
+- Verified: PHP lint, JS syntax, room logic (0/1/3/4 existing). Not verified on screen (the browser pane was signed out) or by saving.
+
 ## Phase 219 - Calendar Monitoring: smoother day panel animation (2026-11-18)
 - The day panel slid in over a blurred full-screen backdrop (`backdrop-filter`) on top of the glass cards, and locked the page scroll (a full re-layout of the month) in its first frame. Now: plain dim backdrop (opacity only), panel on `translate3d` + `will-change`, `visibility` toggled after the slide, scroll lock applied after the slide (`lockPage`), cards of the opened day fade in once (`cal-enter`), pressed date cells answer at once (`:active`), reduced-motion respected. Measured open/close: panel at rest in ~300 ms, closed and hidden in ~500 ms.
 
