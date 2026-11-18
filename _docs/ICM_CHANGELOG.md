@@ -4,6 +4,9 @@
 
 ---
 
+## Phase 219 - Calendar Monitoring: smoother day panel animation (2026-11-18)
+- The day panel slid in over a blurred full-screen backdrop (`backdrop-filter`) on top of the glass cards, and locked the page scroll (a full re-layout of the month) in its first frame. Now: plain dim backdrop (opacity only), panel on `translate3d` + `will-change`, `visibility` toggled after the slide, scroll lock applied after the slide (`lockPage`), cards of the opened day fade in once (`cal-enter`), pressed date cells answer at once (`:active`), reduced-motion respected. Measured open/close: panel at rest in ~300 ms, closed and hidden in ~500 ms.
+
 ## Phase 218 - Dashboard figures matched to the database (2026-11-18)
 - **Causes:** the unified list (`tbl_dtr_unified_labrefs`) now also holds `wholeshoe` (2,860 intake rows, 2,300 "Pending" with no date) and `pulltest` rows, ISO dates (`2026-11-18`) next to `27 Oct 2026`, and "FAILED" next to "Fail"; the bonding result lives in `tbl_dtr_bonding_info`, which the unified list lags behind (~100 results of 30 days differ, 1,900 bonding rows "Pending" after the result was entered); whole shoe test refs are not in the unified list at all.
 - **`DashboardController`:** `LR` = one row per lab ref and form, bonding read from `tbl_dtr_bonding_info`, other forms from the unified list; `LR_DATE` reads both date formats; `FAILED` covers Fail/FAILED; whole shoe tile and test tracking use `tbl_dtr_wholeshoetracker` Status/FinalResult (UV and UV Light merged); whole shoe / pull test placeholders are no longer "Material ongoing"; Bonding ongoing = tracker samples without a result + bonding rows not on the tracker, same number in the tile and the category list; category names for Whole Shoe and Pull Test.

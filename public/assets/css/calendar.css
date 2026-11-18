@@ -895,17 +895,18 @@
 .cal-drawer-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.4);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  background: rgba(15, 23, 42, 0.42);   /* no blur: a blurred full-screen layer over the glass panels was re-drawn on every frame of the slide */
   z-index: 1000;
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.25s ease;
+  transition: opacity 0.22s ease, visibility 0s linear 0.22s;
 }
 .cal-drawer-backdrop.active {
   opacity: 1;
+  visibility: visible;
   pointer-events: auto;
+  transition: opacity 0.22s ease, visibility 0s;
 }
 
 .cal-drawer {
@@ -922,11 +923,16 @@
   border-left: 1px solid rgba(148, 163, 184, 0.4);
   box-shadow: -10px 0 35px rgba(15, 23, 42, 0.18);
   border-radius: 0 !important;
-  transform: translateX(100%);
-  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: translate3d(100%, 0, 0);
+  visibility: hidden;
+  will-change: transform;
+  backface-visibility: hidden;
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.3s;
 }
 .cal-drawer.active {
-  transform: translateX(0);
+  transform: translate3d(0, 0, 0);
+  visibility: visible;
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s;
 }
 
 .cal-drawer-head {
@@ -1418,9 +1424,7 @@ html[data-theme="dark"] .cal-dcard:hover {
   border-color: rgba(96, 165, 250, 0.42);
 }
 html[data-theme="dark"] .cal-drawer {
-  background: linear-gradient(160deg, rgba(13, 20, 38, 0.95), rgba(8, 14, 28, 0.92));
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
-  backdrop-filter: blur(24px) saturate(160%);
+  background: linear-gradient(160deg, rgb(13, 20, 38), rgb(8, 14, 28));
   border-left: 1px solid rgba(148, 163, 184, 0.24);
   color: #e2e8f0;
 }
@@ -1457,7 +1461,20 @@ html[data-theme="dark"] .cal-kpis.is-loading .cal-kpi-val {
 
 /* an opened day panel owns the scrolling: the page behind it does not scroll and shows no scrollbar */
 html.cal-drawer-open{overflow:hidden;padding-right:var(--cal-sbw,0px)}
+
 .cal-drawer-body{overscroll-behavior:contain}
+
+/* pressing a date answers at once; the cards of the opened day fade in instead of jumping in */
+.cal-day-cell:not(.cal-skel-cell):active { transform: scale(0.97); transition-duration: 0.05s; }
+@keyframes calCardIn { from { opacity: 0; transform: translate3d(0, 6px, 0); } to { opacity: 1; transform: none; } }
+.cal-drawer-body.cal-enter > .cal-dcard { animation: calCardIn 0.2s ease-out both; }
+.cal-drawer-body.cal-enter > .cal-dcard:nth-child(2) { animation-delay: 0.03s; }
+.cal-drawer-body.cal-enter > .cal-dcard:nth-child(3) { animation-delay: 0.06s; }
+.cal-drawer-body.cal-enter > .cal-dcard:nth-child(n+4) { animation-delay: 0.09s; }
+@media (prefers-reduced-motion: reduce) {
+  .cal-drawer, .cal-drawer-backdrop { transition-duration: 0.01s !important; }
+  .cal-drawer-body.cal-enter > .cal-dcard { animation: none; }
+}
 
 /* KPI cards are filter shortcuts */
 .cal-kpi-card[data-kpi-status]{cursor:pointer}

@@ -651,6 +651,9 @@
     updateDrawerStats(d.summary || {});
     syncDrawerFilters();
     renderDrawerItems();
+    const box = dom.drawerItemsList;     // the cards fade in once per opened day (not on every filter keystroke)
+    box.classList.remove('cal-enter'); void box.offsetWidth; box.classList.add('cal-enter');
+    clearTimeout(box._enter); box._enter = setTimeout(() => box.classList.remove('cal-enter'), 500);
   }
 
   async function openDrawer(dateStr, daySummary) {
@@ -668,12 +671,7 @@
     dom.backdrop.classList.add('active');
     dom.drawer.classList.add('active');
     dom.drawer.setAttribute('aria-hidden', 'false');
-    // the page behind stops scrolling (its scrollbar goes away) so the wheel and the scrollbar belong to the opened view
-    if (!document.documentElement.classList.contains('cal-drawer-open')) {
-      const sbw = window.innerWidth - document.documentElement.clientWidth;
-      document.documentElement.style.setProperty('--cal-sbw', sbw + 'px');
-      document.documentElement.classList.add('cal-drawer-open');
-    }
+    lockPage(true);
 
     const hit = dayCache.get(dateStr);
     if (hit) {
@@ -699,8 +697,24 @@
     }
   }
 
+  // the page behind stops scrolling (its scrollbar goes away) so the wheel and the scrollbar belong to the opened view.
+  // Changing it re-lays out the whole month, so it waits until the slide has finished instead of happening in its first frame.
+  let lockTimer = 0;
+  function lockPage(on) {
+    clearTimeout(lockTimer);
+    const de = document.documentElement;
+    lockTimer = setTimeout(() => {
+      if (on) {
+        if (!de.classList.contains('cal-drawer-open')) {
+          de.style.setProperty('--cal-sbw', (window.innerWidth - de.clientWidth) + 'px');
+          de.classList.add('cal-drawer-open');
+        }
+      } else de.classList.remove('cal-drawer-open');
+    }, 320);
+  }
+
   function closeDrawer() {
-    document.documentElement.classList.remove('cal-drawer-open');
+    lockPage(false);
     dom.backdrop.classList.remove('active');
     dom.drawer.classList.remove('active');
     dom.drawer.setAttribute('aria-hidden', 'true');
