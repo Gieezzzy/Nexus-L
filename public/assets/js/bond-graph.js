@@ -183,12 +183,38 @@
     return { x: x, y: it.y, w: w, h: h };
   }
 
+  /**
+   * The tables grow with the readings (one row per curve that has data, plus the "---" row), so a layout drawn for two curves overlaps when a Lab Ref has three:
+   * the tests table runs into the first points table, that one into the second, the second into the graph. Every item that starts below a table is moved down
+   * just far enough to stay clear of it (items already clear of it stay where the layout puts them); the footer stays at the bottom and the graph gets shorter
+   * if it would reach it. Returns [{it, y, h}] in drawing order.
+   */
+  function reflow(layout, data) {
+    var items = (layout.items || []).map(function (it, i) { return { it: it, i: i, y: it.y, h: null }; });
+    var order = items.slice().sort(function (a, b) { return (a.it.y - b.it.y) || (a.i - b.i); });
+    var pageH = layout.h || 1754, footerY = pageH - 200, gap = 10, push = 0, floor = 0, lastDynY = -1;
+    order.forEach(function (o) {
+      var it = o.it, y = it.y + push;
+      if (it.y >= footerY && it.type !== 'graph') { o.y = it.y; return; }          // the footer (technician, machine, result ...) stays at the bottom
+      if (floor && it.y > lastDynY + 5 && y < floor + gap) { push += floor + gap - y; y = it.y + push; }
+      o.y = y;
+      if (it.type === 'tests' || it.type === 'points') { floor = y + measure(layout, it, data || {}); lastDynY = it.y; }
+      if (it.type === 'graph') {
+        var h = it.h || 600, limit = footerY - 10;
+        if (y + h > limit) h = Math.max(300, limit - y);
+        o.h = h;
+      }
+    });
+    return items;
+  }
+
   function render(canvas, layout, data, opts) {
     layout = layout || defaultLayout(); data = data || {};
     canvas.width = layout.w || 1240; canvas.height = layout.h || 1754;
     var ctx = canvas.getContext('2d');
     ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    (layout.items || []).forEach(function (it) {
+    reflow(layout, data).forEach(function (o) {
+      var it = o.y === o.it.y && o.h == null ? o.it : Object.assign({}, o.it, { y: o.y }, o.h != null ? { h: o.h } : {});
       try {
         if (it.type === 'text' || it.type === 'field') drawText(ctx, it, data);
         else if (it.type === 'tests') drawTests(ctx, layout, it, data);
@@ -200,5 +226,5 @@
     return canvas;
   }
 
-  window.NxBondGraph = { render: render, defaultLayout: defaultLayout, bounds: bounds, xy: xy, fill: fill, DEFAULT_SERIES: DEFAULT_SERIES };
+  window.NxBondGraph = { render: render, reflow: reflow, defaultLayout: defaultLayout, bounds: bounds, xy: xy, fill: fill, DEFAULT_SERIES: DEFAULT_SERIES };
 })();
