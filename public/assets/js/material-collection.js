@@ -49,12 +49,12 @@
 
   function childRows(r) {
     if (!r.tests.length) return '<p class="mt-empty">This material type has no test list.</p>';
-    const head = '<thead><tr><th>#</th><th>Test</th><th>Child Lab Ref</th><th>Status</th><th>Result</th><th>Tested</th><th>Technician</th>' + (canEdit ? '<th></th>' : '') + '</tr></thead>';
+    const head = '<thead><tr><th>#</th><th>Test</th><th>Child Lab Ref</th><th>Status</th><th>Result</th><th>Tested</th><th>Technician</th>' + '' + '</tr></thead>';
     const body = r.tests.map((t, i) => {
       const meta = [t.method, t.unit].filter(Boolean).join(' · ');
       const name = `<b>${esc(t.name)}</b>${meta ? `<small>${esc(meta)}</small>` : ''}`;
       const link = `<button type="button" class="mt-link mono" data-open-test="${t.id}" data-mother="${esc(r.lab_ref)}" title="Open the test sheet">${esc(t.child)}</button>`;
-      if (!canEdit) {
+      {
         return `<tr><td>${i + 1}</td><td>${name}</td><td>${link}</td><td>${chip(t.status)}</td><td>${resChip(t.result)}</td><td>${esc(day(t.tested)) || '-'}</td><td>${esc(t.tech) || '-'}</td></tr>`;
       }
       const sel = (opts, cur) => opts.map((o) => `<option value="${esc(o)}"${o === cur ? ' selected' : ''}>${o || '-'}</option>`).join('');
