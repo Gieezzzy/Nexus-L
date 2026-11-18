@@ -100,159 +100,232 @@ class MaterialSheet
         return null;
     }
 
+    // ------------------------------------------------------------------------------------------------------------------ option lists (word classifications)
+    /** @return list<array{0:string,1:string}> [label, class]: P = PASS, T = TOLERABLE, F = FAIL */
+    private static function words(string $set): array
+    {
+        $three = static fn (string $a, string $b, string $c) => [[$a, 'P'], [$b, 'T'], [$c, 'F']];
+        switch ($set) {
+            case 'abr':        // abrasion of ink (Martindale of sockliner, crocking abrasion)
+                return $three('No abrasion of ink', 'Slight abrasion of ink', 'Severe abrasion of ink');
+            case 'del':        // delamination of ink (ink adhesion)
+                return $three('No delamination of ink', 'Slight delamination of ink', 'Severe delamination of ink');
+            case 'mart':       // Martindale of fabric / leather
+                return $three('No damage or No abrasion of ink', 'Slight damage or Slight abrasion of ink', 'Severe damage or Severe abrasion of ink');
+            case 'taber':
+                return $three('No damage of coating', 'Slight damage of coating', 'Severe damage of coating');
+            case 'dmg_ink':    // heat aging / hydrolysis of webbing, label, fabric
+                return $three('No damage or No delamination of ink', 'Slight damage or Slight delamination of ink', 'Severe damage or Severe delamination of ink');
+            case 'dmg_coat':   // leather
+                return array_merge($three('No damage or No delamination of coating', 'Slight damage or Slight delamination of coating', 'Severe damage or Severe delamination of coating'),
+                    $three('No damage or No delamination of ink', 'Slight damage or Slight delamination of ink', 'Severe damage or Severe delamination of ink'));
+            case 'dmg_plain':  // aglet
+                return $three('No damage or No delamination', 'Slight damage or Slight delamination', 'Severe damage or Severe delamination');
+            case 'pu':         // sockliner / fabric hydrolysis
+                return [["Physical appearance of PU didn't hydrolyze", 'P'], ['Physical appearance of PU hydrolyzed', 'F']];
+            case 'pu2':        // rubber / foxing
+                return [["Physical appearance of PU didn't hydrolyze", 'P'], ['No change on physical appearance', 'P'], ['Physical appearance of PU hydrolyzed', 'F'], ['Change on physical appearance', 'F']];
+            case 'hw_hydro':
+                return [['No peeling off coating and no deformation of material', 'P'], ['Peeling off coating and deformation of material observed', 'F']];
+            case 'label_hydro':
+                return [['No delamination', 'P'], ['No peeling observed', 'P'], ['No ink bleeding', 'P'], ['Partial peeling observed', 'T'], ['Slight delamination', 'T'], ['Partial ink bleeding observed', 'T'],
+                    ['Severe peeling', 'F'], ['Severe delamination', 'F'], ['Severe ink bleeding observed', 'F']];
+            case 'bloom':
+                return [['No Blooming', 'P'], ['Blooming observed', 'F']];
+            case 'corr':
+                return $three('No Corrosion', 'Slight Corrosion', 'Severe Corrosion');
+            case 'card':
+                return [['Lamination tore (not peeled off.)', 'P'], ['Lamination partially peeled.', 'T'], ['Lamination peeled off.', 'F'], ['Lamination delaminated.', 'F']];
+            case 'lace':
+                return [['No Visible Wear', 'P'], ['Slight dulling or matting of top surface with no pilling, or fraying', 'T'], ['Up to 50% wear through top surface with visible pilling, or fraying', 'T'],
+                    ['50% to 100% wear through top surface', 'F'], ['Lace broken in two', 'F']];
+        }
+
+        return [];
+    }
+
+    /** the words of heat aging / hydrolysis in each category's Access form */
+    private static function agingWords(string $kind, string $cat): array
+    {
+        if ($kind === 'HYD') {
+            return match ($cat) {
+                'leather' => self::words('dmg_coat'), 'shoelace', 'thread', 'webbing', 'elastic-gore', 'velcro' => self::words('dmg_ink'), 'label' => self::words('label_hydro'),
+                'eyelet-grommet' => self::words('hw_hydro'), 'foxing-heel-logo', 'rubber-outsole' => self::words('pu2'), default => self::words('pu'),
+            };
+        }
+
+        return match ($cat) {
+            'leather' => self::words('dmg_coat'), 'shoelace', 'thread', 'webbing', 'elastic-gore', 'velcro', 'label' => self::words('dmg_ink'), 'eyelet-grommet', 'rubber-outsole', 'insole' => [],
+            default => self::words('del'),
+        };
+    }
+
     // ------------------------------------------------------------------------------------------------------------------ the rows of a test
-    /** @return list<array<string,mixed>> the rows of the test: k key, label, mode (avg|each|fibre|text|mart|manual), n, std keys, thick, dir, dec, opts */
+    /**
+     * @return list<array<string,mixed>> the rows of the test (as on the Access form): k key, label, mode (avg | each | fibre | text | mart | numtext | calc | plain), n samples,
+     * unit, std keys, dir (min: reach the standard, max: stay under it), texts (word classifications), manual (rating chosen by the technician)
+     */
     public static function rows(string $code, string $type, string $cat): array
     {
         $thickType = in_array(strtoupper($type), self::THICK_TYPES, true);
         $thick     = $thickType && in_array($code, self::THICK_CODES, true);
-        $ld        = static fn (string $base, array $alt = []) => array_merge([$base . '_L', $base . '_S', $base . '_Std', $base], $alt);
         $dirs      = self::hasKey($type, '/(_L|L_S)$/i');   // a type that has length / width standards
-        $both      = static function (string $name, int $n, array $stdL, array $stdW, bool $th, int $dec = 2): array {
-            return [
-                ['k' => 'L', 'label' => $name === '' ? 'L' : 'L =', 'mode' => 'avg', 'n' => $n, 'std' => $stdL, 'thick' => $th, 'dir' => 'min', 'dec' => $dec],
-                ['k' => 'W', 'label' => $name === '' ? 'W' : 'W =', 'mode' => 'avg', 'n' => $n, 'std' => $stdW, 'thick' => $th, 'dir' => 'min', 'dec' => $dec],
-            ];
+        $linear    = in_array($cat, ['shoelace', 'thread', 'webbing', 'elastic-gore', 'velcro'], true);
+        $avg = static fn (string $k, string $label, int $n, array $std, string $unit, array $o = []) => array_merge(
+            ['k' => $k, 'label' => $label, 'mode' => 'avg', 'n' => $n, 'std' => $std, 'thick' => false, 'dir' => 'min', 'dec' => 2, 'unit' => $unit], $o);
+        $each = static fn (string $k, string $label, int $n, array $std, string $unit, array $o = []) => array_merge(
+            ['k' => $k, 'label' => $label, 'mode' => 'each', 'n' => $n, 'std' => $std, 'thick' => false, 'dir' => 'min', 'dec' => 1, 'unit' => $unit], $o);
+        $text = static fn (string $k, string $label, array $texts, array $o = []) => array_merge(['k' => $k, 'label' => $label, 'mode' => 'text', 'std' => [], 'texts' => $texts, 'unit' => 'words'], $o);
+        // L / W or a single direction
+        $dirRows = static function (string $base, array $stdKeys, string $unit, bool $th, int $n = 3, int $dec = 2) use ($avg, $dirs): array {
+            if ($dirs) {
+                return [$avg('L', 'Length (L)', $n, [$base . '_L', $base . 'L_S', $base . '_S'], $unit, ['thick' => $th, 'dec' => $dec]), $avg('W', 'Width (W)', $n, [$base . '_W', $base . 'W_S', $base . '_S'], $unit, ['thick' => $th, 'dec' => $dec])];
+            }
+
+            return [$avg('V', '', $n, $stdKeys, $unit, ['thick' => $th, 'dec' => $dec])];
         };
-        $one = static fn (int $n, array $std, bool $th = false, string $dir = 'min', int $dec = 2) => [['k' => 'V', 'label' => '', 'mode' => 'avg', 'n' => $n, 'std' => $std, 'thick' => $th, 'dir' => $dir, 'dec' => $dec]];
-        $mulTx = static fn (string $w) => [['No ' . $w, 'P'], ['Slight ' . $w, 'P'], ['Severe ' . $w, 'F']];
+        $tensileUnit = in_array($cat, ['fabric', 'sockliner-foam', 'rubber-outsole'], true) ? 'kgf/cm2' : 'kgf/cm';
         switch ($code) {
             case 'GAU':
-                return [['k' => 'T', 'label' => '', 'mode' => 'avg', 'n' => 6, 'std' => [], 'thick' => false, 'dir' => 'min', 'dec' => 2, 'minmax' => true, 'manual' => true]];
+                return [$avg('T', '', 6, [], 'mm', ['minmax' => true, 'manual' => true])];
             case 'WGT':
                 // the Weight calculator tools of Access: fabric / leather / insole = weight of a 10 x 10 cm piece x 100 (g/m2); webbing / lace / thread / gore / velcro = weight / length x 100
-                if (in_array($cat, ['fabric', 'leather', 'insole'], true)) {
-                    return [['k' => 'V', 'label' => '', 'mode' => 'calc', 'formula' => 'wgt', 'specs' => self::specs(3, [['r', 'Weight 10x10 cm (g)']]), 'out' => 'g/m2', 'dec' => 2, 'std' => [], 'manual' => true]];
+                if (! $linear) {
+                    return [['k' => 'V', 'label' => '', 'mode' => 'calc', 'formula' => 'wgt', 'specs' => self::specs(3, [['r', 'Weight of 10 x 10 cm (g)']]), 'out' => 'g/m2', 'unit' => 'g/m2', 'dec' => 2, 'std' => [], 'manual' => true]];
                 }
 
-                return [['k' => 'V', 'label' => '', 'mode' => 'calc', 'formula' => 'wgtlen', 'specs' => self::specs(3, [['r', 'Weight (g)'], ['l', 'Length (cm)']]), 'out' => 'g per 100 cm', 'dec' => 4, 'std' => [], 'manual' => true]];
+                return [['k' => 'V', 'label' => '', 'mode' => 'calc', 'formula' => 'wgtlen', 'specs' => self::specs(3, [['r', 'Weight (g)'], ['l', 'Length (cm)']]), 'out' => 'g per 100 cm', 'unit' => 'g/100 cm', 'dec' => 4, 'std' => [], 'manual' => true]];
             case 'YRN':
-                return [['k' => 'WARP', 'label' => 'WARP:', 'mode' => 'avg', 'n' => 2, 'std' => [], 'thick' => false, 'dir' => 'min', 'dec' => 2, 'autopass' => true], ['k' => 'WELF', 'label' => 'WELF:', 'mode' => 'avg', 'n' => 2, 'std' => [], 'thick' => false, 'dir' => 'min', 'dec' => 2, 'autopass' => true]];
-            case 'TEN': case 'ELO': case 'TRT': case 'STT': case 'BAU':
-                $base = ['TEN' => 'Tensile', 'ELO' => 'Elongation', 'TRT' => 'TrouserTear', 'STT' => 'StitchTear', 'BAU' => 'BaumannTear'][$code];
-                if ($dirs) {
-                    return $both('L/W', 3, [$base . '_L', $base . 'L_S', $base . '_S'], [$base . '_W', $base . 'W_S', $base . '_S'], $thick);
-                }
-
-                return $one(3, [$base . '_Std', $base . '_S', $base], $thick);
+                return [$avg('WARP', 'WARP', 2, [], '# of yarns', ['autopass' => true]), $avg('WELF', 'WELF', 2, [], '# of yarns', ['autopass' => true])];
+            case 'TEN':
+                return $dirRows('Tensile', ['Tensile_Std', 'Tensile_S', 'Tensile'], $tensileUnit, $thick);
+            case 'ELO':
+                return $dirRows('Elongation', ['Elongation_Std', 'Elongation_S', 'Elongation'], '%', $thick);
+            case 'TRT':
+                return $dirRows('TrouserTear', ['TrouserTear_Std', 'TrouserTear_S'], $cat === 'fabric' ? 'kgf' : 'kgf/cm', $thick);
+            case 'STT':
+                return $dirRows('StitchTear', ['StitchTear_Std', 'StitchTear_S', 'StitchTear'], 'kgf/cm', $thick);
+            case 'BAU':
+                return $dirRows('BaumannTear', ['BaumannTear_S'], 'kgf', false);
             case 'TAA':
-                return $one(3, ['TensileAA_S', 'TensileAA']);
+                return [$avg('V', '', 3, ['TensileAA_S', 'TensileAA'], 'kgf/cm')];
             case 'MUL':
-                return $one(3, ['MullenBurst'], $thick, 'min', 4);
+                return [$avg('V', '', 3, ['MullenBurst'], 'kgf/cm2', ['thick' => $thick, 'dec' => 4])];
             case 'MBI':
-                return $one(3, ['MullenBurstIn_Std']);
+                return [$avg('V', 'Inside', 3, ['MullenBurstIn_Std'], 'kgf/cm2')];
             case 'MBO':
-                return $one(3, ['MullenBurstO_Std']);
+                return [$avg('V', 'Outside', 3, ['MullenBurstO_Std'], 'kgf/cm2')];
             case 'EDG':
-                return $one(3, ['EdgeCrushTest_Std']);
+                return [$avg('V', '', 3, ['EdgeCrushTest_Std'], 'kgf/cm2')];
             case 'HRD':
-                return [['k' => 'V', 'label' => '', 'mode' => 'avg', 'n' => 6, 'std' => ['Hardness_Std'], 'thick' => false, 'dir' => 'min', 'dec' => 1, 'minmax' => true, 'manual' => true]];
+                return [$avg('V', '', 6, ['Hardness_Std'], 'Shore C', ['dec' => 1, 'minmax' => true, 'manual' => true])];
             case 'SPG':
-                return [['k' => 'V', 'label' => '', 'mode' => 'calc', 'formula' => 'sg', 'specs' => self::specs(3, [['w', 'Weight (g)'], ['t', 'Thickness (mm)']]), 'out' => 'g/cm3', 'dec' => 3, 'std' => ['SG_Std'], 'manual' => true]];
+                return [['k' => 'V', 'label' => '', 'mode' => 'calc', 'formula' => 'sg', 'specs' => self::specs(3, [['w', 'Weight (g)'], ['t', 'Thickness (mm)']]), 'out' => 'g/cm3', 'unit' => 'g/cm3', 'dec' => 3, 'std' => ['SG_Std'], 'manual' => true]];
             case 'DIC':
-                return $one(3, ['DieC_Std']);
+                return [$avg('V', '', 3, ['DieC_Std'], $cat === 'foxing-heel-logo' ? 'kgf/cm' : ($cat === 'sockliner-foam' ? '%' : 'kgf/cm'))];
             case 'SPT':
-                return $one(3, ['SplitTear_Std']);
+                return [$avg('V', '', 3, ['SplitTear_Std'], 'kgf/cm')];
             case 'CMP':
                 // Compression Calculator: % = (thickness before - after) / (thickness before - spacer) x 100, four specimens at each condition
                 $sp = self::specs(4, [['b', 'Before (mm)'], ['a', 'After (mm)']]);
 
-                return [['k' => 'SP', 'label' => 'Spacer (mm)', 'mode' => 'plain', 'n' => 1],
-                    ['k' => 'AB', 'label' => '6 hrs, 45 C', 'mode' => 'calc', 'formula' => 'comp', 'specs' => $sp, 'out' => '%', 'dec' => 1, 'std' => ['Compression_Std', 'CompressionF_Std'], 'dir' => 'max'],
-                    ['k' => 'CD', 'label' => '22 hrs, 23 C', 'mode' => 'calc', 'formula' => 'comp', 'specs' => $sp, 'out' => '%', 'dec' => 1, 'std' => ['Compression_Std', 'CompressionF_Std'], 'dir' => 'max']];
+                return [['k' => 'SP', 'label' => 'Spacer thickness', 'mode' => 'plain', 'n' => 1, 'unit' => 'mm'],
+                    ['k' => 'AB', 'label' => '6 hrs, 45 C', 'mode' => 'calc', 'formula' => 'comp', 'specs' => $sp, 'out' => '%', 'unit' => '%', 'dec' => 1, 'std' => ['Compression_Std', 'CompressionF_Std'], 'dir' => 'max'],
+                    ['k' => 'CD', 'label' => '22 hrs, 23 C', 'mode' => 'calc', 'formula' => 'comp', 'specs' => $sp, 'out' => '%', 'unit' => '%', 'dec' => 1, 'std' => ['Compression_Std', 'CompressionF_Std'], 'dir' => 'max']];
             case 'SHR': case 'SHA': case 'SHH':
-                // Shrinkage Calculator: % = (length before - after) / length before x 100, length and width; the rubber standard is 2 %
                 $std = ['Shrinkage_Std', 'Shrinkage_S'];
                 $def = $cat === 'rubber-outsole' ? 2.0 : null;
+                $sh  = ['mode' => 'calc', 'formula' => 'shrink', 'specs' => self::specs(1, [['b', 'Length before'], ['a', 'Length after']]), 'out' => '%', 'unit' => '%', 'dec' => 2, 'std' => $std, 'dir' => 'max', 'def' => $def];
 
-                return [['k' => 'L', 'label' => 'Length', 'mode' => 'calc', 'formula' => 'shrink', 'specs' => self::specs(1, [['b', 'Before'], ['a', 'After']]), 'out' => '%', 'dec' => 2, 'std' => $std, 'dir' => 'max', 'def' => $def],
-                    ['k' => 'W', 'label' => 'Width', 'mode' => 'calc', 'formula' => 'shrink', 'specs' => self::specs(1, [['b', 'Before'], ['a', 'After']]), 'out' => '%', 'dec' => 2, 'std' => $std, 'dir' => 'max', 'def' => $def]];
+                return [array_merge(['k' => 'L', 'label' => 'Length (L)'], $sh), array_merge(['k' => 'W', 'label' => 'Width (W)'], $sh)];
             case 'RFX':
-                // Ross Flex Calculator: growth % = (final length - initial length) / initial length x 100, two specimens; fails above 50 %
-                return [['k' => 'V', 'label' => '', 'mode' => 'calc', 'formula' => 'ross', 'specs' => self::specs(2, [['i', 'Initial'], ['f', 'Final']]), 'out' => '% growth', 'dec' => 2, 'std' => ['RossFlex_Std'], 'dir' => 'max', 'def' => 50.0]];
+                return [['k' => 'V', 'label' => '', 'mode' => 'calc', 'formula' => 'ross', 'specs' => self::specs(2, [['i', 'Initial length'], ['f', 'Final length']]), 'out' => '% growth', 'unit' => '% growth', 'dec' => 2, 'std' => ['RossFlex_Std'], 'dir' => 'max', 'def' => 50.0]];
             case 'DIN':
-                // DIN Abrasion Calculator: mm3 = (weight before - after) / SG x (200 / SA) x 1000, three specimens; fails above 150
-                return [['k' => 'SG', 'label' => 'Specific gravity', 'mode' => 'plain', 'n' => 1], ['k' => 'SA', 'label' => 'Abrasion (SA)', 'mode' => 'plain', 'n' => 1],
-                    ['k' => 'V', 'label' => '', 'mode' => 'calc', 'formula' => 'din', 'specs' => self::specs(3, [['b', 'Before (g)'], ['a', 'After (g)']]), 'out' => 'mm3', 'dec' => 2, 'std' => ['DIN_Std'], 'dir' => 'max', 'def' => 150.0]];
+                return [['k' => 'SG', 'label' => 'Specific gravity', 'mode' => 'plain', 'n' => 1, 'unit' => 'g/cm3'], ['k' => 'SA', 'label' => 'Abrasion distance (SA)', 'mode' => 'plain', 'n' => 1, 'unit' => ''],
+                    ['k' => 'V', 'label' => '', 'mode' => 'calc', 'formula' => 'din', 'specs' => self::specs(3, [['b', 'Before (g)'], ['a', 'After (g)']]), 'out' => 'mm3', 'unit' => 'mm3', 'dec' => 2, 'std' => ['DIN_Std'], 'dir' => 'max', 'def' => 150.0]];
             case 'KNT':
-                return $one(3, ['KnotSlip_S']);
+                return [$avg('V', '', 6, ['KnotSlip_S'], 'kgf')];
             case 'TIP':
-                return $one(3, ['LaceTipRet_S']);
-            case 'LAB':
-                return $one(3, ['LaceAbrasion_S']);
+                return [$avg('V', '', 6, ['LaceTipRet_S'], 'kgf')];
             case 'PLS':
-                return $one(3, ['PeelStrength_S']);
+                return [$avg('V', '', 4, ['PeelStrength_S'], 'kgf/cm')];
             case 'SHS':
-                return $one(3, ['ShearStrength_S']);
-            case 'LAM':
-                return [['k' => 'DRY', 'label' => 'Dry', 'mode' => 'avg', 'n' => 5, 'std' => ['LaminarPeelDry_Std', 'LaminarPeelFabric_Std'], 'thick' => false, 'dir' => 'min', 'dec' => 2, 'minmax' => true, 'manual' => true],
-                    ['k' => 'WET', 'label' => 'Wet', 'mode' => 'avg', 'n' => 5, 'std' => ['LaminarPeelWet_Std'], 'thick' => false, 'dir' => 'min', 'dec' => 2, 'minmax' => true, 'manual' => true]];
-            case 'CAD':
-                return [['k' => 'L', 'label' => 'L=', 'mode' => 'avg', 'n' => 3, 'std' => ['CardboardAdhesionDryL_Std'], 'thick' => false, 'dir' => 'min', 'dec' => 2, 'manual' => true], ['k' => 'W', 'label' => 'W=', 'mode' => 'avg', 'n' => 3, 'std' => ['CardboardAdhesionDryW_Std'], 'thick' => false, 'dir' => 'min', 'dec' => 2, 'manual' => true]];
-            case 'CAW':
-                return [['k' => 'L', 'label' => 'L=', 'mode' => 'avg', 'n' => 3, 'std' => ['CardboardAdhesionWetL_Std'], 'thick' => false, 'dir' => 'min', 'dec' => 2, 'manual' => true], ['k' => 'W', 'label' => 'W=', 'mode' => 'avg', 'n' => 3, 'std' => ['CardboardAdhesionWetW_Std'], 'thick' => false, 'dir' => 'min', 'dec' => 2, 'manual' => true]];
-            case 'MAR':
-                if (self::hasKey($type, '/^MARTINDALE[DW][12]_S$/')) {
-                    return [['k' => 'D1', 'label' => 'Dry: 1.', 'mode' => 'mart', 'std' => ['MartindaleD1_S']], ['k' => 'D2', 'label' => 'Dry: 2.', 'mode' => 'mart', 'std' => ['MartindaleD2_S']],
-                        ['k' => 'W1', 'label' => 'Wet: 1.', 'mode' => 'mart', 'std' => ['MartindaleW1_S']], ['k' => 'W2', 'label' => 'Wet: 2.', 'mode' => 'mart', 'std' => ['MartindaleW2_S']]];
+                return [$avg('V', '', 4, ['ShearStrength_S'], 'kgf/cm2')];
+            case 'LAB':
+                // six lace samples: cycles reached + what the lace looks like (the Access rating: below the standard / broken or worn through = FAIL, dulling or up to 50 % wear = TOLERABLE)
+                $o = [];
+                for ($i = 1; $i <= 6; $i++) {
+                    $o[] = ['k' => 'S' . $i, 'label' => 'Sample ' . $i, 'mode' => 'mart', 'std' => ['LaceAbrasion_S'], 'texts' => self::words('lace'), 'unit' => 'cycles + words', 'optional' => $i > 4];   // the Access rating reads samples 1 to 4; 5 and 6 count when they are filled
                 }
 
-                return [['k' => 'D', 'label' => 'Dry', 'mode' => 'mart', 'std' => ['Martindale_S', 'MartindaleDry_Std']], ['k' => 'W', 'label' => 'Wet', 'mode' => 'mart', 'std' => ['Martindale_S', 'MartindaleWet_Std']]];
+                return $o;
+            case 'LAM':
+                return [$avg('DRY', 'Dry', 5, ['LaminarPeelDry_Std', 'LaminarPeelFabric_Std'], 'kgf/cm', ['minmax' => true, 'manual' => true]), $avg('WET', 'Wet', 5, ['LaminarPeelWet_Std'], 'kgf/cm', ['minmax' => true, 'manual' => true])];
+            case 'CAD':
+                return [$avg('L', 'Length (L)', 3, ['CardboardAdhesionDryL_Std'], 'kgf/cm2', ['manual' => true]), $avg('W', 'Width (W)', 3, ['CardboardAdhesionDryW_Std'], 'kgf/cm2', ['manual' => true])];
+            case 'CAW':
+                return [$text('L', 'Length (L)', self::words('card')), $text('W', 'Width (W)', self::words('card'))];
+            case 'MAR':
+                $mw = in_array($cat, ['fabric', 'leather'], true) ? self::words('mart') : self::words('abr');
+                if (self::hasKey($type, '/^MARTINDALE[DW][12]_S$/')) {
+                    return [['k' => 'D1', 'label' => 'Dry: sample 1', 'mode' => 'mart', 'std' => ['MartindaleD1_S'], 'texts' => $mw, 'unit' => 'cycles + words'], ['k' => 'D2', 'label' => 'Dry: sample 2', 'mode' => 'mart', 'std' => ['MartindaleD2_S'], 'texts' => $mw, 'unit' => 'cycles + words'],
+                        ['k' => 'W1', 'label' => 'Wet: sample 1', 'mode' => 'mart', 'std' => ['MartindaleW1_S'], 'texts' => $mw, 'unit' => 'cycles + words'], ['k' => 'W2', 'label' => 'Wet: sample 2', 'mode' => 'mart', 'std' => ['MartindaleW2_S'], 'texts' => $mw, 'unit' => 'cycles + words']];
+                }
+
+                return [['k' => 'D', 'label' => 'Dry', 'mode' => 'mart', 'std' => ['Martindale_S', 'MartindaleDry_Std'], 'texts' => $mw, 'unit' => 'cycles + words'], ['k' => 'W', 'label' => 'Wet', 'mode' => 'mart', 'std' => ['Martindale_S', 'MartindaleWet_Std'], 'texts' => $mw, 'unit' => 'cycles + words']];
             case 'TAB':
-                return [['k' => 'T1', 'label' => '1.', 'mode' => 'mart', 'std' => ['Taber_S'], 'texts' => $mulTx('damage of coating')], ['k' => 'T2', 'label' => '2.', 'mode' => 'mart', 'std' => ['Taber_S'], 'texts' => $mulTx('damage of coating')]];
+                return [['k' => 'T1', 'label' => 'Sample 1', 'mode' => 'mart', 'std' => ['Taber_S'], 'texts' => self::words('taber'), 'unit' => 'cycles + words'], ['k' => 'T2', 'label' => 'Sample 2', 'mode' => 'mart', 'std' => ['Taber_S'], 'texts' => self::words('taber'), 'unit' => 'cycles + words']];
             case 'BAL':
                 $o = [];
-                foreach (['DryL' => 'Dry: L', 'DryW' => 'Dry: W', 'WetL' => 'Wet: L', 'WetW' => 'Wet: W', 'AHL' => 'After Hydrolysis: L', 'AHW' => 'After Hydrolysis: W'] as $k => $l) {
-                    $o[] = ['k' => $k, 'label' => $l, 'mode' => 'each', 'n' => 2, 'std' => ['Bally' . $k . '_S'], 'thick' => false, 'dir' => 'min', 'dec' => 0];
+                foreach (['DryL' => 'Dry · Length (L)', 'DryW' => 'Dry · Width (W)', 'WetL' => 'Wet · Length (L)', 'WetW' => 'Wet · Width (W)', 'AHL' => 'After hydrolysis · Length (L)', 'AHW' => 'After hydrolysis · Width (W)'] as $k => $l) {
+                    $o[] = $each($k, $l, 2, ['Bally' . $k . '_S'], 'cycles', ['dec' => 0]);
                 }
 
                 return $o;
             case 'PVC':
-                return [['k' => 'V', 'label' => '', 'mode' => 'each', 'n' => 2, 'std' => ['PVC_S', 'PVCMigration'], 'thick' => false, 'dir' => 'min', 'dec' => 1]];
+                return [$each('V', '', 2, ['PVC_S', 'PVCMigration'], 'AATCC rating')];
             case 'CTP':
-                return [['k' => 'TOP', 'label' => 'Top Side', 'mode' => 'fibre', 'std' => ['CTP', 'CTP_S', 'CTP_Std', 'Perspiration_Std'], 'thick' => false], ['k' => 'BACK', 'label' => 'Back Side', 'mode' => 'fibre', 'std' => ['CtPB_S', 'CTP', 'CTP_S', 'CTP_Std', 'Perspiration_Std'], 'thick' => false]];
+                return [['k' => 'TOP', 'label' => 'Top side', 'mode' => 'fibre', 'std' => ['CTP', 'CTP_S', 'CTP_Std', 'Perspiration_Std'], 'unit' => 'AATCC rating'], ['k' => 'BACK', 'label' => 'Back side', 'mode' => 'fibre', 'std' => ['CtPB_S', 'CTP', 'CTP_S', 'CTP_Std', 'Perspiration_Std'], 'unit' => 'AATCC rating']];
             case 'PER':
-                return [['k' => 'V', 'label' => '', 'mode' => 'fibre', 'std' => ['Perspiration_Std', 'CTP_Std'], 'thick' => false]];
+                return [['k' => 'V', 'label' => '', 'mode' => 'fibre', 'std' => ['Perspiration_Std', 'CTP_Std'], 'unit' => 'AATCC rating']];
             case 'CTW':
-                return [['k' => 'TOP', 'label' => 'Top Side', 'mode' => 'fibre', 'std' => ['CTW', 'CTW_S', 'CTW_Std', 'Water_S'], 'thick' => false], ['k' => 'BACK', 'label' => 'Back Side', 'mode' => 'fibre', 'std' => ['CtWB_S', 'CTW', 'CTW_S', 'CTW_Std', 'Water_S'], 'thick' => false]];
-            case 'UVA':
-                return [['k' => 'V', 'label' => '', 'mode' => 'each', 'n' => 2, 'std' => ['UV_S', 'UV_Std', 'UV'], 'thick' => false, 'dir' => 'min', 'dec' => 1]];
-            case 'AGU':
-                return [['k' => 'V', 'label' => '', 'mode' => 'each', 'n' => 2, 'std' => ['UV_std_AGLET'], 'thick' => false, 'dir' => 'min', 'dec' => 1]];
-            case 'HAG':
-                $r = [['k' => 'V', 'label' => '', 'mode' => 'each', 'n' => 2, 'std' => ['HeatAging_S', 'HeatAging_Std', 'HeatAging'], 'thick' => false, 'dir' => 'min', 'dec' => 1]];
-                if (in_array($cat, ['fabric', 'leather', 'sockliner-foam'], true) && self::hasKey($type, '/^HEATAGINGTXT/')) {
-                    $r[] = ['k' => 'TXT', 'label' => 'Appearance', 'mode' => 'text', 'std' => ['HeatAgingtxt_S'], 'texts' => $mulTx('delamination of ink')];
+                if ($cat === 'eyelet-grommet') {
+                    return [['k' => 'TOP', 'label' => 'Top side', 'mode' => 'fibre', 'std' => ['CTW_S', 'CTW', 'Water_S'], 'unit' => 'AATCC rating']];
                 }
 
-                return $r;
-            case 'AGH':
-                return [['k' => 'V', 'label' => '', 'mode' => 'each', 'n' => 2, 'std' => ['HeatAging_std_AGLET'], 'thick' => false, 'dir' => 'min', 'dec' => 1]];
+                return [['k' => 'TOP', 'label' => 'Top side', 'mode' => 'fibre', 'std' => ['CTW', 'CTW_S', 'CTW_Std', 'Water_S'], 'unit' => 'AATCC rating'], ['k' => 'BACK', 'label' => 'Back side', 'mode' => 'fibre', 'std' => ['CtWB_S', 'CTW', 'CTW_S', 'CTW_Std', 'Water_S'], 'unit' => 'AATCC rating']];
+            case 'UVA':
+                return [$each('V', '', 2, ['UV_S', 'UV_Std', 'UV'], 'AATCC rating')];
+            case 'AGU':
+                return [$each('V', '', 2, ['UV_std_AGLET'], 'AATCC rating')];
+            case 'HAG': case 'AGH':
+                // grey-scale rating OR what the sample looks like: either one gives the rating of the sample
+                $w = $code === 'AGH' ? self::words('dmg_plain') : self::agingWords('HAG', $cat);
+                $s = $code === 'AGH' ? ['HeatAging_std_AGLET'] : ['HeatAging_S', 'HeatAging_Std', 'HeatAging'];
+
+                return [['k' => 'S1', 'label' => 'Sample 1', 'mode' => 'numtext', 'std' => $s, 'texts' => $w, 'unit' => 'AATCC rating or words'], ['k' => 'S2', 'label' => 'Sample 2', 'mode' => 'numtext', 'std' => $s, 'texts' => $w, 'unit' => 'AATCC rating or words']];
             case 'HYD': case 'AGY':
+                $w = $code === 'AGY' ? self::words('dmg_plain') : self::agingWords('HYD', $cat);
                 $s = $code === 'AGY' ? ['Hydro_std_AGLET'] : ['Hydrolysis_S', 'Hydrolysis_Std', 'Hydrolysistxt_S', 'Hydrolysis'];
 
-                return [['k' => 'TXT', 'label' => 'Appearance', 'mode' => 'text', 'std' => $s, 'texts' => [["Physical appearance of PU didn't hydrolyze", 'P'], ['Physical appearance of PU hydrolyzed', 'F']]]];
+                return [['k' => 'S1', 'label' => 'Sample 1', 'mode' => 'numtext', 'std' => $s, 'texts' => $w, 'unit' => 'rating or words'], ['k' => 'S2', 'label' => 'Sample 2', 'mode' => 'numtext', 'std' => $s, 'texts' => $w, 'unit' => 'rating or words']];
             case 'CRK':
-                return [['k' => 'DRY', 'label' => 'Dry=', 'mode' => 'each', 'n' => 1, 'std' => ['CtCDry_S', 'CrockingDry_Std', 'CrockingDry', 'CTC_Dry_std', 'CTCDry_std'], 'thick' => false, 'dir' => 'min', 'dec' => 1],
-                    ['k' => 'WET', 'label' => 'Wet=', 'mode' => 'each', 'n' => 1, 'std' => ['CtCWet_S', 'CrockingWet_Std', 'CrockingWet', 'CTC_Wet_std'], 'thick' => false, 'dir' => 'min', 'dec' => 1]];
+                return [$each('DRY', 'Dry', 1, ['CtCDry_S', 'CrockingDry_Std', 'CrockingDry', 'CTC_Dry_std', 'CTCDry_std'], 'AATCC rating'), $each('WET', 'Wet', 1, ['CtCWet_S', 'CrockingWet_Std', 'CrockingWet', 'CTC_Wet_std'], 'AATCC rating')];
             case 'ACK':
-                $r = [['k' => 'DRY', 'label' => 'Dry=', 'mode' => 'text', 'std' => [], 'texts' => $mulTx('abrasion of ink')], ['k' => 'WET', 'label' => 'Wet=', 'mode' => 'text', 'std' => [], 'texts' => $mulTx('abrasion of ink')]];
+                $r = [$text('DRY', 'Dry', self::words('abr')), $text('WET', 'Wet', self::words('abr'))];
                 if (in_array($cat, ['fabric', 'leather', 'foxing-heel-logo'], true)) {
-                    $r[] = ['k' => 'ASW', 'label' => 'Sea Water=', 'mode' => 'text', 'std' => [], 'texts' => $mulTx('abrasion of ink')];
+                    $r[] = $text('ASW', 'Artificial sea water', self::words('abr'));
                 }
 
                 return $r;
             case 'INK':
-                $r = [['k' => 'DRY', 'label' => 'Dry=', 'mode' => 'text', 'std' => [], 'texts' => $mulTx('delamination of ink')], ['k' => 'WET', 'label' => 'Wet=', 'mode' => 'text', 'std' => [], 'texts' => $mulTx('delamination of ink')]];
-                $r[] = ['k' => 'ASW', 'label' => 'Sea Water=', 'mode' => 'text', 'std' => [], 'texts' => $mulTx('delamination of ink')];
-
-                return $r;
+                return [$text('DRY', 'Dry', self::words('del')), $text('WET', 'Wet', self::words('del')), $text('ASW', 'Artificial sea water', self::words('del'))];
             case 'BLM':
-                return [['k' => 'TXT', 'label' => 'Appearance', 'mode' => 'text', 'std' => [], 'texts' => [['No Blooming', 'P'], ['Blooming', 'F']]]];
+                return [$text('V', '', self::words('bloom'))];
             case 'COR':
-                return [['k' => 'TXT', 'label' => 'Appearance', 'mode' => 'text', 'std' => [], 'texts' => [['No Corrosion', 'P'], ['Corrosion', 'F']]]];
+                return [$text('S1', 'Sample 1', self::words('corr')), $text('S2', 'Sample 2', self::words('corr'))];
             default:
-                return [['k' => 'V', 'label' => '', 'mode' => 'avg', 'n' => 3, 'std' => [], 'thick' => false, 'dir' => 'min', 'dec' => 2, 'manual' => true]];
+                return [$avg('V', '', 3, [], '', ['manual' => true])];
         }
     }
 
@@ -298,6 +371,18 @@ class MaterialSheet
     }
 
     // ------------------------------------------------------------------------------------------------------------------ compute
+    /** PASS / TOLERABLE / FAIL of the chosen words ('' when nothing or something unknown is chosen) */
+    private static function wordClass(array $texts, string $t): string
+    {
+        foreach ($texts as [$label, $pf]) {
+            if ($t !== '' && strcasecmp($label, $t) === 0) {
+                return $pf === 'P' ? 'PASS' : ($pf === 'T' ? 'TOLERABLE' : 'FAIL');
+            }
+        }
+
+        return '';
+    }
+
     private static function num($v): ?float
     {
         return is_numeric($v) && trim((string) $v) !== '' ? (float) $v : null;
@@ -418,32 +503,44 @@ class MaterialSheet
                 case 'text':
                     $t = trim((string) ($values[$k] ?? ''));
                     $any = $any || $t !== '';
-                    foreach ($r['texts'] as [$label, $pf]) {
-                        if (strcasecmp($label, $t) === 0) {
-                            $rating = $pf === 'P' ? 'PASS' : 'FAIL';
-                        }
-                    }
+                    $rating = self::wordClass($r['texts'], $t);
                     break;
                 case 'mart':
+                    // cycles reached + what the sample looks like: below the standard or a severe word = FAIL; "Slight" = TOLERABLE; "No ..." = PASS; both boxes are needed
                     $c = self::num($values[$k . 'c'] ?? null);
                     $t = trim((string) ($values[$k . 't'] ?? ''));
                     $any = $any || $c !== null || $t !== '';
-                    $isTaber = isset($r['texts']);
-                    $severe = $t !== '' && stripos($t, 'severe') !== false;
+                    $wc = self::wordClass($r['texts'], $t);
+                    $row['empty'] = $c === null && $t === '';
                     if ($c === null && $t === '') {
                         $rating = '';
-                    } elseif (($c !== null && $std !== null && $c < $std) || $severe) {
+                    } elseif (($c !== null && $std !== null && $c < $std) || $wc === 'FAIL') {
                         $rating = 'FAIL';
                     } elseif ($c === null || $t === '') {
                         $rating = '';
                     } else {
-                        $rating = 'PASS';
+                        $rating = $wc === 'TOLERABLE' ? 'TOLERABLE' : 'PASS';
                     }
+                    break;
+                case 'numtext':
+                    // a rating number OR words: either one rates the sample; with both the worse one counts
+                    $c = self::num($values[$k . 'c'] ?? null);
+                    $t = trim((string) ($values[$k . 't'] ?? ''));
+                    $any = $any || $c !== null || $t !== '';
+                    $cls = [];
+                    if ($c !== null && $std !== null) {
+                        $cls[] = $c < $std ? 'FAIL' : 'PASS';
+                    }
+                    if ($t !== '') {
+                        $cls[] = self::wordClass($r['texts'], $t);
+                    }
+                    $cls = array_filter($cls);
+                    $rating = in_array('FAIL', $cls, true) ? 'FAIL' : (in_array('TOLERABLE', $cls, true) ? 'TOLERABLE' : ($cls ? 'PASS' : ''));
                     break;
             }
             $row['rating'] = $rating;
             $out[$k] = $row;
-            if (! empty($row['norate'])) {
+            if (! empty($row['norate']) || (! empty($r['optional']) && ! empty($row['empty']))) {
                 continue;      // a box the other rows use (spacer, specific gravity ...), not rated itself
             }
             $nRows++;
@@ -484,10 +581,33 @@ class MaterialSheet
             if ($r['mode'] === 'fibre') {
                 $r['fibres'] = self::FIBRES;
             }
-            if ($r['mode'] === 'mart' && ! isset($r['texts'])) {
-                $r['texts'] = [['No damage or No abrasion of ink', 'P'], ['Slight damage or Slight abrasion of ink', 'P'], ['Severe damage or Severe abrasion of ink', 'F']];
+            $dir = ($r['dir'] ?? 'min') === 'max' ? 'must stay at or under' : 'must reach';
+            switch ($r['mode']) {
+                case 'avg':
+                    $r['hint'] = ! empty($r['autopass']) ? $r['n'] . ' samples: enter the number of yarns' : (! empty($r['manual']) && empty($r['std'])
+                        ? $r['n'] . ' samples (numbers); no standard: choose the rating' : $r['n'] . ' samples (numbers): the average ' . $dir . ' the standard');
+                    break;
+                case 'each':
+                    $r['hint'] = $r['n'] . ($r['n'] === 1 ? ' sample' : ' samples') . ' (' . ($r['unit'] === 'cycles' ? 'cycles' : 'rating number') . '): ' . ($r['n'] === 1 ? 'it' : 'each one') . ' ' . $dir . ' the standard';
+                    break;
+                case 'fibre':
+                    $r['hint'] = '6 fibres, rating 1 to 5 each: all must reach the standard';
+                    break;
+                case 'text':
+                    $r['hint'] = 'words: choose what is seen. No ... = PASS · Slight / Partial = TOLERABLE · Severe = FAIL';
+                    break;
+                case 'mart':
+                    $r['hint'] = 'cycles AND words: below the standard cycles or Severe = FAIL · Slight = TOLERABLE · No ... = PASS';
+                    break;
+                case 'numtext':
+                    $r['hint'] = 'a rating number OR words (either rates the sample): No ... = PASS · Slight = TOLERABLE · Severe = FAIL';
+                    break;
+                case 'calc':
+                    $r['hint'] = count($r['specs']) . ' sample' . (count($r['specs']) === 1 ? '' : 's') . ': enter the measurements, the result is worked out';
+                    break;
+                default:
+                    $r['hint'] = '';
             }
-            unset($r['std']['_']);
         }
         unset($r);
 

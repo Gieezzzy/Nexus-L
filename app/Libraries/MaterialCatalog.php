@@ -137,6 +137,15 @@ class MaterialCatalog
             }
             $db->query("UPDATE tbl_dtr_material_type_tests SET TestMethod = '' WHERE TestMethod IS NULL");
         }
+        // the method numbers / names / units of the catalog were corrected: bring the loaded rows and the child tests up to date (once per catalog revision)
+        $rev = (string) (self::data()['rev'] ?? '1');
+        if ((string) SystemSettings::get('material.catalog_rev', '') !== $rev) {
+            foreach (self::data()['tests'] ?? [] as $code => $d) {
+                $db->query('UPDATE tbl_dtr_material_type_tests SET TestName = ?, TestMethod = ?, Unit = ? WHERE TestCode = ? AND MaterialType <> "RUBBER"', [$d['name'], $d['method'], $d['unit'], $code]);
+                $db->query('UPDATE tbl_dtr_MaterialTrackerTests SET TestType = ?, TestMethod = ?, Unit = ? WHERE TestCode = ?', [$d['name'], $d['method'], $d['unit'], $code]);
+            }
+            SystemSettings::set('material.catalog_rev', $rev);
+        }
     }
 
     /**

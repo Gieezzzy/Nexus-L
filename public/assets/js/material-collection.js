@@ -132,12 +132,15 @@
       const c = ((t.calc && t.calc.rows) || {})[r.k] || {}; const vals = c.vals || [];
       return `<div class="mt-specs">${r.specs.map((sp, i) => `<div class="mt-calc">${r.specs.length > 1 ? `<small class="mt-calc-n">#${i + 1}</small>` : ''}${Object.keys(sp).map((f) => `<label class="mt-fib"><small>${esc(sp[f])}</small>${num(r.k + '_' + f + (i + 1))}</label>`).join('')}<span class="mt-calc-v"><small>${esc(r.out)}</small><b data-out="v${i}">${fmt(vals[i])}</b></span></div>`).join('')}</div>`;
     }
-    if (r.mode === 'avg' || r.mode === 'each') return `<div class="mt-specs">${Array.from({ length: r.n }, (_, i) => num(r.k + (i + 1))).join('')}</div>`;
+    if (r.mode === 'avg' || r.mode === 'each') return `<div class="mt-specs">${Array.from({ length: r.n }, (_, i) => (r.n > 1 ? `<label class="mt-fib"><small>Sample ${i + 1}</small>${num(r.k + (i + 1))}</label>` : num(r.k + (i + 1)))).join('')}</div>`;
     if (r.mode === 'fibre') return `<div class="mt-specs">${Object.keys(fib).map((x) => `<label class="mt-fib"><small>${fib[x]}</small>${num(r.k + '_' + x)}</label>`).join('')}</div>`;
-    if (r.mode === 'text' || r.mode === 'mart') {
-      const cur = fmt(v[r.mode === 'mart' ? r.k + 't' : r.k]);
-      const sel = `<select data-f="${esc(r.mode === 'mart' ? r.k + 't' : r.k)}"${ro}><option value=""></option>${r.texts.map(([l]) => `<option${l.toLowerCase() === cur.toLowerCase() ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
-      return r.mode === 'mart' ? `<div class="mt-specs">${num(r.k + 'c', 'cycles')}${sel}</div>` : `<div class="mt-specs">${sel}</div>`;
+    if (r.mode === 'text' || r.mode === 'mart' || r.mode === 'numtext') {
+      const cur = fmt(v[r.mode === 'mart' || r.mode === 'numtext' ? r.k + 't' : r.k]);
+      const sel = `<select data-f="${esc(r.mode === 'mart' || r.mode === 'numtext' ? r.k + 't' : r.k)}"${ro}><option value=""></option>${r.texts.map(([l]) => `<option${l.toLowerCase() === cur.toLowerCase() ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+      const sel2 = r.mode === 'text' || r.texts.length ? sel : '';
+      if (r.mode === 'mart') return `<div class="mt-specs"><label class="mt-fib"><small>Cycles</small>${num(r.k + 'c')}</label><label class="mt-fib"><small>Observation</small>${sel}</label></div>`;
+      if (r.mode === 'numtext') return `<div class="mt-specs"><label class="mt-fib"><small>Rating no.</small>${num(r.k + 'c')}</label>${sel2 ? `<span class="mt-or">or</span><label class="mt-fib"><small>Words</small>${sel2}</label>` : ''}</div>`;
+      return `<div class="mt-specs">${sel}</div>`;
     }
     return '';
   }
@@ -160,16 +163,18 @@
 
   function testSection(t) {
     const rows = t.layout; const calc = (t.calc && t.calc.rows) || {};
-    const head = `<header class="mt-sh-h"><div><b>${esc(t.name)}</b><small>${esc([t.method, t.unit].filter(Boolean).join(' · '))}</small></div><div class="mt-sh-r"><span class="mt-sh-state" data-state>${ratingChip(t.result)}</span>`
+    const cnt = (r) => (r.mode === 'avg' || r.mode === 'each') ? r.n : (r.mode === 'calc' ? r.specs.length : (r.mode === 'fibre' ? 6 : (r.mode === 'plain' ? 0 : 1)));
+    const sampleInfo = rows.filter((r) => cnt(r) > 0).map((r) => `${r.label ? r.label + ': ' : ''}${cnt(r)} ${r.mode === 'fibre' ? 'fibres' : (cnt(r) === 1 ? 'sample' : 'samples')}`).join(' · ');
+    const head = `<header class="mt-sh-h"><div><b>${esc(t.name)}</b><small>${esc([t.method].filter(Boolean).join(' · '))}</small><small class="mt-sh-n">${esc(sampleInfo)}</small></div><div class="mt-sh-r"><span class="mt-sh-state" data-state>${ratingChip(t.result)}</span>`
       + `<span class="mono mt-sh-child">${esc(t.child)}</span>${sheet.canEdit ? '<button type="button" class="dtr-btn dtr-btn-primary" data-sh-save>Save</button>' : ''}<small class="mt-msg" role="status"></small></div></header>`;
     const body = rows.map((r) => {
       const c = calc[r.k] || {};
       const mm = (r.mode === 'avg' && r.n > 1) || (r.mode === 'calc' && r.specs.length > 1) ? `<span data-out="max">${fmt(c.max)}</span><span data-out="min">${fmt(c.min)}</span>` : '';
       const ave = r.mode === 'avg' || r.mode === 'calc' ? `<b data-out="ave">${fmt(c.ave)}</b>` : '';
-      return `<tr data-k="${esc(r.k)}"><td class="mt-sh-lab">${esc(r.label || '')}</td><td>${inputCells(t, r)}</td><td class="mt-sh-mm">${mm}</td><td class="mt-sh-ave">${ave}</td>`
+      return `<tr data-k="${esc(r.k)}"><td class="mt-sh-lab">${esc(r.label || '')}</td><td>${inputCells(t, r)}${r.hint ? `<small class="mt-hint">${esc(r.hint)}</small>` : ''}</td><td class="mt-sh-unit">${esc(r.unit || '')}</td><td class="mt-sh-mm">${mm}</td><td class="mt-sh-ave">${ave}</td>`
         + `<td class="mt-sh-std" data-out="std">${stdText(r, c)}</td><td class="mt-sh-rt" data-out="rating">${ratingCell(t, r, c)}</td></tr>`;
     }).join('');
-    return `<section class="mt-sh ${tint(t.result)}" data-id="${t.id}" data-code="${esc(t.code)}">${head}<table class="mt-sh-t"><thead><tr><th></th><th>Test items</th><th>Max / Min</th><th>Average</th><th>Standard</th><th>Rating</th></tr></thead><tbody>${body}</tbody></table></section>`;
+    return `<section class="mt-sh ${tint(t.result)}" data-id="${t.id}" data-code="${esc(t.code)}">${head}<table class="mt-sh-t"><thead><tr><th></th><th>Test items</th><th>Unit</th><th>Max / Min</th><th>Average</th><th>Standard</th><th>Rating</th></tr></thead><tbody>${body}</tbody></table></section>`;
   }
 
   function sheetHtml(j) {

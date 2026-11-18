@@ -13,7 +13,7 @@ import collections
 
 # ---- the tests: code -> (name, VF method, unit) -------------------------------------------------------------------------------
 T = {
-    'GAU': ('Gauge (Thickness)', 'VF-A01 / VF-A03', 'mm'),
+    'GAU': ('Gauge (Thickness)', 'VF-A03', 'mm'),
     'WGT': ('Weight', 'VF-A02', 'g/m2'),
     'YRN': ('Yarn Count (Warp / Weft)', 'VF-A07', '# of yarns'),
     'HRD': ('Hardness', 'VF-A01', 'C'),
@@ -22,19 +22,19 @@ T = {
     'TAA': ('Tensile after Abrasion', 'VF-B01', 'kgf/cm'),
     'ELO': ('Elongation', 'VF-B01', '%'),
     'DIC': ('Die-C Tear', 'VF-B05', 'kgf/cm'),
-    'SPT': ('Split Tear', 'VF-B07', 'kgf/cm'),
+    'SPT': ('Split Tear', 'VF-B06', 'kgf/cm'),
     'TRT': ('Trouser Tear', 'VF-B07', 'kgf'),
     'STT': ('Stitch Tear', 'VF-B08', 'kgf/cm'),
     'BAU': ('Baumann Tear', 'VF-B09', 'kgf'),
-    'MUL': ('Mullen Burst', 'VF-B02', 'kgf/cm2'),
+    'MUL': ('Mullen Burst (Bursting Strength)', 'VF-B02', 'kgf/cm2'),
     'CMP': ('Compression', 'VF-B10', '%'),
     'PLS': ('Peel Strength', 'VF-B03', 'kgf/cm'),
     'SHS': ('Shear Strength', 'VF-B03', 'kgf/cm2'),
     'KNT': ('Knot Slip Resistance', 'VF-B23', 'kgf'),
     'TIP': ('Shoelace Tip Retention', 'VF-B24', 'kgf'),
-    'MBI': ('Mullen Burst - Inside', 'VF-B27', 'kgf/cm2'),
-    'MBO': ('Mullen Burst - Outside', 'VF-B27', 'kgf/cm2'),
-    'EDG': ('Edge Crush Test', 'VF-F11', 'kgf/cm2'),
+    'MBI': ('Mullen Burst - Inside', 'VF-B02', 'kgf/cm2'),
+    'MBO': ('Mullen Burst - Outside', 'VF-B02', 'kgf/cm2'),
+    'EDG': ('Edge Crush Test', 'VF-B27', 'kgf/cm2'),
     'CAD': ('Cardboard Adhesion - Dry (L / W)', 'VF-F11', ''),
     'CAW': ('Cardboard Adhesion - Wet (L / W)', 'VF-F11', ''),
     'MAR': ('Martindale Abrasion', 'VF-C04', 'cycles'),
@@ -54,10 +54,10 @@ T = {
     'UVA': ('UV Light (24 hrs, 50 C)', 'VF-E03', 'AATCC'),
     'HAG': ('Heat Aging (72 hrs, 70 C)', 'VF-E04', 'AATCC'),
     'HYD': ('Hydrolysis (7 days, 70 C 95%RH)', 'VF-E19', 'rating'),
-    'BLM': ('Blooming Test (7 days, 70 C 95%RH)', 'VF-E03', ''),
+    'BLM': ('Blooming Test (7 days, 70 C 95%RH)', 'VF-E19', ''),
     'LAM': ('Laminar Peel Strength (Dry / Wet)', 'VF-F04', 'kgf/cm'),
     'PVC': ('PVC Migration Fastness', 'VF-E06', 'AATCC'),
-    'COR': ('Corrosion Resistance', 'VF-E19', ''),
+    'COR': ('Corrosion Resistance', 'VF-E19', 'words'),
     'WAT': ('Water Absorption / Resistance', '', ''),
     'AGU': ('Aglet - UV Light', 'VF-E03', 'AATCC'),
     'AGH': ('Aglet - Heat Aging', 'VF-E04', 'AATCC'),
@@ -139,7 +139,7 @@ def main(db):
             print('UNMAPPED KEY', mt, key)
         elif c not in std[mt.strip()]:
             std[mt.strip()].append(c)
-    out = {'source': 'V20261002.accdb (Access)', 'tests': {c: {'name': v[0], 'method': v[1], 'unit': v[2]} for c, v in T.items()}, 'categories': []}
+    out = {'source': 'V20261002.accdb (Access); VF method numbers checked against the VF method library (tbl_vfm_methods)', 'rev': 2, 'tests': {c: {'name': v[0], 'method': v[1], 'unit': v[2]} for c, v in T.items()}, 'categories': []}
     used = set()
     for cat in CATS:
         types = []

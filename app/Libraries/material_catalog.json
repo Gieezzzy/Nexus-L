@@ -1,9 +1,10 @@
 {
- "source": "V20261002.accdb (Access)",
+ "source": "V20261002.accdb (Access); VF method numbers checked against the VF method library (tbl_vfm_methods)",
+ "rev": 2,
  "tests": {
   "GAU": {
    "name": "Gauge (Thickness)",
-   "method": "VF-A01 / VF-A03",
+   "method": "VF-A03",
    "unit": "mm"
   },
   "WGT": {
@@ -48,7 +49,7 @@
   },
   "SPT": {
    "name": "Split Tear",
-   "method": "VF-B07",
+   "method": "VF-B06",
    "unit": "kgf/cm"
   },
   "TRT": {
@@ -67,7 +68,7 @@
    "unit": "kgf"
   },
   "MUL": {
-   "name": "Mullen Burst",
+   "name": "Mullen Burst (Bursting Strength)",
    "method": "VF-B02",
    "unit": "kgf/cm2"
   },
@@ -98,17 +99,17 @@
   },
   "MBI": {
    "name": "Mullen Burst - Inside",
-   "method": "VF-B27",
+   "method": "VF-B02",
    "unit": "kgf/cm2"
   },
   "MBO": {
    "name": "Mullen Burst - Outside",
-   "method": "VF-B27",
+   "method": "VF-B02",
    "unit": "kgf/cm2"
   },
   "EDG": {
    "name": "Edge Crush Test",
-   "method": "VF-F11",
+   "method": "VF-B27",
    "unit": "kgf/cm2"
   },
   "CAD": {
@@ -208,7 +209,7 @@
   },
   "BLM": {
    "name": "Blooming Test (7 days, 70 C 95%RH)",
-   "method": "VF-E03",
+   "method": "VF-E19",
    "unit": ""
   },
   "LAM": {
@@ -224,7 +225,7 @@
   "COR": {
    "name": "Corrosion Resistance",
    "method": "VF-E19",
-   "unit": ""
+   "unit": "words"
   },
   "WAT": {
    "name": "Water Absorption / Resistance",
