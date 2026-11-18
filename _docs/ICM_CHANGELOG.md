@@ -4,6 +4,11 @@
 
 ---
 
+## Phase 221 - Quality Insights Line Map checked against the bonding reports (2026-11-18)
+- Source: `tbl_dtr_bonding_info`, one row per Lab Ref (the latest one with a result), trial / shutdown / LACKING left out, grouped by the line written in the Lab Ref; waiting shoes from the Calendar records. Checked Nov 1-18 against the table directly.
+- **Fixed:** (1) Lab Refs that were not yet in the unified list were dropped (`EXISTS ... tbl_dtr_unified_labrefs`) - new first-article refs of the day, 3 in the period (1 FAIL, 2 PASS); the unified list lags behind bonding_info, so the filter is gone. (2) `lineOf` made `B01` and `B1` two different lines (a ref `DTP20261109SHB01-R` showed as an extra tile B01); the number is now normalised. Cache key bumped (`qi_linemap5_`).
+- **Not changed (by design, tell if it should):** a Lab Ref re-tested many times under the same number counts once with its LATEST result (e.g. DTP20261031SHA12-L has 20 saved reports, 8 of them FAILED, latest PASS), so the map shows 25 FAIL where the Failure Modes tab, which counts every saved report, shows 60 fail rows for the same days.
+
 ## Phase 220 - Lab Tracker: more pull tests on a bonding row, max 4 (2026-11-18)
 - The Edit button of a Bonding Shoe Collection row now also works when the Pull Test LabRefNo column already holds 1-3 Lab Refs: the listed Lab Refs stay, and checkboxes appear for the pull types it does not have yet (Heel Pull, Eyelet, D-Ring, Rivet), limited to the room left (4 per row). `dtr.js` `pullRoom()`; the cell keeps its content on save/cancel.
 - `DtrController::addPullTests` enforces it: counts the row's existing pull tests (tracker, same code/line/date/side) and refuses beyond 4. Same roles as before (Admin, Supervisor, Bonding PIC).

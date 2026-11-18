@@ -32,7 +32,7 @@ class QualityInsightsController extends BaseController
     /** "DTP20261103SHA9-R-R01" -> "A9", "DTP20261116FASHB14-R" (first article) -> "B14" (the building letter and the line number are part of the Lab Ref) */
     public static function lineOf(string $ref): string
     {
-        return preg_match('/^DTP\d{8}(?:FA)?[A-Z]{2,3}([A-Z])(\d+)/', strtoupper($ref), $m) ? $m[1] . $m[2] : '';
+        return preg_match('/^DTP\d{8}(?:FA)?[A-Z]{2,3}([A-Z])(\d+)/', strtoupper($ref), $m) ? $m[1] . (int) $m[2] : '';   // (int): B01 and B1 are the same line
     }
 
     private static function result(string $r): string
@@ -78,7 +78,6 @@ class QualityInsightsController extends BaseController
             SELECT LabRefNo ref, Result, {$bd} AS pd, {$td} AS td FROM tbl_dtr_bonding_info
             WHERE LabRefNo IS NOT NULL AND LabRefNo <> '' AND LabRefNo NOT LIKE '%TRIAL%' AND LabRefNo NOT LIKE '%SHUTDOWN%' AND COALESCE(POLotNO, '') <> 'SHUTDOWN'
               AND COALESCE(ModelStyle, '') <> 'SHUTDOWN' AND COALESCE(TestType, '') <> 'LACKING' AND " . self::BOND_DEDUP . "
-              AND EXISTS (SELECT 1 FROM tbl_dtr_unified_labrefs ul WHERE ul.form_slug = 'bonding' AND ul.lab_ref_no = LabRefNo)
             HAVING (pd BETWEEN ? AND ?) OR (td BETWEEN ? AND ?)", [$from, $to, $from, $to])->getResultArray();
         $out = [];
         foreach ($rows as $r) {
@@ -118,7 +117,7 @@ class QualityInsightsController extends BaseController
     {
         [$from, $to] = $this->period();
         $basis   = $this->basis();
-        $payload = \App\Libraries\DataCache::remember("qi_linemap4_{$basis}_{$from}_{$to}", 120, function () use ($from, $to, $basis) {
+        $payload = \App\Libraries\DataCache::remember("qi_linemap5_{$basis}_{$from}_{$to}", 120, function () use ($from, $to, $basis) {
             $db = $this->db();
 
             // every line the lab has ever collected from, grouped by building
