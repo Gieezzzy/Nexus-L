@@ -7,7 +7,7 @@
  * @var bool $canEdit
  */
 ?>
-<section class="mt-page" id="mt-root" data-base="<?= esc(site_url('materials'), 'attr') ?>" data-can-edit="<?= $canEdit ? '1' : '0' ?>">
+<section class="mt-page" id="mt-root" data-base="<?= esc(site_url('materials'), 'attr') ?>" data-can-edit="<?= $canEdit ? '1' : '0' ?>" data-user="<?= esc($userName ?? '', 'attr') ?>">
     <header class="mt-top">
         <div>
             <h1 class="mt-title">Material Testing</h1>

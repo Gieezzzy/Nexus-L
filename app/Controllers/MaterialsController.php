@@ -67,6 +67,7 @@ class MaterialsController extends BaseController
             'withJs'     => ['material-collection.js'],
             'categories' => \App\Libraries\MaterialCatalog::categories(),
             'canEdit'    => self::canEdit(),
+            'userName'   => (string) (service('auth')->user()['name'] ?? service('auth')->user()['username'] ?? ''),
         ]);
     }
 

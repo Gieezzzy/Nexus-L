@@ -8,6 +8,8 @@
   if (!root) return;
   const base = root.dataset.base.replace(/\/?$/, '/');
   const canEdit = root.dataset.canEdit === '1';
+  const me = root.dataset.user || '';
+  const todayStr = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };   // the browser's day
   const $ = (s, c = root) => c.querySelector(s);
   const $$ = (s, c = root) => [...c.querySelectorAll(s)];
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -173,8 +175,8 @@
     const info = [['Material', m.name], ['Material code', m.code], ['Material type', m.type], ['Supplier', m.supplier], ['Style', m.style], ['Colorway', m.colorway], ['MTL #', m.mtl], ['Prod. code', m.prod], ['Quantity', [m.qty, m.unit].filter(Boolean).join(' ')], ['Received', day(m.received)]]
       .filter(([, v]) => v).map(([l, v]) => `<span><em>${l}</em> ${esc(v)}</span>`).join('');
     const first = j.tests[0] || {};
-    const common = `<div class="mt-sh-common"><label>Technician <input type="text" id="mt-sh-tech" maxlength="120" value="${esc(first.tech || '')}"${sheet.canEdit ? '' : ' disabled'}></label>`
-      + `<label>Tested date <input type="date" id="mt-sh-date" value="${esc(day(first.tested))}"${sheet.canEdit ? '' : ' disabled'}></label>${j.gauge !== null && j.gauge !== undefined ? `<span class="mt-sh-g">Gauge average <b>${j.gauge}</b> mm decides the standards of tensile, elongation, tear and burst</span>` : ''}</div>`;
+    const common = `<div class="mt-sh-common"><label>Technician <input type="text" id="mt-sh-tech" maxlength="120" value="${esc(first.tech || (sheet.canEdit ? me : ''))}"${sheet.canEdit ? '' : ' disabled'}></label>`
+      + `<label>Tested date <input type="date" id="mt-sh-date" value="${esc(day(first.tested) || (sheet.canEdit ? todayStr() : ''))}"${sheet.canEdit ? '' : ' disabled'}></label>${j.gauge !== null && j.gauge !== undefined ? `<span class="mt-sh-g">Gauge average <b>${j.gauge}</b> mm decides the standards of tensile, elongation, tear and burst</span>` : ''}</div>`;
     return `<div class="mt-info">${info}</div>${common}${j.tests.map(testSection).join('') || '<p class="mt-empty">This material type has no test list.</p>'}`;
   }
 
