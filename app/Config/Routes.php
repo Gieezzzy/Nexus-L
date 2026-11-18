@@ -362,6 +362,9 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('materials/list', 'MaterialsController::list');
     $routes->post('materials/test-update', 'MaterialsController::testUpdate');
     $routes->get('materials/machines', 'MaterialsController::machines');
+    $routes->get('materials/sheet', 'MaterialsController::sheet');
+    $routes->post('materials/sheet-calc', 'MaterialsController::sheetCalc');
+    $routes->post('materials/sheet-save', 'MaterialsController::sheetSave');
 
     // Whole Shoe Physical & Monitoring Test Suite (Marc)
     $routes->get('wholeshoe', 'WstController::wholeshoe', ['as' => 'wholeshoe']);

@@ -191,4 +191,130 @@ class MaterialsController extends BaseController
 
         return $this->response->setJSON(['ok' => true, 'message' => 'Saved.', 'csrf' => csrf_hash()]);
     }
+
+    // ------------------------------------------------------------------------------------------------------------------ the test sheet (values, average, standard, rating)
+    /** the Access type name(s) and category of a received material, for the standards: 'A|B' for a combined type */
+    private function sheetType(array $mother): array
+    {
+        $db   = \Config\Database::connect();
+        $spec = (string) ($db->query('SELECT MaterialType FROM tbl_dtr_material_type_status WHERE MaterialCode = ? LIMIT 1', [$mother['MaterialCode']])->getRow('MaterialType') ?? '');
+        $res  = \App\Libraries\MaterialCatalog::resolve($spec !== '' ? $spec : (string) $mother['MaterialType']) ?? \App\Libraries\MaterialCatalog::resolve((string) $mother['MaterialType']);
+
+        return $res ? ['type' => implode('|', $res['types']), 'label' => $res['type'], 'cat' => $res['category']] : ['type' => '', 'label' => '', 'cat' => ''];
+    }
+
+    private function sheetTest(array $t, array $ty, ?float $gauge): array
+    {
+        $values = json_decode((string) ($t['ValuesJson'] ?? ''), true) ?: [];
+        $calc   = \App\Libraries\MaterialSheet::compute((string) $t['TestCode'], $ty['type'], $ty['cat'], $values, $gauge);
+
+        return [
+            'id' => (int) $t['TestID'], 'child' => (string) $t['ChildLabRefNo'], 'code' => (string) $t['TestCode'], 'name' => (string) $t['TestType'], 'method' => (string) ($t['TestMethod'] ?? ''), 'unit' => (string) ($t['Unit'] ?? ''),
+            'layout' => \App\Libraries\MaterialSheet::layout((string) $t['TestCode'], $ty['type'], $ty['cat']), 'values' => (object) $values, 'calc' => $calc,
+            'status' => (string) ($t['Status'] ?: 'Pending'), 'result' => (string) ($t['Result'] ?? ''), 'tested' => (string) ($t['TestedDate'] ?? ''), 'tech' => (string) ($t['Technician'] ?? ''), 'remarks' => (string) ($t['Remarks'] ?? ''),
+        ];
+    }
+
+    /** GET /materials/sheet?mother=<Lab Ref>[&test=<TestID>]: the material and its test sheet (all tests of the Lab Ref, or the one test) */
+    public function sheet(): ResponseInterface
+    {
+        \App\Libraries\MaterialCatalog::ensureTables();
+        \App\Libraries\MaterialSheet::ensureColumns();
+        $db     = \Config\Database::connect();
+        $mother = $db->table('tbl_dtr_MaterialTracker')->where('LabRefNo', trim((string) $this->request->getGet('mother')))->get()->getRowArray();
+        if (! $mother) {
+            return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'That Lab Reference was not found.']);
+        }
+        $ty    = $this->sheetType($mother);
+        $only  = (int) $this->request->getGet('test');
+        $b     = $db->table('tbl_dtr_MaterialTrackerTests')->where('MotherLabRefNo', $mother['LabRefNo'])->orderBy('SortNo')->orderBy('TestID');
+        if ($only > 0) {
+            $b->where('TestID', $only);
+        }
+        $gauge = \App\Libraries\MaterialSheet::gaugeOf((string) $mother['LabRefNo']);
+        $tests = array_map(fn ($t) => $this->sheetTest($t, $ty, $gauge), $b->get()->getResultArray());
+
+        return $this->response->setJSON(['ok' => true, 'can_edit' => self::canEdit(), 'gauge' => $gauge, 'mother' => [
+            'lab_ref' => $mother['LabRefNo'], 'type' => $ty['label'], 'received' => (string) $mother['ReceivedDate'], 'arrived' => (string) $mother['DateArrived'], 'code' => (string) $mother['MaterialCode'],
+            'name' => (string) $mother['MaterialName'], 'supplier' => (string) $mother['Supplier'], 'style' => (string) $mother['Style'], 'colorway' => (string) $mother['Colorway'], 'mtl' => (string) $mother['MTL'],
+            'prod' => (string) $mother['ProductionCode'], 'qty' => (string) $mother['Qty'], 'unit' => (string) ($mother['Unit'] ?? ''),
+        ], 'tests' => $tests]);
+    }
+
+    /** POST /materials/sheet-calc {mother, tests:[{id, values}]}: averages, standards and ratings of what is typed, nothing saved */
+    public function sheetCalc(): ResponseInterface
+    {
+        $p      = $this->request->getJSON(true) ?? [];
+        $db     = \Config\Database::connect();
+        $mother = $db->table('tbl_dtr_MaterialTracker')->where('LabRefNo', trim((string) ($p['mother'] ?? '')))->get()->getRowArray();
+        if (! $mother) {
+            return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'That Lab Reference was not found.', 'csrf' => csrf_hash()]);
+        }
+        $ty    = $this->sheetType($mother);
+        $gauge = null;
+        $tests = (array) ($p['tests'] ?? []);
+        foreach ($tests as $t) {                    // the thickness typed on the sheet decides the standards of the other tests
+            if (($t['code'] ?? '') === 'GAU') {
+                $g = \App\Libraries\MaterialSheet::compute('GAU', $ty['type'], $ty['cat'], (array) ($t['values'] ?? []), null);
+                $gauge = $g['rows']['T']['ave'] ?? null;
+            }
+        }
+        $gauge ??= \App\Libraries\MaterialSheet::gaugeOf((string) $mother['LabRefNo']);
+        $out = [];
+        foreach ($tests as $t) {
+            $out[(int) ($t['id'] ?? 0)] = \App\Libraries\MaterialSheet::compute((string) ($t['code'] ?? ''), $ty['type'], $ty['cat'], (array) ($t['values'] ?? []), $gauge);
+        }
+
+        return $this->response->setJSON(['ok' => true, 'gauge' => $gauge, 'tests' => $out, 'csrf' => csrf_hash()]);
+    }
+
+    /** POST /materials/sheet-save {id, values, technician, tested_date, remarks}: saves the values; average, rating and status are worked out here */
+    public function sheetSave(): ResponseInterface
+    {
+        if (! self::canEdit()) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'message' => 'Only the laboratory staff can record a material test.', 'csrf' => csrf_hash()]);
+        }
+        \App\Libraries\MaterialSheet::ensureColumns();
+        $p   = $this->request->getJSON(true) ?? [];
+        $db  = \Config\Database::connect();
+        $t   = $db->table('tbl_dtr_MaterialTrackerTests')->where('TestID', (int) ($p['id'] ?? 0))->get()->getRowArray();
+        if (! $t) {
+            return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'That test no longer exists.', 'csrf' => csrf_hash()]);
+        }
+        $mother = $db->table('tbl_dtr_MaterialTracker')->where('LabRefNo', $t['MotherLabRefNo'])->get()->getRowArray();
+        $ty     = $this->sheetType($mother ?: ['MaterialCode' => '', 'MaterialType' => (string) $t['MaterialType']]);
+        $clean  = [];
+        foreach ((array) ($p['values'] ?? []) as $k => $v) {          // only the boxes of the test, as text
+            if (preg_match('/^[A-Za-z0-9_]{1,30}$/', (string) $k) && (is_scalar($v) || $v === null) && trim((string) $v) !== '') {
+                $clean[(string) $k] = mb_substr(trim((string) $v), 0, 200);
+            }
+        }
+        $gauge = $t['TestCode'] === 'GAU' ? null : \App\Libraries\MaterialSheet::gaugeOf((string) $t['MotherLabRefNo']);
+        $calc  = \App\Libraries\MaterialSheet::compute((string) $t['TestCode'], $ty['type'], $ty['cat'], $clean, $gauge);
+        $date  = trim((string) ($p['tested_date'] ?? ''));
+        if ($date !== '' && ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => 'The tested date is not valid.', 'csrf' => csrf_hash()]);
+        }
+        $status = $calc['result'] !== '' ? 'Completed' : ($calc['any'] ? 'Ongoing' : 'Pending');
+        if ($status !== 'Pending' && $date === '') {
+            $date = (string) ($t['TestedDate'] ?: date('Y-m-d'));
+        }
+        $u = service('auth')->user();
+        $db->table('tbl_dtr_MaterialTrackerTests')->where('TestID', (int) $t['TestID'])->update([
+            'ValuesJson' => $clean ? json_encode($clean, JSON_UNESCAPED_UNICODE) : null, 'Result' => $calc['result'] ?: null, 'Status' => $status, 'TestedDate' => $status === 'Pending' ? null : $date,
+            'Technician' => mb_substr(trim((string) ($p['technician'] ?? '')), 0, 120), 'Remarks' => mb_substr(trim((string) ($p['remarks'] ?? '')), 0, 500),
+            'UpdatedBy' => mb_substr((string) ($u['name'] ?? $u['username'] ?? ''), 0, 120), 'UpdatedAt' => date('Y-m-d H:i:s'),
+        ]);
+        if ($t['TestCode'] === 'GAU') {            // the thickness decides the standard of the tensile / tear / burst tests: they are rated again
+            $g = $calc['rows']['T']['ave'] ?? null;
+            foreach ($db->table('tbl_dtr_MaterialTrackerTests')->where('MotherLabRefNo', $t['MotherLabRefNo'])->whereIn('TestCode', ['TEN', 'ELO', 'TRT', 'STT', 'MUL'])->where('ValuesJson IS NOT NULL', null, false)->get()->getResultArray() as $d) {
+                $c = \App\Libraries\MaterialSheet::compute((string) $d['TestCode'], $ty['type'], $ty['cat'], json_decode((string) $d['ValuesJson'], true) ?: [], $g);
+                $db->table('tbl_dtr_MaterialTrackerTests')->where('TestID', (int) $d['TestID'])->update(['Result' => $c['result'] ?: null, 'Status' => $c['result'] !== '' ? 'Completed' : ($c['any'] ? 'Ongoing' : 'Pending')]);
+            }
+        }
+        \App\Libraries\DataCache::bump();
+        \App\Libraries\ActivityLog::record('materials', 'sheet-save', (string) $t['ChildLabRefNo'], $status . ($calc['result'] !== '' ? ' ' . $calc['result'] : ''));
+
+        return $this->response->setJSON(['ok' => true, 'message' => 'Saved: ' . $status . ($calc['result'] !== '' ? ' - ' . $calc['result'] : '') . '.', 'status' => $status, 'result' => $calc['result'], 'calc' => $calc, 'csrf' => csrf_hash()]);
+    }
 }

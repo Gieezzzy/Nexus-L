@@ -51,11 +51,12 @@
     const body = r.tests.map((t, i) => {
       const meta = [t.method, t.unit].filter(Boolean).join(' · ');
       const name = `<b>${esc(t.name)}</b>${meta ? `<small>${esc(meta)}</small>` : ''}`;
+      const link = `<button type="button" class="mt-link mono" data-open-test="${t.id}" data-mother="${esc(r.lab_ref)}" title="Open the test sheet">${esc(t.child)}</button>`;
       if (!canEdit) {
-        return `<tr><td>${i + 1}</td><td>${name}</td><td class="mono">${esc(t.child)}</td><td>${chip(t.status)}</td><td>${resChip(t.result)}</td><td>${esc(day(t.tested)) || '-'}</td><td>${esc(t.tech) || '-'}</td></tr>`;
+        return `<tr><td>${i + 1}</td><td>${name}</td><td>${link}</td><td>${chip(t.status)}</td><td>${resChip(t.result)}</td><td>${esc(day(t.tested)) || '-'}</td><td>${esc(t.tech) || '-'}</td></tr>`;
       }
       const sel = (opts, cur) => opts.map((o) => `<option value="${esc(o)}"${o === cur ? ' selected' : ''}>${o || '-'}</option>`).join('');
-      return `<tr data-tid="${t.id}"><td>${i + 1}</td><td>${name}</td><td class="mono">${esc(t.child)}</td>`
+      return `<tr data-tid="${t.id}"><td>${i + 1}</td><td>${name}</td><td>${link}</td>`
         + `<td><select data-f="status" aria-label="Status of ${esc(t.name)}">${sel(['Pending', 'Ongoing', 'Completed'], t.status)}</select></td>`
         + `<td><select data-f="result" aria-label="Result of ${esc(t.name)}">${sel(['', 'PASS', 'TOLERABLE', 'FAIL'], t.result.toUpperCase())}</select></td>`
         + `<td><input type="date" data-f="tested_date" value="${esc(day(t.tested))}"></td>`
@@ -75,7 +76,7 @@
       + `<b class="mt-ref">${esc(r.lab_ref)}</b><span class="mt-name">${esc(r.name || r.code)}</span>`
       + `<span class="mt-type">${esc(r.category_name ? r.category_name + ' · ' : '')}${esc(r.type)}</span><span class="mt-date">${esc(day(r.received))}</span>`
       + `<span class="mt-prog" title="${r.done} of ${r.total} tests completed"><i style="width:${pct}%"></i></span><span class="mt-count">${r.done}/${r.total}</span>${r.fail ? `<span class="mt-res r-fail">${r.fail} fail</span>` : ''}${chip(r.state)}</button>`
-      + `<div class="mt-body"${open ? '' : ' hidden'}><div class="mt-info">${info}</div>${childRows(r)}</div></article>`;
+      + `<div class="mt-body"${open ? '' : ' hidden'}><div class="mt-info">${info}${r.tests.length ? `<button type="button" class="dtr-btn dtr-btn-primary mt-opens" data-open-mother="${esc(r.lab_ref)}">Open test sheet</button>` : ''}</div>${childRows(r)}</div></article>`;
   }
 
   function draw() {
@@ -112,6 +113,133 @@
     const f = e.target.closest('[data-f="status"]');
     if (f && f.value === 'Completed') { const tr = f.closest('tr'); const d = $('[data-f="tested_date"]', tr); if (d && !d.value) d.value = new Date().toISOString().slice(0, 10); }
   });
+
+  // ================================================================ the test sheet: values, average, standard and rating of a Lab Ref (as on the Access forms)
+  const sheet = { mother: '', test: 0, canEdit: false, tests: [], timer: 0, seq: 0 };
+  const fib = { wool: 'Wool', acrylic: 'Acrylic', polyester: 'Polyester', nylon: 'Nylon', cotton: 'Cotton', acetate: 'Acetate' };
+  const fmt = (v) => (v === null || v === undefined || v === '' ? '' : String(v));
+  const ratingChip = (r) => (r ? `<span class="mt-res r-${esc(r.toLowerCase())}">${esc(r)}</span>` : '<span class="mt-none">-</span>');
+
+  function inputCells(t, r) {
+    const v = t.values || {}; const ro = sheet.canEdit ? '' : ' disabled';
+    const num = (f, ph) => `<input type="number" step="any" class="mt-num" data-f="${esc(f)}" value="${esc(fmt(v[f]))}"${ph ? ` placeholder="${esc(ph)}"` : ''}${ro}>`;
+    if (r.mode === 'avg' || r.mode === 'each') return `<div class="mt-specs">${Array.from({ length: r.n }, (_, i) => num(r.k + (i + 1))).join('')}</div>`;
+    if (r.mode === 'fibre') return `<div class="mt-specs">${Object.keys(fib).map((x) => `<label class="mt-fib"><small>${fib[x]}</small>${num(r.k + '_' + x)}</label>`).join('')}</div>`;
+    if (r.mode === 'text' || r.mode === 'mart') {
+      const cur = fmt(v[r.mode === 'mart' ? r.k + 't' : r.k]);
+      const sel = `<select data-f="${esc(r.mode === 'mart' ? r.k + 't' : r.k)}"${ro}><option value=""></option>${r.texts.map(([l]) => `<option${l.toLowerCase() === cur.toLowerCase() ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+      return r.mode === 'mart' ? `<div class="mt-specs">${num(r.k + 'c', 'cycles')}${sel}</div>` : `<div class="mt-specs">${sel}</div>`;
+    }
+    return '';
+  }
+
+  function ratingCell(t, r, c) {
+    if (c && c.manual && sheet.canEdit) {
+      const cur = fmt((t.values || {})[r.k + 'R']);
+      return `<select data-f="${esc(r.k)}R" aria-label="Rating">${['', 'PASS', 'TOLERABLE', 'FAIL'].map((o) => `<option${o === cur ? ' selected' : ''}>${o}</option>`).join('')}</select>`;
+    }
+    return ratingChip(c ? c.rating : '');
+  }
+
+  function stdText(r, c) {
+    if (c && c.std !== null && c.std !== undefined) return (r.dir === 'max' ? '≤ ' : '') + c.std;
+    if (r.thick) return '<span class="mt-none">needs the Gauge</span>';
+    if (r.manual || (r.std && !r.std.length && r.mode !== 'text')) return 'Refer to specific requirements';
+    return '<span class="mt-none">-</span>';
+  }
+
+  function testSection(t) {
+    const rows = t.layout; const calc = (t.calc && t.calc.rows) || {};
+    const head = `<header class="mt-sh-h"><div><b>${esc(t.name)}</b><small>${esc([t.method, t.unit].filter(Boolean).join(' · '))}</small></div><div class="mt-sh-r"><span class="mt-sh-state" data-state>${ratingChip(t.result)}</span>`
+      + `<span class="mono mt-sh-child">${esc(t.child)}</span>${sheet.canEdit ? '<button type="button" class="dtr-btn dtr-btn-primary" data-sh-save>Save</button>' : ''}<small class="mt-msg" role="status"></small></div></header>`;
+    const body = rows.map((r) => {
+      const c = calc[r.k] || {};
+      const mm = r.mode === 'avg' && r.n > 1 ? `<span data-out="max">${fmt(c.max)}</span><span data-out="min">${fmt(c.min)}</span>` : '';
+      const ave = r.mode === 'avg' ? `<b data-out="ave">${fmt(c.ave)}</b>` : '';
+      return `<tr data-k="${esc(r.k)}"><td class="mt-sh-lab">${esc(r.label || '')}</td><td>${inputCells(t, r)}</td><td class="mt-sh-mm">${mm}</td><td class="mt-sh-ave">${ave}</td>`
+        + `<td class="mt-sh-std" data-out="std">${stdText(r, c)}</td><td class="mt-sh-rt" data-out="rating">${ratingCell(t, r, c)}</td></tr>`;
+    }).join('');
+    return `<section class="mt-sh" data-id="${t.id}" data-code="${esc(t.code)}">${head}<table class="mt-sh-t"><thead><tr><th></th><th>Test items</th><th>Max / Min</th><th>Average</th><th>Standard</th><th>Rating</th></tr></thead><tbody>${body}</tbody></table></section>`;
+  }
+
+  function sheetHtml(j) {
+    const m = j.mother;
+    const info = [['Material', m.name], ['Material code', m.code], ['Material type', m.type], ['Supplier', m.supplier], ['Style', m.style], ['Colorway', m.colorway], ['MTL #', m.mtl], ['Prod. code', m.prod], ['Quantity', [m.qty, m.unit].filter(Boolean).join(' ')], ['Received', day(m.received)]]
+      .filter(([, v]) => v).map(([l, v]) => `<span><em>${l}</em> ${esc(v)}</span>`).join('');
+    const first = j.tests[0] || {};
+    const common = `<div class="mt-sh-common"><label>Technician <input type="text" id="mt-sh-tech" maxlength="120" value="${esc(first.tech || '')}"${sheet.canEdit ? '' : ' disabled'}></label>`
+      + `<label>Tested date <input type="date" id="mt-sh-date" value="${esc(day(first.tested))}"${sheet.canEdit ? '' : ' disabled'}></label>${j.gauge !== null && j.gauge !== undefined ? `<span class="mt-sh-g">Gauge average <b>${j.gauge}</b> mm decides the standards of tensile, elongation, tear and burst</span>` : ''}</div>`;
+    return `<div class="mt-info">${info}</div>${common}${j.tests.map(testSection).join('') || '<p class="mt-empty">This material type has no test list.</p>'}`;
+  }
+
+  async function openSheet(mother, test) {
+    Object.assign(sheet, { mother, test: test || 0, seq: sheet.seq + 1 });
+    const dlg = $('#mt-sheet'); dlg.hidden = false; document.body.classList.add('mt-noscroll');
+    $('#mt-sh-title').textContent = test ? 'Test sheet · ' + mother : 'Lab ' + mother + ' · Test results';
+    $('#mt-sh-body').innerHTML = '<p class="muted">Loading...</p>'; $('#mt-sh-saveall').hidden = true;
+    try {
+      const r = await fetch(base + 'sheet?mother=' + encodeURIComponent(mother) + (test ? '&test=' + test : ''), { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      const j = await r.json(); if (!j.ok) throw new Error(j.message || 'bad');
+      sheet.canEdit = !!j.can_edit; sheet.tests = j.tests;
+      $('#mt-sh-title').textContent = (test && j.tests[0] ? j.tests[0].name + ' · ' : '') + 'Lab ' + mother + ' · ' + (j.mother.type || '') + ' Test Results';
+      $('#mt-sh-body').innerHTML = sheetHtml(j);
+      $('#mt-sh-saveall').hidden = !(sheet.canEdit && j.tests.length > 1);
+    } catch (e) { $('#mt-sh-body').innerHTML = `<p class="mt-empty">${esc(e.message || 'Could not open the sheet.')}</p>`; }
+  }
+  const closeSheet = () => { $('#mt-sheet').hidden = true; document.body.classList.remove('mt-noscroll'); load(); };
+
+  const sectionValues = (sec) => { const v = {}; $$('[data-f]', sec).forEach((x) => { if (x.value !== '') v[x.dataset.f] = x.value; }); return v; };
+
+  async function recalc() {
+    const my = ++sheet.seq;
+    const tests = $$('.mt-sh').map((s) => ({ id: +s.dataset.id, code: s.dataset.code, values: sectionValues(s) }));
+    try {
+      const r = await fetch(base + 'sheet-calc', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfMeta ? csrfMeta.content : '' }, body: JSON.stringify({ mother: sheet.mother, tests }) });
+      const j = await r.json(); if (csrfMeta && j.csrf) csrfMeta.content = j.csrf;
+      if (!j.ok || my !== sheet.seq) return;
+      $$('.mt-sh').forEach((sec) => {
+        const t = sheet.tests.find((x) => x.id === +sec.dataset.id); const c = j.tests[+sec.dataset.id]; if (!t || !c) return;
+        $('[data-state]', sec).innerHTML = ratingChip(c.result);
+        $$('tbody tr', sec).forEach((tr) => {
+          const r = t.layout.find((x) => x.k === tr.dataset.k); const rc = c.rows[tr.dataset.k]; if (!r || !rc) return;
+          const set = (n, h) => { const el = $(`[data-out="${n}"]`, tr); if (el) el.innerHTML = h; };
+          set('ave', fmt(rc.ave)); set('max', fmt(rc.max)); set('min', fmt(rc.min)); set('std', stdText(r, rc));
+          const cell = $('[data-out="rating"]', tr); if (!(rc.manual && sheet.canEdit)) cell.innerHTML = ratingChip(rc.rating);
+        });
+      });
+      const g = $('.mt-sh-g'); if (g && j.gauge !== null) { const b = $('b', g); if (b) b.textContent = j.gauge; }
+    } catch (e) { /* the numbers stay as they were */ }
+  }
+
+  async function saveSection(sec, quiet) {
+    const msg = $('.mt-msg', sec); const id = +sec.dataset.id;
+    const body = { id, values: sectionValues(sec), technician: $('#mt-sh-tech').value, tested_date: $('#mt-sh-date').value };
+    try {
+      const r = await fetch(base + 'sheet-save', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfMeta ? csrfMeta.content : '' }, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({})); if (csrfMeta && j.csrf) csrfMeta.content = j.csrf;
+      if (!quiet) { msg.textContent = j.message || (r.ok ? 'Saved.' : 'Not saved.'); msg.className = 'mt-msg ' + (r.ok ? 'ok' : 'bad'); }
+      if (r.ok) { $('[data-state]', sec).innerHTML = ratingChip(j.result); if (!$('#mt-sh-date').value) { /* the server chose the date */ } }
+      return r.ok;
+    } catch (e) { if (!quiet) { msg.textContent = 'Could not save.'; msg.className = 'mt-msg bad'; } return false; }
+  }
+
+  root.addEventListener('click', async (e) => {
+    const om = e.target.closest('[data-open-mother]');
+    if (om) { openSheet(om.dataset.openMother, 0); return; }
+    const ot = e.target.closest('[data-open-test]');
+    if (ot) { openSheet(ot.dataset.mother, +ot.dataset.openTest); return; }
+    if (e.target.closest('#mt-sh-close') || e.target === $('#mt-sheet')) { closeSheet(); return; }
+    const sv = e.target.closest('[data-sh-save]');
+    if (sv) { sv.disabled = true; await saveSection(sv.closest('.mt-sh')); sv.disabled = false; return; }
+    if (e.target.closest('#mt-sh-saveall')) {
+      const b = e.target.closest('button'); b.disabled = true;
+      for (const sec of $$('.mt-sh')) { if (Object.keys(sectionValues(sec)).length) await saveSection(sec, true); }
+      await openSheet(sheet.mother, sheet.test); b.disabled = false;
+    }
+  });
+  root.addEventListener('input', (e) => { if (e.target.closest('.mt-sh') && e.target.matches('[data-f]')) { clearTimeout(sheet.timer); sheet.timer = setTimeout(recalc, 280); } });
+  root.addEventListener('change', (e) => { if (e.target.closest('.mt-sh') && e.target.matches('select[data-f]')) recalc(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#mt-sheet').hidden) closeSheet(); });
   const reload = () => { clearTimeout(timer); timer = setTimeout(load, 250); };
   $('#mt-q').addEventListener('input', reload);
   ['#mt-status', '#mt-from', '#mt-to'].forEach((s) => $(s).addEventListener('change', load));

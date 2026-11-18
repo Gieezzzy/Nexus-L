@@ -43,7 +43,7 @@ class MaterialCatalog
     }
 
     /**
-     * @return array{category:string,category_name:string,type:string,tests:list<string>}|null  null = this material has no test list (Processing Material, CANCEL ...)
+     * @return array{category:string,category_name:string,type:string,types:list<string>,tests:list<string>}|null  null = this material has no test list (Processing Material, CANCEL ...)
      */
     public static function resolve(string $materialType): ?array
     {
@@ -79,7 +79,7 @@ class MaterialCatalog
                 }
                 $codes = array_values(array_intersect($c['all_tests'], array_unique($codes)));      // the order of the form
 
-                return ['category' => $c['slug'], 'category_name' => $c['name'], 'type' => $prefix !== null ? rtrim($name, '*') : $hit[0]['name'], 'tests' => $codes];
+                return ['category' => $c['slug'], 'category_name' => $c['name'], 'type' => $prefix !== null ? rtrim($name, '*') : $hit[0]['name'], 'types' => array_column($hit, 'name'), 'tests' => $codes];
             }
         }
 

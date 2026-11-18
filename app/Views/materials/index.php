@@ -47,4 +47,16 @@
             <div id="mt-list" class="mt-list" aria-live="polite"><p class="muted">Loading...</p></div>
         </div>
     </div>
+    <div class="mt-modal" id="mt-sheet" hidden role="dialog" aria-modal="true" aria-labelledby="mt-sh-title">
+        <div class="mt-modal-box">
+            <header class="mt-modal-head">
+                <h2 id="mt-sh-title">Test sheet</h2>
+                <div class="mt-modal-act">
+                    <button type="button" class="dtr-btn dtr-btn-primary" id="mt-sh-saveall" hidden>Save all tests</button>
+                    <button type="button" class="dtr-btn dtr-btn-outline" id="mt-sh-close">Close</button>
+                </div>
+            </header>
+            <div class="mt-modal-body" id="mt-sh-body"><p class="muted">Loading...</p></div>
+        </div>
+    </div>
 </section>
