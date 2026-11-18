@@ -67,29 +67,39 @@ class QualityInsightsController extends BaseController
     }
 
     /**
-     * @return array<string,array{ref:string,result:string,line:string,day:string}> the bonding Lab Refs of from..to (trials, shutdowns and LACKING rows left out), by Lab Ref.
-     * Result = the saved result of tbl_dtr_bonding_info (one row per Lab Ref: the one that has a result).
+     * @return array<string,array{id:int,ref:string,result:string,line:string,day:string}> EVERY saved bonding report of from..to (trials, shutdowns and LACKING rows left out), keyed "<Lab Ref>#<id>".
+     * A Lab Ref that was tested again under the same number has one report per test, and each one counts (as the Failure Modes tab does).
+     * A row with no result is a waiting shoe only when the Lab Ref has no saved result at all (otherwise a later report replaced it).
      */
     private function producedRefs(string $from, string $to, string $basis = 'tested'): array
     {
         $bd   = self::BOND_DATE;
         $td   = self::TEST_DATE;
         $rows = $this->db()->query("
-            SELECT LabRefNo ref, Result, {$bd} AS pd, {$td} AS td FROM tbl_dtr_bonding_info
+            SELECT BondingTestID id, LabRefNo ref, Result, {$bd} AS pd, {$td} AS td,
+                (SELECT COUNT(*) FROM tbl_dtr_bonding_info x WHERE x.LabRefNo = tbl_dtr_bonding_info.LabRefNo AND x.Result IS NOT NULL AND x.Result <> '') AS n_res
+            FROM tbl_dtr_bonding_info
             WHERE LabRefNo IS NOT NULL AND LabRefNo <> '' AND LabRefNo NOT LIKE '%TRIAL%' AND LabRefNo NOT LIKE '%SHUTDOWN%' AND COALESCE(POLotNO, '') <> 'SHUTDOWN'
-              AND COALESCE(ModelStyle, '') <> 'SHUTDOWN' AND COALESCE(TestType, '') <> 'LACKING' AND " . self::BOND_DEDUP . "
+              AND COALESCE(ModelStyle, '') <> 'SHUTDOWN' AND COALESCE(TestType, '') <> 'LACKING'
             HAVING (pd BETWEEN ? AND ?) OR (td BETWEEN ? AND ?)", [$from, $to, $from, $to])->getResultArray();
-        $out = [];
+        $out     = [];
+        $waiting = [];
         foreach ($rows as $r) {
             $line = self::lineOf((string) $r['ref']);
             if ($line === '') {
                 continue;
             }
             $res = self::result((string) $r['Result']);
-            // by tested date: a tested Lab Ref sits on the day it was tested; one with no result yet sits on its production day
+            if ($res === '') {
+                if ((int) $r['n_res'] > 0 || isset($waiting[(string) $r['ref']])) {
+                    continue;      // replaced by a later report / one waiting shoe per Lab Ref
+                }
+                $waiting[(string) $r['ref']] = true;
+            }
+            // by tested date: a tested report sits on the day it was tested; one with no result yet sits on its production day
             $day = $basis === 'tested' && $res !== '' && $r['td'] ? (string) $r['td'] : (string) $r['pd'];
             if ($day >= $from && $day <= $to) {
-                $out[(string) $r['ref']] = ['ref' => (string) $r['ref'], 'result' => $res, 'line' => $line, 'day' => $day];
+                $out[$r['ref'] . '#' . $r['id']] = ['id' => (int) $r['id'], 'ref' => (string) $r['ref'], 'result' => $res, 'line' => $line, 'day' => $day];
             }
         }
 
@@ -117,7 +127,7 @@ class QualityInsightsController extends BaseController
     {
         [$from, $to] = $this->period();
         $basis   = $this->basis();
-        $payload = \App\Libraries\DataCache::remember("qi_linemap5_{$basis}_{$from}_{$to}", 120, function () use ($from, $to, $basis) {
+        $payload = \App\Libraries\DataCache::remember("qi_linemap6_{$basis}_{$from}_{$to}", 120, function () use ($from, $to, $basis) {
             $db = $this->db();
 
             // every line the lab has ever collected from, grouped by building
@@ -137,6 +147,7 @@ class QualityInsightsController extends BaseController
 
             // tested: the saved results of the shoes produced in the period
             $produced = $this->producedRefs($from, $to, $basis);
+            $seen     = array_flip(array_column($produced, 'ref'));
             foreach ($produced as $r) {
                 $l = $r['line'];
                 $tiles[$l] ??= $tile($l);
@@ -157,7 +168,7 @@ class QualityInsightsController extends BaseController
             }
             // collected from the line but not yet a bonding report at all (the tracker rows that are not tested)
             foreach ((new CalendarMonitoringController())->records($from, $to) as $r) {
-                if ($r['domain'] !== 'bonding' || $r['status'] === 'completed' || stripos($r['lab_ref_no'], 'TRIAL') !== false || isset($produced[$r['lab_ref_no']])) {
+                if ($r['domain'] !== 'bonding' || $r['status'] === 'completed' || stripos($r['lab_ref_no'], 'TRIAL') !== false || isset($seen[$r['lab_ref_no']])) {
                     continue;
                 }
                 $l = self::lineOf($r['lab_ref_no']);
@@ -199,7 +210,7 @@ class QualityInsightsController extends BaseController
         [$from, $to] = $this->period();
         $line = strtoupper(trim((string) $this->request->getGet('line')));
         $items = [];
-        // the Lab Refs of this line in the period (by the chosen date basis); a test may be done days later, so the Calendar rows are looked up over a longer window
+        // the reports of this line in the period (by the chosen date basis): every saved report is one entry; a test may be done days later, so the Calendar rows are looked up over a longer window
         $mine = array_filter($this->producedRefs($from, $to, $this->basis()), static fn ($r) => $r['line'] === $line);
         $cal  = [];
         foreach ((new CalendarMonitoringController())->records(date('Y-m-d', strtotime($from . ' -30 days')), date('Y-m-d', strtotime($to . ' +30 days'))) as $r) {
@@ -207,16 +218,21 @@ class QualityInsightsController extends BaseController
                 $cal[$r['lab_ref_no']] = $r;
             }
         }
+        $refDays = [];
+        foreach ($mine as $m) {
+            $refDays[$m['ref']] = $m['day'];
+        }
         // the tested ones come straight from the bonding report (tbl_dtr_bonding_info): style, colour, tested date, result, mode of failure, cause, cement, technician
-        if ($mine) {
-            $in   = implode(',', array_map(fn ($x) => $this->db()->escape($x), array_keys($mine)));
-            $rows = $this->db()->query("SELECT LabRefNo, ModelStyle, Color, TestedDate, Technician, Result, ModeOfFailure, PossibleCause, Remarks, AdhesiveSupplier, TestType, POLotNO, AgeCategory, STD
-                FROM tbl_dtr_bonding_info WHERE LabRefNo IN ({$in}) AND " . self::BOND_DEDUP)->getResultArray();
+        $byId = array_column(array_filter($mine, static fn ($m) => $m['result'] !== ''), null, 'id');
+        if ($byId) {
+            $in   = implode(',', array_map('intval', array_keys($byId)));
+            $rows = $this->db()->query("SELECT BondingTestID, LabRefNo, ModelStyle, Color, TestedDate, Technician, Result, ModeOfFailure, PossibleCause, Remarks, AdhesiveSupplier, TestType, POLotNO, AgeCategory, STD
+                FROM tbl_dtr_bonding_info WHERE BondingTestID IN ({$in}) ORDER BY LabRefNo, BondingTestID")->getResultArray();
             foreach ($rows as $r) {
                 $ref = (string) $r['LabRefNo'];
                 $res = self::result((string) $r['Result']);
                 if ($res === '') {
-                    continue;      // waiting: shown from the Calendar rows below
+                    continue;
                 }
                 $c    = $cal[$ref] ?? [];
                 $bits = [];
@@ -233,10 +249,10 @@ class QualityInsightsController extends BaseController
                     $bits[] = 'Remarks: ' . trim((string) $r['Remarks']);
                 }
                 $items[] = [
-                    'id' => 'b_' . $ref, 'domain' => 'bonding', 'domain_label' => 'Bonding (U60)', 'category' => 'Whole Shoe Bonding (U60)',
+                    'id' => 'b_' . $r['BondingTestID'], 'domain' => 'bonding', 'domain_label' => 'Bonding (U60)', 'category' => 'Whole Shoe Bonding (U60)',
                     'lab_ref_no' => $ref, 'test_type' => trim((string) $r['TestType']) !== '' ? (string) $r['TestType'] : 'Bonding',
                     'style' => trim((string) $r['ModelStyle'] . ' ' . (trim((string) $r['Color']) !== '' ? '/ ' . trim((string) $r['Color']) : '')),
-                    'test_date' => $mine[$ref]['day'] === '' ? substr((string) $r['TestedDate'], 0, 10) : (substr((string) $r['TestedDate'], 0, 10) ?: $mine[$ref]['day']),
+                    'test_date' => substr((string) $r['TestedDate'], 0, 10) ?: ($refDays[$ref] ?? ''),
                     'status' => 'completed', 'result' => $res, 'technician' => (string) $r['Technician'], 'remarks' => implode("\n", $bits),
                     'view_url' => (string) ($c['view_url'] ?? ''),
                 ];
@@ -244,7 +260,7 @@ class QualityInsightsController extends BaseController
         }
         // shoes collected from the line with no result yet
         foreach ($cal as $ref => $r) {
-            if ($r['status'] !== 'completed' && (isset($mine[$ref]) || ($r['test_date'] >= $from && $r['test_date'] <= $to)) && ! array_filter($items, static fn ($i) => $i['lab_ref_no'] === $ref)) {
+            if ($r['status'] !== 'completed' && (isset($refDays[$ref]) || ($r['test_date'] >= $from && $r['test_date'] <= $to)) && ! array_filter($items, static fn ($i) => $i['lab_ref_no'] === $ref)) {
                 $items[] = $r;
             }
         }

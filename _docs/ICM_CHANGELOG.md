@@ -4,6 +4,10 @@
 
 ---
 
+## Phase 222 - Line Map counts every saved bonding report (2026-11-18)
+- On request: a Lab Ref tested again under the same number counts once per saved report (like the Failure Modes tab), not once with its latest result. `QualityInsightsController::producedRefs` returns every report (`<ref>#<id>`); a row without result is a waiting shoe only when the Lab Ref has no saved result at all; the line panel lists each report. Cache key `qi_linemap6_`.
+- Nov 1-18 (tested basis): PASS 246, TOLERABLE 41, FAIL 48, waiting 87 (before: 203 / 34 / 25 / 88). Verified with a temporary spark command; not on screen.
+
 ## Phase 221 - Quality Insights Line Map checked against the bonding reports (2026-11-18)
 - Source: `tbl_dtr_bonding_info`, one row per Lab Ref (the latest one with a result), trial / shutdown / LACKING left out, grouped by the line written in the Lab Ref; waiting shoes from the Calendar records. Checked Nov 1-18 against the table directly.
 - **Fixed:** (1) Lab Refs that were not yet in the unified list were dropped (`EXISTS ... tbl_dtr_unified_labrefs`) - new first-article refs of the day, 3 in the period (1 FAIL, 2 PASS); the unified list lags behind bonding_info, so the filter is gone. (2) `lineOf` made `B01` and `B1` two different lines (a ref `DTP20261109SHB01-R` showed as an extra tile B01); the number is now normalised. Cache key bumped (`qi_linemap5_`).
