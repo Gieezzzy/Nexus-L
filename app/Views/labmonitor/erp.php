@@ -5,7 +5,7 @@
     <header class="lm-top">
         <div>
             <h2>ERP Finish Monitoring</h2>
-            <p class="lm-sub">Bonding lab references per production day: InterLink numbers and ERP status.</p>
+            <p class="lm-sub" id="lm-sub">Bonding lab references per production day: InterLink numbers and ERP status.</p>
         </div>
         <span class="lm-agent" id="lm-agent" role="status" title="The program on the ERP PC that enters the reports in the ERP">ERP PC: checking...</span>
         <label class="lm-field">
@@ -13,6 +13,11 @@
             <select id="lm-date" aria-label="Month"></select>
         </label>
     </header>
+
+    <div class="lm-tabs" role="tablist" aria-label="ERP Finish Monitoring">
+        <button type="button" role="tab" class="lm-tab on" data-kind="bonding" aria-selected="true">Bonding</button>
+        <button type="button" role="tab" class="lm-tab" data-kind="wholeshoe" aria-selected="false">Whole Shoe</button>
+    </div>
 
     <section class="lm-sum card glass" id="lm-sum" aria-label="Summary">
         <button type="button" class="lm-tot" data-f="" id="lm-s-total"><small>Lab references</small><b>-</b></button>
@@ -52,12 +57,7 @@
         </div>
         <div class="lm-scroll">
             <table class="lm-table" id="lm-table">
-                <thead>
-                    <tr>
-                        <th class="lm-sel"><input type="checkbox" id="lm-pick-all" aria-label="Select all"></th><th>Tested date</th><th>Production date</th><th>Line</th><th>Lab reference</th><th>VSP code</th>
-                        <th>Bonding TR no.</th><th>Pull test TR no.</th><th>InterLink status</th><th>Result</th><th>ERP status</th>
-                    </tr>
-                </thead>
+                <thead id="lm-thead"></thead>
                 <tbody id="lm-body"><tr><td colspan="11" class="lm-empty">Loading...</td></tr></tbody>
             </table>
         </div>

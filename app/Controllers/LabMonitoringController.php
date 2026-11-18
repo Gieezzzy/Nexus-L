@@ -62,6 +62,9 @@ class LabMonitoringController extends BaseController
     /** GET lab-monitoring/data?date=YYYY-MM-DD&q=&side=&status= */
     public function data()
     {
+        if ((string) $this->request->getGet('kind') === 'wholeshoe') {
+            return $this->dataWholeShoe();
+        }
         $db   = $this->db();
         $base = $this->base();
         $day  = self::DAY_SQL;
@@ -140,6 +143,101 @@ class LabMonitoringController extends BaseController
         usort($out, static fn ($a, $b) => $ln($a) <=> $ln($b));   // production day, then building letter, then line number
 
         return $this->json(['ok' => true, 'month' => $date, 'days' => $days, 'rows' => $out, 'summary' => $sum]);
+    }
+
+    /**
+     * The Whole Shoe tab: the same view as the Bonding one for the whole shoe lab references (tbl_dtr_unified_labrefs, form_slug 'wholeshoe'), one line per lab ref,
+     * with the TR numbers of the other eTRF types kept in the same table: Whole Shoe, Product, Product (Adult) and Material (etrf_<key>_app, the earlier ones in _hist).
+     */
+    private function dataWholeShoe()
+    {
+        $db   = $this->db();
+        ErpMonitor::ensureColumns();
+        $day  = "STR_TO_DATE(SUBSTRING(u.lab_ref_no, 4, 8), '%Y%m%d')";
+        $from = "FROM tbl_dtr_unified_labrefs u WHERE u.form_slug = 'wholeshoe' AND u.lab_ref_no REGEXP '^DTP[0-9]{8}'";
+        $days = $db->query("SELECT DATE_FORMAT(d, '%Y-%m') d, COUNT(DISTINCT lab) c FROM (SELECT {$day} d, u.lab_ref_no lab {$from}) x WHERE d IS NOT NULL GROUP BY 1 ORDER BY 1 DESC LIMIT 36")->getResultArray();
+        $date = (string) $this->request->getGet('month');
+        if (! preg_match('/^\d{4}-\d{2}$/', $date)) {
+            $date = (string) ($days[0]['d'] ?? date('Y-m'));
+        }
+        // one line per lab ref (the intake keeps one row per shoe, so a lab ref can appear on several rows): the first row's id, the TR numbers of whichever row holds them
+        $rows = $db->query("SELECT MIN(u.id) id, u.lab_ref_no,
+                MAX(u.etrf_whole_app) whole_app, MAX(u.etrf_whole_hist) whole_hist, MAX(u.etrf_prod_app) prod_app, MAX(u.etrf_prod_hist) prod_hist,
+                MAX(u.etrf_adult_app) adult_app, MAX(u.etrf_adult_hist) adult_hist, MAX(u.etrf_mat_app) mat_app, MAX(u.etrf_mat_hist) mat_hist,
+                MAX(NULLIF(u.erp_status, '')) erp_status, MAX(NULLIF(u.interlink_flag, '')) interlink_flag, MAX(NULLIF(u.po_lot_no, '')) po_lot_no, MAX(NULLIF(u.model_style, '')) model_style,
+                MAX(NULLIF(u.overall_result, '')) overall_result, MAX(NULLIF(u.tested_date, '')) tested_date, MAX(NULLIF(u.received_date, '')) received_date,
+                DATE_FORMAT({$day}, '%Y-%m-%d') pday
+            {$from} AND DATE_FORMAT({$day}, '%Y-%m') = ? GROUP BY u.lab_ref_no ORDER BY pday, u.lab_ref_no", [$date])->getResultArray();
+
+        $labs = array_column($rows, 'lab_ref_no');
+        $reqs = [];
+        if ($labs) {
+            foreach ($db->table('tbl_interlink_etrf_requests')->select('lab_ref_no, etrf_type, status')->whereIn('lab_ref_no', $labs)->orderBy('id')->get()->getResultArray() as $q) {
+                $k = \App\Libraries\EtrfAppNos::keyFor((string) $q['etrf_type']);
+                if (in_array($k, ['whole', 'prod', 'adult', 'mat'], true)) {
+                    $reqs[$q['lab_ref_no']][$k] = $this->reqState((string) $q['status']);
+                }
+            }
+        }
+        $ymd = static function (string $v): string {
+            $v = trim($v);
+            if ($v === '') {
+                return '';
+            }
+            $t = strtotime($v);
+
+            return $t ? date('Y-m-d', $t) : '';
+        };
+        $out  = [];
+        $sum  = ['total' => 0, 'il_ok' => 0, 'il_pending' => 0, 'il_bad' => 0, 'erp_ok' => 0, 'erp_pending' => 0, 'erp_bad' => 0];
+        $q    = strtolower(trim((string) $this->request->getGet('q')));
+        $side = strtoupper(trim((string) $this->request->getGet('side')));
+        $stat = trim((string) $this->request->getGet('status'));
+        foreach ($rows as $r) {
+            $lab = (string) $r['lab_ref_no'];
+            preg_match('/(?:WH|SH|FA)([A-Z]\d+)-([RL])\b/i', $lab, $m);
+            $line = $m[1] ?? '';
+            $sd   = strtoupper($m[2] ?? '');
+            $st   = array_values($reqs[$lab] ?? []);
+            $hasTr = trim((string) $r['whole_app'] . $r['prod_app'] . $r['adult_app'] . $r['mat_app']) !== '';
+            if (in_array('bad', $st, true)) {
+                $il = 'bad';
+            } elseif (in_array('pending', $st, true)) {
+                $il = 'pending';
+            } elseif (in_array('ok', $st, true) || $hasTr || strtoupper((string) $r['interlink_flag']) === 'OK') {
+                $il = 'ok';
+            } else {
+                $il = 'bad';
+            }
+            $erpRaw = trim((string) $r['erp_status']);
+            $erp    = in_array(strtolower($erpRaw), ['ok', 'submitted'], true) ? 'ok' : (in_array(strtolower($erpRaw), ['ongoing', 'pending'], true) ? 'pending' : 'bad');
+            $res    = strtoupper(trim((string) $r['overall_result']));
+            $level  = str_contains($res, 'FAIL') ? 'fail' : (str_contains($res, 'TOLER') ? 'tol' : ($res !== '' ? 'pass' : ''));
+            $row = [
+                'id' => (int) $r['id'], 'lab_ref' => $lab, 'line' => $line, 'side' => $sd, 'vsp' => trim((string) $r['po_lot_no']), 'shutdown' => false, 'style' => trim((string) $r['model_style']),
+                'tested' => $ymd((string) $r['tested_date']), 'day' => (string) $r['pday'],
+                'whole' => trim((string) $r['whole_app']), 'whole_hist' => trim((string) $r['whole_hist']), 'prod' => trim((string) $r['prod_app']), 'prod_hist' => trim((string) $r['prod_hist']),
+                'adult' => trim((string) $r['adult_app']), 'adult_hist' => trim((string) $r['adult_hist']), 'mat' => trim((string) $r['mat_app']), 'mat_hist' => trim((string) $r['mat_hist']),
+                'il' => $il, 'erp' => $erp, 'erp_raw' => $erpRaw, 'result' => $res, 'level' => $level, 'notes' => '', 'cause' => '',
+            ];
+            $sum['total']++;
+            $sum['il_' . $il]++;
+            $sum['erp_' . $erp]++;
+            if ($side !== '' && $sd !== $side) {
+                continue;
+            }
+            if ($stat !== '' && $stat !== $il && $stat !== 'erp_' . $erp && $stat !== 'il_' . $il) {
+                continue;
+            }
+            if ($q !== '' && ! str_contains(strtolower(implode(' ', [$lab, $line, $row['vsp'], $row['style'], $row['whole'], $row['prod'], $row['adult'], $row['mat'], $row['result']])), $q)) {
+                continue;
+            }
+            $out[] = $row;
+        }
+        $ln = static fn ($r) => [$r['day'], $r['line'] !== '' ? $r['line'][0] : '', (int) preg_replace('/\D/', '', $r['line'])];
+        usort($out, static fn ($a, $b) => $ln($a) <=> $ln($b));
+
+        return $this->json(['ok' => true, 'kind' => 'wholeshoe', 'month' => $date, 'days' => $days, 'rows' => $out, 'summary' => $sum]);
     }
 
     /** GET lab-monitoring/erp-log : every report sent to ERP, one by one or in bulk (newest first), polled to follow the status */
@@ -325,7 +423,12 @@ class LabMonitoringController extends BaseController
             return $this->json(['ok' => false, 'error' => 'Bad request.'], 422);
         }
         ErpMonitor::ensureColumns();
-        $this->db()->table('tbl_dtr_unified_labrefs')->where('id', $id)->update(['erp_status' => $s]);
+        $row = $this->db()->table('tbl_dtr_unified_labrefs')->select('lab_ref_no, form_slug')->where('id', $id)->get()->getRowArray();
+        if ($row && $row['form_slug'] === 'wholeshoe') {
+            $this->db()->table('tbl_dtr_unified_labrefs')->where('form_slug', 'wholeshoe')->where('lab_ref_no', $row['lab_ref_no'])->update(['erp_status' => $s]);
+        } else {
+            $this->db()->table('tbl_dtr_unified_labrefs')->where('id', $id)->update(['erp_status' => $s]);
+        }
 
         return $this->json(['ok' => true]);
     }

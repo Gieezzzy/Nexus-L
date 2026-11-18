@@ -176,3 +176,10 @@ html[data-theme="dark"] .lm-dlg-body,
 html[data-theme="dark"] .lm-dlg-body iframe { background: #0b1222; }
 html[data-theme="dark"] .lm-dlg-load { background: rgba(11, 18, 34, .92); color: #cbd5e1; }
 html[data-theme="dark"] .lm-agent { background: rgba(30, 41, 59, .78); color: #cbd5e1; }
+
+/* Bonding / Whole Shoe tabs */
+.lm-tabs{display:flex;gap:6px;margin:0 0 12px;flex-wrap:wrap}
+.lm-tab{border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:999px;padding:7px 18px;font-size:13px;font-weight:600;cursor:pointer}
+.lm-tab:hover{border-color:#2563eb;color:#1d4ed8}
+.lm-tab.on{background:#2563eb;border-color:#2563eb;color:#fff}
+.lm-style{display:block;font-weight:400;color:#64748b;font-size:11px;margin-top:2px}
