@@ -1027,6 +1027,7 @@ class DtrController extends BaseController
             'subTab'           => $subTab,
             'formConfig'       => self::FORM_CONFIG,
             'canEditMaterial'  => self::canEditMaterial(),
+            'canAddPullTests'  => self::canAddPullTests(),
             'catRows'          => $catRows,
             'totalReports'     => $totalReports,
             'totalPass'        => $totalPass,
@@ -1346,8 +1347,17 @@ class DtrController extends BaseController
      * line, production date and side): the Lab Ref is built like the batch save does it (DTP<date><HP|EY|DR|RVT><building><line>-<side>, -2 -3 when taken),
      * and Production Code / Style / Colorway / MTL / production date / collection date / technician / test type are copied from the row.
      */
+    /** Admin, Supervisor and Bonding PIC may add pull tests to a bonding row (the Edit button of the Pull Test LabRefNo column) */
+    public static function canAddPullTests(): bool
+    {
+        return (bool) array_intersect(['Admin', 'Supervisor', 'Bonding PIC'], \App\Libraries\Roles::parse((string) (service('auth')->user()['role'] ?? '')));
+    }
+
     public function addPullTests()
     {
+        if (! self::canAddPullTests()) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'message' => 'Only an Admin, a Supervisor or a Bonding PIC can add pull tests to a bonding row.', 'csrf' => csrf_hash()]);
+        }
         $p     = $this->request->getJSON(true) ?? [];
         $id    = (int) ($p['id'] ?? 0);
         $types = is_array($p['pullTypes'] ?? null) ? $p['pullTypes'] : [];

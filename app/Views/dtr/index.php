@@ -341,6 +341,7 @@ $kpiPct   = static fn (int $n, int $d): string => $d > 0 ? rtrim(rtrim(number_fo
     </div>
     <?php endif ?>
     <script>window.dtrEditLocked = <?= json_encode(array_values($editLocked ?? [])) ?>;</script>
+    <script>window.dtrCanAddPull = <?= ! empty($canAddPullTests) ? 'true' : 'false' ?>;</script>
     <div>
         <!-- Lab Material Test Collection: the Material Bench Log (tbl_dtr_material_bench_log) -->
         <div class="card glass dtr-section-card dtr-subpanel <?= $subTab === 'containers' ? '' : 'hidden' ?>" data-subpanel="containers">

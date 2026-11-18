@@ -1509,7 +1509,7 @@
   // the row's other columns were synced and locked.
   const PULL_TYPES = [['HEEL PULL', 'Heel Pull'], ['EYELET', 'Eyelet'], ['D-RING', 'D-Ring'], ['RIVET', 'Rivet']];
   const emptyPullCell = (tr) => {
-    if (!tr || !tr.querySelector('.dtr-del-btn[data-del="bonding"]')) return null;
+    if (!window.dtrCanAddPull || !tr || !tr.querySelector('.dtr-del-btn[data-del="bonding"]')) return null;   // Admin, Supervisor and Bonding PIC only
     const heads = [...tr.closest('table').querySelectorAll('thead th')].map((th) => th.textContent.replace(/[▲▼]/g, '').trim());   // the sort arrows of a header are not part of its name
     const i = heads.indexOf('Pull Test LabRefNo');
     const td = i >= 0 ? tr.children[i] : null;
