@@ -4073,3 +4073,7 @@ html[data-theme="dark"] .bg-type-btn small { color: #94a3b8; }
 #nx-hover-prev[hidden]{display:none}
 #nx-hover-prev img{display:block;max-width:min(420px,58vw);max-height:min(560px,78vh);width:auto;height:auto;border-radius:6px;background:#f8fafc}
 #nx-hover-prev .nx-hp-cap{font:600 11px/1.3 ui-monospace,Consolas,monospace;color:#334155;margin-top:4px;text-align:center}
+
+/* pull types ticked in the Pull Test LabRefNo cell of a bonding row (Edit) */
+.dtr-edit-pulls{display:flex;flex-wrap:wrap;gap:4px 10px;min-width:170px}
+.dtr-edit-pulls label{display:inline-flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap;cursor:pointer}

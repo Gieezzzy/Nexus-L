@@ -1340,6 +1340,106 @@ class DtrController extends BaseController
      * POST /dtr/update-entry {kind, id, fields:{...}}: fills the EMPTY columns of one Lab Tracker entry. Only whitelisted columns are written and
      * a column that already holds data is never overwritten.
      */
+    /**
+     * POST dtr/add-pull-tests {id: BondingTestID, pullTypes: ['EYELET', 'RIVET', ...]}: adds pull tests to a bonding row of the Lab Tracker that was saved without them.
+     * The pull tests take everything from THAT row so they stay connected to it (the Lab Tracker pairs a pull test with its bonding row by Production Code,
+     * line, production date and side): the Lab Ref is built like the batch save does it (DTP<date><HP|EY|DR|RVT><building><line>-<side>, -2 -3 when taken),
+     * and Production Code / Style / Colorway / MTL / production date / collection date / technician / test type are copied from the row.
+     */
+    public function addPullTests()
+    {
+        $p     = $this->request->getJSON(true) ?? [];
+        $id    = (int) ($p['id'] ?? 0);
+        $types = is_array($p['pullTypes'] ?? null) ? $p['pullTypes'] : [];
+        $fail  = fn (string $m, int $c = 422) => $this->response->setStatusCode($c)->setJSON(['ok' => false, 'message' => $m, 'csrf' => csrf_hash()]);
+        $codes = ['HEEL PULL' => 'HP', 'EYELET' => 'EY', 'D-RING' => 'DR', 'RIVET' => 'RVT'];
+        $types = array_values(array_unique(array_filter(array_map(static fn ($x) => strtoupper(trim((string) $x)), $types), static fn ($x) => isset($codes[$x]))));
+        if ($id <= 0 || ! $types) {
+            return $fail('Tick at least one pull type.');
+        }
+        $db   = \Config\Database::connect();
+        $info = $db->table('tbl_dtr_bonding_info')->where('BondingTestID', $id)->get()->getRowArray();
+        if (! $info) {
+            return $fail('That bonding entry no longer exists.', 404);
+        }
+        $ref = trim((string) $info['LabRefNo']);
+        // the pull Lab Ref follows the bonding Lab Ref of the row: DTP<date>(FA)SH<building><line>-<side>
+        if (! preg_match('/^DTP(\d{8})(?:FA)?SH([AB])(\d{1,2})-([LR])(?:-\d+)?$/i', $ref, $m)) {
+            return $fail($ref . ' has no production line in its Lab Ref (retest, tech trial, sample ...): pull tests are added to a normal bonding row.');
+        }
+        [$dateRaw, $building, $lineNo, $side] = [$m[1], strtoupper($m[2]), (int) $m[3], strtoupper($m[4])];
+        $trk = $db->table('tbl_dtr_BondingTracker')->where('LabRefNo', $ref)->orderBy('TrackerID', 'DESC')->get()->getRowArray() ?: [];
+        $pick = static function (...$vals): string {
+            foreach ($vals as $v) {
+                if (trim((string) $v) !== '') {
+                    return trim((string) $v);
+                }
+            }
+
+            return '';
+        };
+        $prod = substr($pick($info['ProductionDate'] ?? '', $trk['ProductionDate'] ?? ''), 0, 10);
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $prod) || str_replace('-', '', $prod) !== $dateRaw) {
+            $prod = substr($dateRaw, 0, 4) . '-' . substr($dateRaw, 4, 2) . '-' . substr($dateRaw, 6, 2);   // the date written in the Lab Ref is the production date
+        }
+        $collect = substr($pick($trk['CollectionDate'] ?? '', $info['ReceivedDate'] ?? '', $prod), 0, 10);
+        $code    = mb_substr($pick($info['POLotNO'] ?? '', $trk['ProductionCode'] ?? ''), 0, 191);
+        $style   = mb_substr($pick($info['ModelStyle'] ?? '', $trk['Style'] ?? ''), 0, 191);
+        $color   = $pick($info['Color'] ?? '', $trk['Colorway'] ?? '');
+        $mtl     = mb_substr($pick($info['MTL'] ?? '', $trk['MTL'] ?? ''), 0, 191);
+        $tech    = mb_substr($pick($info['Technician'] ?? '', $trk['Technician'] ?? ''), 0, 191);
+        $ttype   = mb_substr($pick($trk['TestType'] ?? '', $info['TestType'] ?? ''), 0, 50);
+        $user    = service('auth')->user();
+        $by      = mb_substr((string) ($user['name'] ?? $user['username'] ?? ''), 0, 100);
+        $factory = 'DATIAN SUBIC SHOES INC. (DTP)';
+        $made    = [];
+        $skipped = [];
+        foreach ($types as $pt) {
+            // the same pull type of the same shoe (code / line / date / side) is never added twice
+            $dup = $db->table('tbl_dtr_BondingTracker')->select('LabRefNo')
+                ->where(['Building' => $building, 'LineNo' => $building . $lineNo, 'Side' => $side, 'ProductionDate' => $prod, 'PullTestType' => $pt, 'Shutdown' => 0])
+                ->where('ProductionCode', $code)->get(1)->getRowArray();
+            if ($dup) {
+                $skipped[] = $pt . ' (' . $dup['LabRefNo'] . ')';
+                continue;
+            }
+            $keyRef = 'DTP' . $dateRaw . $codes[$pt] . $building . $lineNo;
+            $n = 0;
+            foreach ($db->table('tbl_dtr_pull_tests')->select('LabRefNo')->like('LabRefNo', $keyRef . '-', 'after')->get()->getResultArray() as $x) {
+                if (preg_match('/^' . preg_quote($keyRef, '/') . '-([LR])(?:-(\d+))?$/', (string) $x['LabRefNo'], $mm) && $mm[1] === $side) {
+                    $n = max($n, (int) ($mm[2] ?? 1));
+                }
+            }
+            $labRef = $n === 0 ? $keyRef . '-' . $side : $keyRef . '-' . $side . '-' . ($n + 1);
+            $pullRow = [
+                'LabRefNo' => $labRef, 'Factory' => $factory, 'ModelStyle' => $style, 'Color' => mb_substr($color, 0, 120), 'TestType' => mb_substr($pt, 0, 50),
+                'Building' => $building, 'LineNo' => $building . $lineNo, 'ProductionCode' => $code, 'MTL' => $mtl, 'CollectionDate' => $collect, 'ProductionDate' => $prod,
+                'Technician' => mb_substr($tech, 0, 120), 'EncodedBy' => mb_substr($by, 0, 191),
+            ];
+            $db->table('tbl_dtr_pull_tests')->insert($pullRow);
+            $pullId = (int) $db->insertID();
+            \App\Libraries\DtrLabrefIndex::upsertPullTest($db, $pullId, $pullRow);
+            $db->table('tbl_dtr_BondingTracker')->where('LabRefNo', $labRef)->delete();
+            $db->table('tbl_dtr_BondingTracker')->insert([
+                'LabRefNo' => $labRef, 'Building' => $building, 'LineNo' => $building . $lineNo, 'Side' => $side, 'ProductionCode' => $code, 'Style' => $style, 'Colorway' => mb_substr($color, 0, 191),
+                'MTL' => $mtl, 'LabTest' => 'Bonding', 'PullTest' => 1, 'PullTestType' => $pt, 'TestType' => $ttype, 'Technician' => $tech, 'Lacking' => 0, 'LackingDate' => null,
+                'RetestDetails' => '', 'RetestOf' => null, 'CollectionDate' => $collect, 'ProductionDate' => $prod, 'EncodedBy' => $by, 'CreatedAt' => date('Y-m-d H:i:s'),
+            ]);
+            $db->table('tbl_dtr_pull_tests')->where('PullInfoID', $pullId)->update(['TrackerID' => (int) $db->insertID()]);
+            $made[] = $labRef;
+        }
+        if ($made) {
+            \App\Libraries\DataCache::bump();
+            \App\Libraries\ActivityLog::record('dtr', 'add-pull-tests', $ref, 'Pull test(s) added to the bonding row: ' . implode(', ', $made));
+        }
+        $msg = $made ? 'Pull test Lab Ref(s) added to ' . $ref . ': ' . implode(', ', $made) . '.' : 'Nothing was added.';
+        if ($skipped) {
+            $msg .= ' Already there: ' . implode(', ', $skipped) . '.';
+        }
+
+        return $this->response->setJSON(['ok' => (bool) $made || ! $skipped, 'message' => $msg, 'created' => $made, 'skipped' => $skipped, 'csrf' => csrf_hash()]);
+    }
+
     public function updateEntry()
     {
         $p      = $this->request->getJSON(true) ?? [];

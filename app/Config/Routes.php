@@ -252,6 +252,7 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->post('dtr/load-machine', 'DtrController::loadMachine');
     $routes->post('dtr/save', 'DtrController::save');
     $routes->post('dtr/sheet-pdf', 'DtrController::sheetPdf');
+    $routes->post('dtr/add-pull-tests', 'DtrController::addPullTests');
     $routes->get('dtr/material-report-image', 'DtrController::materialReportImage');
     $routes->get('dtr/bonding-machine-pdf', 'DtrController::bondingMachinePdf');
     $routes->get('dtr/wholeshoe-report-pdf', 'DtrController::wholeShoeReportPdf');

@@ -1505,9 +1505,21 @@
   const EDIT_ICO = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
   const CHECK_ICO = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
   const editLocked = new Set(window.dtrEditLocked || []);
+  // The Pull Test LabRefNo cell of a bonding row of the Lab Tracker when it is empty (or a dash): pull tests can still be added to that row, even after
+  // the row's other columns were synced and locked.
+  const PULL_TYPES = [['HEEL PULL', 'Heel Pull'], ['EYELET', 'Eyelet'], ['D-RING', 'D-Ring'], ['RIVET', 'Rivet']];
+  const emptyPullCell = (tr) => {
+    if (!tr || !tr.querySelector('.dtr-del-btn[data-del="bonding"]')) return null;
+    const heads = [...tr.closest('table').querySelectorAll('thead th')].map((th) => th.textContent.replace(/[▲▼]/g, '').trim());   // the sort arrows of a header are not part of its name
+    const i = heads.indexOf('Pull Test LabRefNo');
+    const td = i >= 0 ? tr.children[i] : null;
+    if (!td || td.querySelector('.dtr-labref-link, input')) return null;
+    const t = td.textContent.trim();
+    return t === '' || t === '-' ? td : null;
+  };
   // also called again after a list reload (date filter / search / KPI card) because the rows are replaced
   window.dtrAddEditButtons = (root) => (root || document).querySelectorAll('.dtr-del-btn').forEach((d) => {
-    if (d.closest('.ws-child-table') || !EDIT_COLS[d.dataset.del] || editLocked.has(d.dataset.del + ':' + d.dataset.id)) return;
+    if (d.closest('.ws-child-table') || !EDIT_COLS[d.dataset.del] || (editLocked.has(d.dataset.del + ':' + d.dataset.id) && !emptyPullCell(d.closest('tr')))) return;
     if (d.parentNode.querySelector('.dtr-edit-btn')) return;
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'dtr-edit-btn';
@@ -1525,30 +1537,51 @@
     if (btn.dataset.mode === 'save') {
       const fields = {};
       tr.querySelectorAll('.dtr-edit-in').forEach((i) => { if (i.value.trim() !== '') fields[i.dataset.f] = i.value.trim(); });
-      if (!Object.keys(fields).length) { toast('Type or pick something in an empty column first.'); return; }
+      const pullTypes = [...tr.querySelectorAll('.dtr-edit-pulls .ik-pt:checked')].map((c) => c.value);
+      if (!Object.keys(fields).length && !pullTypes.length) { toast('Type or pick something in an empty column, or tick a pull type, first.'); return; }
       btn.disabled = true;
       try {
-        const res = await apiFetch('dtr/update-entry', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ kind: btn.dataset.edit, id: Number(btn.dataset.id), fields }),
-        });
-        if (res && res.ok) {
-          tr.querySelectorAll('td[data-edit-orig]').forEach((td) => {
-            const i = td.querySelector('.dtr-edit-in');
-            td.textContent = i && i.value.trim() !== '' ? i.value.trim() : '';
-            td.removeAttribute('data-edit-orig');
+        let msg = '';
+        if (Object.keys(fields).length) {
+          const res = await apiFetch('dtr/update-entry', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kind: btn.dataset.edit, id: Number(btn.dataset.id), fields }),
           });
-          btn.dataset.mode = ''; btn.innerHTML = EDIT_ICO; btn.classList.remove('is-save'); btn.title = 'Edit the empty columns of this entry';
-          leaveEditUi(tr);
-          successBox(res.message, null, 'Saved');
-        } else { toast((res && res.message) || 'Save failed.'); }
+          if (!(res && res.ok)) { toast((res && res.message) || 'Save failed.'); btn.disabled = false; return; }
+          msg = res.message;
+        }
+        if (pullTypes.length) {
+          // pull tests for THIS row: their Lab Refs and details are made from the row (same Production Code, line, date and side)
+          const pr = await apiFetch('dtr/add-pull-tests', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: Number(btn.dataset.id), pullTypes }),
+          });
+          if (!(pr && pr.ok)) { toast((pr && pr.message) || 'The pull tests could not be added.'); btn.disabled = false; return; }
+          msg = (msg ? msg + ' ' : '') + pr.message;
+        }
+        tr.querySelectorAll('td[data-edit-orig]').forEach((td) => {
+          const i = td.querySelector('.dtr-edit-in');
+          td.textContent = i && i.value.trim() !== '' ? i.value.trim() : '';
+          td.removeAttribute('data-edit-orig');
+        });
+        btn.dataset.mode = ''; btn.innerHTML = EDIT_ICO; btn.classList.remove('is-save'); btn.title = 'Edit the empty columns of this entry';
+        leaveEditUi(tr);
+        successBox(msg, () => { if (pullTypes.length) window.dtrReloadList?.('bonding', Number($('#lt-page-bonding')?.dataset.page || 1)); }, 'Saved');
       } catch (ex) { toast('Save failed: ' + (ex.message || ex)); }
       btn.disabled = false;
       return;
     }
-    const heads = [...tr.closest('table').querySelectorAll('thead th')].map((th) => th.textContent.trim());
-    const cols = EDIT_COLS[btn.dataset.edit] || {};
+    const heads = [...tr.closest('table').querySelectorAll('thead th')].map((th) => th.textContent.replace(/[▲▼]/g, '').trim());   // the sort arrows of a header are not part of its name
+    const locked = editLocked.has(btn.dataset.edit + ':' + btn.dataset.id);   // a synced row: its columns are final, only pull tests can still be added
+    const cols = locked ? {} : (EDIT_COLS[btn.dataset.edit] || {});
     let n = 0;
+    const pullTd = emptyPullCell(tr);
+    if (pullTd) {
+      pullTd.dataset.editOrig = '1';
+      pullTd.dataset.editHtml = pullTd.innerHTML;
+      pullTd.innerHTML = '<div class="dtr-edit-pulls">' + PULL_TYPES.map(([v, l]) => `<label><input type="checkbox" class="ik-pt" value="${v}"> ${l}</label>`).join('') + '</div>';
+      n++;
+    }
     [...tr.children].forEach((td, i) => {
       const spec = cols[heads[i]];
       if (!spec || td.textContent.trim() !== '' || td.querySelector('input')) return;
@@ -1581,7 +1614,10 @@
     if (!c) return;
     e.preventDefault();
     const tr = c.closest('tr');
-    tr.querySelectorAll('td[data-edit-orig]').forEach((td) => { td.textContent = ''; td.removeAttribute('data-edit-orig'); });
+    tr.querySelectorAll('td[data-edit-orig]').forEach((td) => {
+      if (td.dataset.editHtml !== undefined) { td.innerHTML = td.dataset.editHtml; delete td.dataset.editHtml; } else td.textContent = '';
+      td.removeAttribute('data-edit-orig');
+    });
     const b = tr.querySelector('.dtr-edit-btn');
     if (b) { b.dataset.mode = ''; b.innerHTML = EDIT_ICO; b.classList.remove('is-save'); b.title = 'Edit the empty columns of this entry'; }
     leaveEditUi(tr);
@@ -1594,7 +1630,7 @@
   const lockRows = (keys) => (keys || []).forEach((k) => {
     editLocked.add(k);
     const [kind, id] = k.split(':');
-    document.querySelectorAll(`.dtr-edit-btn[data-edit="${kind}"][data-id="${id}"]`).forEach((b) => b.remove());
+    document.querySelectorAll(`.dtr-edit-btn[data-edit="${kind}"][data-id="${id}"]`).forEach((b) => { if (!emptyPullCell(b.closest('tr'))) b.remove(); });
   });
   setInterval(() => {
     if (document.hidden) return;
