@@ -120,7 +120,12 @@ class MaterialSheet
             case 'GAU':
                 return [['k' => 'T', 'label' => '', 'mode' => 'avg', 'n' => 6, 'std' => [], 'thick' => false, 'dir' => 'min', 'dec' => 2, 'minmax' => true, 'manual' => true]];
             case 'WGT':
-                return [['k' => 'V', 'label' => '', 'mode' => 'avg', 'n' => 3, 'std' => [], 'thick' => false, 'dir' => 'min', 'dec' => 2, 'manual' => true]];
+                // the Weight calculator tools of Access: fabric / leather / insole = weight of a 10 x 10 cm piece x 100 (g/m2); webbing / lace / thread / gore / velcro = weight / length x 100
+                if (in_array($cat, ['fabric', 'leather', 'insole'], true)) {
+                    return [['k' => 'V', 'label' => '', 'mode' => 'calc', 'formula' => 'wgt', 'specs' => self::specs(3, [['r', 'Weight 10x10 cm (g)']]), 'out' => 'g/m2', 'dec' => 2, 'std' => [], 'manual' => true]];
+                }
+
+                return [['k' => 'V', 'label' => '', 'mode' => 'calc', 'formula' => 'wgtlen', 'specs' => self::specs(3, [['r', 'Weight (g)'], ['l', 'Length (cm)']]), 'out' => 'g per 100 cm', 'dec' => 4, 'std' => [], 'manual' => true]];
             case 'YRN':
                 return [['k' => 'WARP', 'label' => 'WARP:', 'mode' => 'avg', 'n' => 2, 'std' => [], 'thick' => false, 'dir' => 'min', 'dec' => 2, 'autopass' => true], ['k' => 'WELF', 'label' => 'WELF:', 'mode' => 'avg', 'n' => 2, 'std' => [], 'thick' => false, 'dir' => 'min', 'dec' => 2, 'autopass' => true]];
             case 'TEN': case 'ELO': case 'TRT': case 'STT': case 'BAU':
@@ -143,19 +148,32 @@ class MaterialSheet
             case 'HRD':
                 return [['k' => 'V', 'label' => '', 'mode' => 'avg', 'n' => 6, 'std' => ['Hardness_Std'], 'thick' => false, 'dir' => 'min', 'dec' => 1, 'minmax' => true, 'manual' => true]];
             case 'SPG':
-                return [['k' => 'V', 'label' => '', 'mode' => 'avg', 'n' => 3, 'std' => ['SG_Std'], 'thick' => false, 'dir' => 'min', 'dec' => 3, 'manual' => true]];
+                return [['k' => 'V', 'label' => '', 'mode' => 'calc', 'formula' => 'sg', 'specs' => self::specs(3, [['w', 'Weight (g)'], ['t', 'Thickness (mm)']]), 'out' => 'g/cm3', 'dec' => 3, 'std' => ['SG_Std'], 'manual' => true]];
             case 'DIC':
                 return $one(3, ['DieC_Std']);
             case 'SPT':
                 return $one(3, ['SplitTear_Std']);
             case 'CMP':
-                return $one(4, ['Compression_Std'], false, 'max');
+                // Compression Calculator: % = (thickness before - after) / (thickness before - spacer) x 100, four specimens at each condition
+                $sp = self::specs(4, [['b', 'Before (mm)'], ['a', 'After (mm)']]);
+
+                return [['k' => 'SP', 'label' => 'Spacer (mm)', 'mode' => 'plain', 'n' => 1],
+                    ['k' => 'AB', 'label' => '6 hrs, 45 C', 'mode' => 'calc', 'formula' => 'comp', 'specs' => $sp, 'out' => '%', 'dec' => 1, 'std' => ['Compression_Std', 'CompressionF_Std'], 'dir' => 'max'],
+                    ['k' => 'CD', 'label' => '22 hrs, 23 C', 'mode' => 'calc', 'formula' => 'comp', 'specs' => $sp, 'out' => '%', 'dec' => 1, 'std' => ['Compression_Std', 'CompressionF_Std'], 'dir' => 'max']];
             case 'SHR': case 'SHA': case 'SHH':
-                return [['k' => 'L', 'label' => 'L (%)', 'mode' => 'avg', 'n' => 1, 'std' => ['Shrinkage_Std', 'Shrinkage_S'], 'thick' => false, 'dir' => 'max', 'dec' => 2], ['k' => 'W', 'label' => 'W (%)', 'mode' => 'avg', 'n' => 1, 'std' => ['Shrinkage_Std', 'Shrinkage_S'], 'thick' => false, 'dir' => 'max', 'dec' => 2]];
+                // Shrinkage Calculator: % = (length before - after) / length before x 100, length and width; the rubber standard is 2 %
+                $std = ['Shrinkage_Std', 'Shrinkage_S'];
+                $def = $cat === 'rubber-outsole' ? 2.0 : null;
+
+                return [['k' => 'L', 'label' => 'Length', 'mode' => 'calc', 'formula' => 'shrink', 'specs' => self::specs(1, [['b', 'Before'], ['a', 'After']]), 'out' => '%', 'dec' => 2, 'std' => $std, 'dir' => 'max', 'def' => $def],
+                    ['k' => 'W', 'label' => 'Width', 'mode' => 'calc', 'formula' => 'shrink', 'specs' => self::specs(1, [['b', 'Before'], ['a', 'After']]), 'out' => '%', 'dec' => 2, 'std' => $std, 'dir' => 'max', 'def' => $def]];
             case 'RFX':
-                return $one(3, ['RossFlex_Std'], false, 'max');
+                // Ross Flex Calculator: growth % = (final length - initial length) / initial length x 100, two specimens; fails above 50 %
+                return [['k' => 'V', 'label' => '', 'mode' => 'calc', 'formula' => 'ross', 'specs' => self::specs(2, [['i', 'Initial'], ['f', 'Final']]), 'out' => '% growth', 'dec' => 2, 'std' => ['RossFlex_Std'], 'dir' => 'max', 'def' => 50.0]];
             case 'DIN':
-                return $one(3, ['DIN_Std'], false, 'max');
+                // DIN Abrasion Calculator: mm3 = (weight before - after) / SG x (200 / SA) x 1000, three specimens; fails above 150
+                return [['k' => 'SG', 'label' => 'Specific gravity', 'mode' => 'plain', 'n' => 1], ['k' => 'SA', 'label' => 'Abrasion (SA)', 'mode' => 'plain', 'n' => 1],
+                    ['k' => 'V', 'label' => '', 'mode' => 'calc', 'formula' => 'din', 'specs' => self::specs(3, [['b', 'Before (g)'], ['a', 'After (g)']]), 'out' => 'mm3', 'dec' => 2, 'std' => ['DIN_Std'], 'dir' => 'max', 'def' => 150.0]];
             case 'KNT':
                 return $one(3, ['KnotSlip_S']);
             case 'TIP':
@@ -238,6 +256,47 @@ class MaterialSheet
         }
     }
 
+    /** n specimens, each with the same fields: [[field, label], ...] -> [['b' => 'Before', 'a' => 'After'], ...] */
+    private static function specs(int $n, array $fields): array
+    {
+        $out = [];
+        for ($i = 0; $i < $n; $i++) {
+            $out[] = array_column($fields, 1, 0);      // field => label
+        }
+
+        return $out;
+    }
+
+    /** the Access calculator tools: one specimen -> its result, null while a box is empty or a divisor is zero */
+    private static function formula(string $kind, array $f, array $all, int $dec): ?float
+    {
+        $v = array_values($f);
+        $has = static fn (...$x) => count(array_filter($x, static fn ($y) => $y !== null)) === count($x);
+        switch ($kind) {
+            case 'shrink':
+                return $has($f['b'] ?? null, $f['a'] ?? null) && $f['b'] != 0 ? round(($f['b'] - $f['a']) / $f['b'] * 100, $dec) : null;
+            case 'comp':
+                $s = self::num($all['SP1'] ?? null);
+
+                return $has($f['b'] ?? null, $f['a'] ?? null, $s) && $s != 0 && ($f['b'] - $s) != 0 ? round(($f['b'] - $f['a']) / ($f['b'] - $s) * 100, $dec) : null;
+            case 'din':
+                $sg = self::num($all['SG1'] ?? null);
+                $sa = self::num($all['SA1'] ?? null);
+
+                return $has($f['b'] ?? null, $f['a'] ?? null, $sg, $sa) && $sg != 0 && $sa != 0 ? round((($f['b'] - $f['a']) / $sg) * (200 / $sa) * 1000, $dec) : null;
+            case 'ross':
+                return $has($f['i'] ?? null, $f['f'] ?? null) && $f['i'] != 0 && $f['f'] != 0 ? round(($f['f'] - $f['i']) / $f['i'] * 100, $dec) : null;
+            case 'sg':
+                return $has($f['w'] ?? null, $f['t'] ?? null) && $f['t'] != 0 ? round($f['w'] / ((10 * 10) * ($f['t'] / 10)), $dec) : null;
+            case 'wgt':
+                return $has($f['r'] ?? null) ? round($f['r'] / 100 * 10000, $dec) : null;
+            case 'wgtlen':
+                return $has($f['r'] ?? null, $f['l'] ?? null) && $f['l'] != 0 ? round($f['r'] / $f['l'] * 100, $dec) : null;
+        }
+
+        return null;
+    }
+
     // ------------------------------------------------------------------------------------------------------------------ compute
     private static function num($v): ?float
     {
@@ -312,6 +371,50 @@ class MaterialSheet
                         $rating = 'FAIL';
                     }
                     break;
+                case 'plain':
+                    $has = false;
+                    for ($i = 1; $i <= $r['n']; $i++) {
+                        $has = $has || self::num($values[$k . $i] ?? null) !== null;
+                    }
+                    $any = $any || $has;
+                    $row['norate'] = true;
+                    break;
+                case 'calc':
+                    $vals = [];
+                    $full = true;
+                    foreach ($r['specs'] as $i => $sp) {
+                        $f = [];
+                        foreach (array_keys($sp) as $fn) {
+                            $f[$fn] = self::num($values[$k . '_' . $fn . ($i + 1)] ?? null);
+                            $any = $any || $f[$fn] !== null;
+                        }
+                        $v = self::formula($r['formula'], $f, $values, (int) $r['dec']);
+                        $vals[] = $v;
+                        $full = $full && $v !== null;
+                    }
+                    $row['vals'] = $vals;
+                    $got = array_values(array_filter($vals, static fn ($x) => $x !== null));
+                    if ($got) {
+                        $row['ave'] = round(array_sum($got) / count($got), (int) $r['dec']);
+                        $row['min'] = min($got);
+                        $row['max'] = max($got);
+                    }
+                    if ($std === null && isset($r['def'])) {
+                        $std = $r['def'];
+                        $row['std'] = $std;
+                    }
+                    if ($std !== null) {
+                        $hi = ($r['dir'] ?? 'min') === 'max';
+                        if ($got && $hi && max($got) > $std) {
+                            $rating = 'FAIL';
+                        } elseif ($full && $got) {
+                            $rating = $hi ? 'PASS' : (min($got) < $std ? 'FAIL' : 'PASS');
+                        }
+                    } elseif (! empty($r['manual'])) {
+                        $row['manual'] = true;
+                        $rating = in_array($manual, ['PASS', 'TOLERABLE', 'FAIL'], true) && $full ? $manual : '';
+                    }
+                    break;
                 case 'text':
                     $t = trim((string) ($values[$k] ?? ''));
                     $any = $any || $t !== '';
@@ -340,6 +443,9 @@ class MaterialSheet
             }
             $row['rating'] = $rating;
             $out[$k] = $row;
+            if (! empty($row['norate'])) {
+                continue;      // a box the other rows use (spacer, specific gravity ...), not rated itself
+            }
             $nRows++;
             if ($rating === '') {
                 $allRated = false;

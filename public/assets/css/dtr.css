@@ -4191,3 +4191,9 @@ html[data-theme="dark"] .mt-cat{color:#cbd5e1}
 html[data-theme="dark"] .mt-modal-box,html[data-theme="dark"] .mt-modal-head,html[data-theme="dark"] .mt-sh-t th{background:#0f172a;color:#e2e8f0}
 html[data-theme="dark"] .mt-sh-h{background:#111c33}
 html[data-theme="dark"] .mt-num,html[data-theme="dark"] .mt-sh select,html[data-theme="dark"] .mt-sh-common input{background:#0b1222;color:#e2e8f0;border-color:#334155}
+
+.mt-calc{display:flex;gap:6px;align-items:flex-end;padding:4px 8px;border:1px dashed #cbd5e1;border-radius:8px;background:#f8fafc}
+.mt-calc-n{align-self:center;color:#64748b;font-weight:700}
+.mt-calc-v{display:flex;flex-direction:column;min-width:64px;padding-left:6px;border-left:1px solid #cbd5e1}
+.mt-calc-v small{font-size:10.5px;color:#64748b}.mt-calc-v b{font-size:14px;color:#0f172a}
+html[data-theme="dark"] .mt-calc{background:#111c33;border-color:#334155}html[data-theme="dark"] .mt-calc-v b{color:#e2e8f0}

@@ -123,6 +123,11 @@
   function inputCells(t, r) {
     const v = t.values || {}; const ro = sheet.canEdit ? '' : ' disabled';
     const num = (f, ph) => `<input type="number" step="any" class="mt-num" data-f="${esc(f)}" value="${esc(fmt(v[f]))}"${ph ? ` placeholder="${esc(ph)}"` : ''}${ro}>`;
+    if (r.mode === 'plain') return `<div class="mt-specs">${Array.from({ length: r.n }, (_, i) => num(r.k + (i + 1))).join('')}</div>`;
+    if (r.mode === 'calc') {
+      const c = ((t.calc && t.calc.rows) || {})[r.k] || {}; const vals = c.vals || [];
+      return `<div class="mt-specs">${r.specs.map((sp, i) => `<div class="mt-calc">${r.specs.length > 1 ? `<small class="mt-calc-n">#${i + 1}</small>` : ''}${Object.keys(sp).map((f) => `<label class="mt-fib"><small>${esc(sp[f])}</small>${num(r.k + '_' + f + (i + 1))}</label>`).join('')}<span class="mt-calc-v"><small>${esc(r.out)}</small><b data-out="v${i}">${fmt(vals[i])}</b></span></div>`).join('')}</div>`;
+    }
     if (r.mode === 'avg' || r.mode === 'each') return `<div class="mt-specs">${Array.from({ length: r.n }, (_, i) => num(r.k + (i + 1))).join('')}</div>`;
     if (r.mode === 'fibre') return `<div class="mt-specs">${Object.keys(fib).map((x) => `<label class="mt-fib"><small>${fib[x]}</small>${num(r.k + '_' + x)}</label>`).join('')}</div>`;
     if (r.mode === 'text' || r.mode === 'mart') {
@@ -144,6 +149,7 @@
   function stdText(r, c) {
     if (c && c.std !== null && c.std !== undefined) return (r.dir === 'max' ? '≤ ' : '') + c.std;
     if (r.thick) return '<span class="mt-none">needs the Gauge</span>';
+    if (r.mode === 'plain') return '';
     if (r.manual || (r.std && !r.std.length && r.mode !== 'text')) return 'Refer to specific requirements';
     return '<span class="mt-none">-</span>';
   }
@@ -154,8 +160,8 @@
       + `<span class="mono mt-sh-child">${esc(t.child)}</span>${sheet.canEdit ? '<button type="button" class="dtr-btn dtr-btn-primary" data-sh-save>Save</button>' : ''}<small class="mt-msg" role="status"></small></div></header>`;
     const body = rows.map((r) => {
       const c = calc[r.k] || {};
-      const mm = r.mode === 'avg' && r.n > 1 ? `<span data-out="max">${fmt(c.max)}</span><span data-out="min">${fmt(c.min)}</span>` : '';
-      const ave = r.mode === 'avg' ? `<b data-out="ave">${fmt(c.ave)}</b>` : '';
+      const mm = (r.mode === 'avg' && r.n > 1) || (r.mode === 'calc' && r.specs.length > 1) ? `<span data-out="max">${fmt(c.max)}</span><span data-out="min">${fmt(c.min)}</span>` : '';
+      const ave = r.mode === 'avg' || r.mode === 'calc' ? `<b data-out="ave">${fmt(c.ave)}</b>` : '';
       return `<tr data-k="${esc(r.k)}"><td class="mt-sh-lab">${esc(r.label || '')}</td><td>${inputCells(t, r)}</td><td class="mt-sh-mm">${mm}</td><td class="mt-sh-ave">${ave}</td>`
         + `<td class="mt-sh-std" data-out="std">${stdText(r, c)}</td><td class="mt-sh-rt" data-out="rating">${ratingCell(t, r, c)}</td></tr>`;
     }).join('');
@@ -204,6 +210,7 @@
           const r = t.layout.find((x) => x.k === tr.dataset.k); const rc = c.rows[tr.dataset.k]; if (!r || !rc) return;
           const set = (n, h) => { const el = $(`[data-out="${n}"]`, tr); if (el) el.innerHTML = h; };
           set('ave', fmt(rc.ave)); set('max', fmt(rc.max)); set('min', fmt(rc.min)); set('std', stdText(r, rc));
+          (rc.vals || []).forEach((x, i) => { const el = $(`[data-out="v${i}"]`, tr); if (el) el.textContent = fmt(x); });
           const cell = $('[data-out="rating"]', tr); if (!(rc.manual && sheet.canEdit)) cell.innerHTML = ratingChip(rc.rating);
         });
       });

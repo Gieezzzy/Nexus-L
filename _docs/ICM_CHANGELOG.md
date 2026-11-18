@@ -4,6 +4,11 @@
 
 ---
 
+## Phase 226 - Material Testing: the Access calculator tools on the test sheet (2026-11-18)
+- Ported from the tool forms of the Access file (`MaterialSheet`, modes `calc` / `plain`): **Shrinkage** (% = (before - after) / before x 100, length and width; rubber fails above 2 %, other types above the Shrinkage standard), **Compression** (% = (before - after) / (before - spacer) x 100, 4 specimens at 6 hrs 45 C and at 22 hrs 23 C, shared spacer, fails above the standard), **DIN Abrasion** (mm3 = (before - after) / SG x (200 / SA) x 1000, 3 specimens, fails above 150), **Ross Flex** (growth % = (final - initial) / initial x 100, 2 specimens, fails above 50), **Specific Gravity** (g / (10 x 10 x thickness / 10), 3 dp, manual rating) and the **Weight** calculators (fabric / leather / insole: raw weight of 10 x 10 cm x 100 g/m2; webbing / lace / thread / gore / velcro: weight / length x 100).
+- The sheet shows the typed boxes per specimen and the calculated value next to them, live; the Fabric screenshot check (Weight 276.93) still holds with the raw weights 2.774 / 2.776 / 2.758.
+- Not tested on saved data (no record was saved).
+
 ## Phase 225 - Material Testing: the test sheet of a Lab Ref (values, average, standard, rating) as on the Access forms (2026-11-18)
 - **Lab Ref codes:** the code per material type (FBU, FBL, LEU, LEL, SYU, SYL, LC, TH, EY, FML, FM, VH, VL, SL, WL, NW, IB, OB, RB, F1, HLR, HL, AC, GR) was already in `DtrController::materialLabRefCode`; the two thread materials created before it (`...THR-1/-2`) were renamed to `DTP20261111TH-1/-2` everywhere (tracker, receipts, containers, child tests).
 - **Rules read from the Access VBA (Form - Fabric / Leather / Sockliner ... and module `modMaterialUtilities`):** standards come from table `Standards` by material type; for Fabric / Leather types the standard of Tensile, Elongation, Trouser / Stitch Tear and Mullen Burst is the row whose thickness band (TMinC..TMaxC) holds the Gauge average; averages of the specimens >= standard = PASS else FAIL; UV, Heat Aging, Bally, PVC, Taber, crocking: any specimen below the standard = FAIL; perspiration / water: six fibres all >= standard; text tests ("No / Slight / Severe ..." and "hydrolyzed"); Martindale: cycles below standard or severe damage = FAIL; Gauge, Weight, Hardness, SG: no standard, rating chosen by the technician.
