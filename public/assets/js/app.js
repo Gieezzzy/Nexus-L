@@ -542,3 +542,43 @@
   });
 
 })();
+
+/* ---- one CSRF token for every open tab of this browser ----
+   The server renews the token on every save and keeps only the newest one in the browser cookie, so a tab that was left open (or a second tab) sent an
+   old token and was refused (thousands of errors a day). Every tab now passes each new token on to the others, and a request refused with
+   "page expired" is repeated once with the token that came back. */
+(function () {
+  const meta = document.querySelector('meta[name="X-CSRF-TOKEN"]');
+  if (!meta) return;
+  let bc = null;
+  try { if ('BroadcastChannel' in window) bc = new BroadcastChannel('nexusl-csrf'); } catch (e) { /* not available */ }
+  const set = (t) => { if (t && meta.content !== t) meta.content = t; };
+  const tell = (t) => {
+    if (bc) { try { bc.postMessage({ t }); } catch (e) { /* ignore */ } }
+    try { localStorage.setItem('nexusl-csrf', JSON.stringify({ t, n: Date.now() })); } catch (e) { /* private mode */ }
+  };
+  new MutationObserver(() => tell(meta.content)).observe(meta, { attributes: true, attributeFilter: ['content'] });
+  if (bc) bc.onmessage = (ev) => set(ev.data && ev.data.t);
+  window.addEventListener('storage', (ev) => { if (ev.key === 'nexusl-csrf' && ev.newValue) { try { set(JSON.parse(ev.newValue).t); } catch (e) { /* ignore */ } } });
+  // a tab that comes back to the front takes the newest token another tab saved meanwhile
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    try { const v = JSON.parse(localStorage.getItem('nexusl-csrf') || 'null'); if (v && v.t) set(v.t); } catch (e) { /* ignore */ }
+  });
+  const f = window.fetch;
+  if (typeof f !== 'function') return;
+  window.fetch = function (input, init) {
+    return f.call(this, input, init).then((res) => {
+      if (res.status !== 419 || (init && init.__csrfRetried)) return res;
+      return res.clone().json().then((j) => {
+        if (!j || !j.csrf_expired || !j.csrf) return res;
+        set(j.csrf); tell(j.csrf);
+        const h = new Headers((init && init.headers) || (input instanceof Request ? input.headers : undefined) || {});
+        if (h.has('X-CSRF-TOKEN')) h.set('X-CSRF-TOKEN', j.csrf);
+        let body = init && init.body;
+        if (typeof body === 'string' && /"csrf_test_name"\s*:/.test(body)) body = body.replace(/("csrf_test_name"\s*:\s*")[^"]*/, '$1' + j.csrf);
+        return f.call(this, input, Object.assign({}, init || {}, { headers: h, body, __csrfRetried: true }));
+      }).catch(() => res);
+    });
+  };
+})();

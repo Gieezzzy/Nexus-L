@@ -196,3 +196,28 @@ html[data-theme="dark"] .qi-skel {
   background: linear-gradient(90deg, rgba(30, 41, 59, 0.8) 20%, rgba(51, 65, 85, 0.9) 45%, rgba(30, 41, 59, 0.8) 70%);
   background-size: 200% 100%;
 }
+
+/* early warning strip */
+.qi-warn{margin:0 0 12px;padding:10px 14px;border-left:4px solid #f59e0b}
+.qi-warn-h{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px}
+.qi-warn-h small{color:#64748b}
+.qi-warn-list{display:flex;gap:6px;flex-wrap:wrap}
+.qi-warn-chip{font-size:12.5px;padding:3px 10px;border-radius:999px;background:rgba(245,158,11,.14);color:#92400e;border:1px solid rgba(245,158,11,.4)}
+.qi-warn-chip.high{background:rgba(225,29,72,.12);color:#9f1239;border-color:rgba(225,29,72,.4)}
+
+/* Failed sample CAPA */
+.qi-badge{display:inline-block;min-width:18px;padding:0 6px;border-radius:999px;background:#e11d48;color:#fff;font-size:11px;line-height:18px;text-align:center;margin-left:4px}
+.qi-capa{padding:12px 14px;margin:0 0 10px;display:grid;gap:8px;border-left:4px solid #f59e0b}
+.qi-capa.late{border-left-color:#e11d48}
+.qi-capa.done{border-left-color:#16a34a;opacity:.85}
+.qi-capa header{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.qi-capa header span{color:#475569}
+.qi-capa header small{color:#64748b;margin-left:auto}
+.qi-capa label{display:grid;gap:3px;font-size:12px;color:#475569}
+.qi-capa textarea,.qi-capa input{font:inherit;font-size:13px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a;width:100%;box-sizing:border-box}
+.qi-capa textarea:disabled,.qi-capa input:disabled{background:#f1f5f9}
+.qi-capa-cands{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;color:#475569}
+.qi-capa-cands .qi-chip{cursor:pointer;border:1px solid #86efac;background:rgba(22,163,74,.1);color:#166534;border-radius:999px;padding:2px 10px}
+.qi-capa-act{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.qi-capa-msg.ok{color:#15803d}.qi-capa-msg.bad{color:#b91c1c}
+html[data-theme="dark"] .qi-capa textarea,html[data-theme="dark"] .qi-capa input{background:#0f172a;color:#e2e8f0;border-color:#334155}

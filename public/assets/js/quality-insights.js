@@ -33,6 +33,71 @@
   }
   const peek = (path, params) => { const h = cache.get(base + path + '?' + new URLSearchParams(params).toString()); return h ? h.data : null; };
 
+  // ---------------------------------------------------------------- early warnings (a line / style / cement that keeps failing)
+  async function loadWarnings() {
+    const box = $('#qi-warn'); if (!box) return;
+    try {
+      const r = await fetch(base + 'warnings', { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+      const j = r.ok ? await r.json() : null;
+      if (!j || !j.ok || !j.warnings.length) { box.hidden = true; return; }
+      const c = j.config;
+      box.innerHTML = '<div class="qi-warn-h"><b>Early warning</b><small>' + j.warnings.length + ' to watch: ' + c.streak + '+ Lab Refs failing in a row, or ' + c.rate_pct + '%+ of ' + c.rate_min + '+ Lab Refs failing in 7 days</small></div>'
+        + '<div class="qi-warn-list">' + j.warnings.slice(0, 12).map((w) => '<span class="qi-warn-chip ' + esc(w.severity) + '" title="' + esc(w.text) + '"><b>' + esc(w.group) + ' ' + esc(w.name) + '</b> '
+        + (w.kind === 'streak' ? esc(w.streak) + ' in a row' : esc(w.fail_rate) + '% (' + esc(w.fails) + '/' + esc(w.rated) + ')') + '</span>').join('') + '</div>';
+      box.hidden = false;
+    } catch (e) { box.hidden = true; }
+  }
+  loadWarnings();
+
+  // ---------------------------------------------------------------- Failed sample CAPA: root cause + corrective action + a passing retest before a case can be closed
+  const capa = { status: 'Open', edit: false };
+  const csrfMeta = document.querySelector('meta[name="X-CSRF-TOKEN"]');
+  async function loadCapa() {
+    const list = $('#qi-capa-list'); list.innerHTML = skelRows(4);
+    try {
+      const r = await fetch(base + 'capa?status=' + capa.status, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+      const j = await r.json(); if (!j.ok) throw new Error('bad');
+      capa.edit = !!j.can_edit;
+      $('#qi-capa-hint').textContent = 'Every Lab Ref that failed the bonding test since ' + j.since + ' is a case; it closes only after a passing retest is linked.';
+      $('#qi-capa-kpis').innerHTML = [['Open', j.open, j.open ? 'amber' : 'green'], ['Open 3+ days', j.overdue, j.overdue ? 'red' : 'green'], ['Closed', j.closed, 'green']]
+        .map(([l, n, c]) => '<div class="qi-kpi ' + c + '"><b>' + n + '</b><span>' + l + '</span></div>').join('');
+      const badge = $('#qi-capa-badge'); badge.hidden = !j.open; badge.textContent = j.open;
+      list.innerHTML = j.cases.length ? j.cases.map(capaCard).join('') : '<p class="qi-note">Nothing here.</p>';
+    } catch (e) { list.innerHTML = '<p class="qi-note">Could not load the CAPA cases.</p>'; }
+  }
+  const capaCard = (c) => {
+    const closed = c.status === 'Closed', ro = closed || !capa.edit ? ' disabled' : '';
+    const cands = (c.candidates || []).map((x) => '<button type="button" class="qi-chip" data-pick="' + esc(x.ref) + '" title="Passed ' + esc(x.tested) + '">' + esc(x.ref) + ' passed</button>').join('');
+    return '<article class="cal-glass qi-capa ' + (closed ? 'done' : (c.age >= 3 ? 'late' : '')) + '" data-id="' + c.id + '"><header><b>' + esc(c.ref) + '</b> <span>' + esc(c.line) + ' · ' + esc(c.style) + (c.cement ? ' · ' + esc(c.cement) : '') + '</span>'
+      + '<small>Failed ' + esc(c.failed_date) + (c.mode ? ' · ' + esc(c.mode) : '') + (closed ? ' · closed by ' + esc(c.closed_by) + ' ' + esc(c.closed_at.slice(0, 10)) : ' · open ' + c.age + ' day(s)') + '</small></header>'
+      + '<label>Root cause<textarea rows="2" data-f="root_cause"' + ro + '>' + esc(c.root_cause) + '</textarea></label>'
+      + '<label>Corrective action<textarea rows="2" data-f="corrective_action"' + ro + '>' + esc(c.action) + '</textarea></label>'
+      + '<label>Retest Lab Ref<input type="text" data-f="retest_lab_ref" value="' + esc(c.retest) + '"' + ro + ' placeholder="a Lab Ref with a passing report"></label>'
+      + (closed || !capa.edit ? '' : '<div class="qi-capa-cands">' + (cands ? 'Suggested: ' + cands : '<small>No passing retest saved yet for this Lab Ref.</small>') + '</div>'
+        + '<div class="qi-capa-act"><button type="button" class="cal-btn-glass" data-act="save">Save</button><button type="button" class="cal-btn-text" data-act="close">Close the case</button><small class="qi-capa-msg" role="status"></small></div>')
+      + '</article>';
+  };
+  $('#qi-capa-list').addEventListener('click', async (e) => {
+    const card = e.target.closest('.qi-capa'); if (!card) return;
+    const pick = e.target.closest('[data-pick]');
+    if (pick) { card.querySelector('[data-f="retest_lab_ref"]').value = pick.dataset.pick; return; }
+    const b = e.target.closest('[data-act]'); if (!b) return;
+    const msg = card.querySelector('.qi-capa-msg'); b.disabled = true; msg.textContent = '';
+    const body = { id: +card.dataset.id, close: b.dataset.act === 'close' };
+    card.querySelectorAll('[data-f]').forEach((x) => { body[x.dataset.f] = x.value; });
+    try {
+      const r = await fetch(base + 'capa/save', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfMeta ? csrfMeta.content : '' }, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({}));
+      if (csrfMeta && j.csrf) csrfMeta.content = j.csrf;
+      msg.textContent = j.message || (r.ok ? 'Saved.' : 'Not saved.'); msg.className = 'qi-capa-msg ' + (r.ok ? 'ok' : 'bad');
+      if (r.ok && body.close) setTimeout(loadCapa, 900);
+    } catch (err) { msg.textContent = 'Could not save.'; msg.className = 'qi-capa-msg bad'; }
+    b.disabled = false;
+  });
+  $$('#qi-capa-status button').forEach((b) => b.addEventListener('click', () => { $$('#qi-capa-status button').forEach((x) => x.classList.toggle('active', x === b)); capa.status = b.dataset.st; loadCapa(); }));
+  // the open count on the tab, whichever tab is showing
+  fetch(base + 'capa?status=Open', { headers: { Accept: 'application/json' }, credentials: 'same-origin' }).then((r) => r.json()).then((j) => { if (j && j.ok) { const b = $('#qi-capa-badge'); b.hidden = !j.open; b.textContent = j.open; } }).catch(() => {});
+
   // ---------------------------------------------------------------- shimmer
   const skelKpis = (n) => Array.from({ length: n }, () => '<div class="qi-kpi"><i class="qi-skel" style="width:48px;height:24px"></i><i class="qi-skel" style="width:90px;height:11px;margin-top:8px"></i></div>').join('');
   const skelTiles = () => ['A', 'B'].map(() => '<div class="qi-building"><i class="qi-skel" style="width:90px;height:14px;margin-bottom:10px"></i><div class="qi-lines">'
@@ -215,9 +280,9 @@
   function show(tab) {
     state.tab = tab;
     $$('.qi-tab').forEach((b) => { const on = b.dataset.tab === tab; b.classList.toggle('active', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });
-    ['lines', 'fail', 'sup'].forEach((t) => $('#qi-panel-' + t).classList.toggle('hidden', t !== tab));
+    ['lines', 'fail', 'sup', 'capa'].forEach((t) => $('#qi-panel-' + t).classList.toggle('hidden', t !== tab));
     try { history.replaceState(null, '', '#' + tab); } catch (e) { /* ignore */ }
-    if (tab === 'lines') loadLines(); else if (tab === 'fail') loadFail(); else loadSup();
+    if (tab === 'lines') loadLines(); else if (tab === 'fail') loadFail(); else if (tab === 'capa') loadCapa(); else loadSup();
   }
 
   function refreshAll() {
@@ -257,7 +322,7 @@
   dr.back.addEventListener('click', closeDrawer);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && dr.el.classList.contains('active')) closeDrawer(); });
 
-  const start = ['lines', 'fail', 'sup'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'lines';
+  const start = ['lines', 'fail', 'sup', 'capa'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'lines';
   state.tab = start;
   $$('.qi-tab').forEach((b) => { const on = b.dataset.tab === start; b.classList.toggle('active', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });
   refreshAll();

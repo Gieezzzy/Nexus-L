@@ -175,5 +175,15 @@
                 <div id="ld-approvals" class="ld-big2"></div>
             </article>
         </div>
+        <div class="ld-row" id="ld-signoff-row" hidden>
+            <article class="ld-glass ld-c12">
+                <header class="ld-ch"><h3>Sign-off waiting</h3><p id="ld-so-note">Finished reports without an approved sign-off, by how long they have waited</p></header>
+                <div class="ld-so">
+                    <div id="ld-so-buckets" class="ld-so-buckets"></div>
+                    <div class="ld-so-act"><button type="button" class="ld-btn" id="ld-so-remind">Remind the signatories</button><small id="ld-so-msg" role="status"></small></div>
+                    <div class="ld-so-wrap"><table class="ld-so-t"><thead><tr><th>Lab reference</th><th>Category</th><th>Result</th><th>Tested</th><th>Waiting</th></tr></thead><tbody id="ld-so-body"></tbody></table></div>
+                </div>
+            </article>
+        </div>
     </section>
 </div>

@@ -122,6 +122,39 @@ class QualityInsightsController extends BaseController
         return [$from, $to];
     }
 
+    /** GET quality-insights/warnings: lines / styles / cements that fail in a row or above the weekly failure rate (App\Libraries\EarlyWarning) */
+    public function warnings(): ResponseInterface
+    {
+        $w = \App\Libraries\DataCache::remember('qi_warnings_' . date('Y-m-d'), 60, static fn () => \App\Libraries\EarlyWarning::detect());
+
+        return $this->response->setJSON(['ok' => true, 'config' => \App\Libraries\EarlyWarning::config(), 'warnings' => $w]);
+    }
+
+    /** GET quality-insights/capa?status=Open|Closed|All: the failed-sample cases (created from the failed bonding reports since capa.start_date) */
+    public function capa(): ResponseInterface
+    {
+        $st = (string) $this->request->getGet('status');
+
+        return $this->response->setJSON(['ok' => true, 'can_edit' => \App\Libraries\Capa::canEdit()] + \App\Libraries\Capa::listing(in_array($st, ['Open', 'Closed'], true) ? $st : 'All'));
+    }
+
+    /** POST quality-insights/capa/save {id, root_cause, corrective_action, retest_lab_ref, close}: Admin, Supervisor, Manager, Bonding PIC; closing needs a passing retest */
+    public function capaSave(): ResponseInterface
+    {
+        if (! \App\Libraries\Capa::canEdit()) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'message' => 'Only an Admin, Supervisor, Manager or Bonding PIC can write a CAPA.', 'csrf' => csrf_hash()]);
+        }
+        $p  = $this->request->getJSON(true) ?? [];
+        $u  = service('auth')->user();
+        $by = (string) ($u['name'] ?? $u['username'] ?? '');
+        $r  = \App\Libraries\Capa::save((int) ($p['id'] ?? 0), $p, ! empty($p['close']), $by);
+        if ($r['ok']) {
+            \App\Libraries\ActivityLog::record('quality', ! empty($p['close']) ? 'capa-close' : 'capa-save', (string) ($p['retest_lab_ref'] ?? ''), $r['message']);
+        }
+
+        return $this->response->setStatusCode($r['ok'] ? 200 : 422)->setJSON($r + ['csrf' => csrf_hash()]);
+    }
+
     /** GET quality-insights/line-map?from=&to= */
     public function lineMap(): ResponseInterface
     {

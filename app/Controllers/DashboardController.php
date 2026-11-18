@@ -17,16 +17,16 @@ class DashboardController extends BaseController
     private const OEE_TARGET = 80;
 
     /** Lab-reference date stored as text: "27 Oct 2026" (most rows) or "2026-11-18" (newer ones, e.g. pull tests). */
-    private const LR_DATE = "COALESCE(STR_TO_DATE(tested_date, '%d %b %Y'), STR_TO_DATE(LEFT(tested_date, 10), '%Y-%m-%d'))";
+    public const LR_DATE = "COALESCE(STR_TO_DATE(tested_date, '%d %b %Y'), STR_TO_DATE(LEFT(tested_date, 10), '%Y-%m-%d'))";
 
     /** Both spellings of a failed report exist ("Fail" and "FAILED"). */
-    private const FAILED = "overall_result IN ('Fail', 'FAILED')";
+    public const FAILED = "overall_result IN ('Fail', 'FAILED')";
 
     /**
      * A lab reference still being worked on. Whole shoe and pull test rows of the unified list are intake placeholders (their tests are counted
      * from their own trackers), so they are never "ongoing".
      */
-    private const OPEN = "(status NOT LIKE 'Complete%' AND form_slug NOT IN ('wholeshoe', 'pulltest'))";
+    public const OPEN = "(status NOT LIKE 'Complete%' AND form_slug NOT IN ('wholeshoe', 'pulltest'))";
 
     /**
      * The lab references the figures are made of, one row per lab reference and form:
@@ -34,7 +34,7 @@ class DashboardController extends BaseController
      *   list lags behind it (about 100 bonding results of the last 30 days differ, and 1,900 rows are still "Pending" after the result was entered);
      * - every other form comes from tbl_dtr_unified_labrefs (the intake keeps one row per shoe / specimen, so the latest row of a lab reference is used).
      */
-    private const LR = "(SELECT u.id, CONVERT(u.form_slug USING utf8mb4) COLLATE utf8mb4_unicode_ci form_slug, CONVERT(u.lab_ref_no USING utf8mb4) COLLATE utf8mb4_unicode_ci lab_ref_no, u.source_id,
+    public const LR = "(SELECT u.id, CONVERT(u.form_slug USING utf8mb4) COLLATE utf8mb4_unicode_ci form_slug, CONVERT(u.lab_ref_no USING utf8mb4) COLLATE utf8mb4_unicode_ci lab_ref_no, u.source_id,
             CONVERT(u.overall_result USING utf8mb4) COLLATE utf8mb4_unicode_ci overall_result, CONVERT(u.tested_date USING utf8mb4) COLLATE utf8mb4_unicode_ci tested_date,
             CONVERT(u.status USING utf8mb4) COLLATE utf8mb4_unicode_ci status, CONVERT(u.technician USING utf8mb4) COLLATE utf8mb4_unicode_ci technician,
             CONVERT(u.supplier USING utf8mb4) COLLATE utf8mb4_unicode_ci supplier, u.test_items_json
@@ -90,6 +90,32 @@ class DashboardController extends BaseController
         }
 
         return $this->response->setJSON($out)->setHeader('Cache-Control', 'private, max-age=30');
+    }
+
+    /** GET dashboard/signoff: finished reports still waiting for an approved sign-off, by age (Admin, Supervisor, Manager) */
+    public function signoff()
+    {
+        if (! \App\Libraries\SignoffWaiting::canView()) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'message' => 'Only an Admin, Supervisor or Manager can see the sign-off monitor.']);
+        }
+        $w = \App\Libraries\DataCache::remember('signoff_waiting_' . date('Y-m-d'), 60, static fn () => \App\Libraries\SignoffWaiting::waiting());
+
+        return $this->response->setJSON(['ok' => true] + $w);
+    }
+
+    /** POST dashboard/signoff-remind: one reminder (Inbox + Synology) to the signatories, Supervisors and Managers; at most one per cooldown */
+    public function signoffRemind()
+    {
+        if (! \App\Libraries\SignoffWaiting::canView()) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'message' => 'Only an Admin, Supervisor or Manager can send the reminder.', 'csrf' => csrf_hash()]);
+        }
+        $u = service('auth')->user();
+        $r = \App\Libraries\SignoffWaiting::remind((string) ($u['name'] ?? $u['username'] ?? ''));
+        if ($r['ok']) {
+            \App\Libraries\ActivityLog::record('dashboard', 'signoff-remind', '', $r['message']);
+        }
+
+        return $this->response->setJSON($r + ['csrf' => csrf_hash()]);
     }
 
     /** Finished lab references per day: total, failed, and the pass rate (line chart and KPI sparklines). */

@@ -281,3 +281,18 @@ html[data-theme="dark"] .ld-wait .ld-matrix{
 html[data-theme="dark"] .ld-wait .ld-glass::after{
   background:linear-gradient(100deg,transparent 30%,rgb(148 163 184 / .18) 50%,transparent 70%);
 }
+
+/* Sign-off waiting card */
+.ld-so{display:grid;gap:12px}
+.ld-so-buckets{display:flex;gap:28px;flex-wrap:wrap}
+.ld-so-buckets div{display:flex;flex-direction:column}
+.ld-so-buckets b{font-size:26px;line-height:1.1}
+.ld-so-buckets small{color:#64748b}
+.ld-so-act{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.ld-so-act small{color:#475569}
+.ld-so-wrap{max-height:280px;overflow:auto;border:1px solid rgba(148,163,184,.3);border-radius:8px}
+.ld-so-t{width:100%;border-collapse:collapse;font-size:12.5px}
+.ld-so-t th,.ld-so-t td{padding:6px 10px;text-align:left;border-bottom:1px solid rgba(148,163,184,.2)}
+.ld-so-t th{position:sticky;top:0;background:#f8fafc;font-weight:600}
+.ld-so-late td:last-child{color:#b45309;font-weight:600}
+html[data-theme="dark"] .ld-so-t th{background:#0f172a}

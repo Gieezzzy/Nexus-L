@@ -377,8 +377,39 @@
       },
       draw(d) {
         donut($('#ld-ch-il'), d.reports.interlink.map((r, i) => ({ name: r.status, value: +r.n, color: IL[r.status] || MACHINE[i % 6] })), 'applications');
+        loadSignoff();
       },
     },
+  };
+  // ---- Sign-off waiting (Admin / Supervisor / Manager only: the server answers 403 to everybody else and the card stays hidden) ----
+  const loadSignoff = async () => {
+    const row = $('#ld-signoff-row'); if (!row) return;
+    try {
+      const r = await fetch(root.dataset.src.replace(/data$/, 'signoff'), { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      if (!r.ok) return;
+      const j = await r.json(); if (!j.ok) return;
+      row.hidden = false;
+      const tone = ['#16a34a', '#f59e0b', '#ea580c', '#e11d48'];
+      $('#ld-so-note').textContent = `${fmt(j.total)} finished report(s) tested since ${j.since} without an approved sign-off; ${fmt(j.late)} waiting ${j.late_days}+ days`;
+      $('#ld-so-buckets').innerHTML = j.buckets.map((b, i) => `<div><b style="color:${tone[i]}">${fmt(b.n)}</b><small>${esc(b.label)}</small></div>`).join('');
+      $('#ld-so-body').innerHTML = j.rows.length ? j.rows.slice(0, 60).map((x) => `<tr class="${x.age >= j.late_days ? 'ld-so-late' : ''}"><td class="mono">${esc(x.ref)}</td><td>${esc(x.category)}</td><td>${esc(x.result)}</td><td>${esc(x.tested)}</td><td>${x.age} day${x.age === 1 ? '' : 's'}</td></tr>`).join('') : '<tr><td colspan="5" class="muted">Nothing is waiting for a sign-off.</td></tr>';
+      const b = $('#ld-so-remind'); b.disabled = j.late === 0;
+      if (!b.dataset.bound) {
+        b.dataset.bound = '1';
+        b.addEventListener('click', async () => {
+          b.disabled = true;
+          const msg = $('#ld-so-msg');
+          try {
+            const meta = document.querySelector('meta[name="X-CSRF-TOKEN"]');
+            const res = await fetch(root.dataset.src.replace(/data$/, 'signoff-remind'), { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': meta ? meta.content : '' }, body: '{}' });
+            const k = await res.json();
+            if (meta && k.csrf) meta.content = k.csrf;
+            msg.textContent = k.message || (k.ok ? 'Sent.' : 'Not sent.');
+          } catch (e) { msg.textContent = 'Could not send the reminder.'; }
+          setTimeout(() => { b.disabled = false; }, 4000);
+        });
+      }
+    } catch (e) { /* the card stays hidden */ }
   };
   const HELP = {
     'ld-ch-daily': 'Each point is one day (one week in the 90-day view). Finished: every lab reference that got its final result that day, all test types together. Bonding: the whole shoe bonding ones among them. Failed: the ones whose final result was Fail. Point at a day to see its lab references.',

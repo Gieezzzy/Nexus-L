@@ -200,6 +200,8 @@ class NotifierController extends BaseController
      *  uncollected     shoes collected from the lines on `date` with no finished bonding report yet (not announced yet by this rule)
      *  shift_summary   the numbers of `date` (one event, key = date)
      *  erp_failed      ERP sends that failed in the last day
+     *  repeat_failure  a line / style / cement that fails in a row or above the weekly failure rate (not announced yet today)
+     *  approval_waiting  finished reports waiting for a sign-off for `approval.late_days` days or more (one per day)
      */
     public function events()
     {
@@ -306,6 +308,25 @@ class NotifierController extends BaseController
                         $ev[] = ['key' => $key, 'lab_ref' => $x['lab_ref_no'], 'message' => mb_substr((string) $x['message'], 0, 300), 'at' => $x['updated_at']];
                     }
                 }
+            }
+        } elseif ($type === 'repeat_failure') {
+            // a line / style / cement that keeps failing (see App\Libraries\EarlyWarning); one alert per group, signal and day
+            foreach (\App\Libraries\EarlyWarning::detect() as $w) {
+                if (isset($sent[$w['key']])) {
+                    continue;
+                }
+                $ev[] = $w + ['line' => $w['group'] === 'Line' ? $w['name'] : '', 'icon' => $w['severity'] === 'high' ? '🚨' : '⚠️', 'kind_label' => $w['kind'] === 'streak' ? 'Failing in a row' : 'High failure rate',
+                    'domain' => 'bonding', 'result' => 'FAIL'];
+            }
+        } elseif ($type === 'approval_waiting') {
+            // reports finished but not signed off for `approval.late_days` days or more: one combined alert per day (see App\Libraries\SignoffWaiting)
+            $w = \App\Libraries\SignoffWaiting::waiting(60);
+            $k = 'aw|' . $date;
+            if ($w['late'] > 0 && ! isset($sent[$k])) {
+                $late = array_values(array_filter($w['rows'], static fn ($r) => $r['age'] >= $w['late_days']));
+                $list = implode("\n", array_map(static fn ($r) => '• ' . $r['ref'] . ' (' . $r['category'] . ', ' . $r['result'] . ', ' . $r['age'] . ' d)', array_slice($late, 0, 8)));
+                $ev[] = ['key' => $k, 'date' => $date, 'date_label' => date('D, M j', strtotime($date)), 'count' => $w['total'], 'late' => $w['late'], 'late_days' => $w['late_days'], 'oldest' => $w['oldest'],
+                    'list' => $list . ($w['late'] > 8 ? "\n… and " .($w['late'] - 8) . ' more' : '')];
             }
         } else {
             return $this->json(['ok' => false, 'error' => 'Unknown event type.'], 422);

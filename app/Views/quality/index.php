@@ -52,10 +52,12 @@
         </div>
     </header>
 
+    <div class="qi-warn cal-glass" id="qi-warn" hidden aria-live="polite"></div>
     <nav class="qi-tabs cal-glass" role="tablist" aria-label="Quality Insights views">
         <button type="button" class="qi-tab active" role="tab" data-tab="lines" aria-selected="true">Line map</button>
         <button type="button" class="qi-tab" role="tab" data-tab="fail" aria-selected="false">Failure modes</button>
         <button type="button" class="qi-tab" role="tab" data-tab="sup" aria-selected="false">Suppliers</button>
+        <button type="button" class="qi-tab" role="tab" data-tab="capa" aria-selected="false">Failed sample CAPA <span class="qi-badge" id="qi-capa-badge" hidden></span></button>
     </nav>
 
     <!-- ===== Line map ===== -->
@@ -103,6 +105,14 @@
             </label>
         </div>
         <div class="cal-glass qi-card"><div id="qi-sup-table"></div><p class="qi-note" id="qi-sup-note"></p></div>
+    </section>
+
+    <!-- ===== Failed sample CAPA ===== -->
+    <section class="qi-panel hidden" id="qi-panel-capa" role="tabpanel">
+        <div class="qi-toolbar cal-glass"><span class="qi-hint" id="qi-capa-hint"></span>
+            <div class="qi-seg" role="group" aria-label="Show" id="qi-capa-status"><button type="button" data-st="Open" class="active">Open</button><button type="button" data-st="Closed">Closed</button><button type="button" data-st="All">All</button></div></div>
+        <div class="qi-kpis" id="qi-capa-kpis"></div>
+        <div id="qi-capa-list"></div>
     </section>
 
     <!-- Side panel (same look as Calendar Monitoring) -->

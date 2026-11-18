@@ -75,6 +75,8 @@ $routes->post('photo/(:segment)/release', 'PhotoLinkController::release/$1');
 $routes->group('', ['filter' => 'auth'], static function (RouteCollection $routes): void {
     $routes->get('dashboard', 'DashboardController::index', ['as' => 'dashboard']);
     $routes->get('dashboard/data', 'DashboardController::data');
+    $routes->get('dashboard/signoff', 'DashboardController::signoff');
+    $routes->post('dashboard/signoff-remind', 'DashboardController::signoffRemind');
     $routes->get('help', 'HelpController::index', ['as' => 'help']);
     $routes->get('thirdparty/qima-image', 'ThirdPartyController::qimaImage');
     $routes->post('thirdparty/qima-import', 'ThirdPartyController::qimaImport');
@@ -321,6 +323,9 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     // Quality Insights (line map, failure modes, supplier scorecard)
     $routes->get('quality-insights', 'QualityInsightsController::index', ['as' => 'quality-insights']);
     $routes->get('quality-insights/line-map', 'QualityInsightsController::lineMap');
+    $routes->get('quality-insights/warnings', 'QualityInsightsController::warnings');
+    $routes->get('quality-insights/capa', 'QualityInsightsController::capa');
+    $routes->post('quality-insights/capa/save', 'QualityInsightsController::capaSave');
     $routes->get('quality-insights/line-details', 'QualityInsightsController::lineDetails');
     $routes->get('quality-insights/failures', 'QualityInsightsController::failures');
     $routes->get('quality-insights/failure-details', 'QualityInsightsController::failureDetails');
