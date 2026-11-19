@@ -266,8 +266,10 @@ class Auth
             if ($row !== null) {
                 // Possible token theft: wipe all of this user's tokens.
                 $this->tokens->where('UserID', $row['UserID'])->delete();
+                service('response')->deleteCookie($this->config->rememberCookie, '', '/');
             }
-            service('response')->deleteCookie($this->config->rememberCookie, '', '/');
+            // A token that is simply not there (already replaced by a parallel request of the same page) must NOT delete the cookie: the page sends many requests at
+            // once and the one that lost the race would otherwise wipe the NEW cookie its sibling just received, which forced a password sign-in.
 
             return false;
         }
@@ -277,8 +279,11 @@ class Auth
             return false;
         }
 
-        // Rotate token on every use.
-        $this->tokens->delete($row['TokenID']);
+        // Rotate token on every use, but keep the old one valid for a short grace period: the other requests the page sent at the same moment still carry it.
+        $grace = date('Y-m-d H:i:s', time() + 90);
+        if ($row['ExpiresAt'] > $grace) {
+            $this->tokens->update($row['TokenID'], ['ExpiresAt' => $grace]);
+        }
         $this->login($user);
         $this->issueRememberToken((int) $user['UserID']);
         $this->logs->record('login_remember', true, (int) $user['UserID'], $user['Username']);

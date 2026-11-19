@@ -16,7 +16,7 @@ class Auth extends BaseConfig
     public int $lockoutMinutes = 15;
 
     /** Logged-in users are signed out after this period of inactivity. */
-    public int $idleTimeoutMinutes = 30;
+    public int $idleTimeoutMinutes = 480;
 
     /** Lifetime of the "Remember me" cookie. */
     public int $rememberDays = 30;
