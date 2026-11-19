@@ -1414,6 +1414,9 @@ class DtrController extends BaseController
         $mtl     = mb_substr($pick($info['MTL'] ?? '', $trk['MTL'] ?? ''), 0, 191);
         $tech    = mb_substr($pick($info['Technician'] ?? '', $trk['Technician'] ?? ''), 0, 191);
         $ttype   = mb_substr($pick($trk['TestType'] ?? '', $info['TestType'] ?? ''), 0, 50);
+        if (strtoupper($ttype) === 'LACKING') {
+            $ttype = 'DAILY';           // the pull row belongs under the Lacking row but is not a Lacking row itself (else it is listed as a second row)
+        }
         $user    = service('auth')->user();
         $by      = mb_substr((string) ($user['name'] ?? $user['username'] ?? ''), 0, 100);
         $factory = 'DATIAN SUBIC SHOES INC. (DTP)';
