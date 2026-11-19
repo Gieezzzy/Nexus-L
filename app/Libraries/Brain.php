@@ -526,6 +526,9 @@ class Brain
         if (isset($hits[1]) && $hits[1]['score'] > $best * 0.9) {
             $c = (int) round($c * 0.9);   // two equally good answers: less sure
         }
+        if ($n <= 1) {
+            $c = min($c, 85);             // one word is too little to be sure what is meant (the score saturates): never above 85
+        }
 
         return $c;
     }

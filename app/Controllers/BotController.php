@@ -2726,28 +2726,29 @@ private function computeIntent(string $text, string $prev = '', string $lastBotM
             }
             $actions[] = $a;
         }
+        // how sure and why (reasoning analytics): the margin to the runner-up says whether the question was clear or could mean two things
+        $second = $hits[1] ?? null;
+        $margin = $second ? (int) round(max(0, ($hits[0]['score'] - $second['score']) / max(0.0001, $hits[0]['score'])) * 100) : 100;
+        $tie    = $second && $margin < 12 && $conf < 95;
+        $lead   = '';
+        if ($tie) {       // two answers fit almost equally well: say so, answer the better one and offer the other, instead of sounding sure
+            $lead = 'Your question could mean "' . $best['title'] . '" or "' . $second['row']['title'] . '". I am answering the first; tell me if you meant the other.' . "
+
+";
+        } elseif ($conf < 45) {
+            $lead = "I am not fully sure this is what you mean, but this may help:
+
+";
+        }
+
         return [
-            'text'  => ($conf < 45 ? "I am not fully sure this is what you mean, but this may help:
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-" : '') . (string) $best['body'],
+            'text'  => $lead . (string) $best['body'],
             'title' => (string) $best['title'],
             'steps' => array_values(array_filter((array) json_decode((string) ($best['steps_json'] ?? ''), true), 'is_string')),
             'actions' => $actions, 'confidence' => $conf, 'diagnosis' => $diag, 'knowledge_id' => (int) $best['id'], 'suggest_admin' => $conf < 45,
             'related' => array_map(static fn ($h) => ['id' => (int) $h['row']['id'], 'title' => $h['row']['title']], array_slice($hits, 1, 3)),
+            'reasoning' => ['matched' => (string) $best['title'], 'confidence' => $conf, 'margin_to_runner_up' => $margin, 'ambiguous' => $tie, 'runner_up' => $second ? (string) $second['row']['title'] : null,
+                'basis' => $conf >= 80 ? 'strong match on the words and the learned weights' : ($conf >= 45 ? 'good match, some words missing' : 'weak match')],
         ];
     }
 

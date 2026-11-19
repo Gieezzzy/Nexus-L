@@ -313,8 +313,8 @@ class TrainNight extends BaseCommand
         return implode(' ', $w);
     }
 
-    /** builds one round of $size questions, learns them for $epochs epochs and writes the weights */
-    private function round(array $pool, int $round, int $size, int $epochs): string
+    /** the questions of one round: [kb id, terms] pairs (identical question word sets of one entry are kept once) */
+    public function sample(array $pool, int $round, int $size): array
     {
         mt_srand(7000 + $round * 131);
         $share = ['offtopic' => 0.18, 'how' => 0.16, 'method' => 0.16, 'standards' => 0.22, 'problem' => 0.10, 'other' => 0.18];
@@ -351,33 +351,108 @@ class TrainNight extends BaseCommand
             }
         }
         $sets = [];
+        $seen = [];
         foreach ($qs as [$id, $q]) {
             $t = array_slice(array_values(array_unique(array_filter(Brain::tokens($q), static fn ($x) => $x !== '' && $x !== '#'))), 0, 12);
             if ($t) {
-                $sets[] = [$id, $t];
+                $key = $id . '|' . implode(' ', $t);
+                if (isset($seen[$key])) {         // "how do i X please" and "X pls" are the same words once the filler is gone: learn that once, not many times
+                    continue;
+                }
+                $seen[$key] = true;
+                $sets[]     = [$id, $t];
             }
         }
-        $ids = array_values(array_unique(array_column($sets, 0)));
-        $w   = [];
-        foreach (array_chunk($ids, 400) as $chunk) {
-            foreach ($this->db->table('tbl_bot_weights')->whereIn('kb_id', $chunk)->where('term !=', '#')->get()->getResultArray() as $r) {
-                $w[(int) $r['kb_id']][$r['term']] = (float) $r['w'];
-            }
-        }
+
+        return $sets;
+    }
+
+    /**
+     * Learns the sets for up to $epochs epochs (in memory). Ideas taken from the training videos:
+     *  - early stop (k-means "until the centres stop moving"): a question whose entry already scores p >= 0.99 is left out of the later epochs; the update is
+     *    proportional to (1 - p) and the weights of an entry only ever grow here, so such a question cannot fall back - the result is the same, the work is much less;
+     *  - an adaptive step (Adam / AdaGrad idea: every weight its own step): a term seen only a few times moves faster than one that was updated thousands of times;
+     *  - dropout: a random share of a longer question's words is hidden in each epoch, so no entry depends on one keyword (a misspelt or missing word still finds it).
+     * With 'fast' => false the old fixed-step, all-epochs loop runs (same maths as BrainLearn::train).
+     *
+     * @return array{0: array, 1: array, 2: array} weights [kb][term], touched counts, stats
+     */
+    public function learn(array $sets, int $epochs, bool $fast, float $dropout, array &$w, array $seenUpd = []): array
+    {
         $touched = [];
-        for ($ep = 1; $ep <= $epochs; $ep++) {
-            foreach ($sets as [$kb, $keys]) {
+        $active  = array_keys($sets);
+        $done    = 0;
+        $steps   = 0;
+        for ($ep = 1; $ep <= $epochs && $active; $ep++) {
+            $next = [];
+            foreach ($active as $i) {
+                [$kb, $keys] = $sets[$i];
+                $use = $keys;
+                if ($fast && $dropout > 0 && count($keys) >= 4) {
+                    $use = [];
+                    foreach ($keys as $k) {
+                        if (mt_rand() / mt_getrandmax() >= $dropout) {
+                            $use[] = $k;
+                        }
+                    }
+                    if (count($use) < 3) {
+                        $use = $keys;
+                    }
+                }
                 $z = 0.0;
-                foreach ($keys as $k) {
+                foreach ($use as $k) {
                     $z += $w[$kb][$k] ?? 0.0;
                 }
                 $e = 1 / (1 + exp(-$z)) - 1;
-                foreach ($keys as $k) {
-                    $w[$kb][$k] = max(-$this->wmax, min($this->wmax, ($w[$kb][$k] ?? 0.0) - $this->eta * $e));
+                if ($fast) {
+                    $zf = $z;
+                    if ($use !== $keys) {
+                        $zf = 0.0;
+                        foreach ($keys as $k) {
+                            $zf += $w[$kb][$k] ?? 0.0;
+                        }
+                    }
+                    if (1 / (1 + exp(-$zf)) >= 0.995) {   // learned: out of the later epochs
+                        $done++;
+                        continue;
+                    }
+                    $next[] = $i;
+                }
+                foreach ($use as $k) {
+                    $eta = $this->eta;
+                    if ($fast) {
+                        $u   = ($seenUpd[$kb][$k] ?? 0) + ($touched[$kb][$k] ?? 0);
+                        $eta = $this->eta * (1 + 1.5 / (1 + $u / 25));   // young terms up to 2.5x, trained terms back to the normal step
+                    }
+                    $w[$kb][$k]       = max(-$this->wmax, min($this->wmax, ($w[$kb][$k] ?? 0.0) - $eta * $e));
                     $touched[$kb][$k] = ($touched[$kb][$k] ?? 0) + 1;
+                    $steps++;
                 }
             }
+            if ($fast) {
+                $active = $next;
+            }
         }
+
+        return [$w, $touched, ['sets' => count($sets), 'steps' => $steps, 'learned_early' => $done, 'epochs_run' => min($epochs, $ep - 1)]];
+    }
+
+    /** builds one round of $size questions, learns them and writes the weights */
+    private function round(array $pool, int $round, int $size, int $epochs): string
+    {
+        $sets = $this->sample($pool, $round, $size);
+        $ids = array_values(array_unique(array_column($sets, 0)));
+        $w   = [];
+        $upd = [];
+        foreach (array_chunk($ids, 400) as $chunk) {
+            foreach ($this->db->table('tbl_bot_weights')->select('kb_id, term, w, updates')->whereIn('kb_id', $chunk)->where('term !=', '#')->get()->getResultArray() as $r) {
+                $w[(int) $r['kb_id']][$r['term']]   = (float) $r['w'];
+                $upd[(int) $r['kb_id']][$r['term']] = (int) $r['updates'];
+            }
+        }
+        $fast    = ! array_key_exists('fast', $this->cfg) || (bool) $this->cfg['fast'];
+        $dropout = max(0.0, min(0.3, (float) ($this->cfg['dropout'] ?? 0.0)));
+        [, $touched, $st] = $this->learn($sets, $epochs, $fast, $dropout, $w, $upd);
         $rows = [];
         foreach ($touched as $kb => $terms) {
             foreach ($terms as $t => $n) {
@@ -394,6 +469,6 @@ class TrainNight extends BaseCommand
             $this->db->query("INSERT INTO tbl_bot_weights (kb_id, term, w, updates, updated_at) VALUES {$ph} ON DUPLICATE KEY UPDATE w = VALUES(w), updates = updates + VALUES(updates), updated_at = VALUES(updated_at)", $arg);
         }
 
-        return count($sets) . " questions x {$epochs} epochs, " . count($rows) . ' weights, ' . count($ids) . ' entries';
+        return count($sets) . " questions x {$epochs} epochs ({$st['epochs_run']} run, {$st['learned_early']} learned early), " . count($rows) . ' weights, ' . count($ids) . ' entries';
     }
 }
