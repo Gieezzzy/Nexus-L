@@ -254,12 +254,8 @@ class TrainNight extends BaseCommand
     /** every approved entry with its keyword phrases, in groups that are sampled with different weights */
     private function pool(): array
     {
-        $groups = ['offtopic' => [], 'how' => [], 'method' => [], 'standards' => [], 'problem' => [], 'other' => []];
+        $groups = array_fill_keys(array_keys(\App\Libraries\BrainGroups::LABELS), []);
         $all    = [];
-        $off    = [];
-        foreach (\App\Libraries\BrainSeed12::all() as $e) {
-            $off[mb_substr($e['title'], 0, 200)] = true;
-        }
         foreach ($this->db->query("SELECT id, title, keywords, kind, source FROM tbl_bot_knowledge WHERE status = 'approved' AND keywords <> ''")->getResultArray() as $r) {
             $ph = array_values(array_filter(array_map('trim', explode(',', $r['keywords'])), static fn ($p) => mb_strlen($p) >= 4 && mb_strlen($p) <= 70));
             if (! $ph) {
@@ -267,9 +263,7 @@ class TrainNight extends BaseCommand
             }
             $ph[] = mb_strtolower(rtrim($r['title'], '?'));
             $e    = ['id' => (int) $r['id'], 'p' => $ph];
-            $g    = isset($off[$r['title']]) ? 'offtopic' : (in_array($r['source'], ['system_workflow', 'workflow_seed'], true) ? 'how'
-                : (in_array($r['kind'], ['vf_method', 'vf_illustrated'], true) ? 'method' : ($r['source'] === 'standards_db' || $r['source'] === 'graph_obsidian' ? 'standards'
-                : ($r['kind'] === 'problem' ? 'problem' : 'other'))));
+            $g    = \App\Libraries\BrainGroups::of($r);
             $groups[$g][] = $e;
             $all[]        = $e;
         }
@@ -317,7 +311,7 @@ class TrainNight extends BaseCommand
     public function sample(array $pool, int $round, int $size): array
     {
         mt_srand(7000 + $round * 131);
-        $share = ['offtopic' => 0.18, 'how' => 0.16, 'method' => 0.16, 'standards' => 0.22, 'problem' => 0.10, 'other' => 0.18];
+        $share = array_map(static fn ($v) => $v / 100, \App\Libraries\BrainGroups::SHARE);
         if (! empty($this->cfg['shares']) && is_array($this->cfg['shares'])) {   // the app can set the weight of each group
             foreach ($share as $g => $v) {
                 $share[$g] = max(0.0, (float) ($this->cfg['shares'][$g] ?? $v));
@@ -343,7 +337,8 @@ class TrainNight extends BaseCommand
             for ($i = 0; $i < $n; $i++) {
                 $e = $entries[mt_rand(0, count($entries) - 1)];
                 $p = $e['p'][mt_rand(0, count($e['p']) - 1)];
-                $q = trim($pre[mt_rand(0, count($pre) - 1)] . $p . $suf[mt_rand(0, count($suf) - 1)]);
+                $q = in_array($g, ['comms', 'video'], true) ? \App\Libraries\BrainGroups::spoken($p)   // owner and users talk (or speak) in their own way
+                    : trim($pre[mt_rand(0, count($pre) - 1)] . $p . $suf[mt_rand(0, count($suf) - 1)]);
                 if (mt_rand(1, 100) <= 35) {
                     $q = $this->typo($q);
                 }

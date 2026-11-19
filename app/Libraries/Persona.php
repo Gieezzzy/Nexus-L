@@ -55,13 +55,13 @@ class Persona
         }
 
         // sentiment: negative / positive words, flipped by a negation just before them (nlp.js idea)
-        $neg   = '/\b(wrong|useless|stupid|bad|terrible|annoying|slow|stuck|broken|fail(?:ed|s|ing)?|error|not working|doesn\'?t work|cannot|can\'?t|angry|frustrat\w+|problem|issue|worst|hate|again and again|still not)\b/u';
-        $pos   = '/\b(thanks|thank you|great|good|nice|perfect|awesome|helpful|love|excellent|works|working|fixed|solved|cool)\b/u';
+        $neg   = '/\b(wrong|useless|stupid|bad|terrible|annoying|slow|stuck|broken|critical|down|error|not working|doesn\'?t work|cannot|can\'?t|angry|frustrat\w+|problem|issue|worst|hate|again and again|still not)\b/u';
+        $pos   = '/\b(thanks|thank you|great|good|nice|perfect|awesome|helpful|love|excellent|fixed|solved|cool)\b/u';
         $score = 0;
         foreach ([[$neg, -1], [$pos, 1]] as [$re, $sign]) {
             if (preg_match_all($re, $t, $mm, PREG_OFFSET_CAPTURE)) {
                 foreach ($mm[0] as [$w, $off]) {
-                    $before = mb_substr($t, max(0, $off - 14), 14);
+                    $before = mb_substr($t, max(0, $off - 14), min(14, $off));
                     $flip   = (bool) preg_match('/\b(not|no|never|isn\'?t|wasn\'?t|don\'?t|didn\'?t|without)\s+(?:\w+\s+)?$/u', $before);
                     $score += $flip ? -$sign : $sign;
                 }
@@ -70,26 +70,39 @@ class Persona
         $sentiment = $score < 0 ? 'negative' : ($score > 0 ? 'positive' : 'neutral');
         $urgent    = (bool) preg_match('/\b(urgent|asap|right now|immediately|emergency|critical|as soon as possible|quickly|hurry|now na|agad)\b/u', $t) || (bool) preg_match('/!{2,}/', $text);
 
+        $core = $t;
+        for ($i = 0; $i < 4; $i++) {      // "um hey lexus gie here please how do i ..."
+            $next = preg_replace('/^(um+|uh+|ah+|so|okay|ok|sige|hey|hi|hello|lexus|lexis|gie here|it is gie|boss asks|quick one|please|pls|asap|urgent|quickly|listen|one more thing|can you tell me|i want to know|help me understand)\b[,:]?\s*/u', '', $core);
+            if ($next === $core) {
+                break;
+            }
+            $core = $next;
+        }
+        $core   = $core === '' ? $t : $core;
         $intent = 'question';
         $needs  = [];
         if (preg_match('/^(hi|hello|hey|good (morning|afternoon|evening)|yo|kumusta)\b/u', $t) && mb_strlen($t) < 40) {
             $intent = 'greeting';
-        } elseif (preg_match('/^(thanks|thank you|ty|salamat|ok thanks|got it|great)\b/u', $t) && mb_strlen($t) < 50) {
+            $sentiment = 'neutral';
+        } elseif ((preg_match('/^(thanks|thank you|ty|salamat|ok thanks|got it|great)\b/u', $t) || preg_match('/\b(thanks|thank you|salamat)\s*[.!]*$/u', $t)) && mb_strlen($t) < 50 && ! str_contains($t, '?')) {
             $intent = 'thanks';
-        } elseif (! (preg_match('/^(what (is|are|does)|what .{0,25}look like|how (does|do|are|to)|explain|define|why (do|does|is|are)|tell me about)\b/u', $t) && ! preg_match('/\b(my |our |the )?(network|server|system)\b.*\b(now|today|last|any)\b|\b(any|is anyone|right now|currently|detected)\b/u', $t)) && preg_match('/\b(attack\w*|intrusion|intruder\w*|hack(?:ed|er|ing)?|breach\w*|malware|brute.?force|port scan\w*|ddos|exploit\w*|vulnerab\w+|security (?:status|report|check|watch|alert|log|logs|monitor\w*)|suspicious|firewall|threats?|who is (?:trying|scanning)|monitor(?:ing)? (?:my |the )?(?:network|server))\b/u', $t)) {
+        } elseif (! (preg_match('/^(what (is|are|does)|what .{0,25}look like|how (does|do|are|to)|explain|define|why (do|does|is|are)|tell me about)\b/u', $t) && ! preg_match('/\b(my |our |the )?(network|server|system)\b.*\b(now|today|last|any)\b|\b(any|is anyone|right now|currently|detected)\b/u', $t)) && preg_match('/\b(attack\w*|intrusion|intruder\w*|hack(?:ed|er|ing)?|breach\w*|malware|brute.?force|port scan\w*|ddos|exploit\w*|vulnerab\w+|security (?:status|report|check|watch|alert|log|logs|monitor\w*)|suspicious|firewall|threats?|who is (?:trying|scanning)|(?:someone|somebody|anyone) (?:is |was |has |had )?(?:scan\w*|prob\w*|trying)|break(?:ing)? in(?:to)?|monitor(?:ing)? (?:my |the )?(?:network|server))\b/u', $t)) {
             $intent = 'security';
             $needs[] = 'security status';
-        } elseif ($sentiment === 'negative' && preg_match('/\b(wrong|useless|stupid|not working|doesn\'?t work|broken|stuck|still not|again and again|you keep)\b/u', $t)) {
+        } elseif (preg_match('/\b(wrong|useless|stupid|not working|doesn\'?t work|does not work|nothing works|broken|stuck|still not|again and again|you keep|do not understand|don\'?t understand|bad bot)\b/u', $t)) {
             $intent = 'complaint';
+            $sentiment = 'negative';
             $needs[] = 'fix the problem';
-        } elseif (preg_match('/\b(status|progress|update|how many|how much|count|list|show me|any new|what happened|what is happening)\b/u', $t)) {
+        } elseif (preg_match('/^(how|where|paano|pano|saan)\b/u', $core) && ! preg_match('/^how (many|much)\b/u', $core)) {
+            $intent = 'howto';
+        } elseif (preg_match('/\b(status|progress|update|how many|how much|count|list|show me|any new|what happened|what is happening)\b/u', $core)) {
             $intent = 'status';
             $needs[] = 'current information';
-        } elseif (preg_match('/^(please |pls |can you |could you |kindly )?(send|make|create|generate|add|remove|delete|open|run|start|stop|check|monitor|report|train|learn|update|fix|move|transfer|change|set|download|install|block)\b/u', $t)) {
+        } elseif (preg_match('/^(please |pls |can you |could you |kindly )?(send|make|create|generate|add|remove|delete|open|run|start|stop|check|monitor|report|train|learn|update|fix|move|transfer|change|set|download|install|block)\b/u', $core)) {
             $intent = 'task';
             $needs[] = 'do something';
-        } elseif (preg_match('/^(how|where|when|what|why|which|who|is|are|can|do|does)\b/u', $t) || str_contains($t, '?')) {
-            $intent = preg_match('/^(how|where)\b/u', $t) ? 'howto' : 'question';
+        } elseif (preg_match('/^(how|where|when|what|why|which|who|is|are|can|do|does|ano|bakit|pwede)\b/u', $core) || str_contains($t, '?')) {
+            $intent = 'question';
         }
         if (preg_match('/\b(why|explain|reason|because|how come)\b/u', $t)) {
             $needs[] = 'the reason';

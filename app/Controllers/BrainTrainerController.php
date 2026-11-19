@@ -11,14 +11,7 @@ use App\Libraries\SystemSettings;
  */
 class BrainTrainerController extends BaseController
 {
-    private const GROUPS = [
-        'offtopic'  => 'Questions that are not about the system (greetings, general, refusals)',
-        'how'       => 'System how-tos (workflows of NEXUS-L)',
-        'method'    => 'Test methods (VF methods, illustrated methods)',
-        'standards' => 'Standards and documents (standards database, graph / Obsidian notes, lab documents)',
-        'problem'   => 'Problems and solutions (QC lab troubleshooting)',
-        'other'     => 'Other approved knowledge (statuses, follow-ups, imports)',
-    ];
+    private const GROUPS = \App\Libraries\BrainGroups::LABELS;
 
     private function denied()
     {
@@ -72,24 +65,18 @@ class BrainTrainerController extends BaseController
             return $r;
         }
         $db  = \Config\Database::connect();
-        $off = [];
-        foreach (\App\Libraries\BrainSeed12::all() as $e) {
-            $off[mb_substr($e['title'], 0, 200)] = true;
-        }
         $count = array_fill_keys(array_keys(self::GROUPS), 0);
         foreach ($db->query("SELECT title, keywords, kind, source FROM tbl_bot_knowledge WHERE status = 'approved' AND keywords <> ''")->getResultArray() as $r) {
             $ph = array_filter(array_map('trim', explode(',', $r['keywords'])), static fn ($p) => mb_strlen($p) >= 4 && mb_strlen($p) <= 70);
             if (! $ph) {
                 continue;
             }
-            $g = isset($off[$r['title']]) ? 'offtopic' : (in_array($r['source'], ['system_workflow', 'workflow_seed'], true) ? 'how'
-                : (in_array($r['kind'], ['vf_method', 'vf_illustrated'], true) ? 'method' : ($r['source'] === 'standards_db' || $r['source'] === 'graph_obsidian' ? 'standards'
-                : ($r['kind'] === 'problem' ? 'problem' : 'other'))));
+            $g = \App\Libraries\BrainGroups::of($r);
             $count[$g]++;
         }
         $groups = [];
         foreach (self::GROUPS as $k => $label) {
-            $groups[] = ['key' => $k, 'label' => $label, 'entries' => $count[$k]];
+            $groups[] = ['key' => $k, 'label' => $label, 'entries' => $count[$k], 'share' => \App\Libraries\BrainGroups::SHARE[$k] ?? 10];
         }
         // speed measured in the overnight / earlier runs: seconds per (question x epoch)
         $qe = [];
@@ -113,6 +100,9 @@ class BrainTrainerController extends BaseController
             'weights'     => (int) $db->query('SELECT COUNT(*) c FROM tbl_bot_weights')->getRow()->c,
             'sec_per_qe'  => $qe ? round(array_sum($sc) / array_sum($qe), 8) : null,
             'running_pids' => $this->running(),
+            // how well the assistant understands intent, mood and urgency of a message: the regression set and the hold-out set (never used to tune the rules)
+            'comms_accuracy' => \App\Commands\CommsBench::accuracy(\App\Commands\CommsBench::CASES),
+            'comms_holdout'  => \App\Commands\CommsBench::accuracy(\App\Commands\CommsBench::HOLDOUT),
         ]);
     }
 
@@ -170,6 +160,8 @@ class BrainTrainerController extends BaseController
             'eta'           => (float) ($p['eta'] ?? 0.5),
             'wmax'          => (float) ($p['wmax'] ?? 2.0),
             'gate'          => ! array_key_exists('gate', $p) || (bool) $p['gate'],
+            'fast'          => ! array_key_exists('fast', $p) || (bool) $p['fast'],              // skip answers that are already learned (early stop) and give young words a bigger step
+            'dropout'       => max(0.0, min(0.3, (float) ($p['dropout'] ?? 0.0))),
             'reindex_every' => max(1, (int) ($p['reindex_every'] ?? 8)),
         ];
         if (! empty($p['until'])) {
