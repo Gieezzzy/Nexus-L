@@ -1471,7 +1471,7 @@ class DtrController extends BaseController
             $made[] = $labRef;
         }
         if ($made) {
-            \App\Libraries\DataCache::bump();
+            \App\Libraries\DataCache::bump('bonding');
             \App\Libraries\ActivityLog::record('dtr', 'add-pull-tests', $ref, 'Pull test(s) added to the bonding row: ' . implode(', ', $made));
         }
         $msg = $made ? 'Pull test Lab Ref(s) added to ' . $ref . ': ' . implode(', ', $made) . '.' : 'Nothing was added.';
@@ -3208,7 +3208,7 @@ class DtrController extends BaseController
                 return $this->response->setHeader('Content-Type', 'image/jpeg')->setHeader('Cache-Control', 'private, max-age=300')->setBody((string) file_get_contents($tf . '.jpg'));
             }
             if (is_file($tf . '.none') && time() - (int) filemtime($tf . '.none') < 300) {
-                return $this->response->setStatusCode(404)->setHeader('Cache-Control', 'private, max-age=120');
+                return $this->response->setStatusCode(204)->setHeader('Content-Type', 'image/jpeg')->setHeader('Cache-Control', 'private, max-age=120');   // "no picture": 204, not 404, so the console stays clean and the browser keeps the answer for a while
             }
         }
         $file = $this->reportImageFile($tabQ, $refQ);
@@ -3302,6 +3302,8 @@ class DtrController extends BaseController
                 return $fail('Could not keep the previous version; nothing was changed.');
             }
         }
+
+                return $this->response->setStatusCode(204)->setHeader('Content-Type', 'image/jpeg')->setHeader('Cache-Control', 'private, max-age=120');
         if (@file_put_contents($current, $bin) === false) {
             if ($moved !== '') {
                 @rename($dir . $moved, $current);   // put the old report back
@@ -3603,7 +3605,7 @@ class DtrController extends BaseController
             $saved++;
         }
         if ($saved > 0) {
-            \App\Libraries\DataCache::bump();
+            \App\Libraries\DataCache::bump('wholeshoe');
         }
         $msg = "Saved {$saved} whole shoe(s).";
         if ($skipped) {
@@ -5303,7 +5305,7 @@ class DtrController extends BaseController
         $user = (string) (service('auth')->user()['name'] ?? '');
         $json = json_encode($clean, JSON_UNESCAPED_UNICODE);
         $db->query('INSERT INTO tbl_dtr_wholeshoe_reports (LabRefNo, ReportData, UpdatedBy, UpdatedAt) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE ReportData = VALUES(ReportData), UpdatedBy = VALUES(UpdatedBy), UpdatedAt = VALUES(UpdatedAt)', [$ref, $json, $user, date('Y-m-d H:i:s')]);
-        \App\Libraries\DataCache::bump();
+        \App\Libraries\DataCache::bump('wholeshoe');
 
         return $this->response->setJSON(['ok' => true, 'message' => "Saved Whole Shoe report {$ref}.", 'csrf' => csrf_hash()]);
     }

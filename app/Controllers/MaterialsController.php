@@ -209,7 +209,7 @@ class MaterialsController extends BaseController
             'Technician' => mb_substr(trim((string) ($p['technician'] ?? '')), 0, 120), 'Remarks' => mb_substr(trim((string) ($p['remarks'] ?? '')), 0, 500),
             'UpdatedBy' => mb_substr((string) ($u['name'] ?? $u['username'] ?? ''), 0, 120), 'UpdatedAt' => date('Y-m-d H:i:s'),
         ]);
-        \App\Libraries\DataCache::bump();
+        \App\Libraries\DataCache::bump('material');
         \App\Libraries\ActivityLog::record('materials', 'test-update', (string) $row['ChildLabRefNo'], $status . ($result !== '' ? ' ' . $result : ''));
 
         return $this->response->setJSON(['ok' => true, 'message' => 'Saved.', 'csrf' => csrf_hash()]);
@@ -335,7 +335,7 @@ class MaterialsController extends BaseController
                 $db->table('tbl_dtr_MaterialTrackerTests')->where('TestID', (int) $d['TestID'])->update(['Result' => $c['result'] ?: null, 'Status' => $c['result'] !== '' ? 'Completed' : ($c['any'] ? 'Ongoing' : 'Pending')]);
             }
         }
-        \App\Libraries\DataCache::bump();
+        \App\Libraries\DataCache::bump('material');
         \App\Libraries\ActivityLog::record('materials', 'sheet-save', (string) $t['ChildLabRefNo'], $status . ($calc['result'] !== '' ? ' ' . $calc['result'] : ''));
 
         return $this->response->setJSON(['ok' => true, 'message' => 'Saved: ' . $status . ($calc['result'] !== '' ? ' - ' . $calc['result'] : '') . '.', 'status' => $status, 'result' => $calc['result'], 'calc' => $calc, 'csrf' => csrf_hash()]);

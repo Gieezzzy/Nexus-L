@@ -423,7 +423,7 @@ class MaterialReport
         }
         $stored = $db->table($table)->where('ID', $id)->get()->getRowArray() ?: [];
         DtrLabrefIndex::upsert($db, $slug, $id, $stored);
-        DataCache::bump();
+        DataCache::bump('material');
 
         return ['ok' => true, 'message' => ($created ? 'Report created' : 'Report updated') . ' from the Material Testing sheet.', 'slug' => $slug, 'id' => $id, 'created' => $created, 'unmapped' => $b['unmapped']];
     }

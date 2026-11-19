@@ -34,7 +34,21 @@ class DashboardController extends BaseController
      *   list lags behind it (about 100 bonding results of the last 30 days differ, and 1,900 rows are still "Pending" after the result was entered);
      * - every other form comes from tbl_dtr_unified_labrefs (the intake keeps one row per shoe / specimen, so the latest row of a lab reference is used).
      */
+    /** the same list WITHOUT the stored test-items text (about 12 MB over the table): every figure except the test-item breakdown reads this one, so the temporary table it builds stays small */
     public const LR = "(SELECT u.id, CONVERT(u.form_slug USING utf8mb4) COLLATE utf8mb4_unicode_ci form_slug, CONVERT(u.lab_ref_no USING utf8mb4) COLLATE utf8mb4_unicode_ci lab_ref_no, u.source_id,
+            CONVERT(u.overall_result USING utf8mb4) COLLATE utf8mb4_unicode_ci overall_result, CONVERT(u.tested_date USING utf8mb4) COLLATE utf8mb4_unicode_ci tested_date,
+            CONVERT(u.status USING utf8mb4) COLLATE utf8mb4_unicode_ci status, CONVERT(u.technician USING utf8mb4) COLLATE utf8mb4_unicode_ci technician,
+            CONVERT(u.supplier USING utf8mb4) COLLATE utf8mb4_unicode_ci supplier
+            FROM tbl_dtr_unified_labrefs u JOIN (SELECT MAX(id) mid FROM tbl_dtr_unified_labrefs WHERE form_slug <> 'bonding' GROUP BY form_slug, lab_ref_no) d ON d.mid = u.id
+        UNION ALL
+        SELECT b.BondingTestID, CONVERT('bonding' USING utf8mb4) COLLATE utf8mb4_unicode_ci, CONVERT(b.LabRefNo USING utf8mb4) COLLATE utf8mb4_unicode_ci, b.BondingTestID,
+            CONVERT(CASE UPPER(LEFT(b.Result, 1)) WHEN 'P' THEN 'Pass' WHEN 'T' THEN 'Tolerable' WHEN 'F' THEN 'Fail' ELSE '' END USING utf8mb4) COLLATE utf8mb4_unicode_ci,
+            CONVERT(LEFT(CAST(b.TestedDate AS CHAR), 10) USING utf8mb4) COLLATE utf8mb4_unicode_ci, CONVERT(IF(COALESCE(b.Result, '') = '', 'Pending', 'Complete') USING utf8mb4) COLLATE utf8mb4_unicode_ci,
+            CONVERT(b.Technician USING utf8mb4) COLLATE utf8mb4_unicode_ci, CONVERT(b.Factory USING utf8mb4) COLLATE utf8mb4_unicode_ci
+            FROM tbl_dtr_bonding_info b JOIN (SELECT MAX(BondingTestID) mid FROM tbl_dtr_bonding_info GROUP BY LabRefNo) x ON x.mid = b.BondingTestID) lr";
+
+    /** the list with the test-items text (only the test-item breakdown needs it) */
+    public const LR_JSON = "(SELECT u.id, CONVERT(u.form_slug USING utf8mb4) COLLATE utf8mb4_unicode_ci form_slug, CONVERT(u.lab_ref_no USING utf8mb4) COLLATE utf8mb4_unicode_ci lab_ref_no, u.source_id,
             CONVERT(u.overall_result USING utf8mb4) COLLATE utf8mb4_unicode_ci overall_result, CONVERT(u.tested_date USING utf8mb4) COLLATE utf8mb4_unicode_ci tested_date,
             CONVERT(u.status USING utf8mb4) COLLATE utf8mb4_unicode_ci status, CONVERT(u.technician USING utf8mb4) COLLATE utf8mb4_unicode_ci technician,
             CONVERT(u.supplier USING utf8mb4) COLLATE utf8mb4_unicode_ci supplier, u.test_items_json
@@ -46,6 +60,24 @@ class DashboardController extends BaseController
             CONVERT(b.Technician USING utf8mb4) COLLATE utf8mb4_unicode_ci, CONVERT(b.Factory USING utf8mb4) COLLATE utf8mb4_unicode_ci, NULL
             FROM tbl_dtr_bonding_info b JOIN (SELECT MAX(BondingTestID) mid FROM tbl_dtr_bonding_info GROUP BY LabRefNo) x ON x.mid = b.BondingTestID) lr";
 
+    /** the "latest row of each lab reference" lists group the unified list by (form, lab ref): this index answers that from the index alone (checked once a day) */
+    public static function ensureIndexes(): void
+    {
+        try {
+            if (cache('nx_unif_idx_ok')) {
+                return;
+            }
+            $db = \Config\Database::connect();
+            $has = $db->query("SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tbl_dtr_unified_labrefs' AND INDEX_NAME = 'idx_unif_slug_ref_id' LIMIT 1")->getRowArray();
+            if (! $has && $db->tableExists('tbl_dtr_unified_labrefs')) {
+                $db->query('ALTER TABLE tbl_dtr_unified_labrefs ADD INDEX idx_unif_slug_ref_id (form_slug, lab_ref_no, id)');
+            }
+            cache()->save('nx_unif_idx_ok', 1, 86400);
+        } catch (\Throwable $e) {
+            log_message('error', 'ensureIndexes: ' . $e->getMessage());
+        }
+    }
+
     public function index(): string
     {
         return $this->render('dashboard/index', ['title' => 'Dashboard', 'withCss' => 'labdash.css', 'withJs' => ['labdash.js']]);
@@ -53,6 +85,7 @@ class DashboardController extends BaseController
 
     public function data()
     {
+        self::ensureIndexes();
         $days = (int) ($this->request->getGet('days') ?? 30);
         $days = in_array($days, [1, 7, 30, 90, 365], true) ? $days : 30;
         $from = date('Y-m-d', strtotime('-' . ($days - 1) . ' days'));
@@ -72,10 +105,12 @@ class DashboardController extends BaseController
         // the lab figures change a few times an hour: every section is kept for 90 seconds per period, so many people opening
         // the dashboard (and the 2-minute refresh) cost the database one query set, not one each; ?fresh=1 skips it
         $cache = cache();
-        $ver   = \App\Libraries\DataCache::version();
         $out   = ['ok' => true, 'days' => $days, 'from' => $from, 'to' => $to];
         $db    = null;
         foreach ($want as $name => $methods) {
+            // a section only depends on the areas it is made of: a whole shoe save does not clear the bonding section
+            $areaOf = ['bonding' => ['bonding'], 'materials' => ['material'], 'wholeshoe' => ['wholeshoe']][$name] ?? [];
+            $ver    = \App\Libraries\DataCache::version(...$areaOf);
             $key = "labdash_v{$ver}_{$name}_{$days}_" . $to;
             $sec = $this->request->getGet('fresh') ? null : $cache->get($key);
             if (! is_array($sec)) {
@@ -196,7 +231,7 @@ class DashboardController extends BaseController
     /** Every test item inside the reports of the period (tensile, tear, crocking, bonding parts...), with pass / fail counts. */
     private function testItems($db, string $from, string $to): array
     {
-        $rows  = $this->q($db, "SELECT form_slug, test_items_json FROM " . self::LR . "
+        $rows  = $this->q($db, "SELECT form_slug, test_items_json FROM " . self::LR_JSON . "
             WHERE test_items_json LIKE '{%' AND " . self::LR_DATE . ' BETWEEN ? AND ?', [$from, $to]);
         $names = $this->categoryNames();
         $items = [];
@@ -323,7 +358,7 @@ class DashboardController extends BaseController
         // the approved lab references are read once (a few dozen rows) instead of a per-row sub-query across two collations
         $approved = array_flip(array_column($this->q($db, "SELECT DISTINCT lab_ref_no FROM tbl_dtr_report_approvals WHERE status = 'approved'"), 'lab_ref_no'));
         $lr = $this->q($db, "SELECT CASE WHEN form_slug = 'bonding' THEN 'bonding' ELSE 'material' END AS grp, lab_ref_no,
-                " . self::OPEN . " AND NOT (form_slug = 'bonding' AND EXISTS (SELECT 1 FROM tbl_dtr_bondingtracker tk WHERE tk.LabRefNo = lab_ref_no COLLATE utf8mb4_unicode_ci)) AS open_, " . self::FAILED . " AS fail_, " . self::LR_DATE . ' BETWEEN ? AND ? AS in_period
+                " . self::OPEN . " AND NOT (form_slug = 'bonding' AND EXISTS (SELECT 1 FROM tbl_dtr_bondingtracker tk WHERE tk.LabRefNo = lab_ref_no COLLATE utf8mb4_general_ci)) AS open_, " . self::FAILED . " AS fail_, " . self::LR_DATE . ' BETWEEN ? AND ? AS in_period
             FROM ' . self::LR . ' WHERE form_slug NOT IN (\'wholeshoe\', \'pulltest\') AND (status NOT LIKE \'Complete%\' OR ' . self::LR_DATE . ' BETWEEN ? AND ?)', [$from, $to, $from, $to]);
         $t = ['bonding' => ['ongoing' => 0, 'failed' => 0, 'for_report' => 0], 'material' => ['ongoing' => 0, 'failed' => 0, 'for_report' => 0]];
         foreach ($lr as $r) {
@@ -447,7 +482,7 @@ class DashboardController extends BaseController
     private function bondingOpen($db, string $from, string $to): int
     {
         $a = (int) ($this->q($db, 'SELECT COUNT(*) n FROM ' . self::LR . " WHERE form_slug = 'bonding' AND status NOT LIKE 'Complete%'
-            AND NOT EXISTS (SELECT 1 FROM tbl_dtr_bondingtracker tk WHERE tk.LabRefNo = lab_ref_no COLLATE utf8mb4_unicode_ci)")[0]['n'] ?? 0);
+            AND NOT EXISTS (SELECT 1 FROM tbl_dtr_bondingtracker tk WHERE tk.LabRefNo = lab_ref_no COLLATE utf8mb4_general_ci)")[0]['n'] ?? 0);
         $b = (int) ($this->q($db, "SELECT COUNT(*) n FROM tbl_dtr_bondingtracker k WHERE k.Shutdown = 0 AND k.CollectionDate BETWEEN ? AND ?
             AND (k.LabRefNo IS NULL OR NOT EXISTS (SELECT 1 FROM tbl_dtr_bonding_info b WHERE b.LabRefNo = k.LabRefNo COLLATE utf8mb4_unicode_ci AND b.Result IS NOT NULL))", [$from, $to])[0]['n'] ?? 0);
 

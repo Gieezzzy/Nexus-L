@@ -87,6 +87,12 @@ class AuthFilter implements FilterInterface
     {
         // Authenticated pages must never be cached by the browser/proxies
         // (prevents viewing protected pages with the Back button after logout).
+        // ... except a picture the controller itself marked as privately cacheable for a while (list thumbnails, ERP shoe pictures): without this every
+        // list reload downloaded all of them again (each ERP picture is ~200 KB).
+        $cc = strtolower($response->getHeaderLine('Cache-Control'));
+        if (str_starts_with(strtolower($response->getHeaderLine('Content-Type')), 'image/') && str_contains($cc, 'private') && preg_match('/max-age=([1-9]\d*)/', $cc)) {
+            return $response;
+        }
         $response->setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0, private')
             ->setHeader('Pragma', 'no-cache')
             ->setHeader('Expires', 'Thu, 01 Jan 1970 00:00:00 GMT');

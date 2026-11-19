@@ -883,7 +883,7 @@ class WstController extends BaseController
         }
 
         $id = $model->getInsertID();
-        \App\Libraries\DataCache::bump();
+        \App\Libraries\DataCache::bump('wholeshoe', 'material');
 
         return $this->response->setJSON([
             'success' => true,
@@ -1217,7 +1217,7 @@ class WstController extends BaseController
             $trackerSync['TimeCompleted'] = $now;
         }
         $this->syncToWholeshoeTracker($record['labreference'] ?? '', $trackerSync);
-        \App\Libraries\DataCache::bump();
+        \App\Libraries\DataCache::bump('wholeshoe', 'material');
 
         return $this->response->setJSON([
             'success'     => true,
@@ -1379,7 +1379,7 @@ class WstController extends BaseController
         } catch (\Throwable $e) {
             log_message('error', 'wst reset index: ' . $e->getMessage());
         }
-        \App\Libraries\DataCache::bump();
+        \App\Libraries\DataCache::bump('wholeshoe', 'material');
         log_message('notice', 'WST status removed for {lab} by {who}', ['lab' => $lab, 'who' => $this->getCurrentTechnician()['technician'] ?? '']);
 
         return $this->response->setJSON(['success' => true, 'message' => 'Status removed. ' . $lab . ' will start over.']);
@@ -1443,7 +1443,7 @@ class WstController extends BaseController
             }
         }
 
-        \App\Libraries\DataCache::bump();
+        \App\Libraries\DataCache::bump('wholeshoe', 'material');
 
         return $this->response->setJSON(['success' => true, 'message' => 'Test session stopped and completed.']);
     }
