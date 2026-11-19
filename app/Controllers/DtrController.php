@@ -4018,6 +4018,10 @@ class DtrController extends BaseController
                 'Lacking'        => 1,
                 'LackingDate'    => $due,
             ];
+            if ($detail['Style'] === '' && $detail['ProductionCode'] !== '') {          // the style of the production code (shoe master) when the form left it empty
+                $st = $db->table('tbl_dtr_shoe_list')->select('StyleNo')->where('ProdCode', $detail['ProductionCode'])->where('StyleNo <>', '')->get(1)->getRowArray();
+                $detail['Style'] = (string) ($st['StyleNo'] ?? '');
+            }
             $lkRef = 'DTP' . str_replace('-', '', $due) . 'SH' . $building . (int) $m[1] . '-' . $ls;
             // a lacking line that has pull types also gets its pull test Lab Refs (tbl_dtr_pull_tests, Pending), like a daily line; the real specimen later takes them over
             $lackPulls = function () use ($db, $pulls, $pullCodesL, $due, $ls, $m, $building, $collect, $encodedBy, $detail) {
