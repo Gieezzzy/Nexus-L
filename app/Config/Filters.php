@@ -76,7 +76,7 @@ class Filters extends BaseFilters
     public array $globals = [
         'before' => [
             'honeypot' => ['except' => ['guest-login']],
-            'csrf' => ['except' => ['photo/*', 'erp-agent/*', 'brain-trainer/*', 'notifier/*', 'mail-relay/*', 'interlink/service/callback', 'interlink/service/lov']],
+            'csrf' => ['except' => ['photo/*', 'capa-form/*', 'erp-agent/*', 'brain-trainer/*', 'notifier/*', 'mail-relay/*', 'interlink/service/callback', 'interlink/service/session', 'interlink/service/lov']],
             'invalidchars',
         ],
         'after' => [

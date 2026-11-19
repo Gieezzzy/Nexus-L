@@ -374,6 +374,59 @@ class InterlinkServiceController extends BaseController
     }
 
     /** POST interlink/service/callback (service key): the result of a job. The user gets a Synology message; the web feed shows the toast. */
+    /**
+     * POST interlink/service/session {account, state: ok|expired|aging, reason, age_hours}  (service key)
+     * The InterLink service tells NEXUS-L when an InterLink account signs out, is signed in again, or is nearly at the usual 8 hours of an InterLink session.
+     * The owner (and the person who last signed that account in) gets a Synology message at once, so the account is signed in again before a report fails.
+     */
+    public function sessionState()
+    {
+        if (! $this->keyOk()) {
+            return $this->json(['ok' => false, 'error' => 'Wrong or missing service key.'], 401);
+        }
+        $p       = $this->request->getJSON(true) ?? [];
+        $account = strtolower(trim((string) ($p['account'] ?? '')));
+        $state   = in_array($p['state'] ?? '', ['ok', 'expired', 'aging'], true) ? (string) $p['state'] : '';
+        if ($account === '' || $state === '') {
+            return $this->json(['ok' => false, 'error' => 'account and state are required.'], 422);
+        }
+        $reason = mb_substr((string) ($p['reason'] ?? ''), 0, 300);
+        $age    = isset($p['age_hours']) ? (float) $p['age_hours'] : null;
+        $db     = $this->db();
+        $db->query('CREATE TABLE IF NOT EXISTS tbl_interlink_account_health (account VARCHAR(80) NOT NULL PRIMARY KEY, state VARCHAR(10) NOT NULL, reason VARCHAR(300) NOT NULL DEFAULT "",
+            changed_at DATETIME NOT NULL, notified_at DATETIME NULL, age_hours DECIMAL(5,1) NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+        $prev = $db->query('SELECT state, notified_at FROM tbl_interlink_account_health WHERE account = ?', [$account])->getRowArray();
+        $now  = date('Y-m-d H:i:s');
+        $send = false;
+        $text = '';
+        if ($state === 'expired') {
+            $send = ! $prev || $prev['state'] !== 'expired' || empty($prev['notified_at']) || strtotime((string) $prev['notified_at']) < time() - 4 * 3600;
+            $text = "NEXUS-L: the InterLink account {$account} is signed out" . ($age !== null ? " (it had been signed in for {$age} hours)" : '') . '. ' . ($reason !== '' ? $reason . ' ' : '')
+                . "Reports that need this account will fail until someone signs it in again: on the InterLink service computer open NexusInterlinkService and press 'Login: {$account}'.";
+        } elseif ($state === 'ok' && $prev && $prev['state'] === 'expired') {
+            $send = true;
+            $text = "NEXUS-L: the InterLink account {$account} is signed in again. Reports can be sent.";
+        } elseif ($state === 'aging' && (! $prev || $prev['state'] !== 'aging')) {
+            $send = true;
+            $text = "NEXUS-L: the InterLink account {$account} has been signed in for {$age} hours. An InterLink session usually ends at about 8 hours, so sign it in again at a quiet moment "
+                . "(NexusInterlinkService > 'Login: {$account}') before reports start failing.";
+        }
+        $db->query('INSERT INTO tbl_interlink_account_health (account, state, reason, changed_at, notified_at, age_hours) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE state = VALUES(state), reason = VALUES(reason),
+            changed_at = IF(state <> VALUES(state), VALUES(changed_at), changed_at), notified_at = COALESCE(VALUES(notified_at), notified_at), age_hours = VALUES(age_hours)',
+            [$account, $state, $reason, $now, $send ? $now : null, $age]);
+        $sent = false;
+        if ($send) {
+            try {
+                $ids = array_map('intval', array_column($db->query('SELECT UserID FROM tbl_users WHERE IsActive = 1 AND (SynologyID = ? OR UserID = ?)', [\App\Libraries\Persona::OWNER_SYNOLOGY_ID, (int) ($db->query('SELECT owner_user_id FROM tbl_interlink_session WHERE id = 1')->getRow()->owner_user_id ?? 0)])->getResultArray(), 'UserID'));
+                $sent = $ids ? (new SynologyChat())->send(array_values(array_unique($ids)), $text) : false;
+            } catch (\Throwable $e) {
+                log_message('error', 'InterLink session notice: ' . $e->getMessage());
+            }
+        }
+
+        return $this->json(['ok' => true, 'notified' => $sent]);
+    }
+
     public function callback()
     {
         if (! $this->keyOk()) {

@@ -28,6 +28,7 @@ $routes->group('', ['filter' => 'guest'], static function (RouteCollection $rout
 // InterLink background service -> NEXUS-L (no login: protected by the shared service key in the X-Service-Key header)
 // ---------------------------------------------------------------------
 $routes->post('interlink/service/callback', 'InterlinkServiceController::callback');
+$routes->post('interlink/service/session', 'InterlinkServiceController::sessionState');
 $routes->get('interlink/service/verify', 'InterlinkServiceController::verify');
 $routes->post('interlink/service/lov', 'InterlinkLovController::receive');
 
