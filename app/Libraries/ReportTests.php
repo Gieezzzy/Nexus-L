@@ -45,6 +45,18 @@ class ReportTests
         'iaosdry'        => ['Ink Adhesion on Substrate (Dry)', 'VF-F05 (2014/07)', ''],
         'iaoswet'        => ['Ink Adhesion on Substrate (Wet)', 'VF-F05 (2014/07)', ''],
         'abrasioncrocking' => ['Abrasion Crocking (Dry)', '', ''],
+        'hardness'       => ['Hardness', '', 'Shore'],
+        'sg'             => ['Specific Gravity', '', ''],
+        'diec'           => ['Die C Tear', '', 'kgf/cm'],
+        'din'            => ['DIN Abrasion', '', 'mm3'],
+        'splittear'      => ['Split Tear', '', 'kgf/cm'],
+        'compression'    => ['Compression Set', '', '%'],
+        'blooming'       => ['Blooming', '', ''],
+        'rossflex'       => ['Ross Flex', '', 'cycles'],
+        'laminarpeel'    => ['Laminar Peel', '', 'kgf/cm'],
+        'crocking'       => ['Crocking', '', 'Grade'],
+        'ctc'            => ['Colorfastness to Crocking', 'VF-E02 (2024/08)', 'Grade'],
+        'iaos'           => ['Ink Adhesion on Substrate', 'VF-F05 (2014/07)', ''],
     ];
 
     /** keys of a test that hold something other than readings */
@@ -143,12 +155,18 @@ class ReportTests
                 }
             }
 
+            if (! $items && trim((string) ($rec['Result'] ?? '')) !== '') {      // a result saved without the spot readings: still the test of this report
+                $res     = trim((string) $rec['Result']);
+                $cause   = trim((string) ($rec['ProbableCause'] ?? ''));
+                $items[] = self::item('VF-F01 (2019/05)', 'Whole Shoe Bonding Strength', 'VF-F01 (2019/05)', 'STD ' . $std . ' kgf/cm', $cause !== '' ? 'Probable cause: ' . mb_substr($cause, 0, 150) : $res, $res, $res);
+            }
+
             return ['items' => $items, 'readings' => $reads, 'samples' => $sample];
         }
 
         $seen = [];
         foreach (array_keys($rec) as $key) {
-            if (! preg_match('/^(.+?)(?:_R|_?Rating|_?rating)$/', $key, $m)) {
+            if (! preg_match('/^(.+?)(?:_R|_?Rating|_?rating|_?Rate|_?rate)$/', $key, $m)) {
                 continue;
             }
             $rating = trim((string) ($rec[$key] ?? ''));
@@ -158,7 +176,7 @@ class ReportTests
                 continue;
             }
             $prefixes = array_merge([$base], self::ALIAS[$lb] ?? []);
-            $isMeta   = static fn (string $k) => (bool) preg_match('/(_S|_std|Std|_Std|_R|Rating|_rating)$/', $k);
+            $isMeta   = static fn (string $k) => (bool) preg_match('/(_S|_std|Std|_Std|_R|Rating|_rating|_Rate|_rate|_Tol|Rate)$/', $k);
             $found    = [];   // key => value
             foreach (array_keys($rec) as $k) {
                 if ($isMeta($k)) {
@@ -176,11 +194,9 @@ class ReportTests
             }
             if (! $found) {
                 // rated (PASS / FAIL) with no readings stored: still a test of this report, listed with its result
-                [, $m0, $u0] = self::known($lb);
-                if ($m0 !== '') {
-                    $seen[$lb] = true;
-                    $items[]   = self::item(strtok($m0, ' '), self::label($base), $m0, '', '', $rating, $rating);
-                }
+                [, $m0] = self::known($lb);
+                $seen[$lb] = true;
+                $items[]   = self::item($m0 !== '' ? strtok($m0, ' ') : strtoupper($base), self::label($base), $m0, '', '', $rating, $rating);
                 continue;
             }
             $seen[$lb] = true;
@@ -215,6 +231,57 @@ class ReportTests
         }
 
         return ['items' => $items, 'readings' => $reads, 'samples' => $sample];
+    }
+
+    /** the shoe tests of a Whole Shoe Lab Ref (tbl_dtr_wholeshoetracker rows) as Test Item Results; the flexing checkpoints / findings as readings */
+    public static function wholeShoe($db, string $lab): array
+    {
+        $items  = [];
+        $reads  = [];
+        $rec    = $db->table('tbl_dtr_wholeshoe_intake')->where('LabRefNo', $lab)->get()->getRowArray() ?: [];
+        $sample = [['sample_id_code' => 'S001', 'sample_description' => trim((string) ($rec['Style'] ?? '') . ' ' . (string) ($rec['Colorway'] ?? '')), 'sample_color' => (string) ($rec['Colorway'] ?? '')]];
+        $rows   = $db->table('tbl_dtr_wholeshoetracker')->groupStart()->where('WholeshoeLabRefNo', $lab)->orWhere('LabRefNo', $lab)->groupEnd()->orderBy('TrackerID')->get()->getResultArray();
+        foreach ($rows as $t) {
+            $name   = trim((string) ($t['TestType'] ?? '')) ?: (string) ($t['TestCode'] ?? 'Whole Shoe Test');
+            $res    = trim((string) ($t['FinalResult'] ?? ''));
+            $fd     = trim((string) ($t['Findings'] ?? '')) ?: trim((string) ($t['finalfindings'] ?? '')) ?: trim((string) ($t['testingfindings'] ?? ''));
+            $st     = strtoupper(trim((string) ($t['Status'] ?? '')));
+            $lines  = array_values(array_filter(array_map('trim', preg_split('/\r?\n|;\s*/', $fd))));
+            $actual = $res === '' ? ($st !== '' ? ucfirst(strtolower($st)) : '') : (count($lines) > 1 ? count($lines) . ' checkpoints, last: ' . end($lines) : $fd);
+            $side   = trim((string) ($t['Side'] ?? ''));
+            $it     = self::item((string) ($t['TestCode'] ?? ''), $name . ($side !== '' ? ' (' . $side . ')' : ''), '', '', mb_substr($actual, 0, 200), $res === '' ? 'Pending' : $res, $res);
+            if ($res === '') {
+                $it['result_status'] = $it['test_result'] = 'Data';
+            }
+            $items[] = $it;
+            $n = 0;
+            foreach ($lines as $ln) {
+                $n++;
+                $el      = preg_match('/(\d+)\s*cycles/i', $ln, $mc) ? $mc[1] . ' cycles' : 'Checkpoint ' . $n;
+                $val     = preg_match('/\((.*)\)/', $ln, $mv) ? $mv[1] : $ln;
+                $reads[] = self::reading($name, '', '', $el, mb_substr($val, 0, 120), '', '', $res === '' ? 'Pending' : $res);
+            }
+        }
+
+        return ['items' => $items, 'readings' => $reads, 'samples' => $sample];
+    }
+
+    /** a Pull Test report (tbl_dtr_pull_tests): the result, and the Peak of each specimen as a reading */
+    public static function pullTest(array $rec): array
+    {
+        $res   = trim((string) ($rec['Result'] ?? ''));
+        $name  = 'Pull Test' . (trim((string) ($rec['TestType'] ?? '')) !== '' ? ' - ' . $rec['TestType'] : '');
+        $items = [self::item('PULL', $name, trim((string) ($rec['Method'] ?? '')), '', (int) ($rec['TestCount'] ?? 0) . ' specimens at ' . ($rec['Speed'] ?? '') . ' ' . ($rec['SpeedUnit'] ?? ''), $res === '' ? 'Pending' : $res, $res)];
+        $reads = [];
+        for ($i = 1; $i <= 40; $i++) {
+            $v = $rec['Peak' . $i] ?? null;
+            if ($v === null || trim((string) $v) === '') {
+                continue;
+            }
+            $reads[] = self::reading($name, '', '', (string) (($rec['SampleNo' . $i] ?? '') ?: 'Specimen ' . $i), (string) $v, 'N', '', $res);
+        }
+
+        return ['items' => $items, 'readings' => $reads, 'samples' => [['sample_id_code' => 'S001', 'sample_description' => trim((string) ($rec['ModelStyle'] ?? '')), 'sample_color' => (string) ($rec['Color'] ?? '')]]];
     }
 
     private static function item(string $code, string $name, string $method, string $std, string $actual, string $rating, string $raw): array

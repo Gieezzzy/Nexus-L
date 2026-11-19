@@ -1630,7 +1630,22 @@ JS;
         $readings   = $parsedJson['readings'] ?? [];
         $samples    = [];
         $cfg        = \App\Controllers\DtrController::FORM_CONFIG[$row['form_slug'] ?? ''] ?? null;
-        if ($cfg && (int) ($row['source_id'] ?? 0) > 0) {
+        if (($row['form_slug'] ?? '') === 'wholeshoe') {
+            $gen = \App\Libraries\ReportTests::wholeShoe($db, (string) $row['lab_ref_no']);
+            if ($gen['items']) {
+                $samples = $gen['samples'];
+                $items = $gen['items'];
+                $readings = $gen['readings'];
+            }
+        } elseif (($row['form_slug'] ?? '') === 'pulltest' && (int) ($row['source_id'] ?? 0) > 0) {
+            $rec = $db->table('tbl_dtr_pull_tests')->where('PullInfoID', (int) $row['source_id'])->get()->getRowArray();
+            if ($rec) {
+                $gen = \App\Libraries\ReportTests::pullTest($rec);
+                $samples = $gen['samples'];
+                $items = $gen['items'];
+                $readings = $gen['readings'];
+            }
+        } elseif ($cfg && (int) ($row['source_id'] ?? 0) > 0) {
             $rec = $db->table($cfg['table'])->where($cfg['pk'], (int) $row['source_id'])->get()->getRowArray();
             if ($rec) {
                 $pts = ($row['form_slug'] ?? '') === 'bonding' ? ($db->table('tbl_dtr_bonding_points')->where('BondingTestID', (int) $row['source_id'])->get()->getRowArray() ?: []) : [];
