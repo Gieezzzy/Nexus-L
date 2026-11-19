@@ -2696,8 +2696,19 @@ private function computeIntent(string $text, string $prev = '', string $lastBotM
             return ['text' => \App\Libraries\Persona::lead($und, $who) . $rep['text'], 'title' => 'Security watch', 'steps' => $rep['steps'], 'actions' => [], 'confidence' => 100, 'related' => [['title' => 'How sure are you, and why did you give me this answer?']],
                 'diagnosis' => null, 'knowledge_id' => null, 'understood' => $und, 'reasoning' => ['matched' => 'Security watch (live logs)', 'confidence' => 100, 'basis' => 'read from the web server log and the sign-in log just now', 'level' => $rep['level']]];
         }
-        $hits = Brain::search($text, $ctx, 5);
-        $conf = Brain::confidence($hits, $text);
+        // deep thinking: work the question out from the data (with the steps shown) before looking anything up
+        try {
+            $thought = \App\Libraries\Thinker::think($text, $und, $who, $this->isAdmin());
+        } catch (\Throwable $e) {
+            $thought = null;
+            log_message('error', 'Thinker: ' . $e->getMessage());
+        }
+        if ($thought !== null) {
+            return $thought;
+        }
+        $topicText = \App\Libraries\Persona::forSearch($text);   // the topic words, without greetings, names and style requests
+        $hits = Brain::search($topicText, $ctx, 5);
+        $conf = Brain::confidence($hits, $topicText);
         $db   = $this->db();
         if (! $hits || $conf < 30) {
             $norm = implode(' ', array_slice(Brain::tokens($text), 0, 12));
@@ -2762,10 +2773,18 @@ private function computeIntent(string $text, string $prev = '', string $lastBotM
         }
         $lead = ($conf >= 45 ? \App\Libraries\Persona::lead($und, $who) : '') . $lead;
 
+        $bodyText = (string) $best['body'];
+        $stepList = array_values(array_filter((array) json_decode((string) ($best['steps_json'] ?? ''), true), 'is_string'));
+        $pref     = \App\Libraries\ConversationLearner::prefs((int) ($this->auth->user()['id'] ?? 0));
+        if ($pref['brief'] && ! in_array('steps', $und['needs'], true) && mb_strlen($bodyText) > 260 && ! $tie) {   // this user asked for short answers: the first two sentences, the steps on request
+            $sent     = preg_split('/(?<=[.!?])\s+/', trim(strip_tags($bodyText)), 3);
+            $bodyText = trim(($sent[0] ?? '') . ' ' . ($sent[1] ?? '')) . ($stepList ? ' Say "steps" and I will list them.' : '');
+            $stepList = [];
+        }
         return [
-            'text'  => $lead . (string) $best['body'],
+            'text'  => $lead . $bodyText,
             'title' => (string) $best['title'],
-            'steps' => array_values(array_filter((array) json_decode((string) ($best['steps_json'] ?? ''), true), 'is_string')),
+            'steps' => $stepList,
             'actions' => $actions, 'confidence' => $conf, 'diagnosis' => $diag, 'knowledge_id' => (int) $best['id'], 'suggest_admin' => $conf < 45,
             'related' => array_map(static fn ($h) => ['id' => (int) $h['row']['id'], 'title' => $h['row']['title']], array_slice($hits, 1, 3)),
             'understood' => $und,

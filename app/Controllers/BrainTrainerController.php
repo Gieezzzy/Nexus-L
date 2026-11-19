@@ -103,6 +103,10 @@ class BrainTrainerController extends BaseController
             // how well the assistant understands intent, mood and urgency of a message: the regression set and the hold-out set (never used to tune the rules)
             'comms_accuracy' => \App\Commands\CommsBench::accuracy(\App\Commands\CommsBench::CASES),
             'comms_holdout'  => \App\Commands\CommsBench::accuracy(\App\Commands\CommsBench::HOLDOUT),
+            // logical reasoning (classification, reading a question, agreement with the real records) and the autonomous learning state
+            'reasoning_accuracy' => \App\Commands\ReasonBench::accuracy()['accuracy'],
+            'live_phrases'       => (int) $db->query('SELECT COUNT(*) c FROM tbl_bot_live_phrases')->getRow()->c,
+            'practise_more'      => count(\App\Libraries\Mastery::weakIds()),
         ]);
     }
 

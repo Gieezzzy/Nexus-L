@@ -174,6 +174,7 @@ class TrainNight extends BaseCommand
                 $this->say("Round {$round}: {$info} - benchmark " . ($res === null ? '?' : $res) . '% (' . round($took) . ' s)');
                 if ($good % $reEvery === 0) {
                     $this->reindex();
+                    $pool = $this->autoLearn($pool);
                 }
             }
             $this->status['round'] = $round;
@@ -245,6 +246,26 @@ class TrainNight extends BaseCommand
         return preg_match('/OVERALL BENCHMARK[^|]*\|\s*([\d.]+)%/', $out, $m) ? (float) $m[1] : null;
     }
 
+    /**
+     * The autonomous step: read the new conversations (helpful pairs, the owner's corrections, style preferences), let the Brain quiz itself in the way people
+     * really ask, and rebuild the practice pool so that what it learned and what it missed are trained in the next rounds. New knowledge is never written here.
+     */
+    private function autoLearn(array $pool): array
+    {
+        try {
+            $l = \App\Libraries\ConversationLearner::ingest();
+            $q = \App\Libraries\Mastery::quiz(200);
+            $this->say(sprintf('Self-learning: %d chat lines read, %d helpful pairs, %d owner corrections, %d preferences; self-quiz %d of %d right (%.1f%%), %d entries to practise more.',
+                $l['chats'], $l['helpful'], $l['owner_fix'], $l['prefs'], $q['right'], $q['asked'], $q['accuracy'], count($q['missed'])));
+
+            return $this->pool();
+        } catch (\Throwable $e) {
+            $this->say('Self-learning step skipped: ' . $e->getMessage());
+
+            return $pool;
+        }
+    }
+
     private function reindex(): void
     {
         shell_exec('cd /d ' . escapeshellarg(ROOTPATH) . ' && ' . escapeshellarg(PHP_BINARY) . ' spark brain:train 2>&1');
@@ -256,16 +277,23 @@ class TrainNight extends BaseCommand
     {
         $groups = array_fill_keys(array_keys(\App\Libraries\BrainGroups::LABELS), []);
         $all    = [];
+        $live = \App\Libraries\ConversationLearner::phrasesByEntry();   // how people really asked (helpful answers, the owner's corrections: counted several times)
+        $weak = array_flip(\App\Libraries\Mastery::weakIds());            // entries the Brain missed in its own quiz: practised more
         foreach ($this->db->query("SELECT id, title, keywords, kind, source FROM tbl_bot_knowledge WHERE status = 'approved' AND keywords <> ''")->getResultArray() as $r) {
             $ph = array_values(array_filter(array_map('trim', explode(',', $r['keywords'])), static fn ($p) => mb_strlen($p) >= 4 && mb_strlen($p) <= 70));
             if (! $ph) {
                 continue;
             }
             $ph[] = mb_strtolower(rtrim($r['title'], '?'));
+            foreach ($live[(int) $r['id']] ?? [] as $lp) {
+                $ph[] = $lp;
+            }
             $e    = ['id' => (int) $r['id'], 'p' => $ph];
             $g    = \App\Libraries\BrainGroups::of($r);
-            $groups[$g][] = $e;
-            $all[]        = $e;
+            for ($rep = 0, $times = isset($weak[(int) $r['id']]) ? 4 : 1; $rep < $times; $rep++) {   // a missed entry is drawn four times as often
+                $groups[$g][] = $e;
+                $all[]        = $e;
+            }
         }
 
         $want = $this->cfg['groups'] ?? null;

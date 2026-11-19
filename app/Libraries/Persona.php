@@ -120,6 +120,22 @@ class Persona
         return ['intent' => $intent, 'sentiment' => $sentiment, 'urgent' => $urgent, 'entities' => $ent, 'needs' => array_values(array_unique($needs))];
     }
 
+    /**
+     * The words that carry the topic: greetings, names and style requests ("hey lexus", "gie here", "in simple words", "step by step", "po", "ba", "thanks") are not part of
+     * what is being asked and made the generic answers (greeting, "explain simply", thanks) win over the right topic. The original text is kept for the style need.
+     * Returns the text unchanged when too little would be left.
+     */
+    public static function forSearch(string $text): string
+    {
+        $t = mb_strtolower(trim($text));
+        $p = '/^(?:(?:um+|uh+|ah+|so|okay|ok|sige|hey|hi|hello|lexus|lexis|gie here|it is gie|boss asks|quick one|listen|one more thing|can you tell me|i want to know|help me understand|i do not understand|paki-explain|pwede ba|ano ba ang|paano)\b[,:]?\s*)+/u';
+        $s = preg_replace($p, '', $t);
+        $s = preg_replace('/(?:\s+(?:please|pls|po|ah|ba|na|thanks|thank you|lexus|you know|right now|for me|and why|in simple words|step by step|with an example|simply|in short))+\s*$/u', '', $s);
+        $s = trim($s);
+
+        return count(preg_split('/\s+/', $s)) >= 2 && mb_strlen($s) >= 6 ? $s : $text;
+    }
+
     /** The human opening of a reply (empty when none is needed). */
     public static function lead(array $u, array $who): string
     {
