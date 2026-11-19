@@ -130,7 +130,15 @@ class WstController extends BaseController
         return $this->render('materials/index', [
             'title'   => 'Material Testing',
             'withCss' => 'dtr.css',
-            'withJs'  => ['materials.js'],
+            'withJs'  => [
+                'materials/martindale-abrasion.js',
+                'materials/taber-abrasion.js',
+                'materials/lace-abrasion.js',
+                'materials/crocking.js',
+                'materials/bally-flex.js',
+                'materials/ross-flex.js',
+                'materials.js',
+            ],
         ]);
     }
 
@@ -143,7 +151,15 @@ class WstController extends BaseController
         return $this->render('wholeshoe/index', [
             'title'   => 'Whole Shoe Test',
             'withCss' => 'dtr.css',
-            'withJs'  => ['wholeshoe.js'],
+            'withJs'  => [
+                'wholeshoe/hydrolysis.js',
+                'wholeshoe/heat-aging.js',
+                'wholeshoe/washing.js',
+                'wholeshoe/uv-light.js',
+                'wholeshoe/flexing.js',
+                'wholeshoe/deeptest.js',
+                'wholeshoe.js',
+            ],
         ]);
     }
 
@@ -1320,6 +1336,55 @@ class WstController extends BaseController
     /**
      * POST /wst/stop/{id}
      */
+    /**
+     * POST /wst/reset/{id}: removes the status of a Whole Shoe test completely (PASS / FAIL / COMPLETED / RUNNING ...) so the test starts over:
+     * the session goes back to PENDING with no timer, cycles, findings or recorded samples, and the Whole Shoe tracker rows of that Lab Ref are cleared the same way.
+     */
+    public function reset(int $id): ResponseInterface
+    {
+        $model  = new MaterialTestModel();
+        $record = $model->find($id);
+        if (! $record) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'message' => 'Record not found']);
+        }
+        $lab = (string) ($record['labreference'] ?? '');
+        $db  = \Config\Database::connect('default');
+        $db->transStart();
+        $db->table('tbl_material_test_results')->where('test_id', $id)->delete();
+        $db->table('tbl_material_tests')->where('id', $id)->update([
+            'status' => 'PENDING', 'is_running' => 0, 'overall_outcome' => null, 'timer_started_at' => null, 'timer_elapsed_sec' => 0, 'current_cycles' => 0,
+            'recorded_cycles' => null, 'recorded_remarks' => null, 'testingfindings' => null, 'finalfindings' => null, 'findings_json' => null, 'remarks' => null,
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+        $intakes = [];
+        if ($lab !== '' && $db->tableExists('tbl_dtr_wholeshoetracker')) {
+            $clear = ['Status' => 'PENDING', 'FinalResult' => null, 'Findings' => null, 'testingfindings' => null, 'finalfindings' => null, 'TimeStarted' => null, 'TimeCompleted' => null, 'ActualDuration' => null];
+            $rows  = $db->table('tbl_dtr_wholeshoetracker')->select('TrackerID, LabRefNo')->groupStart()->where('LabRefNo', $lab)->orWhere('WholeshoeLabRefNo', $lab)->groupEnd()->get()->getResultArray();
+            foreach ($rows as $r) {
+                $db->table('tbl_dtr_wholeshoetracker')->where('TrackerID', $r['TrackerID'])->update($clear);
+                $intakes[$r['LabRefNo']] = true;
+            }
+        }
+        $db->transComplete();
+        if (! $db->transStatus()) {
+            return $this->response->setStatusCode(500)->setJSON(['success' => false, 'message' => 'The status could not be removed.']);
+        }
+        try {                                           // the Lab Ref list (Pending again) follows
+            foreach (array_keys($intakes) as $ref) {
+                $in = $db->table('tbl_dtr_wholeshoe_intake')->select('IntakeID')->where('LabRefNo', $ref)->get()->getRowArray();
+                if ($in) {
+                    \App\Libraries\DtrLabrefIndex::upsertWholeShoe($db, (int) $in['IntakeID']);
+                }
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'wst reset index: ' . $e->getMessage());
+        }
+        \App\Libraries\DataCache::bump();
+        log_message('notice', 'WST status removed for {lab} by {who}', ['lab' => $lab, 'who' => $this->getCurrentTechnician()['technician'] ?? '']);
+
+        return $this->response->setJSON(['success' => true, 'message' => 'Status removed. ' . $lab . ' will start over.']);
+    }
+
     public function stop(int $id): ResponseInterface
     {
         $model  = new MaterialTestModel();

@@ -81,7 +81,11 @@
   let currentWstTestId = null;
   let activeWstGroup = 'dry';
 
+  const getMethod = (cat = currentWstCategory) => (window.WholeshoeMethods && window.WholeshoeMethods[cat]) || null;
+
   const getWstUnit = (cat = currentWstCategory) => {
+    const m = getMethod(cat);
+    if (m && m.unit) return m.unit;
     if (cat === 'hydrolysis' || cat === 'heat-aging' || cat === 'uv-light') return 'Hrs';
     if (cat === 'washing') return 'Washes';
     return 'Cycles';
@@ -626,18 +630,11 @@
           $('#wst-new-labref').value = res.labref;
         }
 
-        const defaultMachines = {
-          'hydrolysis': 'CH-HYDRO-01',
-          'heat-aging': 'OVEN-01',
-          'washing': 'WASH-MC-01',
-          'uv-light': 'UV-CHAMBER-01',
-          'flexing': 'MC-FLEX-01',
-          'bally-flex': 'MC-FLEX-01',
-          'deeptest': 'MC-DEEP-01',
-          'deep-test': 'MC-DEEP-01',
-        };
-        if ($('#wst-new-machine') && defaultMachines[currentWstCategory]) {
-          $('#wst-new-machine').value = defaultMachines[currentWstCategory];
+        const methodCfg = getMethod(currentWstCategory);
+        if ($('#wst-new-machine') && methodCfg?.defaultMachine) {
+          $('#wst-new-machine').value = methodCfg.defaultMachine;
+        } else if ($('#wst-new-machine') && currentWstCategory === 'bally-flex') {
+          $('#wst-new-machine').value = 'MC-FLEX-01';
         }
 
         syncNewSampleGroups();
@@ -1091,7 +1088,8 @@
           startCountdownTicker(res.timer, r);
         }
         const cpSection = $('#wst-checkpoint-remarks-section');
-        const isDailyCheckpointCat = ['hydrolysis', 'heat_aging', 'washing', 'uv-light', 'deeptest'].includes((r.category || '').toLowerCase());
+        const catKey = (r.category || '').toLowerCase();
+        const isDailyCheckpointCat = !!(getMethod(catKey)?.isDailyCheckpoint ?? ['hydrolysis', 'heat-aging', 'heat_aging', 'washing', 'uv-light', 'deeptest'].includes(catKey));
         if (cpSection) {
           cpSection.classList.toggle('hidden', !isDailyCheckpointCat);
           if (isDailyCheckpointCat) {
@@ -1591,6 +1589,23 @@
   };
 
   $('#btn-wst-modal-stop')?.addEventListener('click', openStopTestModal);
+  $('#btn-wst-modal-reset')?.addEventListener('click', async () => {          // removes the status completely: the test starts over
+    if (!currentWstTestId) return;
+    const lab = $('#wst-modal-labref-badge')?.textContent?.trim() || 'this Lab Ref';
+    if (!window.confirm(`Remove the status of ${lab} completely?
+
+The result (PASS / FAIL / COMPLETED), the timer, the cycles, the findings and the recorded samples are deleted and the test starts over. This cannot be undone.`)) return;
+    const btn = $('#btn-wst-modal-reset');
+    btn.disabled = true;
+    try {
+      const res = await apiFetch(`wst/reset/${currentWstTestId}`, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name="X-CSRF-TOKEN"]')?.content || '' } });
+      showToast(res.message || (res.success ? 'Status removed.' : 'Not removed.'), res.success ? 'success' : 'error');
+      if (res.success) await openWstMonitorModal(currentWstTestId);
+    } catch (err) {
+      showToast('Could not remove the status: ' + err.message, 'error');
+    }
+    btn.disabled = false;
+  });
   $('#btn-wst-close-stop-test')?.addEventListener('click', closeStopTestModal);
   $('#btn-wst-cancel-stop-test')?.addEventListener('click', closeStopTestModal);
 
@@ -1844,16 +1859,13 @@
   // WHOLE SHOE TEST: INCUBATION TIMERS & FINDINGS EVALUATION
   // Hydrolysis: 7 Days | Heat Aging: 3 Days | UV Light: 1 Day | Washing: 1 Hr | Dip Test: 1 Min
   // =========================================================================
-  const TIMED_CATEGORIES = {
-    'hydrolysis': { label: 'Hydrolysis', duration: 7 * 86400, nominal: '7 Days' },
-    'heat-aging': { label: 'Heat Aging', duration: 3 * 86400, nominal: '3 Days' },
-    'uv-light':   { label: 'UV Light', duration: 1 * 86400, nominal: '1 Day (24 Hrs)' },
-    'washing':    { label: 'Washing', duration: 1 * 3600, nominal: '1 Hour' },
-    'deeptest':   { label: 'Dip Test', duration: 60, nominal: '1 Minute' },
-    'deep-test':  { label: 'Dip Test', duration: 60, nominal: '1 Minute' },
-  };
+  const TIMED_CATEGORIES = Object.fromEntries(
+    Object.entries(window.WholeshoeMethods || {})
+      .filter(([, m]) => m && m.isTimed)
+      .map(([k, m]) => [k, { label: m.label, duration: m.duration, nominal: m.nominal }])
+  );
 
-  const isTimedCategory = (cat) => !!TIMED_CATEGORIES[cat];
+  const isTimedCategory = (cat) => !!(getMethod(cat)?.isTimed || TIMED_CATEGORIES[cat]);
 
 
   let wstTimerInterval = null;
