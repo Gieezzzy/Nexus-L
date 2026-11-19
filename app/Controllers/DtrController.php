@@ -493,7 +493,9 @@ class DtrController extends BaseController
         // lines marked LACKING have no specimen yet but are part of the collection: they are listed too (shutdown marks are not)
         $lackTotal = 0;
         if ($db->tableExists('tbl_dtr_BondingTracker') || $db->tableExists('tbl_dtr_bondingtracker')) {
-            $lackQ = $db->table('tbl_dtr_BondingTracker')->where('TestType', 'LACKING')->where('Shutdown', 0);
+            // a Lacking marker, or a batch row of the line that was marked Lacking (its own bonding record is still the LACKING placeholder, so the Daily list skips it and this list shows it)
+            $lackQ = $db->table('tbl_dtr_BondingTracker')->where('Shutdown', 0)->groupStart()->where('TestType', 'LACKING')
+                ->orGroupStart()->where('Lacking', 1)->where('LabRefNo IS NOT NULL', null, false)->where("NOT EXISTS (SELECT 1 FROM tbl_dtr_bonding_info rb WHERE rb.LabRefNo = tbl_dtr_BondingTracker.LabRefNo COLLATE utf8mb4_unicode_ci AND COALESCE(rb.TestType, '') <> 'LACKING')", null, false)->groupEnd()->groupEnd();
             if ($lk === 'bonding' && $lRange) {
                 $lackQ->where($lackRange($db, '', $rngOther), null, false);   // Lacking / Advance / Shutdown count on the day they were LOADED (encoded)
             }
