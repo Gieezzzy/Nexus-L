@@ -790,3 +790,4 @@ html[data-theme="dark"] .ac-lv.l0{background:rgba(100,116,139,.25);color:#cbd5e1
 html[data-theme="dark"] .ac-lv.l1{background:rgba(37,99,235,.25);color:#93c5fd}
 html[data-theme="dark"] .ac-lv.l2{background:rgba(16,185,129,.22);color:#6ee7b7}
 html[data-theme="dark"] #nx-slow{background:rgba(15,23,42,.92);border:1px solid rgba(148,163,184,.25)}
+#nxbot-mic{padding:8px 11px!important;font-size:16px;line-height:1}#nxbot-mic.on{background:#dc2626!important;animation:nxbotPulse 1s infinite}@keyframes nxbotPulse{50%{opacity:.55}}#nxbot-voice[aria-pressed=true]{background:rgba(34,197,94,.45)!important}

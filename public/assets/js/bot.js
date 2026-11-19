@@ -114,12 +114,12 @@
         <img class="nxbot-hlogo" src="${BASE}assets/images/lexis-icon.png" alt="LEXUS AI" width="34" height="34">
         <div><b>LEXUS AI</b><small>Laboratory Execution Intelligence System</small></div>
       </div>
-      <div class="nxbot-hbtns"><button type="button" data-a="history" title="My recent activity">History</button><button type="button" data-a="close" aria-label="Close assistant">&times;</button></div>
+      <div class="nxbot-hbtns"><button type="button" data-a="voice" id="nxbot-voice" title="Read the answers aloud (the text stays on screen)" aria-pressed="false">&#128264; Voice off</button><button type="button" data-a="history" title="My recent activity">History</button><button type="button" data-a="close" aria-label="Close assistant">&times;</button></div>
     </header>
     <div class="nxbot-live" id="nxbot-live" hidden></div>
     <div class="nxbot-msgs" id="nxbot-msgs" aria-live="polite"></div>
     <div class="nxbot-chips" id="nxbot-chips"></div>
-    <form id="nxbot-form" autocomplete="off"><input id="nxbot-input" type="text" maxlength="1000" placeholder="Type your question…" aria-label="Your question"><button type="submit">Send</button></form>
+    <form id="nxbot-form" autocomplete="off"><input id="nxbot-input" type="text" maxlength="1000" placeholder="Type or press the microphone and talk…" aria-label="Your question"><button type="button" id="nxbot-mic" title="Talk to me" aria-label="Talk to the assistant" aria-pressed="false">&#127908;</button><button type="submit">Send</button></form>
     <footer><button type="button" data-a="admin">Talk to an administrator</button><span>Your actions here are recorded to improve help. See the Terms &amp; Privacy notice.</span></footer>`;
   document.body.append(fab, bubble, panel);
 
@@ -144,6 +144,72 @@
     scroll();
     return d;
   };
+
+  // ------------------------------------------------------------------------------------------- talking: spoken replies + microphone
+  // Two ways to communicate: the answer is always shown as text, and read aloud when the speaker is on. The text is cleaned first (symbols,
+  // units, Lab References) so it is spoken the way a person would say it. Speaking stops when you type, press the microphone or turn it off.
+  const synth = window.speechSynthesis || null;
+  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  let voiceOn = false;
+  try { voiceOn = localStorage.getItem('nxbot.voice') === '1'; } catch (e) { /* no storage */ }
+  const spoken = (r) => {
+    const say = (t) => String(t || '')
+      .replace(/```[\s\S]*?```/g, ' ').replace(/[#*_`>|]+/g, ' ').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/https?:\/\/\S+/g, ' the link ')
+      .replace(/\bDTP(\d{8})([A-Z0-9-]*)/gi, (m, d, rest) => 'lab reference D T P ' + d.split('').join(' ') + (rest ? ' ' + rest.split('').join(' ') : ''))
+      .replace(/kgf\s*\/\s*cm2?/gi, ' kilogram force per centimeter ').replace(/(\d)\s*%/g, '$1 percent').replace(/°\s*C/g, ' degrees Celsius').replace(/\s&\s/g, ' and ')
+      .replace(/\bNEXUS-L\b/g, 'Nexus L').replace(/\bLEXUS AI\b/g, 'Lexus A I').replace(/\bVF-([A-Z]\d+)/g, 'V F $1').replace(/\s+/g, ' ').trim();
+    let out = say(r.text);
+    if (out.length > 520) out = out.slice(0, out.lastIndexOf('. ', 520) > 120 ? out.lastIndexOf('. ', 520) + 1 : 520) + ' The rest is on the screen.';
+    if (r.steps && r.steps.length) out += ' ' + r.steps.slice(0, 5).map((x, i) => 'Step ' + (i + 1) + '. ' + say(x).slice(0, 160)).join(' ');
+    return out;
+  };
+  const stopSpeaking = () => { try { if (synth) synth.cancel(); } catch (e) { /* ignore */ } };
+  const speak = (r) => {
+    if (!voiceOn || !synth || !r) return;
+    stopSpeaking();
+    const u = new SpeechSynthesisUtterance(spoken(r));
+    const vs = synth.getVoices ? synth.getVoices() : [];
+    const v = vs.find((x) => /en-(US|GB|PH)/i.test(x.lang) && /natural|online|aria|jenny|samantha|google/i.test(x.name)) || vs.find((x) => /^en/i.test(x.lang));
+    if (v) u.voice = v;
+    u.rate = 1; u.pitch = 1; u.lang = (v && v.lang) || 'en-US';
+    synth.speak(u);
+  };
+  const voiceBtn = panel.querySelector('#nxbot-voice');
+  const paintVoice = () => {
+    if (!voiceBtn) return;
+    voiceBtn.innerHTML = voiceOn ? '&#128266; Voice on' : '&#128264; Voice off';
+    voiceBtn.setAttribute('aria-pressed', voiceOn ? 'true' : 'false');
+    if (!synth) { voiceBtn.disabled = true; voiceBtn.title = 'This browser cannot speak; use Chrome or Edge.'; }
+  };
+  paintVoice();
+  if (voiceBtn) voiceBtn.addEventListener('click', () => {
+    voiceOn = !voiceOn;
+    try { localStorage.setItem('nxbot.voice', voiceOn ? '1' : '0'); } catch (e) { /* no storage */ }
+    stopSpeaking(); paintVoice();
+    if (voiceOn && synth) { const u = new SpeechSynthesisUtterance('Voice is on. I will read my answers aloud.'); synth.speak(u); }
+  });
+  const micBtn = panel.querySelector('#nxbot-mic');
+  let rec = null;
+  if (micBtn) {
+    if (!Rec) { micBtn.disabled = true; micBtn.title = 'This browser has no speech input; use Chrome or Edge.'; }
+    micBtn.addEventListener('click', () => {
+      stopSpeaking();
+      if (rec) { try { rec.stop(); } catch (e) { /* ignore */ } return; }
+      rec = new Rec(); rec.lang = 'en-US'; rec.interimResults = true; rec.maxAlternatives = 1; rec.continuous = false;
+      micBtn.setAttribute('aria-pressed', 'true'); micBtn.classList.add('on'); input.placeholder = 'Listening… speak now';
+      let finalText = '';
+      rec.onresult = (ev) => { let t = ''; for (let i = 0; i < ev.results.length; i++) { t += ev.results[i][0].transcript; if (ev.results[i].isFinal) finalText = t; } input.value = t; };
+      rec.onerror = () => { input.placeholder = 'Could not hear you. Try again or type.'; };
+      rec.onend = () => {
+        micBtn.setAttribute('aria-pressed', 'false'); micBtn.classList.remove('on'); rec = null;
+        if (!/Could not/.test(input.placeholder)) input.placeholder = 'Type or press the microphone and talk…';
+        const q = (finalText || input.value || '').trim();
+        if (q) { input.value = q; panel.querySelector('#nxbot-form').requestSubmit(); }   // the request is sent when you stop talking
+      };
+      try { rec.start(); } catch (e) { rec = null; micBtn.classList.remove('on'); }
+    });
+  }
+  input.addEventListener('input', stopSpeaking);
 
   const renderReply = (r, chatId) => {
     let h = '';
@@ -246,7 +312,7 @@
       if (j.user_chat_id) { mine.dataset.id = j.user_chat_id; lastId = Math.max(lastId, Number(j.user_chat_id)); }
       wait.remove();
       if (j.escalated) setLive('escalated', j.session);
-      else if (j.reply) { renderReply(j.reply, j.reply.chat_id); lastId = Math.max(lastId, Number(j.reply.chat_id || 0)); }
+      else if (j.reply) { renderReply(j.reply, j.reply.chat_id); speak(j.reply); lastId = Math.max(lastId, Number(j.reply.chat_id || 0)); }
       record('bot', { target: 'asked the assistant' });
     } catch (e) {
       wait.remove();

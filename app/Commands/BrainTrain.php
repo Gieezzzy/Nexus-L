@@ -20,6 +20,7 @@ use App\Libraries\BrainSeed10 as Seed10;
 use App\Libraries\BrainSeed11 as Seed11;
 use App\Libraries\BrainSeed12 as Seed12;
 use App\Libraries\BrainSeed13 as Seed13;
+use App\Libraries\BrainSeed14 as Seed14;
 use App\Libraries\ProblemKnowledgeSeeder;
 use App\Libraries\SystemSettings;
 use CodeIgniter\CLI\BaseCommand;
@@ -40,7 +41,7 @@ class BrainTrain extends BaseCommand
         $db  = \Config\Database::connect();
         $now = date('Y-m-d H:i:s');
         $add = 0; $upd = 0;
-        foreach (array_merge(Seed::all(), Seed2::all(), Seed3::all(), Seed4::all(), Seed5::all(), Seed6::all(), Seed7::all(), Seed8::all(), Seed9::all(), Seed10::all(), Seed11::all(), Seed12::all(), Seed13::all()) as $e) {
+        foreach (array_merge(Seed::all(), Seed2::all(), Seed3::all(), Seed4::all(), Seed5::all(), Seed6::all(), Seed7::all(), Seed8::all(), Seed9::all(), Seed10::all(), Seed11::all(), Seed12::all(), Seed13::all(), Seed14::all()) as $e) {
             $data = [
                 'kind' => 'playbook', 'title' => mb_substr($e['title'], 0, 200), 'keywords' => mb_substr((string) ($e['keywords'] ?? ''), 0, 600), 'body' => (string) $e['body'],
                 'steps_json' => json_encode($e['steps'] ?? [], JSON_UNESCAPED_UNICODE), 'actions_json' => json_encode($e['actions'] ?? [], JSON_UNESCAPED_SLASHES),

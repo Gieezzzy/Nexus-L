@@ -2647,11 +2647,13 @@ private function computeIntent(string $text, string $prev = '', string $lastBotM
     private function compose(string $text, array $ctx, string $page): array
     {
         $low = mb_strtolower($text);
+        $who = \App\Libraries\Persona::who($this->auth->user());
+        $und = \App\Libraries\Persona::understand($text);
         if (preg_match('/^(hi|hello|hey|good (morning|afternoon|evening)|yo)\b/', $low) && mb_strlen($low) < 30) {
-            return ['text' => 'Hello! I am LEXUS AI (Laboratory Execution Intelligence System). Ask me how to do something in this system, calculate test results, or check report status and I will help you.', 'steps' => [], 'actions' => [], 'confidence' => 100, 'related' => [], 'diagnosis' => null, 'knowledge_id' => null, 'suggest_admin' => false];
+            return ['text' => \App\Libraries\Persona::greeting($who), 'steps' => [], 'actions' => [], 'confidence' => 100, 'related' => [], 'diagnosis' => null, 'knowledge_id' => null, 'suggest_admin' => false];
         }
         if (preg_match('/^(thanks|thank you|ty|ok thanks|great|got it)\b/', $low) && mb_strlen($low) < 40) {
-            return ['text' => 'You are welcome! Ask me anything else about NEXUS-L.', 'steps' => [], 'actions' => [], 'confidence' => 100, 'related' => [], 'diagnosis' => null, 'knowledge_id' => null, 'suggest_admin' => false];
+            return ['text' => 'You are welcome, ' . $who['name'] . '! Ask me anything else about NEXUS-L, or tell me what to check next.', 'steps' => [], 'actions' => [], 'confidence' => 100, 'related' => [], 'diagnosis' => null, 'knowledge_id' => null, 'suggest_admin' => false];
         }
         if (preg_match('/\b(poem|joke|weather|recipe|song|lyrics|story|horoscope|football|basketball|bitcoin|stock market|movie|capital of|who won|translate this|news today|riddle)\b/i', $low) && ! preg_match('/\b(nexus|report|lab|interlink|bonding|machine|pdf|sync|designer|inbox|dtr|sample|test)\b/i', $low)) {
             return ['text' => 'I can only help with NEXUS-L: how to use its pages, fix problems, and find your reports. What would you like to do in the system?', 'steps' => [], 'actions' => [], 'confidence' => 0, 'related' => [], 'diagnosis' => null, 'knowledge_id' => null, 'suggest_admin' => false];
@@ -2675,6 +2677,24 @@ private function computeIntent(string $text, string $prev = '', string $lastBotM
             if ($row) {
                 return ['text' => (string) $row['body'], 'title' => (string) $row['title'], 'steps' => array_values(array_filter((array) json_decode((string) ($row['steps_json'] ?? ''), true), 'is_string')), 'actions' => [], 'confidence' => 100, 'related' => [], 'diagnosis' => null, 'knowledge_id' => (int) $row['id'], 'suggest_admin' => false];
             }
+        }
+        if ($und['intent'] === 'security') {
+            if (! $this->isAdmin()) {
+                return ['text' => 'Security reports are only for the administrator, ' . $who['name'] . '. If you noticed something suspicious, tell me what you saw and I will pass it on.', 'steps' => [], 'actions' => [], 'confidence' => 100, 'related' => [], 'diagnosis' => null, 'knowledge_id' => null, 'suggest_admin' => true, 'understood' => $und];
+            }
+            $mins = 60;
+            if (preg_match('/last (\d+) (minute|hour|day)/i', $text, $mm)) {
+                $mins = (int) $mm[1] * ['minute' => 1, 'hour' => 60, 'day' => 1440][strtolower($mm[2])];
+            } elseif (preg_match('/\b(today|this day)\b/i', $text)) {
+                $mins = 1440;
+            } elseif (preg_match('/\byesterday\b/i', $text)) {
+                $mins = 2880;
+            }
+            $rep = \App\Libraries\SecurityWatch::report(max(10, min(2880, $mins)), '');
+            \App\Libraries\SecurityWatch::record($rep['findings']);
+
+            return ['text' => \App\Libraries\Persona::lead($und, $who) . $rep['text'], 'title' => 'Security watch', 'steps' => $rep['steps'], 'actions' => [], 'confidence' => 100, 'related' => [['title' => 'How sure are you, and why did you give me this answer?']],
+                'diagnosis' => null, 'knowledge_id' => null, 'understood' => $und, 'reasoning' => ['matched' => 'Security watch (live logs)', 'confidence' => 100, 'basis' => 'read from the web server log and the sign-in log just now', 'level' => $rep['level']]];
         }
         $hits = Brain::search($text, $ctx, 5);
         $conf = Brain::confidence($hits, $text);
@@ -2740,6 +2760,7 @@ private function computeIntent(string $text, string $prev = '', string $lastBotM
 
 ";
         }
+        $lead = ($conf >= 45 ? \App\Libraries\Persona::lead($und, $who) : '') . $lead;
 
         return [
             'text'  => $lead . (string) $best['body'],
@@ -2747,6 +2768,7 @@ private function computeIntent(string $text, string $prev = '', string $lastBotM
             'steps' => array_values(array_filter((array) json_decode((string) ($best['steps_json'] ?? ''), true), 'is_string')),
             'actions' => $actions, 'confidence' => $conf, 'diagnosis' => $diag, 'knowledge_id' => (int) $best['id'], 'suggest_admin' => $conf < 45,
             'related' => array_map(static fn ($h) => ['id' => (int) $h['row']['id'], 'title' => $h['row']['title']], array_slice($hits, 1, 3)),
+            'understood' => $und,
             'reasoning' => ['matched' => (string) $best['title'], 'confidence' => $conf, 'margin_to_runner_up' => $margin, 'ambiguous' => $tie, 'runner_up' => $second ? (string) $second['row']['title'] : null,
                 'basis' => $conf >= 80 ? 'strong match on the words and the learned weights' : ($conf >= 45 ? 'good match, some words missing' : 'weak match')],
         ];
