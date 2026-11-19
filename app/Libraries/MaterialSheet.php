@@ -165,7 +165,84 @@ class MaterialSheet
      * @return list<array<string,mixed>> the rows of the test (as on the Access form): k key, label, mode (avg | each | fibre | text | mart | numtext | calc | plain), n samples,
      * unit, std keys, dir (min: reach the standard, max: stay under it), texts (word classifications), manual (rating chosen by the technician)
      */
-    public static function rows(string $code, string $type, string $cat): array
+    /** the most samples a test item can have after "+" on the sheet */
+    public const MAX_SAMPLES = 10;
+
+    /** what the person changed on the sheet of ONE test: ['hide' => [row keys], 'n' => [row key => number of samples]]; null / empty = the default layout */
+    public static function cleanOverride($o): array
+    {
+        $out = ['hide' => [], 'n' => []];
+        if (! is_array($o)) {
+            return $out;
+        }
+        foreach ((array) ($o['hide'] ?? []) as $k) {
+            if (is_string($k) && preg_match('/^[A-Za-z0-9_]{1,30}$/', $k)) {
+                $out['hide'][] = $k;
+            }
+        }
+        foreach ((array) ($o['n'] ?? []) as $k => $n) {
+            if (is_string($k) && preg_match('/^[A-Za-z0-9_]{1,30}$/', $k) && (int) $n >= 1) {
+                $out['n'][$k] = min(self::MAX_SAMPLES, (int) $n);
+            }
+        }
+        $out['hide'] = array_values(array_unique($out['hide']));
+
+        return $out;
+    }
+
+    /**
+     * The rows of a test as set up for this Lab Ref: the default rows (rows() below, from the Access forms) less the items that were removed (a test item that does not
+     * apply, e.g. only Dry and not Wet) and with the number of samples the person chose (the default is 3, it can be 2 or 5). Averages and ratings follow this layout.
+     */
+    public static function rows(string $code, string $type, string $cat, ?array $override = null): array
+    {
+        $rows = self::baseRows($code, $type, $cat);
+        $o    = self::cleanOverride($override);
+        if (! $o['hide'] && ! $o['n']) {
+            return $rows;
+        }
+        $hide = array_flip($o['hide']);
+        $out  = [];
+        foreach ($rows as $r) {
+            if (isset($hide[$r['k']]) && count($rows) > 1) {
+                continue;
+            }
+            $n = $o['n'][$r['k']] ?? null;
+            if ($n) {
+                if (in_array($r['mode'], ['avg', 'each', 'plain'], true)) {
+                    $r['n'] = $n;
+                } elseif ($r['mode'] === 'calc' && ! empty($r['specs'])) {
+                    $specs = $r['specs'];
+                    while (count($specs) < $n) {
+                        $specs[] = $specs[0];
+                    }
+                    $r['specs'] = array_slice($specs, 0, $n);
+                }
+            }
+            $out[] = $r;
+        }
+
+        return $out ?: $rows;
+    }
+
+    /** the removed rows of a test: [{k, label}] */
+    public static function removedRows(string $code, string $type, string $cat, ?array $override): array
+    {
+        $o = self::cleanOverride($override);
+        if (! $o['hide']) {
+            return [];
+        }
+        $out = [];
+        foreach (self::baseRows($code, $type, $cat) as $r) {
+            if (in_array($r['k'], $o['hide'], true)) {
+                $out[] = ['k' => $r['k'], 'label' => $r['label'] !== '' ? $r['label'] : $r['k']];
+            }
+        }
+
+        return $out;
+    }
+
+    private static function baseRows(string $code, string $type, string $cat): array
     {
         $thickType = in_array(strtoupper($type), self::THICK_TYPES, true);
         $thick     = $thickType && in_array($code, self::THICK_CODES, true);
@@ -401,7 +478,7 @@ class MaterialSheet
         $anyFail = false;
         $anyTol = false;
         $nRows = 0;
-        foreach (self::rows($code, $type, $cat) as $r) {
+        foreach (self::rows($code, $type, $cat, is_array($values['_layout'] ?? null) ? $values['_layout'] : null) as $r) {
             $k   = $r['k'];
             $std = self::std($type, $r['std'] ?? [], (bool) ($r['thick'] ?? false), $gauge);
             $row = ['std' => $std, 'ave' => null, 'min' => null, 'max' => null, 'rating' => '', 'manual' => false];
@@ -574,9 +651,9 @@ class MaterialSheet
     }
 
     /** the field layout of a test for the sheet (what the screen draws) */
-    public static function layout(string $code, string $type, string $cat): array
+    public static function layout(string $code, string $type, string $cat, ?array $override = null): array
     {
-        $rows = self::rows($code, $type, $cat);
+        $rows = self::rows($code, $type, $cat, $override);
         foreach ($rows as &$r) {
             if ($r['mode'] === 'fibre') {
                 $r['fibres'] = self::FIBRES;

@@ -47,19 +47,28 @@
       .map(([l, n, c]) => `<div class="mt-kpi ${c}"><b>${n}</b><span>${l}</span></div>`).join('');
   }
 
+  const post = async (path, body) => {
+    const r = await fetch(base + path, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfMeta ? csrfMeta.content : '' }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({ ok: false, message: 'The server did not answer.' })); if (csrfMeta && j.csrf) csrfMeta.content = j.csrf;
+    return j;
+  };
+  const note = (msg, ok) => {
+    const d = document.createElement('div'); d.className = 'mt-toast ' + (ok === false ? 'bad' : 'ok'); d.textContent = msg; document.body.appendChild(d);
+    setTimeout(() => { d.classList.add('out'); setTimeout(() => d.remove(), 400); }, 3200);
+  };
   const chip = (s) => `<span class="mt-chip s-${esc(String(s).toLowerCase().replace(/\s+/g, '-'))}">${esc(s)}</span>`;
   const tint = (r) => ({ FAIL: 't-fail', TOLERABLE: 't-tol', PASS: 't-pass' }[String(r || '').toUpperCase()] || '');
   const resChip = (r) => (r ? `<span class="mt-res r-${esc(r.toLowerCase())}">${esc(r)}</span>` : '<span class="mt-none">-</span>');
 
   function childRows(r) {
     if (!r.tests.length) return '<p class="mt-empty">This material type has no test list.</p>';
-    const head = '<thead><tr><th>#</th><th>Test</th><th>Child Lab Ref</th><th>Status</th><th>Result</th><th>Tested</th><th>Technician</th>' + '' + '</tr></thead>';
+    const head = '<thead><tr><th>#</th><th>Test</th><th>Child Lab Ref</th><th>Status</th><th>Result</th><th>Tested</th><th>Technician</th>' + (canEdit && r.source !== 'bench' ? '<th></th>' : '') + '</tr></thead>';
     const body = r.tests.map((t, i) => {
       const meta = [t.method, t.unit].filter(Boolean).join(' · ');
       const name = `<b>${esc(t.name)}</b>${meta ? `<small>${esc(meta)}</small>` : ''}`;
       const link = r.source === 'bench' ? `<span class="mono">${esc(t.child)}</span>` : `<button type="button" class="mt-link mono" data-open-test="${t.id}" data-mother="${esc(r.lab_ref)}" title="Open the test sheet">${esc(t.child)}</button>`;
       {
-        return `<tr class="${tint(t.result)}"><td>${i + 1}</td><td>${name}</td><td>${link}</td><td>${chip(t.status)}</td><td>${resChip(t.result)}</td><td>${esc(day(t.tested)) || '-'}</td><td>${esc(t.tech) || '-'}</td></tr>`;
+        return `<tr class="${tint(t.result)}"><td>${i + 1}</td><td>${name}</td><td>${link}</td><td>${chip(t.status)}</td><td>${resChip(t.result)}</td><td>${esc(day(t.tested)) || '-'}</td><td>${esc(t.tech) || '-'}</td>${canEdit && r.source !== 'bench' ? `<td class="mt-act"><button type="button" class="mt-x" data-rm-test="${t.id}" data-name="${esc(t.name)}" data-lab="${esc(r.lab_ref)}" title="Remove this test: it does not apply to this material" aria-label="Remove ${esc(t.name)}">&#10005;</button></td>` : ''}</tr>`;
       }
       const sel = (opts, cur) => opts.map((o) => `<option value="${esc(o)}"${o === cur ? ' selected' : ''}>${o || '-'}</option>`).join('');
       return `<tr data-tid="${t.id}"><td>${i + 1}</td><td>${name}</td><td>${link}</td>`
@@ -73,7 +82,7 @@
   }
 
   function group(r) {
-    const open = state.open.has(r.id);
+    const open = state.open.has(String(r.id));
     const pct = r.total ? Math.round((r.done * 100) / r.total) : 0;
     const info = [['Material code', r.code], ['Supplier', r.supplier], ['Style', r.style], ['Colorway', r.colorway], ['MTL #', r.mtl], ['Prod. code', r.prod], ['Quantity', [r.qty, r.unit].filter(Boolean).join(' ')], ['QC quantity', r.qcqty], ['Arrived', day(r.arrived)]]
       .filter(([, v]) => v).map(([l, v]) => `<span><em>${l}</em> ${esc(v)}</span>`).join('');
@@ -83,7 +92,7 @@
       + `<b class="mt-ref">${esc(r.lab_ref)}</b><span class="mt-name">${esc(r.name || r.code)}</span>`
       + `<span class="mt-type">${esc(r.category_name ? r.category_name + ' · ' : '')}${esc(r.type)}</span><span class="mt-date">${esc(day(r.received))}</span>`
       + `<span class="mt-prog" title="${r.done} of ${r.total} tests completed"><i style="width:${pct}%"></i></span><span class="mt-count">${r.done}/${r.total}</span>${r.fail ? `<span class="mt-res r-fail">${r.fail} fail</span>` : ''}${chip(r.state)}</button>`
-      + `<div class="mt-body"${open ? '' : ' hidden'}><div class="mt-info">${info}${r.tests.length && r.source !== 'bench' ? `<button type="button" class="dtr-btn dtr-btn-primary mt-opens" data-open-mother="${esc(r.lab_ref)}">Open test sheet</button>` : ''}</div>${childRows(r)}</div></article>`;
+      + `<div class="mt-body"${open ? '' : ' hidden'}><div class="mt-info">${info}${r.tests.length && r.source !== 'bench' ? `<button type="button" class="dtr-btn dtr-btn-primary mt-opens" data-open-mother="${esc(r.lab_ref)}">Open test sheet</button>` : ''}${canEdit && r.source !== 'bench' ? `<span class="mt-addtest" data-addwrap="${esc(r.lab_ref)}"><button type="button" class="dtr-btn dtr-btn-outline" data-add-test="${esc(r.lab_ref)}" title="Put a test of this material type back on the list">+ Add test</button></span>` : ''}</div>${childRows(r)}</div></article>`;
   }
 
   function draw() {
@@ -134,7 +143,7 @@
   });
 
   // ================================================================ the test sheet: values, average, standard and rating of a Lab Ref (as on the Access forms)
-  const sheet = { mother: '', test: 0, canEdit: false, tests: [], timer: 0, seq: 0 };
+  const sheet = { mother: '', test: 0, canEdit: false, tests: [], timer: 0, seq: 0, sibs: [], dirty: false };
   const fib = { wool: 'Wool', acrylic: 'Acrylic', polyester: 'Polyester', nylon: 'Nylon', cotton: 'Cotton', acetate: 'Acetate' };
   const fmt = (v) => (v === null || v === undefined || v === '' ? '' : String(v));
   const ratingChip = (r) => (r ? `<span class="mt-res r-${esc(r.toLowerCase())}">${esc(r)}</span>` : '<span class="mt-none">-</span>');
@@ -176,20 +185,25 @@
     return '<span class="mt-none">-</span>';
   }
 
+  const nOf = (r) => (r.mode === 'avg' || r.mode === 'each' || r.mode === 'plain' ? r.n : (r.mode === 'calc' ? r.specs.length : 0));
+  const ovOf = (t) => { const o = t.override || {}; return { hide: [].concat(o.hide || []), n: Array.isArray(o.n) ? {} : Object.assign({}, o.n || {}) }; };
+
   function testSection(t) {
     const rows = t.layout; const calc = (t.calc && t.calc.rows) || {};
     const cnt = (r) => (r.mode === 'avg' || r.mode === 'each') ? r.n : (r.mode === 'calc' ? r.specs.length : (r.mode === 'fibre' ? 6 : (r.mode === 'plain' ? 0 : 1)));
     const sampleInfo = rows.filter((r) => cnt(r) > 0).map((r) => `${r.label ? r.label + ': ' : ''}${cnt(r)} ${r.mode === 'fibre' ? 'fibres' : (cnt(r) === 1 ? 'sample' : 'samples')}`).join(' · ');
     const head = `<header class="mt-sh-h"><div><b>${esc(t.name)}</b><small>${esc([t.method].filter(Boolean).join(' · '))}</small><small class="mt-sh-n">${esc(sampleInfo)}</small></div><div class="mt-sh-r"><span class="mt-sh-state" data-state>${ratingChip(t.result)}</span>`
-      + `<span class="mono mt-sh-child">${esc(t.child)}</span>${sheet.canEdit ? '<button type="button" class="dtr-btn dtr-btn-primary" data-sh-save>Save</button>' : ''}<small class="mt-msg" role="status"></small></div></header>`;
+      + `<span class="mono mt-sh-child">${esc(t.child)}</span>${sheet.canEdit ? '<button type="button" class="dtr-btn dtr-btn-outline mt-rmtest" data-sh-remove title="This test does not apply to this material: take it off the list">Remove test</button><button type="button" class="dtr-btn dtr-btn-primary" data-sh-save>Save</button>' : ''}<small class="mt-msg" role="status"></small></div></header>`;
     const body = rows.map((r) => {
       const c = calc[r.k] || {};
       const mm = (r.mode === 'avg' && r.n > 1) || (r.mode === 'calc' && r.specs.length > 1) ? `<span data-out="max">${fmt(c.max)}</span><span data-out="min">${fmt(c.min)}</span>` : '';
       const ave = r.mode === 'avg' || r.mode === 'calc' ? `<b data-out="ave">${fmt(c.ave)}</b>` : '';
-      return `<tr data-k="${esc(r.k)}"><td class="mt-sh-lab">${esc(r.label || '')}</td><td>${inputCells(t, r)}${r.hint ? `<small class="mt-hint">${esc(r.hint)}</small>` : ''}</td><td class="mt-sh-unit">${esc(r.unit || '')}</td><td class="mt-sh-mm">${mm}</td><td class="mt-sh-ave">${ave}</td>`
+      const nctl = sheet.canEdit && nOf(r) > 0 ? `<div class="mt-nctl" title="How many samples this item has (the default may be 3: it can be 2 or 5)"><span>Samples</span><button type="button" data-n-dec="${esc(r.k)}"${nOf(r) <= 1 ? ' disabled' : ''} aria-label="One sample less">&minus;</button><b>${nOf(r)}</b><button type="button" data-n-inc="${esc(r.k)}"${nOf(r) >= 10 ? ' disabled' : ''} aria-label="One sample more">+</button></div>` : '';
+      const rmrow = sheet.canEdit && rows.length > 1 ? `<button type="button" class="mt-x" data-rm-row="${esc(r.k)}" title="Remove this test item (it does not apply)" aria-label="Remove ${esc(r.label || r.k)}">&#10005;</button>` : '';
+      return `<tr data-k="${esc(r.k)}"><td class="mt-sh-lab">${rmrow}${esc(r.label || '')}</td><td>${inputCells(t, r)}${nctl}${r.hint ? `<small class="mt-hint">${esc(r.hint)}</small>` : ''}</td><td class="mt-sh-unit">${esc(r.unit || '')}</td><td class="mt-sh-mm">${mm}</td><td class="mt-sh-ave">${ave}</td>`
         + `<td class="mt-sh-std" data-out="std">${stdText(r, c)}</td><td class="mt-sh-rt" data-out="rating">${ratingCell(t, r, c)}</td></tr>`;
     }).join('');
-    return `<section class="mt-sh ${tint(t.result)}" data-id="${t.id}" data-code="${esc(t.code)}">${head}<table class="mt-sh-t"><thead><tr><th></th><th>Test items</th><th>Unit</th><th>Max / Min</th><th>Average</th><th>Standard</th><th>Rating</th></tr></thead><tbody>${body}</tbody></table></section>`;
+    return `<section class="mt-sh ${tint(t.result)}" data-id="${t.id}" data-code="${esc(t.code)}">${head}<table class="mt-sh-t"><thead><tr><th></th><th>Test items</th><th>Unit</th><th>Max / Min</th><th>Average</th><th>Standard</th><th>Rating</th></tr></thead><tbody>${body}</tbody></table>${sheet.canEdit && (t.removed || []).length ? `<div class="mt-sh-removed"><span>Removed items:</span>${t.removed.map((x) => `<button type="button" class="mt-chipbtn" data-rs-row="${esc(x.k)}" title="Bring this item back">${esc(x.label)} &#8634;</button>`).join('')}</div>` : ''}</section>`;
   }
 
   function sheetHtml(j) {
@@ -210,11 +224,28 @@
     try {
       const r = await fetch(base + 'sheet?mother=' + encodeURIComponent(mother) + (test ? '&test=' + test : ''), { credentials: 'same-origin', headers: { Accept: 'application/json' } });
       const j = await r.json(); if (!j.ok) throw new Error(j.message || 'bad');
-      sheet.canEdit = !!j.can_edit; sheet.tests = j.tests;
+      sheet.canEdit = !!j.can_edit; sheet.tests = j.tests; sheet.dirty = false; sibNav();
       $('#mt-sh-title').textContent = (test && j.tests[0] ? j.tests[0].name + ' · ' : '') + 'Lab ' + mother + ' · ' + (j.mother.type || '') + ' Test Results';
       $('#mt-sh-body').innerHTML = sheetHtml(j);
       $('#mt-sh-saveall').hidden = !(sheet.canEdit && j.tests.length > 1);
     } catch (e) { $('#mt-sh-body').innerHTML = `<p class="mt-empty">${esc(e.message || 'Could not open the sheet.')}</p>`; }
+  }
+  // next / previous test of the same Lab Ref (only when ONE test is open): the tests as the list shows them
+  function sibNav() {
+    const g = state.rows.find((r) => r.lab_ref === sheet.mother && r.source !== 'bench');
+    sheet.sibs = g ? g.tests : [];
+    const i = sheet.test ? sheet.sibs.findIndex((t) => t.id === sheet.test) : -1;
+    const nx = $('#mt-sh-next'); const pv = $('#mt-sh-prev');
+    if (!nx || !pv) return;
+    const next = i >= 0 ? sheet.sibs[i + 1] : null; const prev = i > 0 ? sheet.sibs[i - 1] : null;
+    nx.hidden = !next; pv.hidden = !prev;
+    if (next) { nx.textContent = 'Next: ' + next.name + ' \u203A'; nx.dataset.id = next.id; }
+    if (prev) { pv.textContent = '\u2039 ' + prev.name; pv.dataset.id = prev.id; }
+  }
+  async function goTest(id) {          // what was typed is kept (saved) before moving on, so nothing is lost
+    if (!id) return;
+    if (sheet.canEdit && sheet.dirty) { for (const sec of $$('.mt-sh')) { if (Object.keys(sectionValues(sec)).length) await saveSection(sec, true); } await load(); }
+    await openSheet(sheet.mother, +id);
   }
   const closeSheet = () => { $('#mt-sheet').hidden = true; document.body.classList.remove('mt-noscroll'); load(); };
 
@@ -222,7 +253,7 @@
 
   async function recalc() {
     const my = ++sheet.seq;
-    const tests = $$('.mt-sh').map((s) => ({ id: +s.dataset.id, code: s.dataset.code, values: sectionValues(s) }));
+    const tests = $$('.mt-sh').map((s) => { const tt = sheet.tests.find((x) => x.id === +s.dataset.id); return { id: +s.dataset.id, code: s.dataset.code, values: sectionValues(s), layout: tt ? ovOf(tt) : undefined }; });
     try {
       const r = await fetch(base + 'sheet-calc', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfMeta ? csrfMeta.content : '' }, body: JSON.stringify({ mother: sheet.mother, tests }) });
       const j = await r.json(); if (csrfMeta && j.csrf) csrfMeta.content = j.csrf;
@@ -242,14 +273,26 @@
     } catch (e) { /* the numbers stay as they were */ }
   }
 
+  async function changeLayout(sec, mutate) {
+    const t = sheet.tests.find((x) => x.id === +sec.dataset.id); if (!t) return;
+    const ov = ovOf(t); mutate(ov, t);
+    const values = sectionValues(sec);
+    const j = await post('sheet-layout', { id: t.id, layout: ov, values });
+    if (!j.ok) { note(j.message || 'Could not change the test items.', false); return; }
+    Object.assign(t, { layout: j.layout, override: j.override, removed: j.removed, calc: j.calc, values });
+    const tmp = document.createElement('div'); tmp.innerHTML = testSection(t); sec.replaceWith(tmp.firstElementChild);
+    sheet.dirty = true;
+  }
+
   async function saveSection(sec, quiet) {
     const msg = $('.mt-msg', sec); const id = +sec.dataset.id;
-    const body = { id, values: sectionValues(sec), technician: $('#mt-sh-tech').value, tested_date: $('#mt-sh-date').value };
+    const tt = sheet.tests.find((x) => x.id === id);
+    const body = { id, values: sectionValues(sec), technician: $('#mt-sh-tech').value, tested_date: $('#mt-sh-date').value, layout: tt ? ovOf(tt) : undefined };
     try {
       const r = await fetch(base + 'sheet-save', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfMeta ? csrfMeta.content : '' }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => ({})); if (csrfMeta && j.csrf) csrfMeta.content = j.csrf;
       if (!quiet) { msg.textContent = j.message || (r.ok ? 'Saved.' : 'Not saved.'); msg.className = 'mt-msg ' + (r.ok ? 'ok' : 'bad'); }
-      if (r.ok) { $('[data-state]', sec).innerHTML = ratingChip(j.result); if (!$('#mt-sh-date').value) { /* the server chose the date */ } }
+      if (r.ok) { sheet.dirty = false; $('[data-state]', sec).innerHTML = ratingChip(j.result); if (!$('#mt-sh-date').value) { /* the server chose the date */ } }
       return r.ok;
     } catch (e) { if (!quiet) { msg.textContent = 'Could not save.'; msg.className = 'mt-msg bad'; } return false; }
   }
@@ -260,6 +303,52 @@
     const ot = e.target.closest('[data-open-test]');
     if (ot) { openSheet(ot.dataset.mother, +ot.dataset.openTest); return; }
     if (e.target.closest('#mt-sh-close') || e.target === $('#mt-sheet')) { closeSheet(); return; }
+    const nxb = e.target.closest('#mt-sh-next, #mt-sh-prev');
+    if (nxb) { nxb.disabled = true; await goTest(nxb.dataset.id); nxb.disabled = false; return; }
+    const rmr = e.target.closest('[data-rm-row]');
+    if (rmr) { const sec = rmr.closest('.mt-sh'); const k = rmr.dataset.rmRow; await changeLayout(sec, (ov) => { if (!ov.hide.includes(k)) ov.hide.push(k); }); return; }
+    const rsr = e.target.closest('[data-rs-row]');
+    if (rsr) { const sec = rsr.closest('.mt-sh'); const k = rsr.dataset.rsRow; await changeLayout(sec, (ov) => { ov.hide = ov.hide.filter((x) => x !== k); }); return; }
+    const nb = e.target.closest('[data-n-dec], [data-n-inc]');
+    if (nb) {
+      const sec = nb.closest('.mt-sh'); const k = nb.dataset.nDec || nb.dataset.nInc; const d = nb.dataset.nDec ? -1 : 1;
+      await changeLayout(sec, (ov, t) => { const r = t.layout.find((x) => x.k === k); if (r) ov.n[k] = Math.max(1, Math.min(10, nOf(r) + d)); });
+      return;
+    }
+    const rms = e.target.closest('[data-sh-remove]');
+    if (rms) {
+      const sec = rms.closest('.mt-sh'); const t = sheet.tests.find((x) => x.id === +sec.dataset.id); if (!t) return;
+      if (!window.confirm('Remove "' + t.name + '" from ' + sheet.mother + '?\n\nUse this when the test does not apply to this material. Any result already entered for it is deleted. You can add it back with "+ Add test".')) return;
+      const j = await post('test-remove', { id: t.id });
+      if (!j.ok) { note(j.message || 'Could not remove the test.', false); return; }
+      note(j.message, true); await load();
+      if (sheet.test) { const at = sheet.sibs.findIndex((x) => x.id === t.id); const go = sheet.sibs[at + 1] || sheet.sibs[at - 1]; sibNav(); if (go) await openSheet(sheet.mother, go.id); else closeSheet(); } else await openSheet(sheet.mother, 0);
+      return;
+    }
+    const rmt = e.target.closest('[data-rm-test]');
+    if (rmt) {
+      if (!window.confirm('Remove "' + rmt.dataset.name + '" from ' + rmt.dataset.lab + '?\n\nUse this when the test does not apply to this material. Any result already entered for it is deleted. You can add it back with "+ Add test".')) return;
+      const j = await post('test-remove', { id: +rmt.dataset.rmTest });
+      if (j.ok) { note(j.message, true); await load(); } else note(j.message || 'Could not remove the test.', false);
+      return;
+    }
+    const adt = e.target.closest('[data-add-test]');
+    if (adt) {
+      const lab = adt.dataset.addTest; const wrap = adt.closest('.mt-addtest');
+      try {
+        const r = await fetch(base + 'test-options?mother=' + encodeURIComponent(lab), { credentials: 'same-origin', headers: { Accept: 'application/json' } }); const j = await r.json();
+        if (!j.options || !j.options.length) { note('Every test of this material type is already on the list.', true); return; }
+        wrap.innerHTML = `<select data-add-sel aria-label="Test to add">${j.options.map((o) => `<option value="${esc(o.code)}">${esc(o.name)}${o.method ? ' (' + esc(o.method) + ')' : ''}</option>`).join('')}</select><button type="button" class="dtr-btn dtr-btn-primary" data-add-go="${esc(lab)}">Add</button><button type="button" class="dtr-btn dtr-btn-outline" data-add-cancel>Cancel</button>`;
+      } catch (err) { note('Could not read the tests of this material type.', false); }
+      return;
+    }
+    const ago = e.target.closest('[data-add-go]');
+    if (ago) {
+      const sel = $('[data-add-sel]', ago.closest('.mt-addtest')); const j = await post('test-add', { mother: ago.dataset.addGo, code: sel ? sel.value : '' });
+      if (j.ok) { note(j.message, true); await load(); } else note(j.message || 'Could not add the test.', false);
+      return;
+    }
+    if (e.target.closest('[data-add-cancel]')) { await load(); return; }
     const sv = e.target.closest('[data-sh-save]');
     if (sv) { sv.disabled = true; await saveSection(sv.closest('.mt-sh')); sv.disabled = false; return; }
     if (e.target.closest('#mt-sh-saveall')) {
@@ -268,14 +357,14 @@
       await openSheet(sheet.mother, sheet.test); b.disabled = false;
     }
   });
-  root.addEventListener('input', (e) => { if (e.target.closest('.mt-sh') && e.target.matches('[data-f]')) { clearTimeout(sheet.timer); sheet.timer = setTimeout(recalc, 280); } });
-  root.addEventListener('change', (e) => { if (e.target.closest('.mt-sh') && e.target.matches('select[data-f]')) recalc(); });
+  root.addEventListener('input', (e) => { if (e.target.closest('.mt-sh') && e.target.matches('[data-f]')) { sheet.dirty = true; clearTimeout(sheet.timer); sheet.timer = setTimeout(recalc, 280); } });
+  root.addEventListener('change', (e) => { if (e.target.closest('.mt-sh') && e.target.matches('select[data-f]')) { sheet.dirty = true; recalc(); } });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#mt-sheet').hidden) closeSheet(); });
   const reload = () => { state.page = 1; clearTimeout(timer); timer = setTimeout(load, 250); };
   $('#mt-q').addEventListener('input', reload);
   ['#mt-from', '#mt-to'].forEach((s) => $(s).addEventListener('change', () => { state.page = 1; load(); }));
   $('#mt-refresh').addEventListener('click', load);
-  $('#mt-expand').addEventListener('click', () => { state.rows.filter((r) => stOf(r) === state.st).slice((state.page - 1) * PER, state.page * PER).forEach((r) => state.open.add(r.id)); draw(); });
+  $('#mt-expand').addEventListener('click', () => { state.rows.filter((r) => stOf(r) === state.st).slice((state.page - 1) * PER, state.page * PER).forEach((r) => state.open.add(String(r.id))); draw(); });
   $('#mt-collapse').addEventListener('click', () => { state.open.clear(); draw(); });
   load();
 })();

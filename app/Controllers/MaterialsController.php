@@ -229,11 +229,14 @@ class MaterialsController extends BaseController
     private function sheetTest(array $t, array $ty, ?float $gauge): array
     {
         $values = json_decode((string) ($t['ValuesJson'] ?? ''), true) ?: [];
-        $calc   = \App\Libraries\MaterialSheet::compute((string) $t['TestCode'], $ty['type'], $ty['cat'], $values, $gauge);
+        $ov     = \App\Libraries\MaterialSheet::cleanOverride($values['_layout'] ?? null);
+        unset($values['_layout']);
+        $calc   = \App\Libraries\MaterialSheet::compute((string) $t['TestCode'], $ty['type'], $ty['cat'], $values + ['_layout' => $ov], $gauge);
 
         return [
             'id' => (int) $t['TestID'], 'child' => (string) $t['ChildLabRefNo'], 'code' => (string) $t['TestCode'], 'name' => (string) $t['TestType'], 'method' => (string) ($t['TestMethod'] ?? ''), 'unit' => (string) ($t['Unit'] ?? ''),
-            'layout' => \App\Libraries\MaterialSheet::layout((string) $t['TestCode'], $ty['type'], $ty['cat']), 'values' => (object) $values, 'calc' => $calc,
+            'layout' => \App\Libraries\MaterialSheet::layout((string) $t['TestCode'], $ty['type'], $ty['cat'], $ov), 'override' => $ov, 'removed' => \App\Libraries\MaterialSheet::removedRows((string) $t['TestCode'], $ty['type'], $ty['cat'], $ov),
+            'values' => (object) $values, 'calc' => $calc,
             'status' => (string) ($t['Status'] ?: 'Pending'), 'result' => (string) ($t['Result'] ?? ''), 'tested' => (string) ($t['TestedDate'] ?? ''), 'tech' => (string) ($t['Technician'] ?? ''), 'remarks' => (string) ($t['Remarks'] ?? ''),
         ];
     }
@@ -278,14 +281,14 @@ class MaterialsController extends BaseController
         $tests = (array) ($p['tests'] ?? []);
         foreach ($tests as $t) {                    // the thickness typed on the sheet decides the standards of the other tests
             if (($t['code'] ?? '') === 'GAU') {
-                $g = \App\Libraries\MaterialSheet::compute('GAU', $ty['type'], $ty['cat'], (array) ($t['values'] ?? []), null);
+                $g = \App\Libraries\MaterialSheet::compute('GAU', $ty['type'], $ty['cat'], (array) ($t['values'] ?? []) + ['_layout' => \App\Libraries\MaterialSheet::cleanOverride($t['layout'] ?? null)], null);
                 $gauge = $g['rows']['T']['ave'] ?? null;
             }
         }
         $gauge ??= \App\Libraries\MaterialSheet::gaugeOf((string) $mother['LabRefNo']);
         $out = [];
         foreach ($tests as $t) {
-            $out[(int) ($t['id'] ?? 0)] = \App\Libraries\MaterialSheet::compute((string) ($t['code'] ?? ''), $ty['type'], $ty['cat'], (array) ($t['values'] ?? []), $gauge);
+            $out[(int) ($t['id'] ?? 0)] = \App\Libraries\MaterialSheet::compute((string) ($t['code'] ?? ''), $ty['type'], $ty['cat'], (array) ($t['values'] ?? []) + ['_layout' => \App\Libraries\MaterialSheet::cleanOverride($t['layout'] ?? null)], $gauge);
         }
 
         return $this->response->setJSON(['ok' => true, 'gauge' => $gauge, 'tests' => $out, 'csrf' => csrf_hash()]);
@@ -312,8 +315,9 @@ class MaterialsController extends BaseController
                 $clean[(string) $k] = mb_substr(trim((string) $v), 0, 200);
             }
         }
+        $lay   = array_key_exists('layout', $p) ? \App\Libraries\MaterialSheet::cleanOverride($p['layout']) : \App\Libraries\MaterialSheet::cleanOverride((json_decode((string) ($t['ValuesJson'] ?? ''), true) ?: [])['_layout'] ?? null);
         $gauge = $t['TestCode'] === 'GAU' ? null : \App\Libraries\MaterialSheet::gaugeOf((string) $t['MotherLabRefNo']);
-        $calc  = \App\Libraries\MaterialSheet::compute((string) $t['TestCode'], $ty['type'], $ty['cat'], $clean, $gauge);
+        $calc  = \App\Libraries\MaterialSheet::compute((string) $t['TestCode'], $ty['type'], $ty['cat'], $clean + ['_layout' => $lay], $gauge);
         $date  = trim((string) ($p['tested_date'] ?? ''));
         if ($date !== '' && ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
             return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => 'The tested date is not valid.', 'csrf' => csrf_hash()]);
@@ -324,7 +328,7 @@ class MaterialsController extends BaseController
         }
         $u = service('auth')->user();
         $db->table('tbl_dtr_MaterialTrackerTests')->where('TestID', (int) $t['TestID'])->update([
-            'ValuesJson' => $clean ? json_encode($clean, JSON_UNESCAPED_UNICODE) : null, 'Result' => $calc['result'] ?: null, 'Status' => $status, 'TestedDate' => $status === 'Pending' ? null : $date,
+            'ValuesJson' => ($clean || $lay['hide'] || $lay['n']) ? json_encode($clean + (($lay['hide'] || $lay['n']) ? ['_layout' => $lay] : []), JSON_UNESCAPED_UNICODE) : null, 'Result' => $calc['result'] ?: null, 'Status' => $status, 'TestedDate' => $status === 'Pending' ? null : $date,
             'Technician' => mb_substr(trim((string) ($p['technician'] ?? '')), 0, 120), 'Remarks' => mb_substr(trim((string) ($p['remarks'] ?? '')), 0, 500),
             'UpdatedBy' => mb_substr((string) ($u['name'] ?? $u['username'] ?? ''), 0, 120), 'UpdatedAt' => date('Y-m-d H:i:s'),
         ]);
@@ -339,6 +343,136 @@ class MaterialsController extends BaseController
         \App\Libraries\ActivityLog::record('materials', 'sheet-save', (string) $t['ChildLabRefNo'], $status . ($calc['result'] !== '' ? ' ' . $calc['result'] : ''));
 
         return $this->response->setJSON(['ok' => true, 'message' => 'Saved: ' . $status . ($calc['result'] !== '' ? ' - ' . $calc['result'] : '') . '.', 'status' => $status, 'result' => $calc['result'], 'calc' => $calc, 'csrf' => csrf_hash()]);
+    }
+
+    private function noEdit(): ResponseInterface
+    {
+        return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'message' => 'Only the laboratory staff can change a material test.', 'csrf' => csrf_hash()]);
+    }
+
+    /**
+     * POST /materials/sheet-layout {id, layout:{hide:[], n:{}}, values}: a test item was removed / brought back or its number of samples changed on the sheet.
+     * The layout is kept with the test; the stored result is worked out again with it; the answer carries the new layout and the numbers of the typed values (nothing typed is saved here).
+     */
+    public function sheetLayout(): ResponseInterface
+    {
+        if (! self::canEdit()) {
+            return $this->noEdit();
+        }
+        $p  = $this->request->getJSON(true) ?? [];
+        $db = \Config\Database::connect();
+        $t  = $db->table('tbl_dtr_MaterialTrackerTests')->where('TestID', (int) ($p['id'] ?? 0))->get()->getRowArray();
+        if (! $t) {
+            return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'That test no longer exists.', 'csrf' => csrf_hash()]);
+        }
+        $mother = $db->table('tbl_dtr_MaterialTracker')->where('LabRefNo', $t['MotherLabRefNo'])->get()->getRowArray();
+        $ty     = $this->sheetType($mother ?: ['MaterialCode' => '', 'MaterialType' => (string) $t['MaterialType']]);
+        $ov     = \App\Libraries\MaterialSheet::cleanOverride($p['layout'] ?? null);
+        $stored = json_decode((string) ($t['ValuesJson'] ?? ''), true) ?: [];
+        unset($stored['_layout']);
+        $gauge  = $t['TestCode'] === 'GAU' ? null : \App\Libraries\MaterialSheet::gaugeOf((string) $t['MotherLabRefNo']);
+        $c      = \App\Libraries\MaterialSheet::compute((string) $t['TestCode'], $ty['type'], $ty['cat'], $stored + ['_layout' => $ov], $gauge);
+        $status = $c['result'] !== '' ? 'Completed' : ($c['any'] ? 'Ongoing' : 'Pending');
+        $u      = service('auth')->user();
+        $db->table('tbl_dtr_MaterialTrackerTests')->where('TestID', (int) $t['TestID'])->update([
+            'ValuesJson' => ($stored || $ov['hide'] || $ov['n']) ? json_encode($stored + (($ov['hide'] || $ov['n']) ? ['_layout' => $ov] : []), JSON_UNESCAPED_UNICODE) : null,
+            'Result' => $c['result'] ?: null, 'Status' => $stored ? $status : (string) ($t['Status'] ?: 'Pending'), 'UpdatedBy' => mb_substr((string) ($u['name'] ?? $u['username'] ?? ''), 0, 120), 'UpdatedAt' => date('Y-m-d H:i:s'),
+        ]);
+        $typed = [];
+        foreach ((array) ($p['values'] ?? []) as $k => $v) {
+            if (preg_match('/^[A-Za-z0-9_]{1,30}$/', (string) $k) && (is_scalar($v) || $v === null) && trim((string) $v) !== '') {
+                $typed[(string) $k] = mb_substr(trim((string) $v), 0, 200);
+            }
+        }
+        $calc = \App\Libraries\MaterialSheet::compute((string) $t['TestCode'], $ty['type'], $ty['cat'], $typed + ['_layout' => $ov], $gauge);
+        \App\Libraries\DataCache::bump('material');
+        \App\Libraries\ActivityLog::record('materials', 'sheet-layout', (string) $t['ChildLabRefNo'], 'removed: ' . implode(',', $ov['hide']) . ' samples: ' . json_encode($ov['n']));
+
+        return $this->response->setJSON(['ok' => true, 'layout' => \App\Libraries\MaterialSheet::layout((string) $t['TestCode'], $ty['type'], $ty['cat'], $ov), 'override' => $ov, 'removed' => \App\Libraries\MaterialSheet::removedRows((string) $t['TestCode'], $ty['type'], $ty['cat'], $ov),
+            'calc' => $calc, 'csrf' => csrf_hash()]);
+    }
+
+    /** POST /materials/test-remove {id}: a test type that does not apply to this Lab Ref is taken off its list (it can be added again with test-add) */
+    public function testRemove(): ResponseInterface
+    {
+        if (! self::canEdit()) {
+            return $this->noEdit();
+        }
+        $p  = $this->request->getJSON(true) ?? [];
+        $db = \Config\Database::connect();
+        $t  = $db->table('tbl_dtr_MaterialTrackerTests')->where('TestID', (int) ($p['id'] ?? 0))->get()->getRowArray();
+        if (! $t) {
+            return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'That test is already gone.', 'csrf' => csrf_hash()]);
+        }
+        $db->table('tbl_dtr_MaterialTrackerTests')->where('TestID', (int) $t['TestID'])->delete();
+        \App\Libraries\DataCache::bump('material');
+        \App\Libraries\ActivityLog::record('materials', 'test-remove', (string) $t['ChildLabRefNo'], 'not applicable: ' . $t['TestType'] . ($t['Result'] ? ' (it had result ' . $t['Result'] . ')' : ''));
+
+        return $this->response->setJSON(['ok' => true, 'message' => $t['TestType'] . ' was removed from ' . $t['MotherLabRefNo'] . '.', 'csrf' => csrf_hash()]);
+    }
+
+    /** the tests of the material type that this Lab Ref does not have (any more) */
+    private function missingTests(array $mother): array
+    {
+        $db   = \Config\Database::connect();
+        $spec = (string) ($db->query('SELECT MaterialType FROM tbl_dtr_material_type_status WHERE MaterialCode = ? LIMIT 1', [$mother['MaterialCode']])->getRow('MaterialType') ?? '');
+        $res  = \App\Libraries\MaterialCatalog::resolve($spec !== '' ? $spec : (string) $mother['MaterialType']) ?? \App\Libraries\MaterialCatalog::resolve((string) $mother['MaterialType']);
+        if (! $res) {
+            return [[], null];
+        }
+        $have = array_column($db->table('tbl_dtr_MaterialTrackerTests')->select('TestCode')->where('MotherLabRefNo', $mother['LabRefNo'])->get()->getResultArray(), 'TestCode');
+        $out  = [];
+        foreach ($res['tests'] as $i => $code) {
+            if (! in_array($code, $have, true)) {
+                $d     = \App\Libraries\MaterialCatalog::test($code);
+                $out[] = ['code' => $code, 'name' => $d['name'], 'method' => $d['method'], 'sort' => $i + 1];
+            }
+        }
+
+        return [$out, $res];
+    }
+
+    /** GET /materials/test-options?mother=: the tests that can be added back to this Lab Ref */
+    public function testOptions(): ResponseInterface
+    {
+        $mother = \Config\Database::connect()->table('tbl_dtr_MaterialTracker')->where('LabRefNo', trim((string) $this->request->getGet('mother')))->get()->getRowArray();
+        if (! $mother) {
+            return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'That Lab Reference was not found.']);
+        }
+        [$opts] = $this->missingTests($mother);
+
+        return $this->response->setJSON(['ok' => true, 'options' => $opts, 'can_edit' => self::canEdit()]);
+    }
+
+    /** POST /materials/test-add {mother, code}: a test type of the material is put back on the Lab Ref */
+    public function testAdd(): ResponseInterface
+    {
+        if (! self::canEdit()) {
+            return $this->noEdit();
+        }
+        $p      = $this->request->getJSON(true) ?? [];
+        $db     = \Config\Database::connect();
+        $mother = $db->table('tbl_dtr_MaterialTracker')->where('LabRefNo', trim((string) ($p['mother'] ?? '')))->get()->getRowArray();
+        if (! $mother) {
+            return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'That Lab Reference was not found.', 'csrf' => csrf_hash()]);
+        }
+        [$opts, $res] = $this->missingTests($mother);
+        $pick = null;
+        foreach ($opts as $o) {
+            if ($o['code'] === (string) ($p['code'] ?? '')) {
+                $pick = $o;
+            }
+        }
+        if (! $pick || ! $res) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => 'That test is not one of this material type\'s tests, or it is already on the list.', 'csrf' => csrf_hash()]);
+        }
+        $d = \App\Libraries\MaterialCatalog::test($pick['code']);
+        $db->query('INSERT IGNORE INTO tbl_dtr_MaterialTrackerTests (TrackerID, MotherLabRefNo, ChildLabRefNo, MaterialCode, MaterialType, TestType, TestCode, Status, CreatedAt, TestMethod, Unit, SortNo)
+            VALUES (?, ?, ?, ?, ?, ?, ?, "Pending", NOW(), ?, ?, ?)', [(int) $mother['TrackerID'], $mother['LabRefNo'], $mother['LabRefNo'] . '-' . $pick['code'], (string) ($mother['MaterialCode'] ?? ''), $res['type'], $d['name'], $pick['code'], $d['method'], $d['unit'], $pick['sort']]);
+        \App\Libraries\DataCache::bump('material');
+        \App\Libraries\ActivityLog::record('materials', 'test-add', $mother['LabRefNo'] . '-' . $pick['code'], 'test added: ' . $d['name']);
+
+        return $this->response->setJSON(['ok' => true, 'message' => $d['name'] . ' was added to ' . $mother['LabRefNo'] . '.', 'csrf' => csrf_hash()]);
     }
 
     // ------------------------------------------------------------------------------------------------------------------ the Lab Material Test Collection (bench log)

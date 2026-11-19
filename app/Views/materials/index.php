@@ -51,6 +51,8 @@
             <header class="mt-modal-head">
                 <h2 id="mt-sh-title">Test sheet</h2>
                 <div class="mt-modal-act">
+                    <button type="button" class="dtr-btn dtr-btn-outline" id="mt-sh-prev" hidden></button>
+                    <button type="button" class="dtr-btn dtr-btn-primary" id="mt-sh-next" hidden></button>
                     <button type="button" class="dtr-btn dtr-btn-primary" id="mt-sh-saveall" hidden>Save all tests</button>
                     <button type="button" class="dtr-btn dtr-btn-outline" id="mt-sh-close">Close</button>
                 </div>

@@ -3165,7 +3165,7 @@ input[type="radio"][data-locked], input[type="checkbox"][data-locked], select[da
 .dtr-del-btn:hover{color:#dc2626;background:#fee2e2;border-color:#fecaca}.dtr-spin{width:44px;height:44px;margin:0 auto 12px;border:4px solid #e2e8f0;border-top-color:#2563eb;border-radius:50%;animation:dtrspin .8s linear infinite}
 @keyframes dtrspin{to{transform:rotate(360deg)}}
 /* fifth KPI: Shutdown Lines */
-.dtr-top-kpis{grid-template-columns:repeat(6,1fr)}
+.dtr-top-kpis{grid-template-columns:repeat(7,minmax(0,1fr))}
 .dtr-kpi-row{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;margin:2px 0}
 .dtr-kpi-row b{margin:0}
 .dtr-kpi-pct{font-style:normal;font-size:11px;font-weight:800;padding:2px 7px;border-radius:999px;line-height:1.2;white-space:nowrap;font-variant-numeric:tabular-nums}
@@ -3187,7 +3187,7 @@ input[type="radio"][data-locked], input[type="checkbox"][data-locked], select[da
 .dtr-lt-cnt.is-first:not(.is-zero){background:#dcfce7;color:#15803d;border-color:#86efac}
 .dtr-ico-shut{background:rgba(100,116,139,.16);color:#475569}
 .dtr-txt-shut{color:#475569}
-@media (max-width:1280px){.dtr-top-kpis{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:1280px){.dtr-top-kpis{grid-template-columns:repeat(4,1fr)}}
 @media (max-width:800px){.dtr-top-kpis{grid-template-columns:repeat(2,1fr)}}
 /* date filter (calendar button beside InterLink Sync) */
 .dtr-right-tools{display:flex;align-items:center;gap:8px}
@@ -4232,3 +4232,33 @@ html[data-theme="dark"] .mt-calc{background:#111c33;border-color:#334155}html[da
 .mt-stab.s-failed:not(.active) small{background:rgba(220,38,38,.15);color:#dc2626}
 .mt-pager{display:flex;align-items:center;justify-content:center;gap:14px;padding:12px 0}
 
+/* Material Receive: Test Selection (restored from DEV2-Ja Nov 18 version) */
+.dtr-mrec-table thead tr.mrec-grp-row th.grp-tst{background:#eef2ff;color:#4338ca;border-right:1px solid #c7d2fe}
+.dtr-mrec-table .mr-tests-btn{width:100%;box-sizing:border-box;min-height:30px;padding:4px 8px;border:3px solid #2563eb;border-radius:8px;background:#fff;color:#1e3a8a;font-size:11.5px;font-weight:800;cursor:pointer;text-align:center}
+.dtr-mrec-table .mr-tests-btn:hover{background:#eff6ff}
+.dtr-mrec-table .mr-tests-btn.has{background:#dbeafe;border-color:#1d4ed8}
+.mr-tests-panel{position:fixed;z-index:10050;width:330px;max-height:370px;display:flex;flex-direction:column;background:#fff;border:3px solid #2563eb;border-radius:10px;box-shadow:0 12px 32px rgba(15,23,42,.28);padding:8px}
+.mr-tests-panel .mrt-q{width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px}
+.mr-tests-panel .mrt-act{display:flex;justify-content:space-between;margin:6px 0 4px}
+.mr-tests-panel .mrt-act button{border:1px solid #cbd5e1;background:#f8fafc;border-radius:6px;padding:3px 12px;font-size:11.5px;font-weight:700;cursor:pointer}
+.mr-tests-panel .mrt-act button[data-a=done]{background:#2563eb;border-color:#2563eb;color:#fff}
+.mr-tests-panel .mrt-list{overflow:auto;flex:1}
+.mr-tests-panel .mrt-list label{display:flex;align-items:flex-start;gap:8px;padding:5px 6px;border-radius:6px;font-size:12px;color:#0f172a;cursor:pointer}
+.mr-tests-panel .mrt-list label:hover{background:#eff6ff}
+.mr-tests-panel .mrt-list input{margin-top:2px}
+html[data-theme="dark"] .mr-tests-panel{background:#0f172a;color:#e2e8f0}
+html[data-theme="dark"] .mr-tests-panel .mrt-list label{color:#e2e8f0}
+html[data-theme="dark"] .dtr-mrec-table .mr-tests-btn{background:rgba(15,23,42,.8);color:#bfdbfe}
+.dtr-mrec-table .mr-type-wrap{display:flex;align-items:center;gap:4px}
+.dtr-mrec-table .mr-type-wrap .mr-type{flex:1 1 auto;min-width:0}
+.dtr-mrec-table td input.mr-qcqty{flex:0 0 58px;width:58px !important;padding:7px 2px 7px 6px !important;text-align:center;font-weight:700}
+.dtr-mrec-table td input.mr-qcqty::-webkit-inner-spin-button,.dtr-mrec-table td input.mr-qcqty::-webkit-outer-spin-button{opacity:1;height:22px;margin-left:2px;cursor:pointer}
+/* Material Receive: live saves tests from the material catalog (MaterialCatalog), so the manual Test Selection column stays hidden until it is wired to the save */
+.dtr-mrec-table col:nth-last-child(2),.dtr-mrec-table th.grp-tst,.dtr-mrec-table td.mrec-td-tests{display:none}
+.mt-x{border:0;background:transparent;color:#94a3b8;cursor:pointer;font-size:13px;line-height:1;padding:2px 5px;border-radius:6px;margin-right:4px}.mt-x:hover{background:rgba(220,38,38,.12);color:#dc2626}
+.mt-nctl{display:inline-flex;align-items:center;gap:6px;margin:6px 0 0 10px;font-size:12px;color:#64748b}.mt-nctl b{min-width:18px;text-align:center;color:#0f172a}
+.mt-nctl button{width:24px;height:24px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;cursor:pointer;font-weight:700;line-height:1}.mt-nctl button:disabled{opacity:.35;cursor:not-allowed}.mt-nctl button:not(:disabled):hover{background:#eff6ff;border-color:#2563eb}
+.mt-sh-removed{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 4px 2px;font-size:12px;color:#64748b}
+.mt-chipbtn{border:1px dashed #94a3b8;background:#f8fafc;border-radius:99px;padding:3px 10px;cursor:pointer;font-size:12px}.mt-chipbtn:hover{border-color:#2563eb;color:#2563eb}
+.mt-rmtest{color:#dc2626!important;border-color:#fecaca!important}.mt-addtest{display:inline-flex;gap:6px;align-items:center;margin-left:8px}
+.mt-toast{position:fixed;right:20px;bottom:24px;z-index:100000;padding:10px 16px;border-radius:10px;color:#fff;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.25);transition:opacity .4s}.mt-toast.ok{background:#15803d}.mt-toast.bad{background:#dc2626}.mt-toast.out{opacity:0}
