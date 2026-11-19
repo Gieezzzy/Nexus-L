@@ -1372,7 +1372,18 @@ class DtrController extends BaseController
             return $fail('Tick at least one pull type.');
         }
         $db   = \Config\Database::connect();
-        $info = $db->table('tbl_dtr_bonding_info')->where('BondingTestID', $id)->get()->getRowArray();
+        if (($p['kind'] ?? '') === 'lacking') {          // a Lacking marker of the collection (no bonding report yet): the row is the tracker row, its report row only when one exists
+            $t0 = $db->table('tbl_dtr_BondingTracker')->where('TrackerID', $id)->get()->getRowArray();
+            if (! $t0) {
+                return $fail('That bonding entry no longer exists.', 404);
+            }
+            $info = $db->table('tbl_dtr_bonding_info')->where('LabRefNo', $t0['LabRefNo'])->orderBy('BondingTestID', 'DESC')->get(1)->getRowArray() ?: [
+                'LabRefNo' => $t0['LabRefNo'], 'ModelStyle' => $t0['Style'] ?? '', 'Color' => $t0['Colorway'] ?? '', 'POLotNO' => $t0['ProductionCode'] ?? '', 'MTL' => $t0['MTL'] ?? '',
+                'ProductionDate' => $t0['ProductionDate'] ?? '', 'ReceivedDate' => $t0['CollectionDate'] ?? '', 'Technician' => $t0['Technician'] ?? '', 'TestType' => $t0['TestType'] ?? '',
+            ];
+        } else {
+            $info = $db->table('tbl_dtr_bonding_info')->where('BondingTestID', $id)->get()->getRowArray();
+        }
         if (! $info) {
             return $fail('That bonding entry no longer exists.', 404);
         }

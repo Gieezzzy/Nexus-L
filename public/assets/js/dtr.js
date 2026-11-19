@@ -1509,7 +1509,7 @@
   // the row's other columns were synced and locked.
   const PULL_TYPES = [['HEEL PULL', 'Heel Pull'], ['EYELET', 'Eyelet'], ['D-RING', 'D-Ring'], ['RIVET', 'Rivet']];
   const emptyPullCell = (tr) => {
-    if (!window.dtrCanAddPull || !tr || !tr.querySelector('.dtr-del-btn[data-del="bonding"]')) return null;   // Admin, Supervisor and Bonding PIC only
+    if (!window.dtrCanAddPull || !tr || !tr.querySelector('.dtr-del-btn[data-del="bonding"], .dtr-del-btn[data-del="lacking"]')) return null;   // Admin, Supervisor and Bonding PIC only
     const heads = [...tr.closest('table').querySelectorAll('thead th')].map((th) => th.textContent.replace(/[▲▼]/g, '').trim());   // the sort arrows of a header are not part of its name
     const i = heads.indexOf('Pull Test LabRefNo');
     const td = i >= 0 ? tr.children[i] : null;
@@ -1561,7 +1561,7 @@
           // pull tests for THIS row: their Lab Refs and details are made from the row (same Production Code, line, date and side)
           const pr = await apiFetch('dtr/add-pull-tests', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: Number(btn.dataset.id), pullTypes }),
+            body: JSON.stringify({ id: Number(btn.dataset.id), kind: btn.dataset.edit, pullTypes }),
           });
           if (!(pr && pr.ok)) { toast((pr && pr.message) || 'The pull tests could not be added.'); btn.disabled = false; return; }
           msg = (msg ? msg + ' ' : '') + pr.message;
