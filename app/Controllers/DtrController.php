@@ -5209,7 +5209,7 @@ class DtrController extends BaseController
         }
 
         $defs  = $this->wsSections();
-        $typeS = ['UV' => 'E03', 'Washing' => 'G03', 'Dip Test' => 'E26', 'Heat Aging' => 'E04', 'Hydrolysis' => 'TM361'];
+        $typeS = ['UV' => 'E03', 'UV Light' => 'E03', 'Washing' => 'G03', 'Dip Test' => 'E26', 'Heat Aging' => 'E04', 'Hydrolysis' => 'TM361'];
         // which field a piece of the Findings text belongs to (first match wins; a keyword the section has no field for goes to "other")
         $kw = ['delam' => '/delamin|separat/i', 'bleed' => '/bleed/i', 'color' => '/colou?r/i', 'warp' => '/warp/i', 'bloom' => '/bloom/i', 'yellow' => '/yellow|discolou?r/i',
             'cut' => '/\bcut\b/i', 'crack' => '/crack/i', 'wp' => '/penetrat|leak|water/i'];
@@ -5322,6 +5322,17 @@ class DtrController extends BaseController
     }
 
     /**
+        // a whole shoe can have several intake lines (L / R collections): every test type recorded under this parent counts
+        try {
+            foreach ($db->table('tbl_dtr_WholeshoeTracker')->select('TestType')->where('WholeshoeLabRefNo', $ref)->get()->getResultArray() as $k) {
+                $tt = trim((string) $k['TestType']);
+                if ($tt !== '' && ! in_array($tt, $tests, true) && ! in_array(strtolower($tt) === 'uv light' ? 'UV' : ($tt === 'UV' ? 'UV Light' : $tt), $tests, true)) {
+                    $tests[] = $tt;
+                }
+            }
+        } catch (\Throwable $e) {
+            // the intake line alone
+        }
      * GET /dtr/wholeshoe-report-pdf?lab_ref=&inline=1
      * "Whole Footwear Test Results" (Form # Lab VF 002) filled from the whole shoe intake and the saved results; only the test
      * sections ticked at intake are printed (all when none were).
