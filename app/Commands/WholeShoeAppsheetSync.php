@@ -101,26 +101,51 @@ class WholeShoeAppsheetSync extends BaseCommand
         $trk  = $db->table('tbl_dtr_wholeshoetracker')->where('ShoeID', $id)->get()->getResultArray();
         $ink  = $db->table('tbl_dtr_wholeshoe_intake')->where('ShoeID', $id)->get()->getResultArray();
         $uni  = $db->table('tbl_dtr_unified_labrefs')->where('form_slug', 'wholeshoe')->where('appsheet_id', $id)->get()->getResultArray();
-        $here = $trk || $ink || $uni;
-        if (! $here && $r['tr'] === '') {
-            CLI::write("SKIP  {$r['mother']} ({$id}): not in NEXUS-L under this AppSheet id and no TR - left as it is (it may have been entered in NEXUS-L directly)");
-            $stat['skipped']++;
-
-            return;
+        $adoptT = $adoptI = [];
+        if (! $trk && ! $ink && ! $uni) {
+            // entered in NEXUS-L directly (no AppSheet id yet): the same production code within two days of the AppSheet date is the same whole shoe
+            $win = 'BETWEEN DATE_SUB(?, INTERVAL 2 DAY) AND DATE_ADD(?, INTERVAL 2 DAY)';
+            $adoptT = $db->query("SELECT * FROM tbl_dtr_wholeshoetracker WHERE COALESCE(ShoeID, '') = '' AND LOWER(ProductionCode) = LOWER(?) AND COALESCE(ProductionDate, CollectionDate) {$win}", [$r['prod'], $r['date'], $r['date']])->getResultArray();
+            $adoptI = $db->query("SELECT * FROM tbl_dtr_wholeshoe_intake WHERE COALESCE(ShoeID, '') = '' AND LOWER(ProdCode) = LOWER(?) AND COALESCE(ProductionDate, CollectionDate) {$win}", [$r['prod'], $r['date'], $r['date']])->getResultArray();
+            $trk = $adoptT;
+            $ink = $adoptI;
         }
+        $here = $trk || $ink || $uni;
         if (! preg_match('/^DTP(\d{8})WS([AB])(\d+)-([RL])$/', $r['mother'], $m)) {
-            CLI::write("SKIP  {$r['mother']} ({$id}): the AppSheet mother has no building/line/side");
-            $stat['skipped']++;
+            $sd = $ink[0]['Side'] ?? ($trk[0]['Side'] ?? '');
+            if ($sd === '') {   // all the tests of the AppSheet line are of one side: that is the side of the whole shoe
+                $sides = array_unique(array_filter(array_map(static fn ($t) => preg_match('/-([RL])(?:-\d+)?$/', (string) $t['ref'], $mm) ? $mm[1] : '', $r['tests'])));
+                $sd    = count($sides) === 1 ? reset($sides) : '';
+            }
+            if ($sd !== '' && preg_match('/^DTP(\d{8})WS([AB])(\d+)-?$/', $r['mother'], $m2)) {
+                $m = [$r['mother'], $m2[1], $m2[2], $m2[3], $sd];
+            } else {
+                CLI::write("SKIP  {$r['mother']} ({$id}): the AppSheet mother has no building/line/side (a trial or an incomplete Lab Ref) - tell me the side to add it");
+                $stat['skipped']++;
 
-            return;
+                return;
+            }
         }
         [$ymd, $bld, $line, $side] = [$m[1], $m[2], $m[3], $m[4]];
         $mother = "DTP{$ymd}WH{$bld}{$line}-{$side}";
-        for ($n = 2; isset($used[$mother]) && $used[$mother] !== $id || $this->taken($db, $mother, $id); $n++) {
+        for ($n = 2; isset($used[$mother]) && $used[$mother] !== $id || $this->taken($db, $mother, $id, array_column($adoptT, 'TrackerID'), array_column($adoptI, 'IntakeID')); $n++) {
             $mother = "DTP{$ymd}WH{$bld}{$line}-{$side}-{$n}";
         }
         $used[$mother] = $id;
         $stat['shoes']++;
+        if ($apply) {
+            foreach ($adoptT as $x) {
+                $this->bk('tbl_dtr_wholeshoetracker', 'TrackerID', $x);
+                $db->table('tbl_dtr_wholeshoetracker')->where('TrackerID', $x['TrackerID'])->update(['ShoeID' => $id]);
+            }
+            foreach ($adoptI as $x) {
+                $this->bk('tbl_dtr_wholeshoe_intake', 'IntakeID', $x);
+                $db->table('tbl_dtr_wholeshoe_intake')->where('IntakeID', $x['IntakeID'])->update(['ShoeID' => $id]);
+            }
+        }
+        if ($adoptT || $adoptI) {
+            CLI::write('      entered in NEXUS-L directly: ' . count($adoptT) . ' test(s) and ' . count($adoptI) . ' collection line(s) are connected to this whole shoe');
+        }
         CLI::write("SHOE  {$r['mother']} ({$id}) -> parent {$mother}" . ($r['tr'] !== '' ? "  TR {$r['tr']}" : '  (no TR)'));
 
         $shoe = $db->table('tbl_dtr_shoe_list')->where('ProdCode', $r['prod'])->get(1)->getRowArray();
@@ -162,9 +187,9 @@ class WholeShoeAppsheetSync extends BaseCommand
                 continue;
             }
             // not recorded under this shoe: take a row that already carries this lab ref (same production code, no AppSheet id yet), else add it
-            $ref  = $t['ref'];
+            $ref  = rtrim($t['ref'], '-');   // AppSheet has a few Lab Refs with a dangling dash (DTP20261107UVB10-)
             $have = $db->table('tbl_dtr_wholeshoetracker')->where('LabRefNo', $ref)->get(1)->getRowArray();
-            if ($st === 'PENDING' && ! ($have && trim((string) $have['ShoeID']) === '' && strcasecmp((string) $have['ProductionCode'], $r['prod']) === 0)) {
+            if ($st === 'PENDING' && $r['kind'] !== 'N' && ! ($have && trim((string) $have['ShoeID']) === '' && strcasecmp((string) $have['ProductionCode'], $r['prod']) === 0)) {
                 CLI::write("      test {$ref}: not added (AppSheet: {$t['status']} - never started)");
 
                 continue;
@@ -180,7 +205,7 @@ class WholeShoeAppsheetSync extends BaseCommand
                 continue;
             }
             for ($n = 2; $have; $n++) {
-                $ref  = $t['ref'] . '-' . $n;
+                $ref  = rtrim($t['ref'], '-') . '-' . $n;
                 $have = $db->table('tbl_dtr_wholeshoetracker')->where('LabRefNo', $ref)->get(1)->getRowArray();
             }
             $sd = preg_match('/-([RL])(?:-\d+)?$/', $t['ref'], $sm) ? $sm[1] : $side;
@@ -268,10 +293,14 @@ class WholeShoeAppsheetSync extends BaseCommand
     }
 
     /** the parent Lab Ref is already used by another whole shoe (another AppSheet id) in the index, the intake or the tests */
-    private function taken($db, string $mother, string $id): bool
+    private function taken($db, string $mother, string $id, array $trkIds = [], array $inkIds = []): bool
     {
-        return $db->table('tbl_dtr_unified_labrefs')->where('form_slug', 'wholeshoe')->where('lab_ref_no', $mother)->where("COALESCE(appsheet_id, '') <>", $id)->countAllResults() > 0
-            || $db->table('tbl_dtr_wholeshoe_intake')->where('LabRefNo', $mother)->where("COALESCE(ShoeID, '') <>", $id)->countAllResults() > 0
-            || $db->table('tbl_dtr_wholeshoetracker')->where('WholeshoeLabRefNo', $mother)->where("COALESCE(ShoeID, '') <>", $id)->countAllResults() > 0;
+        $ni = $inkIds ? ' AND IntakeID NOT IN (' . implode(',', array_map('intval', $inkIds)) . ')' : '';
+        $nt = $trkIds ? ' AND TrackerID NOT IN (' . implode(',', array_map('intval', $trkIds)) . ')' : '';
+        $nu = $inkIds ? " AND NOT (source_table = 'tbl_dtr_wholeshoe_intake' AND source_id IN (" . implode(',', array_map('intval', $inkIds)) . '))' : '';
+
+        return $db->query("SELECT COUNT(*) n FROM tbl_dtr_unified_labrefs WHERE form_slug = 'wholeshoe' AND lab_ref_no = ? AND COALESCE(appsheet_id, '') <> ?{$nu}", [$mother, $id])->getRow('n') > 0
+            || $db->query("SELECT COUNT(*) n FROM tbl_dtr_wholeshoe_intake WHERE LabRefNo = ? AND COALESCE(ShoeID, '') <> ?{$ni}", [$mother, $id])->getRow('n') > 0
+            || $db->query("SELECT COUNT(*) n FROM tbl_dtr_wholeshoetracker WHERE WholeshoeLabRefNo = ? AND COALESCE(ShoeID, '') <> ?{$nt}", [$mother, $id])->getRow('n') > 0;
     }
 }
