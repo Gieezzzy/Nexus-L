@@ -198,7 +198,7 @@ class ApprovalController extends BaseController
     // Report PDF
     // ---------------------------------------------------------------------------------------------------------------
 
-    /** GET dtr/report-pdf?lab_ref=..&app=.. : the official Access report of a material Lab Ref, named <app>.pdf */
+    /** GET dtr/report-pdf?lab_ref=..&app=.. : the lab's report form of a material Lab Ref filled by NEXUS-L (no Access), named <app>.pdf */
     public function reportPdf()
     {
         $lr = $this->labref(trim((string) $this->request->getGet('lab_ref')));
@@ -210,7 +210,7 @@ class ApprovalController extends BaseController
         }
         $pdf = ReportPdf::material((string) $lr['form_slug'], (int) $lr['source_id']);
         if (! $pdf) {
-            return $this->response->setStatusCode(500)->setBody('The Access report could not be printed for ' . $lr['lab_ref_no'] . ' (Microsoft Access must be installed on the server).');
+            return $this->response->setStatusCode(500)->setBody('The Access report could not be printed for ' . $lr['lab_ref_no'] . ' (there is no report form for this type of test: pull tests and bonding are generated in the browser).');
         }
         $app = preg_replace('/[^A-Za-z0-9_-]/', '', (string) ($this->request->getGet('app') ?: $lr['tr_no'] ?: $lr['lab_ref_no']));
 

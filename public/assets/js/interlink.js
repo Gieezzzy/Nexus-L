@@ -1475,9 +1475,7 @@
         const lr = (j.rows || []).find((x) => x.tr_no === appNo) || (j.rows || [])[0];
         if (!lr) throw new Error(`No Lab Reference is linked to ${appNo}, so there is no report to show.`);
         labRef = lr.lab_ref_no;
-        b64 = lr.form_slug === 'bonding'
-          ? await window.nxReportPdf({ slug: lr.form_slug, id: lr.source_id || lr.id })
-          : await pdfAsB64(`dtr/report-pdf?lab_ref=${encodeURIComponent(lr.lab_ref_no)}&app=${encodeURIComponent(appNo)}`);
+        b64 = await reportPdfOf(lr, appNo);
         status = 'Generated now from the NEXUS-L record - not approved yet';
       }
       const url = URL.createObjectURL(b64ToBlob(b64));
@@ -2025,6 +2023,15 @@
     return pdf.sheet;
   };
 
+  // The report PDF of a Lab Ref, made by NEXUS-L itself (no Access): the VF sheet for bonding and the pull test report are made from the Digital Test Report in the browser,
+  // the material reports are filled on the server from the lab's report forms.
+  const reportPdfOf = (lr, app) => {
+    const slug = lr.form_slug === 'pulltest' ? 'pull' : lr.form_slug;
+    return (slug === 'bonding' || slug === 'pull')
+      ? window.nxReportPdf({ slug, id: lr.source_id || lr.id })
+      : pdfAsB64(`dtr/report-pdf?lab_ref=${encodeURIComponent(lr.lab_ref_no)}&app=${encodeURIComponent(app)}`);
+  };
+
   const pdfAsB64 = async (path) => {
     const r = await fetch(BASE_URL + path, { credentials: 'same-origin' });
     if (!r.ok) throw new Error((await r.text()).slice(0, 200) || 'The report PDF could not be made.');
@@ -2280,10 +2287,8 @@
       if (!lr.form_slug || !(lr.source_id || lr.id)) throw new Error(`${labRef} has no Digital Test Report form to print.`);
       const app = state.activeAppNo || $('#uf_application_no')?.value || lr.tr_no || lr.lab_ref_no;
       showToast(`Creating the ${lr.form_category || ''} report PDF for ${lr.lab_ref_no}…`);
-      // material reports: the lab's official Access report; bonding: the VF sheet made in the browser
-      const b64 = lr.form_slug === 'bonding'
-        ? await window.nxReportPdf({ slug: lr.form_slug, id: lr.source_id || lr.id })
-        : await pdfAsB64(`dtr/report-pdf?lab_ref=${encodeURIComponent(lr.lab_ref_no)}&app=${encodeURIComponent(app)}`);
+      // material reports: the lab's report form filled by NEXUS-L; bonding and pull test: the report sheet made in the browser (no Access anywhere)
+      const b64 = await reportPdfOf(lr, app);
       // a generated report of about 1 KB is an empty / failed print, never a report: nothing is replaced by it
       if (!b64 || b64.length < 3000 || !b64.startsWith('JVBER')) throw new Error(`The report PDF came out empty (${Math.max(1, Math.round((b64 || '').length * 3 / 4 / 1024))} KB), so nothing was replaced. Open the Digital Test Report once, then press Generate again.`);
       // a name typed by hand for this report is kept when it is generated again

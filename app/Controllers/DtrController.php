@@ -5557,7 +5557,7 @@ class DtrController extends BaseController
                 ->setBody(file_get_contents($pdfPath));
         }
 
-        return $this->response->setStatusCode(500)->setBody('The Access PDF could not be created for report #' . (int) $id . ' (Microsoft Access must be installed on the server and this report must exist in the Access file). Please close this tab and use "Print Report / Save as PDF" instead.');
+        return $this->response->setStatusCode(500)->setBody('The Access PDF could not be created for report #' . (int) $id . ' (no report form is available for it here). Please close this tab and use "Print Report / Save as PDF" instead.');
     }
 
     /** the JSON body of the request, or null when the request is not JSON (CodeIgniter 4.7 throws on a form / multipart body) */
