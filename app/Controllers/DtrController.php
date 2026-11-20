@@ -376,7 +376,8 @@ class DtrController extends BaseController
         // ?lt= : a Bonding list summary button (daily | trial | sample | retest | first | advance | lacking | shutdown) lists only that kind of row
         $lType = in_array((string) $this->request->getGet('lt'), ['daily', 'trial', 'sample', 'retest', 'first', 'advance', 'lacking', 'shutdown'], true) ? (string) $this->request->getGet('lt') : '';
         $bondingW = $lk === 'bonding' ? $lqW : [];
-        $shoesW   = $lk === 'shoes' ? $lqW : [];
+        // the AppSheet spelling of a whole shoe Lab Ref (DTP20261028WSA8-R) is found too: NEXUS-L calls the parent DTP20261028WHA8-R
+        $shoesW   = $lk === 'shoes' ? array_map(static fn ($w) => preg_replace('/^(DTP\d{8})WS([AB]\d+)/i', '$1WH$2', $w), $lqW) : [];
         $matW     = $lk === 'materials' ? $lqW : [];
         $resSql   = static fn (string $col, string $res): string => match ($res) {
             'pass'    => "UPPER({$col}) LIKE 'PASS%'",

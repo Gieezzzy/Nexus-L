@@ -64,7 +64,7 @@
       const done = s.tests.filter((t) => t.status === 'COMPLETED').length;
       return `<tr class="clickable-row wst-row" data-ws-parent="${esc(s.parent)}" style="cursor:pointer">
         <td class="mono">${base + i + 1}</td>
-        <td><b class="mono ws-lablink" style="color:var(--brand,#2563eb);font-size:13.5px">${esc(s.parent)}</b></td>
+        <td><b class="mono ws-lablink" style="color:var(--brand,#2563eb);font-size:13.5px">${esc(s.parent)}</b>${/WH[AB]\d/.test(s.parent) ? `<div class="muted sm mono" title="Lab Ref in AppSheet">AppSheet: ${esc(s.parent.replace(/WH([AB]\d)/, 'WS$1'))}</div>` : ''}</td>
         <td>${esc(dateOf(s.date))}</td>
         <td><span style="font-weight:600">${esc((s.style + ' ' + s.color).trim() || '—')}</span></td>
         <td><span class="mono sm muted">${esc(s.prod || '—')}${s.mtl ? ' &bull; ' + esc(s.mtl) : ''}</span></td>

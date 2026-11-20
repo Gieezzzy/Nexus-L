@@ -818,7 +818,7 @@ class WstController extends BaseController
     public function shoes(): ResponseInterface
     {
         $db   = \Config\Database::connect();
-        $q    = trim((string) $this->request->getGet('q'));
+        $q    = preg_replace('/(DTP\d{8})WS([AB]\d+)/i', '$1WH$2', trim((string) $this->request->getGet('q')));   // the AppSheet spelling (…WSA8-R) finds the parent (…WHA8-R)
         $from = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $this->request->getGet('from')) ? (string) $this->request->getGet('from') : '';
         $to   = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $this->request->getGet('to')) ? (string) $this->request->getGet('to') : '';
         $page = max(1, (int) $this->request->getGet('page'));
