@@ -2370,5 +2370,6 @@ The result (PASS / FAIL / COMPLETED), the timer, the cycles, the findings and th
     }
   });
 
+  window.WstOpenMonitor = openWstMonitorModal;   // the Whole Shoes view opens a test's bench session
   loadWstRecords(currentWstCategory);
 })();

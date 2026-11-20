@@ -159,6 +159,7 @@ class WstController extends BaseController
                 'wholeshoe/flexing.js',
                 'wholeshoe/deeptest.js',
                 'wholeshoe.js',
+                'wholeshoe/shoes.js',
             ],
         ]);
     }
@@ -792,6 +793,235 @@ class WstController extends BaseController
             'materials' => array_keys(TestCatalog::materials($category)),
             'catalog'   => $catalog[$category] ?? [],
         ]);
+    }
+
+    // ------------------------------------------------------------------------------------------------------------------ Whole Shoes: parent + its tests, add / remove a test
+    /** test type name => [code, category] of the tests a whole shoe can have */
+    private const SHOE_TESTS = [
+        'Flexing' => ['FX', 'flexing'], 'Heat Aging' => ['HA', 'heat-aging'], 'Hydrolysis' => ['HY', 'hydrolysis'], 'Washing' => ['WG', 'washing'], 'UV Light' => ['UV', 'uv-light'], 'Dip Test' => ['DT', 'deeptest'],
+    ];
+
+    private static function shoeKey(string $type, string $code = ''): string
+    {
+        return self::mapTrackerTestTypeToCategory($type, $code);
+    }
+
+    private function shoeNoEdit(): ResponseInterface
+    {
+        return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'message' => 'Only the laboratory staff can add or remove a whole shoe test.', 'csrf' => csrf_hash()]);
+    }
+
+    /**
+     * GET /wst/shoes?q=&from=&to=&page=
+     * The whole shoes (parent Lab Ref, newest first) with their tests, like the received materials of Material Testing: style, TR no and one line per test (status, result, the bench session to open).
+     */
+    public function shoes(): ResponseInterface
+    {
+        $db   = \Config\Database::connect();
+        $q    = trim((string) $this->request->getGet('q'));
+        $from = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $this->request->getGet('from')) ? (string) $this->request->getGet('from') : '';
+        $to   = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $this->request->getGet('to')) ? (string) $this->request->getGet('to') : '';
+        $page = max(1, (int) $this->request->getGet('page'));
+        $size = 30;
+        $w    = [];
+        $args = [];
+        if ($q !== '') {
+            $w[]  = '(parent LIKE ? OR prod LIKE ? OR style LIKE ? OR child LIKE ?)';
+            $like = '%' . $db->escapeLikeString($q) . '%';
+            array_push($args, $like, $like, $like, $like);
+        }
+        if ($from !== '') {
+            $w[] = 'pd >= ?';
+            $args[] = $from;
+        }
+        if ($to !== '') {
+            $w[] = 'pd <= ?';
+            $args[] = $to;
+        }
+        $src = "(SELECT WholeshoeLabRefNo parent, LabRefNo child, COALESCE(ProductionDate, CollectionDate) pd, ProductionCode prod, Style style FROM tbl_dtr_wholeshoetracker WHERE COALESCE(WholeshoeLabRefNo, '') <> ''
+                 UNION ALL SELECT i.LabRefNo, '', COALESCE(i.ProductionDate, i.CollectionDate), i.ProdCode, i.Style FROM tbl_dtr_wholeshoe_intake i WHERE COALESCE(i.LabRefNo, '') REGEXP '^DTP[0-9]{8}WH'
+                   AND NOT EXISTS (SELECT 1 FROM tbl_dtr_wholeshoetracker t WHERE CONVERT(t.WholeshoeLabRefNo USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(REGEXP_REPLACE(i.LabRefNo, '-[LR]\$', '') USING utf8mb4) COLLATE utf8mb4_general_ci)) x" . ($w ? ' WHERE ' . implode(' AND ', $w) : '');
+        $total   = (int) ($db->query("SELECT COUNT(DISTINCT parent) n FROM {$src}", $args)->getRow('n') ?? 0);
+        $parents = $db->query("SELECT parent, MAX(pd) pd FROM {$src} GROUP BY parent ORDER BY pd DESC, parent LIMIT {$size} OFFSET " . (($page - 1) * $size), $args)->getResultArray();
+        $names   = array_column($parents, 'parent');
+        $out     = [];
+        if ($names) {
+            $in = implode(',', array_map(static fn ($n) => $db->escape($n), $names));
+            $kids = $db->query("SELECT TrackerID, LabRefNo, WholeshoeLabRefNo, TestType, TestCode, Side, Status, FinalResult, Technician, TimeStarted, TimeCompleted, ProductionCode, Style, Colorway, MTL,
+                    COALESCE(ProductionDate, CollectionDate) pd, ShoeID FROM tbl_dtr_wholeshoetracker WHERE WholeshoeLabRefNo IN ({$in}) ORDER BY TrackerID")->getResultArray();
+            $wst  = [];
+            if ($kids) {
+                $refs = implode(',', array_map(static fn ($k) => $db->escape((string) $k['LabRefNo']), $kids));
+                foreach ($db->query("SELECT id, labreference, category, status FROM tbl_material_tests WHERE labreference IN ({$refs})")->getResultArray() as $m) {
+                    $wst[strtoupper((string) $m['labreference'])] = $m;
+                }
+            }
+            $uni = [];
+            foreach ($db->query("SELECT lab_ref_no, MAX(etrf_whole_app) whole, MAX(etrf_flexing_app) fx, MAX(etrf_aging_app) ag, MAX(etrf_hydrolysis_app) hy, MAX(etrf_washing_app) wg, MAX(etrf_uv_app) uv, MAX(NULLIF(erp_status, '')) erp
+                    FROM tbl_dtr_unified_labrefs WHERE form_slug = 'wholeshoe' AND lab_ref_no IN ({$in}) GROUP BY lab_ref_no")->getResultArray() as $u) {
+                $uni[$u['lab_ref_no']] = $u;
+            }
+            $intake = [];
+            foreach ($db->query("SELECT LabRefNo, MAX(ProdCode) prod, MAX(Style) style, MAX(Colorway) color, MAX(MTL) mtl, MAX(Side) side FROM tbl_dtr_wholeshoe_intake WHERE LabRefNo IN ({$in}) GROUP BY LabRefNo")->getResultArray() as $i) {
+                $intake[$i['LabRefNo']] = $i;
+            }
+            $by = [];
+            foreach ($kids as $k) {
+                $by[$k['WholeshoeLabRefNo']][] = $k;
+            }
+            foreach ($parents as $p) {
+                $n   = (string) $p['parent'];
+                $ks  = $by[$n] ?? [];
+                $f   = $ks[0] ?? [];
+                $in2 = $intake[$n] ?? [];
+                $u   = $uni[$n] ?? [];
+                $tests = [];
+                foreach ($ks as $k) {
+                    $m       = $wst[strtoupper((string) $k['LabRefNo'])] ?? null;
+                    $tests[] = [
+                        'id' => (int) $k['TrackerID'], 'lab_ref' => (string) $k['LabRefNo'], 'type' => (string) $k['TestType'], 'key' => self::shoeKey((string) $k['TestType'], (string) $k['TestCode']),
+                        'side' => (string) $k['Side'], 'status' => strtoupper((string) $k['Status']), 'result' => strtoupper((string) $k['FinalResult']), 'tech' => (string) $k['Technician'],
+                        'started' => (string) $k['TimeStarted'], 'done' => (string) $k['TimeCompleted'], 'wst_id' => $m ? (int) $m['id'] : 0, 'wst_status' => $m ? (string) $m['status'] : '',
+                    ];
+                }
+                $out[] = [
+                    'parent' => $n, 'date' => (string) ($p['pd'] ?? ''), 'prod' => (string) ($f['ProductionCode'] ?? $in2['prod'] ?? ''), 'style' => trim((string) ($f['Style'] ?? $in2['style'] ?? '')),
+                    'color' => trim((string) ($f['Colorway'] ?? $in2['color'] ?? '')), 'mtl' => (string) ($f['MTL'] ?? $in2['mtl'] ?? ''),
+                    'tr' => (string) ($u['whole'] ?? '') ?: ((string) ($u['fx'] ?? '') ?: ((string) ($u['ag'] ?? '') ?: ((string) ($u['hy'] ?? '') ?: ((string) ($u['wg'] ?? '') ?: (string) ($u['uv'] ?? ''))))),
+                    'erp' => (string) ($u['erp'] ?? ''), 'tests' => $tests,
+                ];
+            }
+        }
+
+        return $this->response->setJSON(['ok' => true, 'shoes' => $out, 'total' => $total, 'page' => $page, 'pages' => max(1, (int) ceil($total / $size)), 'can_edit' => \App\Controllers\MaterialsController::canEdit(), 'csrf' => csrf_hash()]);
+    }
+
+    /** the whole shoe's index (Lab Tracker) row follows its tests */
+    private function shoeRefresh($db, string $parent): void
+    {
+        try {
+            foreach ($db->table('tbl_dtr_wholeshoe_intake')->select('IntakeID')->where('LabRefNo', $parent)->get()->getResultArray() as $i) {
+                \App\Libraries\DtrLabrefIndex::upsertWholeShoe($db, (int) $i['IntakeID']);
+            }
+        } catch (\Throwable $e) {
+            // the page list does not depend on it
+        }
+        \App\Libraries\DataCache::bump('wholeshoe');
+    }
+
+    /** GET /wst/shoe-test-options?parent=: the tests that can be added to this whole shoe */
+    public function shoeTestOptions(): ResponseInterface
+    {
+        $db   = \Config\Database::connect();
+        $have = array_map(static fn ($r) => self::shoeKey((string) $r['TestType'], (string) $r['TestCode']), $db->table('tbl_dtr_wholeshoetracker')->select('TestType, TestCode')->where('WholeshoeLabRefNo', trim((string) $this->request->getGet('parent')))->get()->getResultArray());
+        $opts = [];
+        foreach (self::SHOE_TESTS as $name => [$code, $cat]) {
+            if (! in_array($cat, $have, true)) {
+                $opts[] = ['type' => $name, 'code' => $code];
+            }
+        }
+
+        return $this->response->setJSON(['ok' => true, 'options' => $opts, 'can_edit' => \App\Controllers\MaterialsController::canEdit()]);
+    }
+
+    /** POST /wst/shoe-test-add {parent, type}: a test is added to the whole shoe (Lab Ref like the intake makes it, bench session ready to start) */
+    public function shoeTestAdd(): ResponseInterface
+    {
+        if (! \App\Controllers\MaterialsController::canEdit()) {
+            return $this->shoeNoEdit();
+        }
+        $p      = $this->request->getJSON(true) ?? [];
+        $db     = \Config\Database::connect();
+        $parent = trim((string) ($p['parent'] ?? ''));
+        $type   = trim((string) ($p['type'] ?? ''));
+        if (! isset(self::SHOE_TESTS[$type])) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => 'Choose one of the whole shoe tests.', 'csrf' => csrf_hash()]);
+        }
+        [$code, $cat] = self::SHOE_TESTS[$type];
+        $sib = $db->table('tbl_dtr_wholeshoetracker')->where('WholeshoeLabRefNo', $parent)->orderBy('TrackerID')->get(1)->getRowArray();
+        $ink = $db->table('tbl_dtr_wholeshoe_intake i')->select('i.*, s.StyleNo, s.Colorway AS Color, s.MTL AS ShoeMTL')->join('tbl_dtr_shoe_list s', 's.ProdCode = i.ProdCode', 'left')->where('i.LabRefNo', $parent)->get(1)->getRowArray();
+        if (! $sib && ! $ink) {
+            return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'That whole shoe was not found.', 'csrf' => csrf_hash()]);
+        }
+        $have = array_map(static fn ($r) => self::shoeKey((string) $r['TestType'], (string) $r['TestCode']), $db->table('tbl_dtr_wholeshoetracker')->select('TestType, TestCode')->where('WholeshoeLabRefNo', $parent)->get()->getResultArray());
+        if (in_array($cat, $have, true)) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => $type . ' is already on this whole shoe.', 'csrf' => csrf_hash()]);
+        }
+        if (! preg_match('/^DTP(\d{8})WH([AB]?)(\d*)(?:-([RL]))?/', $parent, $m)) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => 'This whole shoe has no standard Lab Reference.', 'csrf' => csrf_hash()]);
+        }
+        $side = $m[4] ?? '';
+        if ($side === '') {
+            $side = (string) ($sib['Side'] ?? $ink['Side'] ?? 'L') ?: 'L';
+        }
+        $bld  = $m[2];
+        $line = $m[3];
+        $base = 'DTP' . $m[1] . $code . $bld . $line . ($code === 'UV' ? '' : '-' . $side);
+        $ref  = $base;
+        for ($n = 2; $db->table('tbl_dtr_wholeshoetracker')->where('LabRefNo', $ref)->countAllResults() > 0; $n++) {
+            $ref = $base . '-' . $n;
+        }
+        $now  = date('Y-m-d H:i:s');
+        $me   = (array) service('auth')->user();
+        $by   = (string) ($me['name'] ?? $me['username'] ?? 'QC Specialist');
+        $prod = (string) ($sib['ProductionCode'] ?? $ink['ProdCode'] ?? '');
+        $style = trim((string) ($sib['Style'] ?? '')) ?: trim((string) ($ink['StyleNo'] ?? $ink['Style'] ?? ''));
+        $color = trim((string) ($sib['Colorway'] ?? '')) ?: trim((string) ($ink['Color'] ?? $ink['Colorway'] ?? ''));
+        $db->table('tbl_dtr_wholeshoetracker')->insert([
+            'LabRefNo' => $ref, 'Building' => $bld, 'LineNo' => $line, 'ProductionCode' => $prod, 'Style' => $style, 'Colorway' => $color, 'MTL' => (string) ($sib['MTL'] ?? $ink['MTL'] ?? $ink['ShoeMTL'] ?? ''),
+            'NoOfShoes' => (int) ($sib['NoOfShoes'] ?? 1) ?: 1, 'CollectionDate' => $sib['CollectionDate'] ?? $ink['CollectionDate'] ?? null, 'ProductionDate' => $sib['ProductionDate'] ?? $ink['ProductionDate'] ?? null,
+            'EncodedBy' => $by, 'CreatedAt' => $now, 'WholeshoeLabRefNo' => $parent, 'TestType' => $type, 'TestCode' => $code, 'Side' => $side, 'Status' => 'PENDING',
+            'ShoeID' => (string) ($sib['ShoeID'] ?? $ink['ShoeID'] ?? '') ?: null, 'SourceSystem' => 'nexus', 'IntakeType' => $sib['IntakeType'] ?? 'DAILY',
+        ]);
+        if ($db->tableExists('tbl_material_tests') && $db->table('tbl_material_tests')->where('labreference', $ref)->countAllResults() === 0) {
+            $db->table('tbl_material_tests')->insert([
+                'category' => $cat, 'labreference' => $ref, 'testdate' => ($sib['CollectionDate'] ?? $ink['CollectionDate'] ?? null) ?: date('Y-m-d'), 'type' => trim($style . ($color !== '' ? ' - ' . $color : '')) ?: 'Standard',
+                'machine_number' => 'MC-01', 'samplecountdry' => 1, 'samplecountwet' => 0, 'samplecounthydro' => 0,
+                'target_cycles' => match ($cat) { 'hydrolysis', 'heat-aging' => 168, 'uv-light' => 24, 'washing' => 10, 'deeptest' => 50000, default => 100000 },
+                'current_cycles' => 0, 'status' => 'PENDING', 'is_running' => 0, 'operator' => mb_substr($by, 0, 100), 'technician' => mb_substr($by, 0, 100), 'temperature' => 23.00, 'humidity' => 50.00,
+                'remarks' => '', 'created_at' => $now, 'updated_at' => $now,
+            ]);
+        }
+        $this->shoeRefresh($db, $parent);
+        \App\Libraries\ActivityLog::record('wholeshoe', 'test-add', $ref, 'test added to ' . $parent . ': ' . $type);
+
+        return $this->response->setJSON(['ok' => true, 'message' => $type . ' was added to ' . $parent . ' (' . $ref . ').', 'lab_ref' => $ref, 'csrf' => csrf_hash()]);
+    }
+
+    /**
+     * POST /wst/shoe-test-remove {id, force}: a test that does not apply to this whole shoe is taken off it (its bench session goes too; it can be added again).
+     * A test that has already started needs force:true (the page asks first).
+     */
+    public function shoeTestRemove(): ResponseInterface
+    {
+        if (! \App\Controllers\MaterialsController::canEdit()) {
+            return $this->shoeNoEdit();
+        }
+        $p  = $this->request->getJSON(true) ?? [];
+        $db = \Config\Database::connect();
+        $t  = $db->table('tbl_dtr_wholeshoetracker')->where('TrackerID', (int) ($p['id'] ?? 0))->get()->getRowArray();
+        if (! $t) {
+            return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'That test is already gone.', 'csrf' => csrf_hash()]);
+        }
+        $sess = $db->tableExists('tbl_material_tests') ? $db->table('tbl_material_tests')->select('id, status, current_cycles')->where('labreference', $t['LabRefNo'])->get()->getResultArray() : [];
+        $used = strtoupper((string) $t['Status']) !== 'PENDING' || trim((string) $t['FinalResult']) !== '' || array_filter($sess, static fn ($s) => strtoupper((string) $s['status']) !== 'PENDING' || (int) $s['current_cycles'] > 0);
+        if ($used && empty($p['force'])) {
+            return $this->response->setStatusCode(409)->setJSON(['ok' => false, 'needs_confirm' => true, 'message' => $t['TestType'] . ' ' . $t['LabRefNo'] . ' has already started or has a result (' . ($t['Status'] ?: 'PENDING') . ($t['FinalResult'] ? ', ' . $t['FinalResult'] : '') . ').', 'csrf' => csrf_hash()]);
+        }
+        $db->transStart();
+        foreach ($sess as $s) {
+            if ($db->tableExists('tbl_material_test_results')) {
+                $db->table('tbl_material_test_results')->where('test_id', (int) $s['id'])->delete();
+            }
+            $db->table('tbl_material_tests')->where('id', (int) $s['id'])->delete();
+        }
+        $db->table('tbl_dtr_wholeshoetracker')->where('TrackerID', (int) $t['TrackerID'])->delete();
+        $db->transComplete();
+        $parent = (string) $t['WholeshoeLabRefNo'];
+        $this->shoeRefresh($db, $parent);
+        \App\Libraries\ActivityLog::record('wholeshoe', 'test-remove', (string) $t['LabRefNo'], 'not applicable: ' . $t['TestType'] . ' of ' . $parent . ($used ? ' (it had status ' . $t['Status'] . ' result ' . $t['FinalResult'] . ')' : ''));
+
+        return $this->response->setJSON(['ok' => $db->transStatus(), 'message' => $t['TestType'] . ' was removed from ' . $parent . '.', 'csrf' => csrf_hash()]);
     }
 
     /**

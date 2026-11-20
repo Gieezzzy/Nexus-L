@@ -4,6 +4,9 @@
 
 ---
 
+## Phase 230 - Whole Shoe Test > Whole Shoes tab: parent with its tests, add / remove a test (2026-11-20)
+- New first tab **Whole Shoes** on `/wholeshoe` (`wholeshoe/shoes.js`, `WstController::shoes`): one table line per parent Lab Ref (same table design as the category tabs); click the Lab Ref -> modal with all its tests (status pill, result, technician, Open Monitor). Add test (`wst/shoe-test-add`: Flexing, Heat Aging, Hydrolysis, Washing, UV Light, Dip Test that the shoe does not have) and remove a test that does not apply (`wst/shoe-test-remove`: deletes the tracker row + bench session; a started test asks first). Roles as Material Testing (`MaterialsController::canEdit`). `window.WstOpenMonitor` opens a bench session.
+
 ## Phase 229 - AppSheet whole shoes connected: parent + tests + TR (2026-11-20)
 - **`php spark wholeshoe:appsheet-sync [file.tsv] [--apply]`** (`app/Commands/WholeShoeAppsheetSync.php`): reads the AppSheet Whole Shoe Log scan (`writable/wholeshoe-scan/appsheet-import.tsv`, rows from 10/28/2026 with ERP OK / N/A / # remarks) and makes the parent Lab Ref `DTP<date>WH<bld><line>-<side of the AppSheet mother>` the `WholeshoeLabRefNo` of every test, the `LabRefNo` of the intake rows and of the Lab Tracker (index) rows (the old import used one side-less parent for both L and R shoes). Missing tests/shoes are added (never-started tests are not), a test only moves forward, nothing is deleted, backup JSON of changed rows in `writable/wholeshoe-scan/`.
 - **TR:** the same Application No for every test of the whole shoe, written to `etrf_<flexing|aging|hydrolysis|washing|uv>_app` (+ `etrf_whole_app`) of the parent and ERP status OK, so ERP Finish Monitoring > Whole Shoe shows it. Two AppSheet shoes with the same mother ref get `-2` (DTP20261104WHA12-R / -R-2).
