@@ -4,6 +4,11 @@
 
 ---
 
+## Phase 229 - AppSheet whole shoes connected: parent + tests + TR (2026-11-20)
+- **`php spark wholeshoe:appsheet-sync [file.tsv] [--apply]`** (`app/Commands/WholeShoeAppsheetSync.php`): reads the AppSheet Whole Shoe Log scan (`writable/wholeshoe-scan/appsheet-import.tsv`, rows from 10/28/2026 with ERP OK / N/A / # remarks) and makes the parent Lab Ref `DTP<date>WH<bld><line>-<side of the AppSheet mother>` the `WholeshoeLabRefNo` of every test, the `LabRefNo` of the intake rows and of the Lab Tracker (index) rows (the old import used one side-less parent for both L and R shoes). Missing tests/shoes are added (never-started tests are not), a test only moves forward, nothing is deleted, backup JSON of changed rows in `writable/wholeshoe-scan/`.
+- **TR:** the same Application No for every test of the whole shoe, written to `etrf_<flexing|aging|hydrolysis|washing|uv>_app` (+ `etrf_whole_app`) of the parent and ERP status OK, so ERP Finish Monitoring > Whole Shoe shows it. Two AppSheet shoes with the same mother ref get `-2` (DTP20261104WHA12-R / -R-2).
+- Rows without an AppSheet id in NEXUS-L and no TR (11/7-11/9 N/A rows entered natively) are left untouched.
+
 ## Phase 228 - Material Testing <-> Lab Material Test Collection <-> Material Test Report (2026-11-19)
 - **Material Testing lists the whole Collection:** the received materials (Material Receive, one line per Lab Ref even if the tracker holds duplicates) plus the AppSheet bench-log groups (category mapped to the catalog, tests read only with machine, technician, PASS/FAIL). Group ids are strings (`L:<labref>` for the bench log).
 - **Lab Tracker > Lab Material Test Collection shows what is received** (`MaterialsController::collectionRows`, page 1 of `dtr/appsheet-archive?type=bench`): the material with its test list.
