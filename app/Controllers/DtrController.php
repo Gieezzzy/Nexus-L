@@ -2431,6 +2431,17 @@ class DtrController extends BaseController
                 $mapped[$method . '_Std'] = $stdVal;
                 if ($tolVal !== null && $tolVal !== '') {
                     $mapped[$method . '_Tol'] = $tolVal;
+        // the eTRF No on the report: when the record has none, the one InterLink gave this Lab Reference is shown (it may sit on the other record of the Lab Ref, on the Lab Tracker row or on the eTRF job)
+        if ($record && ! empty($record['LabRefNo'])) {
+            $col = array_key_exists('ETRFNo', $record) ? 'ETRFNo' : (array_key_exists('TR', $record) ? 'TR' : '');
+            if ($col !== '' && ! preg_match('/^A\d{6,}/i', trim((string) ($record[$col] ?? '')))) {
+                $app = \App\Libraries\EtrfAppNos::forLabRef((string) $record['LabRefNo'], $slug);
+                if ($app !== '' && trim((string) ($record[$col] ?? '')) === '') {
+                    $record[$col] = $app;
+                }
+            }
+        }
+
                 }
             }
         }

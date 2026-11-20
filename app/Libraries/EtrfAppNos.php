@@ -137,15 +137,62 @@ class EtrfAppNos
             $sid  = (int) ($ur['source_id'] ?? 0);
             $cfg  = $slug !== '' ? (\App\Controllers\DtrController::FORM_CONFIG[$slug] ?? null) : null;
             if ($cfg && $sid > 0 && $db->tableExists($cfg['table'])) {
+                $by = $db->fieldExists('LabRefNo', $cfg['table']) ? ['LabRefNo' => $labRef] : [$cfg['pk'] => $sid];   // every record of this Lab Ref, not only the one the list points to
                 if ($db->fieldExists('TR', $cfg['table'])) {
-                    $db->table($cfg['table'])->where($cfg['pk'], $sid)->update(['TR' => $appNo]);
+                    $db->table($cfg['table'])->where($by)->update(['TR' => $appNo]);
                 } elseif ($db->fieldExists('ETRFNo', $cfg['table'])) {
-                    $db->table($cfg['table'])->where($cfg['pk'], $sid)->update(['ETRFNo' => $appNo]);
+                    $db->table($cfg['table'])->where($by)->update(['ETRFNo' => $appNo]);
                 }
             }
         }
 
         return $n;
+    }
+
+    /**
+     * The Application No. (eTRF No) of a Lab Reference, wherever it is kept, so the report always shows it: the Lab Tracker row (the current number of the eTRF type of this form,
+     * then TR), any record of the same Lab Ref that already carries it (a Lab Ref can have two records), the last eTRF job InterLink accepted for it, the eTRF request.
+     * '' when none is known.
+     */
+    public static function forLabRef(string $labRef, string $slug = ''): string
+    {
+        $labRef = trim($labRef);
+        if ($labRef === '') {
+            return '';
+        }
+        $db  = self::db();
+        $ok  = static fn ($v) => (bool) preg_match('/^A\d{6,}(-REV\d+)?$/i', trim((string) $v));
+        $key = ['bonding' => 'bonding', 'wholeshoe' => 'whole', 'pull' => 'pull', 'pulltest' => 'pull'][$slug] ?? ($slug !== '' ? 'mat' : '');
+        foreach ($db->table('tbl_dtr_unified_labrefs')->where('lab_ref_no', $labRef)->orderBy('id', 'DESC')->get()->getResultArray() as $u) {
+            foreach (array_filter([$key !== '' ? ($u["etrf_{$key}_app"] ?? '') : '', $u['tr_no'] ?? '']) as $v) {
+                if ($ok($v)) {
+                    return strtoupper(trim((string) $v));
+                }
+            }
+        }
+        if ($db->tableExists('tbl_dtr_bonding_info')) {
+            foreach ($db->table('tbl_dtr_bonding_info')->select('ETRFNo')->where('LabRefNo', $labRef)->where("COALESCE(ETRFNo, '') <>", '')->orderBy('BondingTestID', 'DESC')->get()->getResultArray() as $b) {
+                if ($ok($b['ETRFNo'])) {
+                    return strtoupper(trim((string) $b['ETRFNo']));
+                }
+            }
+        }
+        if ($db->tableExists('tbl_interlink_service_jobs')) {
+            foreach ($db->table('tbl_interlink_service_jobs')->select('application_no')->where('lab_ref_no', $labRef)->where('status', 'done')->orderBy('id', 'DESC')->limit(8)->get()->getResultArray() as $j) {
+                if ($ok($j['application_no'])) {
+                    return strtoupper(trim((string) $j['application_no']));
+                }
+            }
+        }
+        if ($db->tableExists('tbl_interlink_etrf_requests')) {
+            foreach ($db->table('tbl_interlink_etrf_requests')->select('application_no')->where('lab_ref_no', $labRef)->orderBy('id', 'DESC')->limit(8)->get()->getResultArray() as $j) {
+                if ($ok($j['application_no'])) {
+                    return strtoupper(trim((string) $j['application_no']));
+                }
+            }
+        }
+
+        return '';
     }
 
     /** the test key (flexing, aging, hydrolysis, washing, uv) of a whole shoe TEST Lab Ref (DTP20261116FXA3-L-2): from its tracker row, else from the letters of the Lab Ref */
