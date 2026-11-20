@@ -14,8 +14,8 @@
   const isWS = () => S.kind === 'wholeshoe';
   const COLS = () => (isWS() ? 15 : 12);
   const HEAD = {
-    bonding: '<tr><th class="lm-sel"><input type="checkbox" id="lm-pick-all" aria-label="Select all"></th><th>Tested date</th><th>Production date</th><th>Line</th><th>Lab reference</th><th>VSP code</th><th>Bonding TR no.</th><th>Pull test TR no.</th><th>InterLink status</th><th>Result</th><th>ERP status</th><th class="lm-editcol"></th></tr>',
-    wholeshoe: '<tr><th class="lm-sel"><input type="checkbox" id="lm-pick-all" aria-label="Select all"></th><th>Tested date</th><th>Production date</th><th>Line</th><th>Lab reference</th><th>VSP code</th><th>Flexing Test</th><th>Aging Test</th><th>Hydrolysis Test</th><th>Washing Test</th><th>UV Light Test</th><th>InterLink status</th><th>Result</th><th>ERP status</th><th class="lm-editcol"></th></tr>',
+    bonding: '<tr><th class="lm-editcol">Edit</th><th class="lm-sel"><input type="checkbox" id="lm-pick-all" aria-label="Select all"></th><th>Tested date</th><th>Production date</th><th>Line</th><th>Lab reference</th><th>VSP code</th><th>Bonding TR no.</th><th>Pull test TR no.</th><th>InterLink status</th><th>Result</th><th>ERP status</th></tr>',
+    wholeshoe: '<tr><th class="lm-editcol">Edit</th><th class="lm-sel"><input type="checkbox" id="lm-pick-all" aria-label="Select all"></th><th>Tested date</th><th>Production date</th><th>Line</th><th>Lab reference</th><th>VSP code</th><th>Flexing Test</th><th>Aging Test</th><th>Hydrolysis Test</th><th>Washing Test</th><th>UV Light Test</th><th>InterLink status</th><th>Result</th><th>ERP status</th></tr>',
   };
 
   const get = async (url) => {
@@ -47,7 +47,7 @@
   const inp = (f, v, ph, w) => `<input class="lm-in" data-ef="${f}" value="${esc(v || '')}" placeholder="${ph || ''}" ${w ? `style="width:${w}px"` : ''} autocomplete="off">`;
   const trIn = (f, v) => inp(f, v, 'A00…', 112);
   const editRow = (r) => {
-    const common = `<td class="lm-sel"></td>
+    const common = `<td class="lm-editcell"><button type="button" class="lm-save-btn" data-save="${r.id}">Save</button><button type="button" class="lm-cancel-btn" data-cancel="1">Cancel</button></td><td class="lm-sel"></td>
       <td><input type="date" class="lm-in" data-ef="tested" value="${esc(r.tested || '')}"></td>
       <td>${isWS() ? `<b>${esc(fmtDay(r.day))}</b>` : `<input type="date" class="lm-in" data-ef="day" value="${esc(r.day || '')}">`}</td>
       <td>${esc(r.line)}</td>
@@ -59,8 +59,7 @@
     return `<tr class="lm-editing" data-id="${r.id}">${common}${trs}
       <td><select class="lm-in" data-ef="il">${optList(IL_OPTS, r.il)}</select></td>
       <td><select class="lm-in" data-ef="result">${optList(RES_OPTS, resVal(r))}</select></td>
-      <td><select class="lm-in" data-ef="erp">${optList(ERP_OPTS, r.erp_raw === 'OK' ? 'OK' : (r.erp_raw || ''))}</select></td>
-      <td class="lm-editcell"><button type="button" class="lm-save-btn" data-save="${r.id}">Save</button> <button type="button" class="lm-cancel-btn" data-cancel="1">Cancel</button></td></tr>`;
+      <td><select class="lm-in" data-ef="erp">${optList(ERP_OPTS, r.erp_raw === 'OK' ? 'OK' : (r.erp_raw || ''))}</select></td></tr>`;
   };
 
   const rowHtmlWS = (r) => {
@@ -68,7 +67,7 @@
     const erpSel = ['OK', 'Submitted', 'Ongoing', 'Pending', ''].map((v) => `<option value="${v}" ${v === r.erp_raw ? 'selected' : ''}>${v === '' ? 'Not submitted' : v === 'OK' ? 'ERP OK' : v}</option>`).join('');
     const can = r.erp !== 'ok';   // ERP OK / Submitted lines are done: nothing to send again
     return `<tr class="lm-click" data-id="${r.id}" data-lab="${esc(r.lab_ref)}" tabindex="0" aria-label="Open ${esc(r.lab_ref)}">
-      <td class="lm-sel"><input type="checkbox" data-pick="${r.id}" ${S.sel.has(r.id) ? 'checked' : ''} ${can ? '' : 'disabled'} aria-label="Select ${esc(r.lab_ref)} for ERP"></td>
+      ${editBtn(r)}<td class="lm-sel"><input type="checkbox" data-pick="${r.id}" ${S.sel.has(r.id) ? 'checked' : ''} ${can ? '' : 'disabled'} aria-label="Select ${esc(r.lab_ref)} for ERP"></td>
       <td>${r.tested ? esc(fmtDay(r.tested)) : '<span class="lm-none">-</span>'}</td>
       <td><b>${esc(fmtDay(r.day))}</b></td>
       <td>${esc(r.line)}</td>
@@ -82,18 +81,17 @@
       <td class="s ${r.il}">${IL[r.il]}</td>
       <td class="lm-res ${r.level}">${r.result ? `<b>${esc(r.result)}</b>` : '<span class="lm-none">-</span>'}</td>
       <td class="s ${r.erp}"><select data-id="${r.id}" aria-label="ERP status of ${esc(r.lab_ref)}">${erpSel}</select></td>
-      ${editBtn(r)}
     </tr>`;
   };
   const rowHtml = (r) => {
     if (isWS()) return rowHtmlWS(r);
-    if (r.shutdown) return `<tr class="lm-shut"><td class="lm-sel"></td><td>SHUTDOWN</td><td>${esc(fmtDay(r.day))}</td><td>${esc(r.line)}</td><td class="lm-lab">${esc(r.lab_ref)}</td><td colspan="7">SHUTDOWN</td></tr>`;
+    if (r.shutdown) return `<tr class="lm-shut"><td class="lm-editcell"></td><td class="lm-sel"></td><td>SHUTDOWN</td><td>${esc(fmtDay(r.day))}</td><td>${esc(r.line)}</td><td class="lm-lab">${esc(r.lab_ref)}</td><td colspan="6">SHUTDOWN</td></tr>`;
     if (S.edit === r.id) return editRow(r);
     const notes = [r.notes, r.cause].filter(Boolean).join('\n');
     const erpSel = ['OK', 'Submitted', 'Ongoing', 'Pending', ''].map((v) => `<option value="${v}" ${v === r.erp_raw ? 'selected' : ''}>${v === '' ? 'Not submitted' : v === 'OK' ? 'ERP OK' : v}</option>`).join('');
     const can = r.erp !== 'ok';   // ERP OK / Submitted rows are done: nothing to send again
     return `<tr class="lm-click" data-id="${r.id}" data-lab="${esc(r.lab_ref)}" tabindex="0" aria-label="Open ${esc(r.lab_ref)}">
-      <td class="lm-sel"><input type="checkbox" data-pick="${r.id}" ${S.sel.has(r.id) ? 'checked' : ''} ${can ? '' : 'disabled'} aria-label="Select ${esc(r.lab_ref)} for ERP"></td>
+      ${editBtn(r)}<td class="lm-sel"><input type="checkbox" data-pick="${r.id}" ${S.sel.has(r.id) ? 'checked' : ''} ${can ? '' : 'disabled'} aria-label="Select ${esc(r.lab_ref)} for ERP"></td>
       <td>${r.tested ? esc(fmtDay(r.tested)) : '<span class="lm-none">-</span>'}</td>
       <td><b>${esc(fmtDay(r.day))}</b></td>
       <td>${esc(r.line)}</td>
@@ -104,7 +102,6 @@
       <td class="s ${r.il}">${IL[r.il]}</td>
       <td class="lm-res ${r.level}">${r.result ? `<b>${esc(r.result)}</b>` : '<span class="lm-none">-</span>'}${notes ? `<small>${esc(notes)}</small>` : ''}</td>
       <td class="s ${r.erp}"><select data-id="${r.id}" aria-label="ERP status of ${esc(r.lab_ref)}">${erpSel}</select></td>
-      ${editBtn(r)}
     </tr>`;
   };
 
