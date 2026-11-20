@@ -31,6 +31,7 @@ class LabMonitoringController extends BaseController
     }
 
     /** the production day of a lab ref: the tracker's date, else the date inside the lab ref (DTP20261103SHA1-R) */
+    private const MANUAL_IL = ['MOK' => 'ok', 'MPENDING' => 'pending', 'MNO' => 'bad'];
     private const DAY_SQL = "COALESCE(t.ProductionDate, STR_TO_DATE(SUBSTRING(u.lab_ref_no, 4, 8), '%Y%m%d'))";
 
     private function base()
@@ -104,7 +105,9 @@ class LabMonitoringController extends BaseController
             $vsp  = trim((string) $r['t_vsp']) !== '' ? (string) $r['t_vsp'] : trim((string) ($r['b_po'] ?: $r['po_lot_no']));
 
             $st = array_values($reqs[$lab] ?? []);
-            if (in_array('bad', $st, true)) {
+            if (isset(self::MANUAL_IL[strtoupper((string) $r['interlink_flag'])])) {
+                $il = self::MANUAL_IL[strtoupper((string) $r['interlink_flag'])];   // typed by hand with the Edit button
+            } elseif (in_array('bad', $st, true)) {
                 $il = 'bad';
             } elseif (in_array('pending', $st, true)) {
                 $il = 'pending';
@@ -260,7 +263,9 @@ class LabMonitoringController extends BaseController
             $sd   = strtoupper($m[2] ?? '');
             $st   = array_values($reqs[$lab] ?? []);
             $hasTr = trim((string) $r['flexing_app'] . $r['aging_app'] . $r['hydrolysis_app'] . $r['washing_app'] . $r['uv_app']) !== '';
-            if (in_array('bad', $st, true)) {
+            if (isset(self::MANUAL_IL[strtoupper((string) $r['interlink_flag'])])) {
+                $il = self::MANUAL_IL[strtoupper((string) $r['interlink_flag'])];   // typed by hand with the Edit button
+            } elseif (in_array('bad', $st, true)) {
                 $il = 'bad';
             } elseif (in_array('pending', $st, true)) {
                 $il = 'pending';
@@ -569,5 +574,143 @@ class LabMonitoringController extends BaseController
         }
 
         return $this->json(['ok' => true]);
+    }
+
+    /**
+     * POST lab-monitoring/row-save {id, kind, fields}: the Edit button of a row. Everything but the Line and the Lab Reference can be typed:
+     * tested / production date, VSP code, the TR (Application No) numbers, InterLink status, result and ERP status. Only the fields sent are changed.
+     */
+    public function rowSave()
+    {
+        if (! \App\Libraries\Roles::can((string) (service('auth')->user()['role'] ?? ''), 'erpfinish', 2)) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'error' => 'Your role may view ERP Finish Monitoring but not change it (Settings > Users & roles).']);
+        }
+        $p  = $this->request->getJSON(true) ?? [];
+        $f  = is_array($p['fields'] ?? null) ? $p['fields'] : [];
+        $id = (int) ($p['id'] ?? 0);
+        $ws = (string) ($p['kind'] ?? '') === 'wholeshoe';
+        $db = $this->db();
+        ErpMonitor::ensureColumns();
+        \App\Libraries\EtrfAppNos::ensureColumns();
+        $u = $id > 0 ? $db->table('tbl_dtr_unified_labrefs')->where('id', $id)->get()->getRowArray() : null;
+        if (! $u || ! in_array((string) $u['form_slug'], ['bonding', 'wholeshoe'], true)) {
+            return $this->json(['ok' => false, 'error' => 'That line was not found.'], 404);
+        }
+        $lab   = (string) $u['lab_ref_no'];
+        $slug  = (string) $u['form_slug'];
+        $set   = [];
+        $errs  = [];
+        $done  = [];
+        $isApp = static fn (string $v): bool => (bool) preg_match('/^A\d{6,}(-REV\d+)?$/', $v);
+        $date  = static function (string $v): ?string {
+            $v = trim($v);
+            if ($v === '') {
+                return '';
+            }
+
+            return preg_match('/^\d{4}-\d{2}-\d{2}$/', $v) && strtotime($v) ? $v : null;
+        };
+        // a TR column: the new number is the current one, the one it replaces goes to the earlier ones
+        $setApp = function (string $col, string $new) use ($db, $slug, $lab): void {
+            foreach ($db->table('tbl_dtr_unified_labrefs')->select("id, etrf_{$col}_app AS cur, etrf_{$col}_hist AS hist")->where('form_slug', $slug)->where('lab_ref_no', $lab)->get()->getResultArray() as $r) {
+                $cur = trim((string) $r['cur']);
+                if ($cur === $new) {
+                    continue;
+                }
+                $hist = array_values(array_filter(array_map('trim', explode(';', (string) $r['hist'])), 'strlen'));
+                if ($cur !== '' && ! in_array($cur, $hist, true)) {
+                    $hist[] = $cur;
+                }
+                $db->table('tbl_dtr_unified_labrefs')->where('id', $r['id'])->update(["etrf_{$col}_app" => $new, "etrf_{$col}_hist" => implode(';', array_values(array_diff($hist, [$new])))]);
+            }
+        };
+
+        if (array_key_exists('tested', $f)) {
+            $d = $date((string) $f['tested']);
+            if ($d === null) {
+                $errs[] = 'Tested date: use a valid date.';
+            } else {
+                $set['tested_date'] = $d;
+                if (! $ws && $db->tableExists('tbl_dtr_bonding_info')) {
+                    $db->table('tbl_dtr_bonding_info')->where('LabRefNo', $lab)->update(['TestedDate' => $d]);
+                }
+                $done[] = 'tested date';
+            }
+        }
+        if (array_key_exists('day', $f) && ! $ws) {
+            $d = $date((string) $f['day']);
+            if ($d === null || $d === '') {
+                $errs[] = 'Production date: use a valid date.';
+            } elseif ($db->table('tbl_dtr_bondingtracker')->where('LabRefNo', $lab)->countAllResults() > 0) {
+                $db->table('tbl_dtr_bondingtracker')->where('LabRefNo', $lab)->update(['ProductionDate' => $d]);
+                $done[] = 'production date';
+            } else {
+                $errs[] = 'Production date: this lab reference has no tracker line, so its date is the one in the lab reference.';
+            }
+        }
+        if (array_key_exists('vsp', $f)) {
+            $v = mb_substr(trim((string) $f['vsp']), 0, 191);
+            $set['po_lot_no'] = $v;
+            if (! $ws) {
+                $db->table('tbl_dtr_bondingtracker')->where('LabRefNo', $lab)->update(['ProductionCode' => $v]);
+                if ($db->tableExists('tbl_dtr_bonding_info')) {
+                    $db->table('tbl_dtr_bonding_info')->where('LabRefNo', $lab)->update(['POLotNO' => $v]);
+                }
+            }
+            $done[] = 'VSP code';
+        }
+        $cols = $ws ? ['flexing' => 'flexing', 'aging' => 'aging', 'hydrolysis' => 'hydrolysis', 'washing' => 'washing', 'uv' => 'uv'] : ['bonding' => 'bonding', 'pull' => 'pull'];
+        foreach ($cols as $key => $col) {
+            if (! array_key_exists($key, $f)) {
+                continue;
+            }
+            $v = strtoupper(trim((string) $f[$key]));
+            if ($v !== '' && ! $isApp($v)) {
+                $errs[] = ucfirst($key) . ' TR no.: "' . $v . '" is not an Application No (like A006041469).';
+                continue;
+            }
+            if ($v !== '' && $key === 'bonding') {
+                \App\Libraries\EtrfAppNos::linkToLabRef($lab, 'VF eTRF-bonding', $v);   // also the TR of the bonding report
+            } else {
+                $setApp($col, $v);
+            }
+            $done[] = $key . ' TR';
+        }
+        if (array_key_exists('il', $f)) {
+            $set['interlink_flag'] = ['ok' => 'MOK', 'pending' => 'MPENDING', 'bad' => 'MNO'][(string) $f['il']] ?? '';
+            $done[] = 'InterLink status';
+        }
+        if (array_key_exists('result', $f)) {
+            $r = ucfirst(strtolower(trim((string) $f['result'])));
+            if (! in_array($r, ['', 'Pass', 'Fail', 'Tolerable'], true)) {
+                $errs[] = 'Result: Pass, Tolerable or Fail.';
+            } else {
+                $set['overall_result'] = $r;
+                if (! $ws && $db->tableExists('tbl_dtr_bonding_info')) {
+                    $bid = $db->table('tbl_dtr_bonding_info')->selectMax('BondingTestID')->where('LabRefNo', $lab)->get()->getRow('BondingTestID');
+                    if ($bid) {
+                        $db->table('tbl_dtr_bonding_info')->where('BondingTestID', $bid)->update(['Result' => $r]);
+                    }
+                }
+                $done[] = 'result';
+            }
+        }
+        if (array_key_exists('erp', $f)) {
+            $e = (string) $f['erp'];
+            if (! in_array($e, ['', 'OK', 'Submitted', 'Ongoing', 'Pending'], true)) {
+                $errs[] = 'ERP status: not a known status.';
+            } else {
+                $set['erp_status'] = $e;
+                $done[] = 'ERP status';
+            }
+        }
+        if ($set) {
+            $db->table('tbl_dtr_unified_labrefs')->where('form_slug', $slug)->where('lab_ref_no', $lab)->update($set);   // a lab ref can have several index rows
+        }
+        if ($done) {
+            \App\Libraries\ActivityLog::record('erpfinish', 'row-edit', $lab, 'edited by hand: ' . implode(', ', $done));
+        }
+
+        return $this->json(['ok' => $errs === [], 'error' => implode(' ', $errs), 'saved' => $done]);
     }
 }

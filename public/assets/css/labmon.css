@@ -183,3 +183,13 @@ html[data-theme="dark"] .lm-agent { background: rgba(30, 41, 59, .78); color: #c
 .lm-tab:hover{border-color:#2563eb;color:#1d4ed8}
 .lm-tab.on{background:#2563eb;border-color:#2563eb;color:#fff}
 .lm-style{display:block;font-weight:400;color:#64748b;font-size:11px;margin-top:2px}
+
+/* Edit button of a row */
+.lm-editcol,.lm-editcell{white-space:nowrap;text-align:right;width:1%}
+.lm-edit-btn,.lm-save-btn,.lm-cancel-btn{border:1px solid #94a3b8;background:#fff;border-radius:8px;padding:4px 12px;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.lm-edit-btn:hover,.lm-cancel-btn:hover{border-color:#2563eb;color:#2563eb}
+.lm-save-btn{background:#2563eb;border-color:#2563eb;color:#fff}.lm-save-btn:hover{background:#1d4ed8}.lm-save-btn:disabled{opacity:.6}
+.lm-editing td{background:rgba(37,99,235,.06)}
+.lm-in{font:inherit;font-size:12.5px;padding:4px 6px;border:1px solid #94a3b8;border-radius:6px;background:#fff;max-width:150px}
+.lm-editing select.lm-in{max-width:130px}
+.lm-in[type=date]{width:130px}

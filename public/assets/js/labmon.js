@@ -10,12 +10,12 @@
   // two tabs: Bonding (the original view) and Whole Shoe (same view, the TR numbers of the other eTRF types)
   const savedKind = (() => { try { return localStorage.getItem('nxl:erp-kind'); } catch (e) { return null; } })();
   const hashKind = /kind=wholeshoe/.test(location.hash) ? 'wholeshoe' : (/kind=bonding/.test(location.hash) ? 'bonding' : '');
-  const S = { kind: hashKind || (savedKind === 'wholeshoe' ? 'wholeshoe' : 'bonding'), date: '', side: '', status: '', q: '', rows: [], timer: 0, select: false, sel: new Set() };
+  const S = { kind: hashKind || (savedKind === 'wholeshoe' ? 'wholeshoe' : 'bonding'), date: '', side: '', status: '', q: '', rows: [], timer: 0, select: false, sel: new Set(), edit: 0 };
   const isWS = () => S.kind === 'wholeshoe';
-  const COLS = () => (isWS() ? 14 : 11);
+  const COLS = () => (isWS() ? 15 : 12);
   const HEAD = {
-    bonding: '<tr><th class="lm-sel"><input type="checkbox" id="lm-pick-all" aria-label="Select all"></th><th>Tested date</th><th>Production date</th><th>Line</th><th>Lab reference</th><th>VSP code</th><th>Bonding TR no.</th><th>Pull test TR no.</th><th>InterLink status</th><th>Result</th><th>ERP status</th></tr>',
-    wholeshoe: '<tr><th class="lm-sel"><input type="checkbox" id="lm-pick-all" aria-label="Select all"></th><th>Tested date</th><th>Production date</th><th>Line</th><th>Lab reference</th><th>VSP code</th><th>Flexing Test</th><th>Aging Test</th><th>Hydrolysis Test</th><th>Washing Test</th><th>UV Light Test</th><th>InterLink status</th><th>Result</th><th>ERP status</th></tr>',
+    bonding: '<tr><th class="lm-sel"><input type="checkbox" id="lm-pick-all" aria-label="Select all"></th><th>Tested date</th><th>Production date</th><th>Line</th><th>Lab reference</th><th>VSP code</th><th>Bonding TR no.</th><th>Pull test TR no.</th><th>InterLink status</th><th>Result</th><th>ERP status</th><th class="lm-editcol"></th></tr>',
+    wholeshoe: '<tr><th class="lm-sel"><input type="checkbox" id="lm-pick-all" aria-label="Select all"></th><th>Tested date</th><th>Production date</th><th>Line</th><th>Lab reference</th><th>VSP code</th><th>Flexing Test</th><th>Aging Test</th><th>Hydrolysis Test</th><th>Washing Test</th><th>UV Light Test</th><th>InterLink status</th><th>Result</th><th>ERP status</th><th class="lm-editcol"></th></tr>',
   };
 
   const get = async (url) => {
@@ -37,7 +37,34 @@
     return `<span class="lm-num">${esc(cur)}</span>${h.length ? `<span class="lm-hist" title="Earlier: ${esc(h.join('; '))}">+${h.length} earlier</span>` : ''}`;
   };
 
+  // ---- Edit button: every cell of the row can be typed except the Line and the Lab reference ----
+  const editBtn = (r) => `<td class="lm-editcell"><button type="button" class="lm-edit-btn" data-edit="${r.id}" aria-label="Edit ${esc(r.lab_ref)}">Edit</button></td>`;
+  const optList = (list, cur) => list.map(([v, t]) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${t}</option>`).join('');
+  const IL_OPTS = [['ok', 'INTERLINK OK'], ['pending', 'PENDING'], ['bad', 'NOT SUBMITTED']];
+  const RES_OPTS = [['', '-'], ['Pass', 'Pass'], ['Tolerable', 'Tolerable'], ['Fail', 'Fail']];
+  const ERP_OPTS = [['', 'Not submitted'], ['OK', 'ERP OK'], ['Submitted', 'Submitted'], ['Ongoing', 'Ongoing'], ['Pending', 'Pending']];
+  const resVal = (r) => { const u = String(r.result || '').toUpperCase(); return u.startsWith('FAIL') ? 'Fail' : u.startsWith('TOL') ? 'Tolerable' : u ? 'Pass' : ''; };
+  const inp = (f, v, ph, w) => `<input class="lm-in" data-ef="${f}" value="${esc(v || '')}" placeholder="${ph || ''}" ${w ? `style="width:${w}px"` : ''} autocomplete="off">`;
+  const trIn = (f, v) => inp(f, v, 'A00…', 112);
+  const editRow = (r) => {
+    const common = `<td class="lm-sel"></td>
+      <td><input type="date" class="lm-in" data-ef="tested" value="${esc(r.tested || '')}"></td>
+      <td>${isWS() ? `<b>${esc(fmtDay(r.day))}</b>` : `<input type="date" class="lm-in" data-ef="day" value="${esc(r.day || '')}">`}</td>
+      <td>${esc(r.line)}</td>
+      <td class="lm-lab">${esc(r.lab_ref)}</td>
+      <td>${inp('vsp', r.vsp, 'VSP', 110)}</td>`;
+    const trs = isWS()
+      ? ['flexing', 'aging', 'hydrolysis', 'washing', 'uv'].map((k) => `<td>${trIn(k, r[k])}</td>`).join('')
+      : `<td>${trIn('bonding', r.bonding)}</td><td>${trIn('pull', r.pull)}</td>`;
+    return `<tr class="lm-editing" data-id="${r.id}">${common}${trs}
+      <td><select class="lm-in" data-ef="il">${optList(IL_OPTS, r.il)}</select></td>
+      <td><select class="lm-in" data-ef="result">${optList(RES_OPTS, resVal(r))}</select></td>
+      <td><select class="lm-in" data-ef="erp">${optList(ERP_OPTS, r.erp_raw === 'OK' ? 'OK' : (r.erp_raw || ''))}</select></td>
+      <td class="lm-editcell"><button type="button" class="lm-save-btn" data-save="${r.id}">Save</button> <button type="button" class="lm-cancel-btn" data-cancel="1">Cancel</button></td></tr>`;
+  };
+
   const rowHtmlWS = (r) => {
+    if (S.edit === r.id) return editRow(r);
     const erpSel = ['OK', 'Submitted', 'Ongoing', 'Pending', ''].map((v) => `<option value="${v}" ${v === r.erp_raw ? 'selected' : ''}>${v === '' ? 'Not submitted' : v === 'OK' ? 'ERP OK' : v}</option>`).join('');
     const can = r.erp !== 'ok';   // ERP OK / Submitted lines are done: nothing to send again
     return `<tr class="lm-click" data-id="${r.id}" data-lab="${esc(r.lab_ref)}" tabindex="0" aria-label="Open ${esc(r.lab_ref)}">
@@ -55,11 +82,13 @@
       <td class="s ${r.il}">${IL[r.il]}</td>
       <td class="lm-res ${r.level}">${r.result ? `<b>${esc(r.result)}</b>` : '<span class="lm-none">-</span>'}</td>
       <td class="s ${r.erp}"><select data-id="${r.id}" aria-label="ERP status of ${esc(r.lab_ref)}">${erpSel}</select></td>
+      ${editBtn(r)}
     </tr>`;
   };
   const rowHtml = (r) => {
     if (isWS()) return rowHtmlWS(r);
-    if (r.shutdown) return `<tr class="lm-shut"><td class="lm-sel"></td><td>SHUTDOWN</td><td>${esc(fmtDay(r.day))}</td><td>${esc(r.line)}</td><td class="lm-lab">${esc(r.lab_ref)}</td><td colspan="6">SHUTDOWN</td></tr>`;
+    if (r.shutdown) return `<tr class="lm-shut"><td class="lm-sel"></td><td>SHUTDOWN</td><td>${esc(fmtDay(r.day))}</td><td>${esc(r.line)}</td><td class="lm-lab">${esc(r.lab_ref)}</td><td colspan="7">SHUTDOWN</td></tr>`;
+    if (S.edit === r.id) return editRow(r);
     const notes = [r.notes, r.cause].filter(Boolean).join('\n');
     const erpSel = ['OK', 'Submitted', 'Ongoing', 'Pending', ''].map((v) => `<option value="${v}" ${v === r.erp_raw ? 'selected' : ''}>${v === '' ? 'Not submitted' : v === 'OK' ? 'ERP OK' : v}</option>`).join('');
     const can = r.erp !== 'ok';   // ERP OK / Submitted rows are done: nothing to send again
@@ -75,6 +104,7 @@
       <td class="s ${r.il}">${IL[r.il]}</td>
       <td class="lm-res ${r.level}">${r.result ? `<b>${esc(r.result)}</b>` : '<span class="lm-none">-</span>'}${notes ? `<small>${esc(notes)}</small>` : ''}</td>
       <td class="s ${r.erp}"><select data-id="${r.id}" aria-label="ERP status of ${esc(r.lab_ref)}">${erpSel}</select></td>
+      ${editBtn(r)}
     </tr>`;
   };
 
@@ -265,6 +295,7 @@
 
   // rows
   $('#lm-body').addEventListener('click', (e) => {
+    if (e.target.closest('tr.lm-editing')) return;   // typing in a row: it does not open the report
     if (e.target.closest('select, input, a, button')) {
       const pick = e.target.closest('input[data-pick]');
       if (pick) { const id = Number(pick.dataset.pick); if (pick.checked) S.sel.add(id); else S.sel.delete(id); syncSelectUi(); }
@@ -272,6 +303,33 @@
     }
     const tr = e.target.closest('tr.lm-click'); if (!tr) return;
     openDlg(Number(tr.dataset.id));
+  });
+  // Edit / Save / Cancel of a row
+  const postSave = async (id, fields) => {
+    const r = await fetch(base + 'lab-monitoring/row-save', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf ? csrf.content : '' },
+      body: JSON.stringify({ id, kind: S.kind, fields }),
+    });
+    const j = await r.json(); if (csrf && j.csrf) csrf.content = j.csrf;
+    if (!r.ok || !j.ok) throw new Error(j.error || 'Not saved');
+    return j;
+  };
+  $('#lm-body').addEventListener('click', async (e) => {
+    const ed = e.target.closest('[data-edit]');
+    if (ed) { S.edit = Number(ed.dataset.edit); renderTable(); const f = $('tr.lm-editing .lm-in'); if (f) f.focus(); return; }
+    if (e.target.closest('[data-cancel]')) { S.edit = 0; renderTable(); return; }
+    const sv = e.target.closest('[data-save]');
+    if (!sv) return;
+    const tr = sv.closest('tr'); const fields = {};
+    tr.querySelectorAll('[data-ef]').forEach((el) => { fields[el.dataset.ef] = el.value; });
+    sv.disabled = true;
+    try {
+      const j = await postSave(Number(sv.dataset.save), fields);
+      S.edit = 0;
+      if (window.nxToast) window.nxToast(j.saved && j.saved.length ? `Saved: ${j.saved.join(', ')}.` : 'Nothing changed.', 'success', 4000);
+      load(true);
+    } catch (x) { if (window.nxToast) window.nxToast(x.message, 'error', 8000); sv.disabled = false; }
   });
   $('#lm-body').addEventListener('keydown', (e) => {
     if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('tr.lm-click')) { e.preventDefault(); openDlg(Number(e.target.dataset.id)); }
@@ -316,5 +374,5 @@
   agentBadge();
   setInterval(() => { if (!document.hidden) agentBadge(); }, 15000);
   setInterval(() => { if (!document.hidden) loadReqs(); }, 15000);
-  setInterval(() => { if (!document.hidden) load(true); }, 45000);
+  setInterval(() => { if (!document.hidden && !S.edit) load(true); }, 45000);
 })();
