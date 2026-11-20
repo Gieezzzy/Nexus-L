@@ -825,9 +825,6 @@ class WstController extends BaseController
     /** POST /wst/test-date/{id} {date}: the Test Date of a test is changed (Open Monitor) */
     public function testDate(int $id): ResponseInterface
     {
-        if (! \App\Controllers\MaterialsController::canEdit()) {
-            return $this->response->setStatusCode(403)->setJSON(['success' => false, 'message' => 'Only the laboratory staff can change the Test Date.', 'csrf' => csrf_hash()]);
-        }
         $p    = $this->request->getJSON(true) ?? [];
         $date = trim((string) ($p['date'] ?? ''));
         $d    = \DateTime::createFromFormat('Y-m-d', $date);
@@ -944,7 +941,7 @@ class WstController extends BaseController
             }
         }
 
-        return $this->response->setJSON(['ok' => true, 'shoes' => $out, 'total' => $total, 'page' => $page, 'pages' => max(1, (int) ceil($total / $size)), 'can_edit' => \App\Controllers\MaterialsController::canEdit(), 'csrf' => csrf_hash()]);
+        return $this->response->setJSON(['ok' => true, 'shoes' => $out, 'total' => $total, 'page' => $page, 'pages' => max(1, (int) ceil($total / $size)), 'can_edit' => true, 'csrf' => csrf_hash()]);
     }
 
     /** the whole shoe's index (Lab Tracker) row follows its tests */
@@ -972,15 +969,12 @@ class WstController extends BaseController
             }
         }
 
-        return $this->response->setJSON(['ok' => true, 'options' => $opts, 'can_edit' => \App\Controllers\MaterialsController::canEdit()]);
+        return $this->response->setJSON(['ok' => true, 'options' => $opts, 'can_edit' => true]);
     }
 
     /** POST /wst/shoe-test-add {parent, type}: a test is added to the whole shoe (Lab Ref like the intake makes it, bench session ready to start) */
     public function shoeTestAdd(): ResponseInterface
     {
-        if (! \App\Controllers\MaterialsController::canEdit()) {
-            return $this->shoeNoEdit();
-        }
         $p      = $this->request->getJSON(true) ?? [];
         $db     = \Config\Database::connect();
         $parent = trim((string) ($p['parent'] ?? ''));
@@ -1045,9 +1039,6 @@ class WstController extends BaseController
      */
     public function shoeTestRemove(): ResponseInterface
     {
-        if (! \App\Controllers\MaterialsController::canEdit()) {
-            return $this->shoeNoEdit();
-        }
         $p  = $this->request->getJSON(true) ?? [];
         $db = \Config\Database::connect();
         $t  = $db->table('tbl_dtr_wholeshoetracker')->where('TrackerID', (int) ($p['id'] ?? 0))->get()->getRowArray();
