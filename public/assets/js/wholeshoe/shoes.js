@@ -87,7 +87,7 @@
       <div class="dtr-modal-header">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           ${pill(shoeStatus(s))}<h3 style="margin:0;font-size:15px;font-weight:700" class="mono">${esc(s.parent)}</h3>
-          ${s.tr ? `<span class="ws-chip ws-tr">TR ${esc(s.tr)}</span>` : ''}${s.erp ? `<span class="ws-chip ws-erp">ERP ${esc(s.erp)}</span>` : ''}
+          ${s.tr ? `<span class="ws-chip ws-tr">${esc(s.tr)}</span>` : ''}${s.erp ? `<span class="ws-chip ws-erp">ERP ${esc(s.erp)}</span>` : ''}
         </div>
         <button type="button" class="dtr-modal-close" data-ws-close>&times;</button>
       </div>
