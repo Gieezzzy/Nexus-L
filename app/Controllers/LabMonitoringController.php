@@ -90,6 +90,7 @@ class LabMonitoringController extends BaseController
             }
         }
 
+        $pulls = $this->pullTrs($labs);
         $out = [];
         $sum = ['total' => 0, 'il_ok' => 0, 'il_pending' => 0, 'il_bad' => 0, 'erp_ok' => 0, 'erp_pending' => 0, 'erp_bad' => 0];
         $q    = strtolower(trim((string) $this->request->getGet('q')));
@@ -121,7 +122,8 @@ class LabMonitoringController extends BaseController
                 'id' => (int) $r['id'], 'lab_ref' => $lab, 'line' => $line, 'side' => $sd, 'vsp' => $vsp, 'shutdown' => (int) $r['t_shut'] === 1,
                 'tested' => ($tt = strtotime((string) ($r['b_tested'] ?? ''))) ? date('Y-m-d', $tt) : '', 'day' => (string) $r['pday'],
                 'bonding' => trim((string) $r['etrf_bonding_app']), 'bonding_hist' => trim((string) $r['etrf_bonding_hist']),
-                'pull' => trim((string) $r['etrf_pull_app']), 'pull_hist' => trim((string) $r['etrf_pull_hist']),
+                'pull' => trim((string) $r['etrf_pull_app']) !== '' ? trim((string) $r['etrf_pull_app']) : ($pulls[$lab]['app'] ?? ''),
+                'pull_hist' => trim((string) $r['etrf_pull_app']) !== '' ? trim((string) $r['etrf_pull_hist']) : ($pulls[$lab]['hist'] ?? ''),
                 'il' => $il, 'erp' => $erp, 'erp_raw' => $erpRaw,
                 'result' => $res, 'level' => $level, 'notes' => trim((string) $r['b_notes']), 'cause' => trim((string) $r['b_cause']),
             ];
@@ -143,6 +145,54 @@ class LabMonitoringController extends BaseController
         usort($out, static fn ($a, $b) => $ln($a) <=> $ln($b));   // production day, then building letter, then line number
 
         return $this->json(['ok' => true, 'month' => $date, 'days' => $days, 'rows' => $out, 'summary' => $sum]);
+    }
+
+    /**
+     * The Pull test TR of a shoe line: the pull tests (EY / DR / HP / RV ... Lab Refs, form pulltest) of the same day, line and side as the bonding Lab Ref
+     * (DTP20261112SHA1-R <-> DTP20261112EYA1-R) carry their own Application No. The newest is the current one, the others go to "earlier".
+     * @param list<string> $labs bonding Lab Refs
+     * @return array<string, array{app:string, hist:string}>
+     */
+    private function pullTrs(array $labs): array
+    {
+        $want = [];
+        foreach ($labs as $lab) {
+            if (preg_match('/^DTP(\d{8})(?:SH|FA)([A-Z]\d+)-([RL])\b/i', (string) $lab, $m)) {
+                $want[(string) $lab] = strtoupper($m[1] . '|' . $m[2] . '|' . $m[3]);
+            }
+        }
+        if (! $want) {
+            return [];
+        }
+        $dates = array_values(array_unique(array_map(static fn ($k) => explode('|', $k)[0], $want)));
+        $by    = [];
+        foreach ($this->db()->query("SELECT id, lab_ref_no, etrf_pull_app, etrf_pull_hist FROM tbl_dtr_unified_labrefs WHERE form_slug = 'pulltest' AND etrf_pull_app <> ''
+                AND lab_ref_no REGEXP ?", ['^DTP(' . implode('|', $dates) . ')[A-Z]{2}[A-Z][0-9]+-[LR]'])->getResultArray() as $u) {
+            if (preg_match('/^DTP(\d{8})[A-Z]{2}([A-Z]\d+)-([RL])\b/i', (string) $u['lab_ref_no'], $m)) {
+                $by[strtoupper($m[1] . '|' . $m[2] . '|' . $m[3])][] = $u;
+            }
+        }
+        $out = [];
+        foreach ($want as $lab => $key) {
+            $list = $by[$key] ?? [];
+            if (! $list) {
+                continue;
+            }
+            usort($list, static fn ($a, $b) => (int) $b['id'] <=> (int) $a['id']);
+            $cur  = trim((string) $list[0]['etrf_pull_app']);
+            $hist = [];
+            foreach ($list as $i => $u) {
+                foreach (array_merge($i === 0 ? [] : [(string) $u['etrf_pull_app']], explode(';', (string) $u['etrf_pull_hist'])) as $h) {
+                    $h = trim($h);
+                    if ($h !== '' && $h !== $cur && ! in_array($h, $hist, true)) {
+                        $hist[] = $h;
+                    }
+                }
+            }
+            $out[$lab] = ['app' => $cur, 'hist' => implode(';', $hist)];
+        }
+
+        return $out;
     }
 
     /**
@@ -302,6 +352,7 @@ class LabMonitoringController extends BaseController
         $found   = $db->query("SELECT u.id, u.lab_ref_no, u.erp_status, u.etrf_bonding_app, u.etrf_pull_app, u.po_lot_no, u.overall_result, u.tested_date,
                 t.LineNo t_line, t.ProductionCode t_vsp, b.Result b_result, b.TestedDate b_tested, b.POLotNO b_po, DATE_FORMAT({$dayExpr}, '%Y-%m-%d') pday
             " . $this->base() . " AND u.id IN ({$in}) ORDER BY u.id")->getResultArray();   // FIFO: the order they were collected
+        $pullMap = $this->pullTrs(array_column($found, 'lab_ref_no'));
         foreach ($found as $r) {
             $busy = $db->table('tbl_erp_submissions')->where('lab_ref_no', $r['lab_ref_no'])->whereIn('status', ['queued', 'sending'])->countAllResults() > 0;
             if (in_array(strtolower((string) $r['erp_status']), ['ok', 'submitted'], true) || $busy) {
@@ -314,7 +365,7 @@ class LabMonitoringController extends BaseController
                 'lab_ref_no'      => (string) $r['lab_ref_no'],
                 'vsp_code'        => trim((string) $r['t_vsp']) !== '' ? trim((string) $r['t_vsp']) : trim((string) ($r['b_po'] ?: $r['po_lot_no'])),
                 'bonding_app'     => trim((string) $r['etrf_bonding_app']),
-                'pull_app'        => trim((string) $r['etrf_pull_app']),
+                'pull_app'        => trim((string) $r['etrf_pull_app']) !== '' ? trim((string) $r['etrf_pull_app']) : (string) ($pullMap[(string) $r['lab_ref_no']]['app'] ?? ''),
                 'line'            => trim((string) $r['t_line']) !== '' ? (string) $r['t_line'] : (string) ($m[1] ?? ''),
                 'side'            => strtoupper((string) ($m[2] ?? '')),   // the last letter of the lab reference: L or R
                 'production_date' => (string) $r['pday'],
