@@ -276,11 +276,12 @@
 
   // Fetch list of records from dbnexus
   let wstPage = 1;
-  const wstPerPage = 15;
+  const wstPerPage = 12;   // the server sends one page of 12 at a time
+  let wstTotal = 0;
   let wstAllRecords = [];
 
   const updateWstPaginationUI = () => {
-    const total = wstAllRecords.length;
+    const total = wstTotal;
     const totalPages = Math.max(1, Math.ceil(total / wstPerPage));
     if (wstPage > totalPages) wstPage = totalPages;
 
@@ -297,18 +298,18 @@
   $('#btn-wst-prev-page')?.addEventListener('click', () => {
     if (wstPage > 1) {
       wstPage--;
-      loadWstRecords(currentWstCategory, true);
+      loadWstRecords(currentWstCategory, false, true);
     }
   });
   $('#btn-wst-next-page')?.addEventListener('click', () => {
-    const totalPages = Math.max(1, Math.ceil(wstAllRecords.length / wstPerPage));
+    const totalPages = Math.max(1, Math.ceil(wstTotal / wstPerPage));
     if (wstPage < totalPages) {
       wstPage++;
-      loadWstRecords(currentWstCategory, true);
+      loadWstRecords(currentWstCategory, false, true);
     }
   });
 
-  const loadWstRecords = async (_cat = currentWstCategory, useCached = false) => {
+  const loadWstRecords = async (_cat = currentWstCategory, useCached = false, keepPage = false) => {
     const tbody = $('#wst-list-tbody');
     const cntBadge = $('#wst-record-count');
     if (!tbody) return;
@@ -323,16 +324,19 @@
       if (wstFilters.q) params.set('q', wstFilters.q);
       if (wstFilters.from_date) params.set('from_date', wstFilters.from_date);
       if (wstFilters.to_date) params.set('to_date', wstFilters.to_date);
+      params.set('per_page', String(wstPerPage));
+      if (keepPage) params.set('page', String(wstPage));
 
       let res;
       if (useCached && wstAllRecords.length > 0) {
         res = { success: true, records: wstAllRecords };
       } else {
+        if (!keepPage) wstPage = 1;
         res = await apiFetch(`wst/records?${params.toString()}`);
-        wstPage = 1;
       }
       if (!res.success || !res.records || res.records.length === 0) {
         wstAllRecords = [];
+        wstTotal = 0;
         updateWstPaginationUI();
         tbody.innerHTML = '<tr><td colspan="8" class="muted" style="text-align:center;padding:28px">No test sessions match the current filter criteria.</td></tr>';
         if (cntBadge) cntBadge.textContent = 'Showing 0 records';
@@ -359,10 +363,11 @@
       $('#wst-kpi-pending') && ($('#wst-kpi-pending').textContent = (res.kpis?.pending ?? pendCount).toLocaleString());
 
       wstAllRecords = res.records;
+      wstTotal = res.total ?? res.records.length;
       updateWstPaginationUI();
-      const pageRecords = wstAllRecords.slice((wstPage - 1) * wstPerPage, wstPage * wstPerPage);
+      const pageRecords = wstAllRecords;
 
-      if (cntBadge) cntBadge.textContent = `Showing ${wstAllRecords.length} record(s)`;
+      if (cntBadge) cntBadge.textContent = `Showing ${wstAllRecords.length} of ${wstTotal} record(s)`;
       const thProg = $('#wst-th-progress');
       if (thProg) {
         thProg.textContent = (currentWstCategory === 'flexing') ? 'CYCLES / PROGRESS' : 'TIME / STATUS';
@@ -942,7 +947,7 @@
       if ($('#wst-card-dt-labref')) $('#wst-card-dt-labref').textContent = r.labreference;
       if ($('#wst-modal-labref-badge')) $('#wst-modal-labref-badge').textContent = r.labreference;
       if ($('#wst-modal-dt-date')) $('#wst-modal-dt-date').value = r.testdate || '';
-      if ($('#wst-card-dt-date')) $('#wst-card-dt-date').textContent = r.testdate || '—';
+      if ($('#wst-card-dt-date')) { const dEl = $('#wst-card-dt-date'); dEl.tagName === 'INPUT' ? (dEl.value = (r.testdate || '').slice(0, 10)) : (dEl.textContent = r.testdate || '—'); }
       const sampleSummary = `${r.samplecountdry}D / ${r.samplecountwet}W / ${r.samplecounthydro}H`;
       if ($('#wst-modal-dt-samples')) $('#wst-modal-dt-samples').value = sampleSummary;
       if ($('#wst-card-dt-samples')) $('#wst-card-dt-samples').textContent = sampleSummary;
@@ -2367,6 +2372,19 @@ The result (PASS / FAIL / COMPLETED), the timer, the cycles, the findings and th
         saveBtn.disabled = false;
         saveBtn.textContent = '+ Add Remark';
       }
+    }
+  });
+
+  // the Test Date of a test can be changed from the monitor
+  $('#wst-card-dt-date')?.addEventListener('change', async (e) => {
+    const el = e.target;
+    if (!currentWstTestId) return;
+    const res = await apiFetch(`wst/test-date/${currentWstTestId}`, { method: 'POST', body: JSON.stringify({ date: el.value }) });
+    if (res.success) {
+      showToast('Test Date updated to ' + el.value, 'success');
+      loadWstRecords(currentWstCategory, false, true);
+    } else {
+      showToast(res.message || 'Could not change the Test Date', 'error');
     }
   });
 

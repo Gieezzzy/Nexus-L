@@ -445,7 +445,7 @@
       if ($('#wst-card-dt-labref')) $('#wst-card-dt-labref').textContent = r.labreference;
       if ($('#wst-modal-labref-badge')) $('#wst-modal-labref-badge').textContent = r.labreference;
       if ($('#wst-modal-dt-date')) $('#wst-modal-dt-date').value = r.testdate || '';
-      if ($('#wst-card-dt-date')) $('#wst-card-dt-date').textContent = r.testdate || '—';
+      if ($('#wst-card-dt-date')) { const dEl = $('#wst-card-dt-date'); dEl.tagName === 'INPUT' ? (dEl.value = (r.testdate || '').slice(0, 10)) : (dEl.textContent = r.testdate || '—'); }
       const sampleSummary = `${r.samplecountdry}D / ${r.samplecountwet}W / ${r.samplecounthydro}H`;
       if ($('#wst-modal-dt-samples')) $('#wst-modal-dt-samples').value = sampleSummary;
       if ($('#wst-card-dt-samples')) $('#wst-card-dt-samples').textContent = sampleSummary;

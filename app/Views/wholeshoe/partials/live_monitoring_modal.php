@@ -95,7 +95,7 @@
                         </div>
                         <div class="wst-meta-card">
                             <span class="wst-meta-label">Test Date</span>
-                            <span class="wst-meta-val" id="wst-card-dt-date">2026-10-28</span>
+                            <input type="date" class="wst-meta-val" id="wst-card-dt-date" value="2026-10-28" title="Test Date - click to change" style="border:1px solid #cbd5e1;border-radius:6px;padding:2px 6px;background:#fff;font:inherit;max-width:100%">
                         </div>
                         <div class="wst-meta-card">
                             <span class="wst-meta-label">Material / Type</span>

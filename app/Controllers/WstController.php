@@ -432,7 +432,21 @@ class WstController extends BaseController
                 ->groupEnd();
         }
 
-        $allRows = $builder->orderBy('testdate', 'DESC')->orderBy('id', 'DESC')->limit(300)->get()->getResultArray();
+        // paged (the Whole Shoe lists): only the rows of the page are read and worked out; the counts come from SQL
+        $per = (int) ($filters['per_page'] ?? 0);
+        $per = $per > 0 ? min(12, $per) : 0;
+        $pg  = max(1, (int) ($filters['page'] ?? 1));
+        $pagedTotal = 0;
+        $pagedStat  = [];
+        if ($per > 0) {
+            $cb = clone $builder;
+            $pagedTotal = (int) $cb->countAllResults();
+            $sb = clone $builder;
+            $pagedStat = $sb->select('status, is_running, COUNT(*) AS c', false)->groupBy('status, is_running')->get()->getResultArray();
+            $allRows = $builder->orderBy('testdate', 'DESC')->orderBy('id', 'DESC')->limit($per, ($pg - 1) * $per)->get()->getResultArray();
+        } else {
+            $allRows = $builder->orderBy('testdate', 'DESC')->orderBy('id', 'DESC')->limit(300)->get()->getResultArray();
+        }
 
         $testIds = array_column($allRows, 'id');
         $labRefs = array_filter(array_column($allRows, 'labreference'));
@@ -655,7 +669,17 @@ class WstController extends BaseController
             ? round(($kpi['pass'] / $kpi['completed']) * 100, 1)
             : 0;
 
-        return ['records' => $formatted, 'kpis' => $kpi];
+        if ($per > 0) {
+            $kpi['total'] = $pagedTotal;
+            $kpi['running'] = $kpi['completed'] = $kpi['pending'] = 0;
+            foreach ($pagedStat as $ps) {
+                $st = strtoupper((string) $ps['status']);
+                $k  = ((int) $ps['is_running'] === 1 || $st === 'RUNNING') ? 'running' : (in_array($st, ['COMPLETED', 'COMPLETE'], true) ? 'completed' : 'pending');
+                $kpi[$k] += (int) $ps['c'];
+            }
+        }
+
+        return ['records' => $formatted, 'kpis' => $kpi, 'total' => $per > 0 ? $pagedTotal : count($formatted)];
     }
 
     private function resolveCategory(string $slug): array
@@ -696,6 +720,8 @@ class WstController extends BaseController
             'q'         => $q,
             'from_date' => $fromDate,
             'to_date'   => $toDate,
+            'page'      => (int) $this->request->getGet('page'),
+            'per_page'  => (int) $this->request->getGet('per_page'),
         ];
 
         $result = $this->fetchSummaryRecords($filters);
@@ -705,6 +731,7 @@ class WstController extends BaseController
             'records' => $result['records'],
             'kpis'    => $result['kpis'],
             'count'   => count($result['records']),
+            'total'   => $result['total'],
         ]);
     }
 
@@ -795,6 +822,30 @@ class WstController extends BaseController
         ]);
     }
 
+    /** POST /wst/test-date/{id} {date}: the Test Date of a test is changed (Open Monitor) */
+    public function testDate(int $id): ResponseInterface
+    {
+        if (! \App\Controllers\MaterialsController::canEdit()) {
+            return $this->response->setStatusCode(403)->setJSON(['success' => false, 'message' => 'Only the laboratory staff can change the Test Date.', 'csrf' => csrf_hash()]);
+        }
+        $p    = $this->request->getJSON(true) ?? [];
+        $date = trim((string) ($p['date'] ?? ''));
+        $d    = \DateTime::createFromFormat('Y-m-d', $date);
+        if (! ($d && $d->format('Y-m-d') === $date)) {
+            return $this->response->setStatusCode(422)->setJSON(['success' => false, 'message' => 'Choose a valid date.', 'csrf' => csrf_hash()]);
+        }
+        $db = \Config\Database::connect();
+        $t  = $db->table('tbl_material_tests')->select('id, labreference, testdate')->where('id', $id)->get()->getRowArray();
+        if (! $t) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'message' => 'That test was not found.', 'csrf' => csrf_hash()]);
+        }
+        $db->table('tbl_material_tests')->where('id', $id)->update(['testdate' => $date, 'updated_at' => date('Y-m-d H:i:s')]);
+        \App\Libraries\DataCache::bump('wholeshoe');
+        \App\Libraries\ActivityLog::record('wholeshoe', 'test-date', (string) $t['labreference'], 'Test Date ' . $t['testdate'] . ' -> ' . $date);
+
+        return $this->response->setJSON(['success' => true, 'date' => $date, 'csrf' => csrf_hash()]);
+    }
+
     // ------------------------------------------------------------------------------------------------------------------ Whole Shoes: parent + its tests, add / remove a test
     /** test type name => [code, category] of the tests a whole shoe can have */
     private const SHOE_TESTS = [
@@ -822,7 +873,7 @@ class WstController extends BaseController
         $from = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $this->request->getGet('from')) ? (string) $this->request->getGet('from') : '';
         $to   = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $this->request->getGet('to')) ? (string) $this->request->getGet('to') : '';
         $page = max(1, (int) $this->request->getGet('page'));
-        $size = 30;
+        $size = 12;
         $w    = [];
         $args = [];
         if ($q !== '') {
