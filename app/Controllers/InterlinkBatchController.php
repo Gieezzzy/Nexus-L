@@ -41,6 +41,14 @@ class InterlinkBatchController extends BaseController
         if ($q !== '') {
             $b->groupStart()->like('application_no', $q)->orLike('report_no', $q)->orLike('style_no', $q)->orLike('vendor_name', $q)->groupEnd();
         }
+        // type filter on the Test Package(s) text: Whole Shoe / Bonding / Pull Test; Material is everything else
+        $type = (string) $this->request->getGet('type');
+        $kw   = ['wholeshoe' => 'Whole Shoe', 'bonding' => 'Bonding', 'pull' => 'Pull Strength'];
+        if (isset($kw[$type])) {
+            $b->like('test_packages', $kw[$type]);
+        } elseif ($type === 'material') {
+            $b->notLike('test_packages', 'Whole Shoe')->notLike('test_packages', 'Bonding')->notLike('test_packages', 'Pull Strength');
+        }
         $rows = $b->orderBy('application_no', 'DESC')->limit(500)->get()->getResultArray();
         $apps = array_column($rows, 'application_no');
         $appr = $this->approvalMap($apps);

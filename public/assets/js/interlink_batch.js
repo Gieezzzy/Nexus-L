@@ -73,6 +73,7 @@
     box.innerHTML = `<div class="bb-card">
       <div class="bb-head"><b>Batch Approval</b><button type="button" data-act="close" aria-label="Close">×</button></div>
       <div class="bb-bar">
+        <select id="bb-type"><option value="">All types</option><option value="wholeshoe">Whole Shoe</option><option value="material">Material</option><option value="bonding">Bonding</option><option value="pull">Pull Test</option></select>
         <input type="search" id="bb-q" placeholder="Search Application No., style, vendor…">
         <button type="button" class="il-btn il-btn-outline" data-act="gen">Generate Request</button>
         <button type="button" class="il-btn" data-act="req">Request for approval</button>
@@ -87,6 +88,7 @@
     document.body.appendChild(box);
     let t = null;
     box.querySelector('#bb-q').addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 350); });
+    box.querySelector('#bb-type').addEventListener('change', load);
     box.addEventListener('click', onClick);
     box.addEventListener('change', onChange);
     box.addEventListener('input', (e) => { if (e.target.classList.contains('bb-lab')) { const r = find(e.target.closest('tr')); r.lab_ref_no = e.target.value.trim(); r.doc = null; paintRow(r); openDd(e.target); } });
@@ -132,7 +134,7 @@
   const load = async () => {
     try {
       const keep = new Map(rows.map((r) => [r.application_no, r]));
-      const j = await api(`interlink/batch/data?q=${encodeURIComponent(box.querySelector('#bb-q').value.trim())}`);
+      const j = await api(`interlink/batch/data?type=${encodeURIComponent(box.querySelector('#bb-type').value)}&q=${encodeURIComponent(box.querySelector('#bb-q').value.trim())}`);
       rows = (j.rows || []).map((r) => Object.assign(r, { doc: keep.get(r.application_no)?.doc || null, sel: !!keep.get(r.application_no)?.sel }, keep.get(r.application_no)?.lab_ref_no ? { lab_ref_no: keep.get(r.application_no).lab_ref_no } : {}));
       page = 0;
       render();
