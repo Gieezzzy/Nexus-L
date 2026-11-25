@@ -12,6 +12,26 @@ class AnalyticsController extends BaseController
     private string $from = '';
     private string $to = '';
 
+    private array $svcCache = [];
+
+    /** The Analytics area service (bonding | wholeshoe | materials | daily), given the page's current date range. */
+    private function svc(string $key): \App\Services\Analytics\AnalyticsBase
+    {
+        $map = [
+            'bonding'   => \App\Services\Analytics\BondingAnalytics::class,
+            'wholeshoe' => \App\Services\Analytics\WholeShoeAnalytics::class,
+            'materials' => \App\Services\Analytics\MaterialsAnalytics::class,
+            'daily'     => \App\Services\Analytics\DailyWorkloadAnalytics::class,
+        ];
+        $s = $this->svcCache[$key] ??= new $map[$key]();
+        $s->setRange($this->from, $this->to, $this->group);
+        if ($key === 'daily') {
+            $s->request = $this->request;
+        }
+
+        return $s;
+    }
+
     public function index(): string
     {
         $rawTab = (string) ($this->request->getGet('tab') ?? 'bonding');
@@ -23,19 +43,19 @@ class AnalyticsController extends BaseController
         $db = \Config\Database::connect();
 
         $allowedViews = match ($tab) {
-            'bonding'   => ['workload', 'daily', 'monthly', 'analytics', 'result', 'encoding'],
-            'wholeshoe' => ['workload', 'analytics', 'encoding'],
-            'materials' => ['workload', 'analytics', 'encoding'],
+            'bonding'   => ['workload', 'failure', 'retest', 'daily', 'pulltest', 'monthly', 'result', 'utm'],
+            'wholeshoe' => ['analytics', 'monthfail'],
+            'materials' => ['workload', 'analytics', 'hotspots', 'batches'],
         };
         $defaultView = match ($tab) {
-            'bonding'   => 'workload',
-            'wholeshoe' => 'workload',
-            'materials' => 'workload',
+            'bonding'   => 'monthly',
+            'wholeshoe' => 'analytics',
+            'materials' => 'analytics',
         };
         $view = in_array($v, $allowedViews, true) ? $v : $defaultView;
 
         if (in_array($view, ['workload', 'encoding'], true)) {
-            $wk = \App\Libraries\DataCache::remember('analytics_daily_' . md5(json_encode($this->request->getGet()) . date('Y-m-d')), 60, fn () => $this->dailyWorks($db));   // 60 s: a new entry shows within a minute
+            $wk = \App\Libraries\DataCache::remember('analytics_daily_' . md5(json_encode($this->request->getGet()) . date('Y-m-d')), 60, fn () => $this->svc('daily')->dailyWorks($db));   // 60 s: a new entry shows within a minute
 
             return $this->render('analytics/daily', ['title' => 'Analytics'] + $wk + ['tab' => $tab, 'view' => $view]);
         }
@@ -47,8 +67,13 @@ class AnalyticsController extends BaseController
         $this->from = $ok($this->request->getGet('from'));
         $this->to   = $ok($this->request->getGet('to'));
         if ($this->from === '' && $this->to === '') {
-            if ($this->request->getGet('all') !== null) {
-                $this->group = 'month';   // All dates (picked explicitly) is charted by month
+            if ($tab === 'wholeshoe' && $view === 'analytics' && $this->request->getGet('all') === null) {
+                // Whole Shoe Monthly Summary opens on the current month; the calendar filter (or "All dates") changes it
+                $this->from  = date('Y-m-01');
+                $this->to    = date('Y-m-t');
+                $this->group = 'month';
+            } elseif ($this->request->getGet('all') !== null || ($tab === 'bonding' && $view === 'pulltest') || ($tab === 'wholeshoe' && in_array($view, ['analytics', 'breakdown', 'monthfail'], true)) || ($tab === 'materials' && in_array($view, ['analytics', 'hotspots', 'batches'], true))) {
+                $this->group = 'month';   // All dates (picked explicitly) or Pull Test / Whole Shoe / Material Test Executive Presentation is charted by month
             } else {
                 // default view: the current month, by day
                 $this->from  = date('Y-m-01');
@@ -61,979 +86,1034 @@ class AnalyticsController extends BaseController
         }
 
         $cacheKey = 'analytics_' . md5("{$tab}|{$view}|{$this->group}|{$this->from}|{$this->to}");
-        $data = \App\Libraries\DataCache::remember($cacheKey, 120, fn () => match (true) {
-            $tab === 'wholeshoe' => $this->wholeShoe($db),
-            $tab === 'materials' => $this->materials($db),
-            $view === 'result'   => $this->bondingResult($db),
-            $view === 'monthly'  => $this->bondingMonthly($db),
-            $view === 'daily'    => $this->bondingDaily($db),
-            default              => $this->bonding($db),
+        $data = \App\Libraries\DataCache::remember($cacheKey, $view === 'utm' ? 1 : 120, fn () => match (true) {   // the machine tab is live: kept 1 second only
+            $tab === 'wholeshoe' => $this->svc('wholeshoe')->wholeShoe($db),
+            $tab === 'materials' => $this->svc('materials')->materials($db),
+            $view === 'result'   => $this->svc('bonding')->bondingResult($db),
+            $view === 'monthly'  => $this->svc('bonding')->bondingMonthly($db),
+            $view === 'daily'    => $this->svc('bonding')->bondingDaily($db),
+            $view === 'pulltest' => $this->svc('bonding')->bondingPullTest($db),
+            $view === 'failure'  => $this->svc('bonding')->bondingFailure($db),
+            $view === 'retest'   => $this->svc('bonding')->bondingRetest($db),
+            $view === 'utm'      => $this->svc('bonding')->bondingUtm($db),
+            default              => $this->svc('bonding')->bonding($db),
         });
 
-        return $this->render('analytics/index', ['title' => 'Analytics'] + $data + ['tab' => $tab, 'view' => $view, 'group' => $this->group, 'from' => $this->from, 'to' => $this->to]);
+        // the failure overview carries no chart data; defaults also cover a cached copy made before they existed
+        return $this->render('analytics/index', ['title' => 'Analytics'] + $data + (in_array($view, ['failure', 'retest', 'utm'], true) ? ['months' => [], 'kpis' => [], 'lists' => [], 'chartTitle' => ''] : []) + ['tab' => $tab, 'view' => $view, 'group' => $this->group, 'from' => $this->from, 'to' => $this->to]);
     }
 
-    private const SHUTDOWN_ROW = "(COALESCE(LabRefNo, '') LIKE '%SHUTDOWN%' OR COALESCE(POLotNO, '') = 'SHUTDOWN' OR COALESCE(ModelStyle, '') = 'SHUTDOWN')";
-    private const BOND_DEDUP   = "(LabRefNo IS NULL OR LabRefNo = '' OR BondingTestID IN (SELECT keep_id FROM (SELECT COALESCE(MAX(CASE WHEN Result IS NOT NULL AND Result <> '' THEN BondingTestID END), MAX(BondingTestID)) AS keep_id FROM tbl_dtr_bonding_info WHERE LabRefNo IS NOT NULL AND LabRefNo <> '' GROUP BY LabRefNo) k))";
-    private const BOND_DATE    = "COALESCE((CASE WHEN ProductionDate REGEXP '^[0-9]{2}-[0-9]{2}-20[0-9]{2}' THEN CONCAT(SUBSTR(ProductionDate, 7, 4), '-', SUBSTR(ProductionDate, 1, 2), '-', SUBSTR(ProductionDate, 4, 2)) WHEN ProductionDate REGEXP '^20[0-9]{2}-[0-9]{2}-[0-9]{2}' THEN LEFT(ProductionDate, 10) WHEN LabRefNo REGEXP '^DTP20[0-9]{6}' THEN CONCAT(SUBSTR(LabRefNo, 4, 4), '-', SUBSTR(LabRefNo, 8, 2), '-', SUBSTR(LabRefNo, 10, 2)) END), LEFT(NULLIF(TestedDate, ''), 10), LEFT(NULLIF(ReceivedDate, ''), 10))";
-
-    private function bondingBaseWhere(string $dateCol = self::BOND_DATE): string
+    /**
+     * GET analytics/monthly-report?tab=bonding|wholeshoe|materials&year=YYYY : print-ready 12-month Monthly Summary Report
+     * (whole-year pie charts + STATUS/COUNT tables per month, ready to print or save as PDF).
+     */
+    public function monthlyReport(): string
     {
-        $w = 'NOT (' . self::SHUTDOWN_ROW . ") AND COALESCE(TestType, '') <> 'LACKING' AND " . self::BOND_DEDUP;
-        // Shoe Bonding counts only the reports that the unified Lab Ref index (tbl_dtr_unified_labrefs) lists as a bonding test (form_slug = 'bonding');
-        // a pull test or any other test of the index is not a bonding test, so it never shows here
-        $w .= " AND (LabRefNo IS NULL OR LabRefNo = '' OR EXISTS (SELECT 1 FROM tbl_dtr_unified_labrefs ul WHERE ul.form_slug = 'bonding' AND ul.lab_ref_no = LabRefNo))";
-        if ($this->from !== '' || $this->to !== '') {
-            $w .= ' AND ' . $this->dateWhere($dateCol);
+        $rawTab = (string) ($this->request->getGet('tab') ?? 'bonding');
+        $tab    = in_array($rawTab, ['bonding', 'wholeshoe', 'materials'], true) ? $rawTab : 'bonding';
+        $yrStr  = (string) ($this->request->getGet('year') ?? '');
+        if (! preg_match('/^20\d{2}$/', $yrStr)) {
+            $m = (string) ($this->request->getGet('month') ?? '');
+            $yrStr = preg_match('/^(20\d{2})/', $m, $mm) ? $mm[1] : date('Y');
         }
+        $year = (int) $yrStr;
+        $db   = \Config\Database::connect();
+        $pies = $this->yearlyPiesForArea($db, $tab, $year);
 
-        return $w;
+        return view('analytics/monthly_report', [
+            'tab'        => $tab,
+            'yearlyYear' => $year,
+            'yearlyPies' => $pies,
+            'printedBy'  => (string) ($this->auth->user()['name'] ?? ''),
+        ]);
     }
 
-    /** Monthly Summary (by production date): daily tested / failed trend, status totals and failed count per line and day. */
-    private function bondingMonthly($db): array
+    /** Shared 12-month (Jan..Dec) pie dataset for Shoe Bonding, Whole Shoe, or Materials. */
+    private function yearlyPiesForArea($db, string $tab, int $year): array
     {
-        $pd   = self::BOND_DATE;
-        $base = $this->bondingBaseWhere($pd);
-        $wDay = $base . ' AND ' . $this->dateWhere($pd);
-        $days = $db->query("SELECT {$pd} AS d, COUNT(*) AS tested, SUM(UPPER(Result) LIKE 'FAIL%' OR UPPER(Result) = 'REJECTED') AS failed FROM tbl_dtr_bonding_info WHERE {$wDay} GROUP BY d ORDER BY d")->getResultArray();
-        $st   = $db->query("SELECT COUNT(*) AS total, COALESCE(SUM(UPPER(Result) LIKE 'PASS%'), 0) AS pass, COALESCE(SUM(UPPER(Result) LIKE 'FAIL%' OR UPPER(Result) = 'REJECTED'), 0) AS fail, COALESCE(SUM(UPPER(Result) LIKE 'TOL%'), 0) AS tol FROM tbl_dtr_bonding_info WHERE {$base}")->getRowArray();
-
-        // failed specimens per building line and production date; the line comes from the Lab Ref No (DTP<date>SH<building><line>-<side>)
-        $lines = ['A' => range(1, 12), 'B' => range(1, 14)];
-        $cells = [];
-        foreach ($db->query("SELECT LabRefNo, {$pd} AS d FROM tbl_dtr_bonding_info WHERE {$wDay} AND (UPPER(Result) LIKE 'FAIL%' OR UPPER(Result) = 'REJECTED')")->getResultArray() as $r) {
-            if (preg_match('/^DTP\d{8}[A-Z]{2}([A-Z])(\d+)/i', (string) $r['LabRefNo'], $m)) {
-                $b = strtoupper($m[1]); $n = (int) $m[2];
-                $cells[$b][$n][$r['d']] = ($cells[$b][$n][$r['d']] ?? 0) + 1;
-                if (! in_array($n, $lines[$b] ?? [], true)) {
-                    $lines[$b][] = $n;
-                }
+        [$sf, $st] = [$this->from, $this->to];
+        $this->from = '';
+        $this->to   = '';
+        try {
+            if ($tab === 'wholeshoe') {
+                $this->from = sprintf('%04d-01-01', $year);
+                $this->to   = sprintf('%04d-12-31', $year);
+                $pies = $this->svc('wholeshoe')->wholeShoeAudit($db)['yearlyPies'] ?? [];
+            } elseif ($tab === 'materials') {
+                $this->from = sprintf('%04d-01-01', $year);
+                $this->to   = sprintf('%04d-12-31', $year);
+                $pies = $this->svc('materials')->materialsAudit($db)['yearlyPies'] ?? [];
+            } else {
+                $pies = $this->svc('bonding')->bondingYearlySummary($db, $year);
             }
+        } finally {
+            [$this->from, $this->to] = [$sf, $st];
         }
-        foreach ($lines as &$ln) {
-            sort($ln);
-        }
-        unset($ln);
-        ksort($lines);
 
-        // lines marked SHUTDOWN in the Specimen Intake (Active toggle off) for a production date
-        $shut = [];
-        $shutCnt = 0;
-        if (($db->tableExists('tbl_dtr_BondingTracker') || $db->tableExists('tbl_dtr_bondingtracker')) && $db->fieldExists('Shutdown', 'tbl_dtr_BondingTracker')) {
-            $sw = 'Shutdown = 1' . (($this->from !== '' || $this->to !== '') ? ' AND ' . $this->dateWhere('ProductionDate') : '');
-            foreach ($db->query("SELECT Building, `LineNo` AS ln, ProductionDate AS d FROM tbl_dtr_BondingTracker WHERE {$sw}")->getResultArray() as $r) {
-                $shut[strtoupper((string) $r['Building'])][(int) preg_replace('/\D/', '', (string) $r['ln'])][substr((string) $r['d'], 0, 10)] = true;
-                $shutCnt++;
-            }
-        }
-        $swB = self::SHUTDOWN_ROW . (($this->from !== '' || $this->to !== '') ? ' AND ' . $this->dateWhere('ProductionDate') : '');
-        $shutCnt += (int) $db->query("SELECT COUNT(*) AS c FROM tbl_dtr_bonding_info WHERE {$swB}")->getRow()->c;
-        $st['shut'] = $shutCnt;
-
-        return ['days' => $days, 'shut' => $shut, 'status' => $st, 'lines' => $lines, 'cells' => $cells, 'kpis' => [], 'chartTitle' => '', 'months' => [], 'lists' => []];
+        return $pies;
     }
 
-    /** Bonding Result: pass / tolerable / failed counts per cement (adhesive) supplier, with a total row. */
-    private function bondingResult($db): array
+    /** GET analytics/export-yearly-pies?tab=bonding|wholeshoe|materials&year=YYYY : 12-month Pie Charts + Summary Tables as Excel (.xlsx). */
+    public function exportYearlyPies()
     {
-        $w = $this->bondingBaseWhere(self::BOND_DATE);
-        $rows = $db->query("SELECT UPPER(TRIM(AdhesiveSupplier)) AS name, COUNT(*) AS total, SUM(UPPER(Result) LIKE 'PASS%') AS pass, SUM(UPPER(Result) LIKE 'TOL%') AS tol, SUM(UPPER(Result) LIKE 'FAIL%' OR UPPER(Result) = 'REJECTED') AS fail
-            FROM tbl_dtr_bonding_info WHERE {$w} AND AdhesiveSupplier IS NOT NULL AND TRIM(AdhesiveSupplier) <> '' GROUP BY name ORDER BY total DESC")->getResultArray();
-
-        // the two regular cement suppliers always get a row + pie, even with no tests in the period
-        $have = array_column($rows, 'name');
-        foreach (['NANPAO', 'ZHONGBU'] as $n) {
-            if (! in_array($n, $have, true)) {
-                $rows[] = ['name' => $n, 'total' => 0, 'pass' => 0, 'tol' => 0, 'fail' => 0];
-            }
+        $rawTab = (string) ($this->request->getGet('tab') ?? 'bonding');
+        $tab    = in_array($rawTab, ['bonding', 'wholeshoe', 'materials'], true) ? $rawTab : 'bonding';
+        $yrStr  = (string) ($this->request->getGet('year') ?? '');
+        if (! preg_match('/^20\d{2}$/', $yrStr)) {
+            $from = (string) ($this->request->getGet('from') ?? '');
+            $yrStr = preg_match('/^(20\d{2})/', $from, $mm) ? $mm[1] : date('Y');
         }
-        usort($rows, static fn ($a, $b) => strcmp($a['name'], $b['name']));
+        $year = (int) $yrStr;
+        $db   = \Config\Database::connect();
+        $pies = $this->yearlyPiesForArea($db, $tab, $year);
 
-        return ['suppliers' => $rows, 'kpis' => [], 'chartTitle' => '', 'months' => [], 'lists' => []];
-    }
+        $areaTitle = match ($tab) {
+            'wholeshoe' => 'Whole Shoe',
+            'materials' => 'Materials',
+            default     => 'Shoe Bonding',
+        };
+        $filePrefix = match ($tab) {
+            'wholeshoe' => 'WholeShoe',
+            'materials' => 'Materials',
+            default     => 'ShoeBonding',
+        };
 
-    /** Daily Bonding: Left/Right daily matrix, building & line rankings, cement supplier fails, and portion/root-cause breakdown. */
-    private function bondingDaily($db): array
-    {
-        $pd   = self::BOND_DATE;
-        $base = $this->bondingBaseWhere($pd);
-        $rows = $db->query("SELECT LabRefNo, Side, Result, ModeOfFailure, PossibleCause, AdhesiveSupplier, TestedDate, {$pd} AS prod_date
-            FROM tbl_dtr_bonding_info
-            WHERE {$base}
-            ORDER BY prod_date ASC, BondingTestID ASC")->getResultArray();
+        $yrPass = $yrFail = $yrTol = $yrTot = 0;
+        foreach ($pies as $mp) {
+            $yrPass += (int) ($mp['pass'] ?? 0);
+            $yrFail += (int) ($mp['fail'] ?? 0);
+            $yrTol  += (int) ($mp['tol'] ?? 0);
+            $yrTot  += (int) ($mp['total'] ?? 0);
+        }
 
-        $lines = ['A' => range(1, 12), 'B' => range(1, 14)];
-        $matrix = [];       // [prodDate][B][line][L|R] = 'PASS'|'FAIL'|'TOL'|'PEND'
-        $testedDates = [];  // [prodDate] => [testedDate => count]
-        $dayStats = [];     // [prodDate] => ['tested'=>0,'pass'=>0,'fail'=>0,'tol'=>0]
-        $lineStats = [];    // [B][line] => ['pass'=>0,'fail'=>0,'tol'=>0,'tested'=>0,'shut'=>0]
-        $bldgStats = [
-            'A' => ['tested' => 0, 'pass' => 0, 'fail' => 0, 'tol' => 0, 'shut' => 0],
-            'B' => ['tested' => 0, 'pass' => 0, 'fail' => 0, 'tol' => 0, 'shut' => 0],
-        ];
-        $overall = ['tested' => 0, 'pass' => 0, 'fail' => 0, 'tol' => 0, 'pend' => 0, 'shut' => 0];
+        $x      = new \App\Libraries\XlsxBuilder('Monthly Summary');
+        $navy   = '0F2A47';
+        $sTitle = $x->style(['bold' => true, 'size' => 14, 'color' => 'FFFFFF', 'fill' => $navy, 'h' => 'center']);
+        $sSub   = $x->style(['bold' => true, 'size' => 10, 'color' => $navy, 'fill' => 'DCE9F8', 'h' => 'center']);
+        $sShL   = $x->style(['bold' => true, 'size' => 9, 'color' => '334155', 'fill' => 'F1F5F9', 'border' => true, 'h' => 'left']);
+        $sShR   = $x->style(['bold' => true, 'size' => 9, 'color' => '334155', 'fill' => 'F1F5F9', 'border' => true, 'h' => 'right']);
+        $sTxtL  = $x->style(['bold' => true, 'size' => 10, 'color' => '0F172A', 'border' => true, 'h' => 'left']);
+        $sNumR  = $x->style(['bold' => true, 'size' => 10, 'color' => '0F172A', 'border' => true, 'h' => 'right']);
+        $sTotL  = $x->style(['bold' => true, 'size' => 10, 'color' => '0F172A', 'fill' => 'F8FAFC', 'border' => true, 'h' => 'left']);
+        $sTotR  = $x->style(['bold' => true, 'size' => 10, 'color' => '0F172A', 'fill' => 'F8FAFC', 'border' => true, 'h' => 'right']);
 
-        $supMap = [
-            'NANPAO'  => ['name' => 'Nan Pao',  'specimens' => 0, 'pass' => 0, 'fail' => 0, 'tol' => 0],
-            'ZHONGBU' => ['name' => 'Zhong Bu', 'specimens' => 0, 'pass' => 0, 'fail' => 0, 'tol' => 0],
+        $hdrHex = [
+            1 => '7E22CE', 2 => 'B91C1C', 3 => '15803D', 4 => '1D4ED8',
+            5 => 'B45309', 6 => '0F766E', 7 => '4338CA', 8 => 'BE123C',
+            9 => '047857', 10 => 'C2410C', 11 => '0369A1', 12 => '334155',
         ];
 
-        $portionCounts = [
-            'Upper to Foxing'   => 0,
-            'Foxing to Outsole' => 0,
-            'Filler to Outsole' => 0,
-            'Unspecified'       => 0,
-        ];
-        $causeCounts = [];
+        // 3 cards across: Cols 1-4, spacer 5, Cols 6-9, spacer 10, Cols 11-14
+        foreach ([1 => 14, 2 => 10, 3 => 10, 4 => 12, 5 => 3, 6 => 14, 7 => 10, 8 => 10, 9 => 12, 10 => 3, 11 => 14, 12 => 10, 13 => 10, 14 => 12] as $col => $w) {
+            $x->width($col, $w);
+        }
+        $x->merge(1, 1, 1, 14, strtoupper("{$year} {$areaTitle} Monthly Summary Report"), $sTitle);
+        $x->height(1, 28);
+        $pPct = $yrTot > 0 ? round($yrPass / $yrTot * 100, 1) : 0;
+        $fPct = $yrTot > 0 ? round($yrFail / $yrTot * 100, 1) : 0;
+        $tPct = $yrTot > 0 ? round($yrTol / $yrTot * 100, 1) : 0;
+        $x->merge(2, 1, 2, 14, "PASS: {$yrPass} ({$pPct}%)   |   FAILED: {$yrFail} ({$fPct}%)   |   TOLERABLE: {$yrTol} ({$tPct}%)   |   TOTAL: {$yrTot}", $sSub);
+        $x->height(2, 20);
 
-        $prio = ['FAIL' => 4, 'TOL' => 3, 'PASS' => 2, 'PEND' => 1];
+        $pieColors = ['3B82F6', 'F97316', '94A3B8'];
+        foreach ($pies as $idx => $mp) {
+            $mNo   = (int) ($mp['month'] ?? ($idx + 1));
+            $mName = (string) ($mp['name'] ?? date('F', mktime(0, 0, 0, $mNo, 1, $year)));
+            $pCnt  = (int) ($mp['pass'] ?? 0);
+            $fCnt  = (int) ($mp['fail'] ?? 0);
+            $tCnt  = (int) ($mp['tol'] ?? 0);
+            $totC  = (int) ($mp['total'] ?? ($pCnt + $fCnt + $tCnt));
 
-        foreach ($rows as $r) {
-            $d = substr((string) ($r['prod_date'] ?? ''), 0, 10);
-            if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) {
-                continue;
+            $gridCol = $idx % 3;
+            $gridRow = intdiv($idx, 3);
+            $c0      = $gridCol * 5 + 1;          // 1, 6, 11
+            $rChart  = 4 + $gridRow * 21;         // 4, 25, 46, 67
+            $rTbl    = $rChart + 14;              // 18, 39, 60, 81
+
+            $mStyle = $x->style(['bold' => true, 'size' => 10, 'color' => 'FFFFFF', 'fill' => $hdrHex[$mNo] ?? $navy, 'border' => true, 'h' => 'center']);
+            $x->merge($rTbl, $c0, $rTbl, $c0 + 3, strtoupper($mName), $mStyle);
+            $x->height($rTbl, 20);
+            $x->merge($rTbl + 1, $c0, $rTbl + 1, $c0 + 2, 'STATUS', $sShL);
+            $x->set($rTbl + 1, $c0 + 3, 'COUNT', $sShR);
+            $x->merge($rTbl + 2, $c0, $rTbl + 2, $c0 + 2, 'PASS', $sTxtL);
+            $x->set($rTbl + 2, $c0 + 3, $pCnt, $sNumR);
+            $x->merge($rTbl + 3, $c0, $rTbl + 3, $c0 + 2, 'FAILED', $sTxtL);
+            $x->set($rTbl + 3, $c0 + 3, $fCnt, $sNumR);
+            $x->merge($rTbl + 4, $c0, $rTbl + 4, $c0 + 2, 'TOLERABLE', $sTxtL);
+            $x->set($rTbl + 4, $c0 + 3, $tCnt, $sNumR);
+            $x->merge($rTbl + 5, $c0, $rTbl + 5, $c0 + 2, 'Total:', $sTotL);
+            $x->set($rTbl + 5, $c0 + 3, $totC, $sTotR);
+
+            if ($totC > 0) {
+                $catCol = \App\Libraries\XlsxBuilder::col($c0);
+                $valCol = \App\Libraries\XlsxBuilder::col($c0 + 3);
+                $x->chart([
+                    'type'   => 'pie',
+                    'dark'   => false,
+                    'anchor' => [$c0 - 1, $rChart - 1, $c0 + 3, $rTbl - 1],
+                    'title'  => $mName . ' Summary',
+                    'name'   => $mName,
+                    'cat'    => $catCol . ($rTbl + 2) . ':' . $catCol . ($rTbl + 4),
+                    'val'    => $valCol . ($rTbl + 2) . ':' . $valCol . ($rTbl + 4),
+                    'colors' => $pieColors,
+                ]);
             }
-            $resUp = strtoupper(trim((string) ($r['Result'] ?? '')));
-            $st = match (true) {
-                str_starts_with($resUp, 'FAIL') || $resUp === 'REJECTED' => 'FAIL',
-                str_starts_with($resUp, 'PASS')                         => 'PASS',
-                str_starts_with($resUp, 'TOL')                          => 'TOL',
-                default                                                 => 'PEND',
+        }
+
+        $name = "{$filePrefix}_Monthly_Summary_Report_{$year}.xlsx";
+
+        return $this->response->setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . $name . '"')->setBody($x->build());
+    }
+
+    /** Pass / tolerable / fail totals of one calendar month for each Analytics area, plus the few things that need attention. Never throws. */
+    private function monthSummary($db, string $ym): array
+    {
+        $this->from  = $ym . '-01';
+        $this->to    = date('Y-m-t', strtotime($this->from));
+        $this->group = 'day';
+        $cache = static fn (string $k, callable $fn) => \App\Libraries\DataCache::remember('analytics_mr_' . $k . '_' . md5($ym), 120, $fn);
+        $out   = ['bonding' => null, 'wholeshoe' => null, 'materials' => null];
+        $mk    = static function (int $pass, int $tol, int $fail): array {
+            $rated = $pass + $tol + $fail;
+
+            return ['pass' => $pass, 'tol' => $tol, 'fail' => $fail, 'rated' => $rated, 'passPct' => $rated > 0 ? round($pass / $rated * 100, 1) : null];
+        };
+
+        try {
+            $b  = $cache('bonding', fn () => $this->svc('bonding')->bondingMonthly($db));
+            $st = $b['status'] ?? [];
+            $out['bonding'] = $mk((int) ($st['pass'] ?? 0), (int) ($st['tol'] ?? 0), (int) ($st['fail'] ?? 0)) + ['shut' => (int) ($st['shut'] ?? 0)];
+            $f  = $cache('failure', fn () => $this->svc('bonding')->bondingFailure($db))['fb'] ?? [];
+            $top = static function (array $a): ?array {
+                arsort($a);
+                $k = array_key_first($a);
+
+                return ($k !== null && (int) $a[$k] > 0) ? ['name' => (string) $k, 'n' => (int) $a[$k]] : null;
             };
+            $out['bonding']['topBuilding'] = $top($f['bld'] ?? []);
+            $out['bonding']['topPortion']  = $top($f['por'] ?? []);
+            $out['bonding']['topCause']    = $top($f['rea'] ?? []);
+        } catch (\Throwable $e) {
+            log_message('error', 'monthly-report bonding: ' . $e->getMessage());
+        }
 
-            $overall['tested']++;
-            if ($st === 'PASS') {
-                $overall['pass']++;
-            } elseif ($st === 'FAIL') {
-                $overall['fail']++;
-            } elseif ($st === 'TOL') {
-                $overall['tol']++;
-            } else {
-                $overall['pend']++;
+        try {
+            $w = $cache('wholeshoe', fn () => $this->svc('wholeshoe')->wholeShoe($db))['wsAudit'] ?? null;
+            if ($w) {
+                $out['wholeshoe'] = $mk((int) $w['passTotal'], (int) $w['tolTotal'], (int) $w['failTotal']) + ['tested' => (int) $w['totalSamples'], 'pending' => (int) $w['pendTotal']];
+                $ms = array_values(array_filter($w['methods'] ?? [], static fn ($x) => (int) ($x['failTotal'] ?? 0) > 0));
+                usort($ms, static fn ($a, $b) => ($b['failPct'] ?? 0) <=> ($a['failPct'] ?? 0));
+                $out['wholeshoe']['worst'] = array_slice(array_map(static fn ($x) => ['name' => (string) $x['label'], 'fail' => (int) $x['failTotal'], 'failPct' => (float) $x['failPct']], $ms), 0, 3);
             }
+        } catch (\Throwable $e) {
+            log_message('error', 'monthly-report wholeshoe: ' . $e->getMessage());
+        }
 
-            if (! isset($dayStats[$d])) {
-                $dayStats[$d] = ['tested' => 0, 'pass' => 0, 'fail' => 0, 'tol' => 0];
+        try {
+            $a = $cache('materials', fn () => $this->svc('materials')->materials($db))['matAudit'] ?? null;
+            if ($a) {
+                $out['materials'] = $mk((int) $a['pass'], (int) $a['tol'], (int) $a['fail']);
+                $out['materials']['suppliers'] = array_slice(array_map(static fn ($s) => ['name' => (string) $s['name'], 'fail' => (int) $s['fail'], 'tol' => (int) $s['tol'], 'total' => (int) $s['total']], array_filter($a['suppliers'] ?? [], static fn ($s) => ((int) $s['fail'] + (int) $s['tol']) > 0)), 0, 3);
+                $out['materials']['retest'] = (int) ($a['retestCount'] ?? 0);
             }
-            $dayStats[$d]['tested']++;
-            if ($st === 'PASS') {
-                $dayStats[$d]['pass']++;
-            } elseif ($st === 'FAIL') {
-                $dayStats[$d]['fail']++;
-            } elseif ($st === 'TOL') {
-                $dayStats[$d]['tol']++;
-            }
+        } catch (\Throwable $e) {
+            log_message('error', 'monthly-report materials: ' . $e->getMessage());
+        }
 
-            $td = substr(trim((string) ($r['TestedDate'] ?? '')), 0, 10);
-            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $td)) {
-                $testedDates[$d][$td] = ($testedDates[$d][$td] ?? 0) + 1;
-            }
+        return $out;
+    }
 
-            // Building, Line & Side
-            $ref = (string) ($r['LabRefNo'] ?? '');
-            if (preg_match('/^DTP\d{8}[A-Z]{2}([A-Z])(\d+)/i', $ref, $m)) {
-                $b = strtoupper($m[1]);
-                $n = (int) $m[2];
-                if (! isset($lines[$b])) {
-                    $lines[$b] = [];
-                }
-                if (! in_array($n, $lines[$b], true)) {
-                    $lines[$b][] = $n;
-                }
-                if (! isset($bldgStats[$b])) {
-                    $bldgStats[$b] = ['tested' => 0, 'pass' => 0, 'fail' => 0, 'tol' => 0, 'shut' => 0];
-                }
-                $bldgStats[$b]['tested']++;
-                if ($st === 'PASS') {
-                    $bldgStats[$b]['pass']++;
-                } elseif ($st === 'FAIL') {
-                    $bldgStats[$b]['fail']++;
-                } elseif ($st === 'TOL') {
-                    $bldgStats[$b]['tol']++;
-                }
+    /** GET analytics/export-monthly?from=&to= : the Monthly Summary of the chosen dates as an Excel file (supplier performance, weekly trend chart, failed per line per week, failure categories). */
+    public function exportMonthly()
+    {
+        $db = \Config\Database::connect();
+        $ok = static fn ($d) => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $d) ? (string) $d : '';
+        $this->from = $ok($this->request->getGet('from'));
+        $this->to   = $ok($this->request->getGet('to'));
+        if ($this->from === '' && $this->to === '' && $this->request->getGet('all') === null) {
+            $this->from = date('Y-m-01');
+            $this->to   = date('Y-m-t');
+        }
+        if ($this->from !== '' && $this->to !== '' && $this->from > $this->to) {
+            [$this->from, $this->to] = [$this->to, $this->from];
+        }
+        $m     = $this->svc('bonding')->bondingMonthly($db);
+        $days  = $m['days'];
+        $dayD  = array_column($days, 'd');
+        $first = $this->from !== '' ? $this->from : (date('Y-m-01', strtotime($dayD[0] ?? 'now')));
+        $last  = $this->to !== '' ? $this->to : (date('Y-m-t', strtotime($first)));
+        $dates = [];
+        for ($t = strtotime($first); $t <= strtotime($last) && count($dates) < 400; $t = strtotime('+1 day', $t)) {
+            $dates[] = date('Y-m-d', $t);
+        }
 
-                if (! isset($lineStats[$b][$n])) {
-                    $lineStats[$b][$n] = ['pass' => 0, 'fail' => 0, 'tol' => 0, 'tested' => 0, 'shut' => 0];
-                }
-                $lineStats[$b][$n]['tested']++;
-                if ($st === 'PASS') {
-                    $lineStats[$b][$n]['pass']++;
-                } elseif ($st === 'FAIL') {
-                    $lineStats[$b][$n]['fail']++;
-                } elseif ($st === 'TOL') {
-                    $lineStats[$b][$n]['tol']++;
-                }
-
-                $sideUp = strtoupper(trim((string) ($r['Side'] ?? '')));
-                $side = str_starts_with($sideUp, 'L') ? 'L' : (str_starts_with($sideUp, 'R') ? 'R' : '');
-                if ($side === '' && preg_match('/-(L|R)(?:-R?\d+)?$/i', $ref, $sm)) {
-                    $side = strtoupper($sm[1]);
-                }
-                if ($side === 'L' || $side === 'R') {
-                    $cur = $matrix[$d][$b][$n][$side] ?? '';
-                    if ($cur === '' || ($prio[$st] ?? 0) > ($prio[$cur] ?? 0)) {
-                        $matrix[$d][$b][$n][$side] = $st;
-                    }
-                }
-            }
-
-            // Cement supplier
-            $supRaw = strtoupper(preg_replace('/\s+/', '', (string) ($r['AdhesiveSupplier'] ?? '')));
-            if ($supRaw !== '') {
-                $supKey = match (true) {
-                    str_contains($supRaw, 'NAN')   => 'NANPAO',
-                    str_contains($supRaw, 'ZHONG') => 'ZHONGBU',
-                    default                        => $supRaw,
-                };
-                if (! isset($supMap[$supKey])) {
-                    $supMap[$supKey] = ['name' => ucwords(strtolower(trim((string) $r['AdhesiveSupplier']))), 'specimens' => 0, 'pass' => 0, 'fail' => 0, 'tol' => 0];
-                }
-                $supMap[$supKey]['specimens']++;
-                if ($st === 'PASS') {
-                    $supMap[$supKey]['pass']++;
-                } elseif ($st === 'FAIL') {
-                    $supMap[$supKey]['fail']++;
-                } elseif ($st === 'TOL') {
-                    $supMap[$supKey]['tol']++;
-                }
-            }
-
-            // Failure Portions & Root Causes (for FAILED specimens)
-            if ($st === 'FAIL') {
-                $rawFail = trim((string) ($r['ModeOfFailure'] ?: $r['PossibleCause'] ?: ''));
-                if ($rawFail === '') {
-                    $portionCounts['Unspecified']++;
-                } else {
-                    $up = strtoupper($rawFail);
-                    $hitPortion = false;
-                    if (str_contains($up, 'UPPER TO FOXING')) {
-                        $portionCounts['Upper to Foxing']++;
-                        $hitPortion = true;
-                    }
-                    if (str_contains($up, 'FOXING TO OUTSOLE')) {
-                        $portionCounts['Foxing to Outsole']++;
-                        $hitPortion = true;
-                    }
-                    if (str_contains($up, 'FILLER TO OUTSOLE')) {
-                        $portionCounts['Filler to Outsole']++;
-                        $hitPortion = true;
-                    }
-                    if (! $hitPortion) {
-                        $portionCounts['Unspecified']++;
-                    }
-
-                    $causePart = str_contains($rawFail, '-') ? trim((string) substr($rawFail, strpos($rawFail, '-') + 1)) : $rawFail;
-                    foreach (preg_split('/\s*[\/,;]+\s*/', $causePart) as $cItem) {
-                        $cClean = trim($cItem);
-                        if ($cClean === '') {
-                            continue;
-                        }
-                        $cUp = strtoupper($cClean);
-                        // Skip pure portion names if no dash separated them
-                        if (in_array($cUp, ['UPPER TO FOXING', 'FOXING TO OUTSOLE', 'FILLER TO OUTSOLE'], true)) {
-                            continue;
-                        }
-                        $cNorm = str_ireplace(['MATERAIL', 'CEMENTNG'], ['MATERIAL', 'CEMENTING'], $cUp);
-                        $cLabel = ucwords(strtolower($cNorm));
-                        $causeCounts[$cLabel] = ($causeCounts[$cLabel] ?? 0) + 1;
-                    }
+        // the same numbers as the grid on the page: counted failed per line / date, hand marks and typed totals included
+        $lines = $m['lines'];
+        $cells = $m['cells'];
+        $totF  = array_fill_keys($dates, 0);
+        $totT  = array_fill_keys($dates, 0);
+        foreach ($days as $d) {
+            if (isset($totT[$d['d']])) { $totT[$d['d']] = (int) $d['tested']; }
+        }
+        $bTot = [];
+        foreach ($lines as $bld => $nums) {
+            $bTot[$bld] = array_fill_keys($dates, 0);
+            foreach ($nums as $nn) {
+                foreach ($dates as $d) {
+                    $v = (int) ($cells[$bld][$nn][$d] ?? 0);
+                    $bTot[$bld][$d] += $v;
+                    $totF[$d]       += $v;
                 }
             }
         }
-
-        // Shutdowns from tbl_dtr_BondingTracker + SHUTDOWN_ROW in tbl_dtr_bonding_info
-        $shut = [];
-        if (($db->tableExists('tbl_dtr_BondingTracker') || $db->tableExists('tbl_dtr_bondingtracker')) && $db->fieldExists('Shutdown', 'tbl_dtr_BondingTracker')) {
-            $sw = 'Shutdown = 1' . (($this->from !== '' || $this->to !== '') ? ' AND ' . $this->dateWhere('ProductionDate') : '');
-            foreach ($db->query("SELECT Building, `LineNo` AS ln, ProductionDate AS d FROM tbl_dtr_BondingTracker WHERE {$sw}")->getResultArray() as $sr) {
-                $b = strtoupper(trim((string) $sr['Building']));
-                $n = (int) preg_replace('/\D/', '', (string) $sr['ln']);
-                $d = substr((string) $sr['d'], 0, 10);
-                if ($b !== '' && $n > 0 && preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) {
-                    $shut[$d][$b][$n] = true;
-                    if (! isset($dayStats[$d])) {
-                        $dayStats[$d] = ['tested' => 0, 'pass' => 0, 'fail' => 0, 'tol' => 0];
-                    }
-                    $overall['shut']++;
-                    if (isset($bldgStats[$b])) {
-                        $bldgStats[$b]['shut']++;
-                    }
-                    if (! isset($lineStats[$b][$n])) {
-                        $lineStats[$b][$n] = ['pass' => 0, 'fail' => 0, 'tol' => 0, 'tested' => 0, 'shut' => 0];
-                    }
-                    $lineStats[$b][$n]['shut']++;
-                }
-            }
+        $ovr = $m['ovr'] ?? ['B' => [], 'F' => [], 'T' => []];
+        foreach ($bTot as $bk => &$arr) {
+            foreach ($dates as $d) { if (isset($ovr['B'][$bk][$d])) { $arr[$d] = $ovr['B'][$bk][$d]; } }
+        }
+        unset($arr);
+        foreach ($dates as $d) {
+            if (isset($ovr['F'][$d])) { $totF[$d] = $ovr['F'][$d]; }
+            if (isset($ovr['T'][$d])) { $totT[$d] = $ovr['T'][$d]; }
         }
 
-        foreach ($lines as &$ln) {
-            sort($ln);
-        }
-        unset($ln);
-        ksort($lines);
-
-        // Daily matrix rows + weekly aggregates
-        $allDates = array_keys($dayStats);
-        sort($allDates);
-
-        $weeklyAgg = [];
-        foreach ($allDates as $d) {
+        // weeks (Monday to Sunday) inside the dates
+        $weeks = [];
+        foreach ($dates as $d) {
             $wk = date('o-W', strtotime($d));
-            if (! isset($weeklyAgg[$wk])) {
-                $weeklyAgg[$wk] = ['failed' => 0, 'tested' => 0, 'lastDate' => $d];
-            }
-            $weeklyAgg[$wk]['failed'] += $dayStats[$d]['fail'];
-            $weeklyAgg[$wk]['tested'] += $dayStats[$d]['tested'];
-            $weeklyAgg[$wk]['lastDate'] = $d;
+            $weeks[$wk][] = $d;
         }
+        $weeks = array_values($weeks);
+        $wLabel = static function (array $ds): string {
+            $a = $ds[0]; $b = end($ds);
+            $s = date('m/d', strtotime($a)) . '–' . (date('m', strtotime($a)) === date('m', strtotime($b)) ? date('d', strtotime($b)) : date('m/d', strtotime($b)));
+            return $a === $b ? date('m/d', strtotime($a)) : $s;
+        };
+        $W = max(1, count($weeks));
 
-        $dailyRows = [];
-        foreach ($allDates as $d) {
-            $ts = strtotime($d);
-            $wk = date('o-W', $ts);
-            $tdBest = '';
-            if (! empty($testedDates[$d])) {
-                arsort($testedDates[$d]);
-                $tdBest = (string) array_key_first($testedDates[$d]);
-            }
-            $dailyRows[] = [
-                'prodDate'     => $d,
-                'testedDate'   => $tdBest,
-                'dow'          => date('D', $ts),
-                'weekKey'      => $wk,
-                'isWeekEnd'    => ($weeklyAgg[$wk]['lastDate'] ?? '') === $d,
-                'weeklyFailed' => $weeklyAgg[$wk]['failed'] ?? 0,
-                'weeklyTested' => $weeklyAgg[$wk]['tested'] ?? 0,
-                'tested'       => $dayStats[$d]['tested'],
-                'pass'         => $dayStats[$d]['pass'],
-                'fail'         => $dayStats[$d]['fail'],
-                'tol'          => $dayStats[$d]['tol'],
-                'cells'        => $matrix[$d] ?? [],
-                'shut'         => $shut[$d] ?? [],
-            ];
+        // supplier performance and failure categories
+        $pd   = \App\Services\Analytics\AnalyticsBase::BOND_DATE;
+        $base = $this->svc('bonding')->bondingBaseWhere($pd) . ' AND ' . $this->svc('bonding')->dateWhere($pd);
+        $sup  = [];
+        foreach ($db->query("SELECT CASE WHEN UPPER(TRIM(COALESCE(AdhesiveSupplier,''))) REGEXP '^(NANPAO|NNAPAO|NP)' THEN 'NANPAO' WHEN UPPER(TRIM(COALESCE(AdhesiveSupplier,''))) LIKE 'ZHONGBU%' THEN 'ZHONGBU' ELSE 'NOT RECORDED' END AS s,
+                COALESCE(SUM(UPPER(Result) LIKE 'PASS%'),0) AS pass, COALESCE(SUM(UPPER(Result) LIKE 'FAIL%' OR UPPER(Result) = 'REJECTED'),0) AS fail, COALESCE(SUM(UPPER(Result) LIKE 'TOL%'),0) AS tol
+            FROM tbl_dtr_bonding_info WHERE {$base} GROUP BY s")->getResultArray() as $r) {
+            $sup[$r['s']] = [(int) $r['pass'], (int) $r['fail'], (int) $r['tol']];
         }
-
-        // Line Rankings per Building
-        $rankings = [];
-        foreach (['A', 'B'] as $b) {
-            $list = [];
-            foreach ($lines[$b] ?? [] as $n) {
-                $ls = $lineStats[$b][$n] ?? ['pass' => 0, 'fail' => 0, 'tol' => 0, 'tested' => 0, 'shut' => 0];
-                $t  = $ls['tested'];
-                $score = $t > 0 ? round($ls['pass'] / $t * 100, 1) : null;
-                $list[] = [
-                    'line'    => $b . $n,
-                    'num'     => $n,
-                    'passed'  => $ls['pass'],
-                    'failed'  => $ls['fail'],
-                    'tol'     => $ls['tol'],
-                    'tested'  => $t,
-                    'shut'    => $ls['shut'],
-                    'score'   => $score,
-                    'failPct' => $t > 0 ? round($ls['fail'] / $t * 100, 1) : 0.0,
-                ];
-            }
-            // Rank active lines (tested > 0): higher pass score, then more passed, then fewer failed
-            $active = array_values(array_filter($list, static fn ($x) => $x['tested'] > 0));
-            usort($active, static function ($x, $y) {
-                if ($x['score'] !== $y['score']) {
-                    return $y['score'] <=> $x['score'];
+        $cats = [];
+        $failedRows = 0;
+        foreach ($db->query("SELECT Cause, ModeOfFailure, PossibleCause FROM tbl_dtr_bonding_info WHERE {$base} AND (UPPER(Result) LIKE 'FAIL%' OR UPPER(Result) = 'REJECTED')")->getResultArray() as $r) {
+            $failedRows++;
+            $cat = trim((string) $r['Cause']);
+            if ($cat === '') {
+                foreach ([(string) $r['PossibleCause'], (string) $r['ModeOfFailure']] as $alt) {
+                    $alt = trim($alt);
+                    if ($alt !== '' && $alt !== '-') { $cat = trim((string) (str_contains($alt, ' - ') ? substr($alt, strrpos($alt, ' - ') + 3) : $alt)); break; }
                 }
-                if ($x['failed'] !== $y['failed']) {
-                    return $x['failed'] <=> $y['failed'];
-                }
-                return $y['passed'] <=> $x['passed'];
-            });
-            $rankMap = [];
-            foreach ($active as $idx => $item) {
-                $rankMap[$item['line']] = $idx + 1;
             }
-            foreach ($list as &$item) {
-                $item['rank'] = $rankMap[$item['line']] ?? null;
-            }
-            unset($item);
-
-            $topLines = array_slice(array_values(array_filter($active, static fn ($x) => $x['failed'] === 0)), 0, 5);
-            if (! $topLines && $active) {
-                $topLines = array_slice($active, 0, 3);
-            }
-            $lowLines = array_values(array_filter($active, static fn ($x) => $x['failed'] > 0));
-            usort($lowLines, static function ($x, $y) {
-                if ($x['failed'] !== $y['failed']) {
-                    return $y['failed'] <=> $x['failed'];
-                }
-                return $x['score'] <=> $y['score'];
-            });
-
-            $rankings[$b] = [
-                'lines' => $list,
-                'top'   => $topLines,
-                'low'   => array_slice($lowLines, 0, 5),
-            ];
+            $cat = strtoupper(preg_replace('/\s+/', ' ', str_replace(['OVER DRIED', 'PRIMMER'], ['OVERDRIED', 'PRIMER'], strtoupper($cat))));
+            $cat = $cat === '' || $cat === '-' ? 'NOT RECORDED' : $cat;
+            $cats[$cat] = ($cats[$cat] ?? 0) + 1;
         }
+        arsort($cats);
+        $st      = $m['status'];
+        $tested  = (int) $st['pass'] + (int) $st['fail'] + (int) $st['tol'];
+        $shutN   = (int) ($st['shut'] ?? 0);
+        $monthTx = strtoupper(date('F Y', strtotime($first)));
 
-        arsort($causeCounts);
-        $suppliers = array_values($supMap);
-        foreach ($suppliers as &$sp) {
-            $sp['failPct'] = $sp['specimens'] > 0 ? round($sp['fail'] / $sp['specimens'] * 100, 2) : 0.0;
+        // ---- the sheet: top = supplier performance + weekly chart, then each building day by day (the table of the page), then the categories ----
+        $x     = new \App\Libraries\XlsxBuilder('Monthly Summary');
+        $navy  = '0F2A47';
+        $nD    = count($dates);
+        $lastC = max($nD + 2, 33);
+        $sTitle = $x->style(['bold' => true, 'size' => 14, 'color' => $navy, 'wrap' => true]);
+        $sSub   = $x->style(['size' => 9, 'color' => '64748B']);
+        $sInfoB = $x->style(['bold' => true, 'size' => 9, 'color' => $navy, 'h' => 'right']);
+        $sSec   = $x->style(['bold' => true, 'size' => 11, 'color' => $navy, 'underline' => true]);
+        $sTh    = $x->style(['bold' => true, 'color' => 'FFFFFF', 'fill' => $navy, 'border' => true, 'h' => 'center', 'wrap' => true, 'size' => 9]);
+        $sThL   = $x->style(['bold' => true, 'color' => 'FFFFFF', 'fill' => $navy, 'border' => true, 'h' => 'left', 'size' => 9]);
+        $sTxt   = $x->style(['bold' => true, 'border' => true, 'h' => 'left']);
+        $sTxtN  = $x->style(['border' => true, 'h' => 'left']);
+        $sNum   = $x->style(['border' => true, 'h' => 'center']);
+        $sPct   = $x->style(['border' => true, 'h' => 'center', 'fmt' => 10, 'bold' => true, 'color' => 'C0392B']);
+        $sPctN  = $x->style(['border' => true, 'h' => 'center', 'fmt' => 10]);
+        $sTotL  = $x->style(['bold' => true, 'border' => true, 'h' => 'left', 'fill' => 'DCE9F8']);
+        $sTot   = $x->style(['bold' => true, 'border' => true, 'h' => 'center', 'fill' => 'DCE9F8']);
+        $sTotP  = $x->style(['bold' => true, 'border' => true, 'h' => 'center', 'fill' => 'DCE9F8', 'fmt' => 10, 'color' => 'C0392B']);
+        $sRateL = $x->style(['bold' => true, 'size' => 9, 'color' => '475569', 'border' => true, 'h' => 'center', 'fill' => 'F1F5F9']);
+        $sRateV = $x->style(['bold' => true, 'size' => 15, 'color' => $navy, 'border' => true, 'h' => 'center', 'fmt' => 10]);
+        $sRateR = $x->style(['bold' => true, 'size' => 15, 'color' => 'C0392B', 'border' => true, 'h' => 'center', 'fmt' => 10]);
+        $sNote  = $x->style(['size' => 9, 'fill' => 'FFF8E1', 'wrap' => true, 'color' => '7C5A00', 'border' => true]);
+        $sWk    = $x->style(['bold' => true, 'color' => 'FFFFFF', 'fill' => $navy, 'border' => true, 'h' => 'center', 'wrap' => true, 'size' => 7]);
+        $dSun   = $x->style(['bold' => true, 'color' => 'E11D48', 'fill' => 'FFE4E6', 'border' => true, 'h' => 'center', 'size' => 8]);
+        $dHdr   = $x->style(['bold' => true, 'color' => '334155', 'fill' => 'F8FAFC', 'border' => true, 'h' => 'center', 'size' => 8]);
+        $dHdrL  = $x->style(['bold' => true, 'color' => '1E293B', 'fill' => 'F1F5F9', 'border' => true, 'h' => 'left', 'size' => 8]);
+        $dCellS = $x->style(['border' => true, 'h' => 'center', 'fill' => 'FFF5F6', 'color' => '94A3B8', 'size' => 9]);
+        $dFail  = $x->style(['bold' => true, 'border' => true, 'h' => 'center', 'color' => 'FFFFFF', 'fill' => 'DC2626', 'size' => 9]);
+        $dShut  = $x->style(['border' => true, 'h' => 'center', 'italic' => true, 'color' => '475569', 'fill' => 'E2E8F0', 'size' => 7]);
+        $dZero  = $x->style(['border' => true, 'h' => 'center', 'color' => '94A3B8', 'size' => 9]);
+        $dLine  = $x->style(['bold' => true, 'border' => true, 'h' => 'left', 'fill' => 'F1F5F9']);
+        $dBld   = $x->style(['bold' => true, 'border' => true, 'h' => 'center', 'fill' => 'FFF7ED', 'color' => '9A3412', 'size' => 9]);
+        $dBldL  = $x->style(['bold' => true, 'border' => true, 'h' => 'left', 'fill' => 'FFEDD5', 'color' => '9A3412', 'size' => 9]);
+        $dBldT  = $x->style(['bold' => true, 'border' => true, 'h' => 'center', 'fill' => 'FFEDD5', 'color' => '1D4ED8', 'size' => 10]);
+        $dRowT  = $x->style(['bold' => true, 'border' => true, 'h' => 'center', 'fill' => 'F8FAFC']);
+        $dMx    = $x->style(['bold' => true, 'border' => true, 'h' => 'center', 'fill' => 'EA580C', 'color' => 'FFFFFF']);
+        $dRedL  = $x->style(['bold' => true, 'border' => true, 'h' => 'left', 'fill' => 'FEE2E2', 'color' => '991B1B', 'size' => 9]);
+        $dRed   = $x->style(['bold' => true, 'border' => true, 'h' => 'center', 'fill' => 'FEF2F2', 'color' => 'DC2626', 'size' => 9]);
+        $dRedP  = $x->style(['bold' => true, 'border' => true, 'h' => 'center', 'fill' => 'FEF2F2', 'color' => 'DC2626', 'fmt' => 10, 'size' => 7]);
+        $dTstL  = $x->style(['bold' => true, 'border' => true, 'h' => 'left', 'fill' => 'F1F5F9', 'size' => 9]);
+        $dTst   = $x->style(['bold' => true, 'border' => true, 'h' => 'center', 'fill' => 'F8FAFC', 'size' => 9]);
+
+        $x->width(1, 24);
+        for ($c = 2; $c <= $lastC; $c++) { $x->width($c, 6.2); }
+        $x->width($nD + 2, 11);
+
+        $x->merge(1, 1, 1, 16, "{$monthTx} — IN-LINE PROCESS NEW IMPROVEMENT MONITORING", $sTitle);
+        $x->height(1, 38);
+        $x->merge(2, 1, 2, 16, 'Bonding Inspection Summary & Daily Defect Trend Analysis (Building A & Building B)', $sSub);
+        $x->merge(1, 18, 1, $lastC, 'Prod. Period: ' . date('M d', strtotime($first)) . ' – ' . date('M d, Y', strtotime($last)), $sInfoB);
+        $x->merge(2, 18, 2, $lastC, 'As of Date: ' . date('M d, Y', min(time(), strtotime($last))) . '  |  Logs: ' . number_format($tested + $shutN) . ' (' . number_format($tested) . ' Tested, ' . number_format($shutN) . ' Shutdown)', $sInfoB);
+
+        // 1. cement supplier performance (A, then B-D / E-G / H-J / K-M / N-P)
+        $x->merge(4, 1, 4, 16, '1. CEMENT SUPPLIER PERFORMANCE', $sSec);
+        $trip = [[2, 4], [5, 7], [8, 10], [11, 13], [14, 16]];
+        $x->set(5, 1, 'Cement Supplier', $sThL);
+        foreach (['Pass', 'Failed', 'Tolerable', 'Specimens', '% Failed'] as $i => $h) { $x->merge(5, $trip[$i][0], 5, $trip[$i][1], $h, $sTh); }
+        $r = 6; $tp = $tf = $tt = 0;
+        foreach (['NANPAO', 'ZHONGBU', 'NOT RECORDED'] as $nm) {
+            [$p, $f, $t] = $sup[$nm] ?? [0, 0, 0];
+            if ($nm === 'NOT RECORDED' && $p + $f + $t === 0) { continue; }
+            $n = $p + $f + $t; $tp += $p; $tf += $f; $tt += $t;
+            $x->set($r, 1, $nm, $sTxt);
+            foreach ([$p, $f, $t, $n] as $i => $vv) { $x->merge($r, $trip[$i][0], $r, $trip[$i][1], $vv, $sNum); }
+            $x->merge($r, 14, $r, 16, $n ? $f / $n : 0, $sPct);
+            $r++;
         }
-        unset($sp);
+        $tn = $tp + $tf + $tt;
+        $x->set($r, 1, 'TOTAL', $sTotL);
+        foreach ([$tp, $tf, $tt, $tn] as $i => $vv) { $x->merge($r, $trip[$i][0], $r, $trip[$i][1], $vv, $sTot); }
+        $x->merge($r, 14, $r, 16, $tn ? $tf / $tn : 0, $sTotP);
+        $r += 2;
+        foreach ([['Pass Rate', $tn ? $tp / $tn : 0, $sRateV, 1, 4], ['Tolerable Rate', $tn ? $tt / $tn : 0, $sRateV, 5, 10], ['Overall Fail Rate', $tn ? $tf / $tn : 0, $sRateR, 11, 16]] as [$lb, $vl, $stv, $c1, $c2]) {
+            $x->merge($r, $c1, $r, $c2, $lb, $sRateL);
+            $x->merge($r + 1, $c1, $r + 1, $c2, $vl, $stv);
+        }
+        $x->height($r + 1, 26);
 
-        return [
-            'dailyRows'     => $dailyRows,
-            'lines'         => $lines,
-            'overall'       => $overall,
-            'bldgStats'     => $bldgStats,
-            'rankings'      => $rankings,
-            'suppliers'     => $suppliers,
-            'portionCounts' => $portionCounts,
-            'causeCounts'   => $causeCounts,
-            'kpis'          => [],
-            'chartTitle'    => '',
-            'months'        => [],
-            'lists'         => [],
-        ];
+        // weekly summary: the numbers of the chart
+        $rW = 14;
+        $wkTot = array_fill(0, $W, 0); $wkTested = array_fill(0, $W, 0);
+        foreach ($weeks as $wi => $ds) { foreach ($ds as $d) { $wkTot[$wi] += (int) $totF[$d]; $wkTested[$wi] += (int) $totT[$d]; } }
+        $x->height($rW, 44);
+        $x->set($rW, 1, 'WEEKLY SUMMARY', $sThL);
+        $x->set($rW + 1, 1, 'FAILED', $sTotL); $x->set($rW + 2, 1, 'TESTED', $sTxt); $x->set($rW + 3, 1, 'FAILURE %', $sTotL);
+        $gF = $gT = 0;
+        foreach ($weeks as $wi => $ds) {
+            $x->set($rW, 2 + $wi, 'Wk ' . ($wi + 1) . "\n(" . $wLabel($ds) . ')', $sWk);
+            $x->set($rW + 1, 2 + $wi, $wkTot[$wi], $sTot); $x->set($rW + 2, 2 + $wi, $wkTested[$wi], $sNum);
+            $x->set($rW + 3, 2 + $wi, $wkTested[$wi] ? $wkTot[$wi] / $wkTested[$wi] : 0, $sTotP);
+            $gF += $wkTot[$wi]; $gT += $wkTested[$wi];
+        }
+        $x->set($rW, 2 + $W, 'Total', $sWk); $x->set($rW + 1, 2 + $W, $gF, $sTot); $x->set($rW + 2, 2 + $W, $gT, $sNum); $x->set($rW + 3, 2 + $W, $gT ? $gF / $gT : 0, $sTotP);
+
+        // 2. chart (right of section 1)
+        $x->merge(4, 18, 4, $lastC, '2. WEEKLY BONDING-FAILED COUNT & FAILURE RATE TREND', $sSec);
+        $x->chart([
+            'anchor' => [17, 4, $lastC, 18],
+            'title'  => 'Failed Specimens (Bars) vs. Failure Percentage (Line) by Production Week',
+            'cat'    => 'B' . $rW . ':' . \App\Libraries\XlsxBuilder::col($W + 1) . $rW,
+            'bars'   => ['Failed Count', 'B' . ($rW + 1) . ':' . \App\Libraries\XlsxBuilder::col($W + 1) . ($rW + 1), '1F4FD8'],
+            'line'   => ['Failure %', 'B' . ($rW + 3) . ':' . \App\Libraries\XlsxBuilder::col($W + 1) . ($rW + 3), 'DC2626'],
+        ]);
+
+        // 3. failed per line and production date, one table per building (same as the page)
+        $r3 = 20;
+        $x->merge($r3, 1, $r3, $lastC, '3. COUNT OF BONDING-FAILED SPECIMENS BY LINE & PRODUCTION DATE — ' . $monthTx, $sSec);
+        $rd = $r3 + 1;
+        $gridFailed = 0;
+        foreach (array_keys($lines) as $bld) {
+            $x->set($rd, 1, "BUILDING {$bld} · PRODUCTION DATE", $dHdrL);
+            foreach ($dates as $di => $d) { $x->set($rd, 2 + $di, date('m-d', strtotime($d)), date('w', strtotime($d)) === '0' ? $dSun : $dHdr); }
+            $x->set($rd, $nD + 2, "TOTAL FAILED PER LINE AS OF " . date('Y-m-d', min(time(), strtotime($last))), $x->style(['bold' => true, 'color' => '1E293B', 'fill' => 'F1F5F9', 'border' => true, 'h' => 'center', 'wrap' => true, 'size' => 7]));
+            $x->height($rd, 40);
+            $rowSums = [];
+            foreach ($lines[$bld] as $nn) { $rowSums[$nn] = 0; foreach ($dates as $d) { $rowSums[$nn] += (int) ($cells[$bld][$nn][$d] ?? 0); } }
+            $mxRow = $rowSums ? max($rowSums) : 0;
+            $rl = $rd + 1;
+            foreach ($lines[$bld] as $nn) {
+                $x->set($rl, 1, $bld . $nn, $dLine);
+                foreach ($dates as $di => $d) {
+                    $v = (int) ($cells[$bld][$nn][$d] ?? 0);
+                    $sun = date('w', strtotime($d)) === '0';
+                    if (! empty($m['shut'][$bld][$nn][$d]) && $v === 0) { $x->set($rl, 2 + $di, 'SD', $dShut); }
+                    elseif ($v > 0) { $x->set($rl, 2 + $di, $v, $dFail); }
+                    else { $x->set($rl, 2 + $di, 0, $sun ? $dCellS : $dZero); }
+                }
+                $x->set($rl, $nD + 2, $rowSums[$nn], ($mxRow > 0 && $rowSums[$nn] === $mxRow) ? $dMx : $dRowT);
+                $rl++;
+            }
+            $x->set($rl, 1, "TOTAL FAILED BLDG {$bld}", $dBldL);
+            $bs = 0;
+            foreach ($dates as $di => $d) { $v = (int) ($bTot[$bld][$d] ?? 0); $bs += $v; $x->set($rl, 2 + $di, $v, $dBld); }
+            $x->set($rl, $nD + 2, $bs, $dBldT);
+            $gridFailed += $bs;
+            $rd = $rl + 2;
+        }
+        $x->set($rd, 1, 'TOTAL FAILED PER PRODUCTION DATE', $dRedL);
+        $x->set($rd + 1, 1, 'TOTAL TESTED PER PRODUCTION DATE', $dTstL);
+        $x->set($rd + 2, 1, 'TOTAL FAILURE PERCENTAGE', $dRedL);
+        $x->height($rd, 20); $x->height($rd + 1, 20); $x->height($rd + 2, 20);
+        $sf = $st2 = 0;
+        foreach ($dates as $di => $d) {
+            $fv = (int) $totF[$d]; $tv = (int) $totT[$d]; $sf += $fv; $st2 += $tv;
+            $x->set($rd, 2 + $di, $fv, $dRed); $x->set($rd + 1, 2 + $di, $tv, $dTst); $x->set($rd + 2, 2 + $di, $tv ? $fv / $tv : 0, $dRedP);
+        }
+        $x->set($rd, $nD + 2, $sf, $dRed); $x->set($rd + 1, $nD + 2, $st2, $dTst); $x->set($rd + 2, $nD + 2, $st2 ? $sf / $st2 : 0, $dRedP);
+        $gridFailed = $sf;
+        $x->merge($rd + 3, 1, $rd + 3, 16, 'SD = line shutdown · Sunday columns are shaded · orange = highest line of the building', $sSub);
+
+        // 4. failure categories
+        $r4 = $rd + 5;
+        $x->merge($r4, 1, $r4, 16, '4. FAILURE CATEGORY BREAKDOWN (' . $failedRows . ' FAILED)', $sSec);
+        $x->merge($r4 + 1, 1, $r4 + 1, 8, 'Failure Root Cause / Category', $sThL);
+        $x->merge($r4 + 1, 9, $r4 + 1, 11, 'Count', $sTh); $x->merge($r4 + 1, 12, $r4 + 1, 14, 'Share', $sTh);
+        $rr = $r4 + 2;
+        foreach ($cats as $nm => $n) {
+            $x->merge($rr, 1, $rr, 8, $nm, $sTxtN);
+            $x->merge($rr, 9, $rr, 11, $n, $sNum); $x->merge($rr, 12, $rr, 14, $failedRows ? $n / $failedRows : 0, $sPctN);
+            $rr++;
+        }
+        $x->merge($rr, 1, $rr, 8, 'TOTAL FAILED SPECIMENS', $sTotL);
+        $x->merge($rr, 9, $rr, 11, $failedRows, $sTot); $x->merge($rr, 12, $rr, 14, $failedRows ? 1 : 0, $x->style(['bold' => true, 'border' => true, 'h' => 'center', 'fill' => 'DCE9F8', 'fmt' => 10]));
+        if ($gridFailed !== $failedRows) {
+            $x->merge($rr + 2, 1, $rr + 2, 30, '*Note: the line table counts ' . $gridFailed . ' failed specimen(s) (failed Lab Ref Nos that carry a building / line, plus any marks or totals typed in the app); the categories count all ' . $failedRows . ' failed record(s) of the dates.', $sNote);
+            $x->height($rr + 2, 30);
+        }
+        $bin  = $x->build();
+        $name = 'Bonding_Monthly_Summary_' . date('Y-m', strtotime($first)) . '.xlsx';
+
+        return $this->response->setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . $name . '"')->setBody($bin);
     }
 
-    private function pct(int $n, int $d): float
+    /**
+     * GET analytics/export-failure-overview?from=&to= : the Bonding Failure Overview as an Excel file. Sheet 1 = the pie charts with their count tables
+     * (failed by building, portion and reason for Building A & B, then Building A and Building B alone); sheet 2 = the failed specimen log.
+     */
+    public function exportFailureOverview()
     {
-        return $d > 0 ? round($n / $d * 100, 1) : 0.0;
+        $db = \Config\Database::connect();
+        $ok = static fn ($d) => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $d) ? (string) $d : '';
+        $this->from = $ok($this->request->getGet('from'));
+        $this->to   = $ok($this->request->getGet('to'));
+        if ($this->from === '' && $this->to === '' && $this->request->getGet('all') === null) {
+            $this->from = date('Y-m-01');
+            $this->to   = date('Y-m-t');
+        }
+        if ($this->from !== '' && $this->to !== '' && $this->from > $this->to) {
+            [$this->from, $this->to] = [$this->to, $this->from];
+        }
+        $fb    = $this->svc('bonding')->bondingFailure($db)['fb'];
+        $asOf  = $this->to !== '' ? $this->to : date('Y-m-d');
+        $year  = date('Y', strtotime($asOf));
+        $label = $this->from !== '' ? ($this->from === $this->to ? $this->from : $this->from . ' to ' . ($this->to ?: '...')) : 'ALL DATES';
+
+        $x = new \App\Libraries\XlsxBuilder('Failure Overview');
+        $sBanner = $x->style(['bold' => true, 'size' => 14, 'color' => 'FFFFFF', 'fill' => '000000', 'h' => 'center']);
+        $sSub    = $x->style(['size' => 9, 'color' => '475569', 'h' => 'left']);
+        $sGrp    = $x->style(['bold' => true, 'size' => 11, 'color' => '0F2A47', 'underline' => true]);
+        $sTitle  = $x->style(['bold' => true, 'size' => 9, 'fill' => '9DC3E6', 'border' => true, 'h' => 'center', 'wrap' => true]);
+        $sCat    = $x->style(['bold' => true, 'size' => 9, 'fill' => 'DEEAF6', 'border' => true, 'h' => 'center', 'wrap' => true]);
+        $sNum    = $x->style(['bold' => true, 'size' => 14, 'fill' => 'FFFFFF', 'border' => true, 'h' => 'center']);
+        $sTotN   = $x->style(['bold' => true, 'size' => 14, 'color' => 'FF0000', 'fill' => 'FFFFFF', 'border' => true, 'h' => 'center']);
+        $sNote   = $x->style(['size' => 8, 'color' => '7C5A00', 'fill' => 'FFF8E1', 'wrap' => true, 'border' => true]);
+        for ($c = 1; $c <= 16; $c++) {
+            $x->width($c, 11);
+        }
+        $x->merge(1, 1, 1, 16, 'BONDING FAILURE OVERVIEW ' . strtoupper($label), $sBanner);
+        $x->height(1, 24);
+        $x->set(2, 1, 'Total failure as of ' . $asOf . ' · ' . (int) $fb['failed'] . ' failed bonding reports', $sSub);
+
+        $blue = ['5B9BD5', 'ED7D31', 'A5A5A5'];
+        // one chart block: a pie over rows $r..$r+17, its table (title | categories | total) right under it; $k = block position (4 columns each)
+        $block = function (int $k, int $r, string $chartTitle, string $tblTitle, array $data) use ($x, $sTitle, $sCat, $sNum, $sTotN, $asOf, $blue): void {
+            $c0  = $k * 4 + 1;
+            $n   = count($data);
+            $tot = array_sum($data);
+            $tr  = $r + 17;
+            $x->merge($tr, $c0, $tr, $c0 + 2, $tblTitle, $sTitle);
+            $x->set($tr, $c0 + 3, 'TOTAL FAILURE AS OF', $sTitle);
+            $x->height($tr, 26);
+            $i = 0;
+            foreach ($data as $name => $v) {
+                $cc = $c0 + $i;
+                $span = ($n === 2 && $i === 1) ? 2 : 1;   // two categories share three columns
+                $x->merge($tr + 1, $cc, $tr + 1, $cc + $span - 1, (string) $name, $sCat);
+                $x->merge($tr + 2, $cc, $tr + 2, $cc + $span - 1, (int) $v, $sNum);
+                $i++;
+            }
+            $x->set($tr + 1, $c0 + 3, $asOf, $sCat);
+            $x->set($tr + 2, $c0 + 3, (int) $tot, $sTotN);
+            $x->height($tr + 1, 26);
+            $x->height($tr + 2, 24);
+            $x->chart(['type' => 'pie', 'dark' => true, 'anchor' => [$c0 - 1, $r - 1, $c0 + 3, $r + 16], 'title' => $chartTitle, 'name' => $tblTitle,
+                'cat' => \App\Libraries\XlsxBuilder::col($c0) . ($tr + 1) . ':' . \App\Libraries\XlsxBuilder::col($c0 + ($n - 1)) . ($tr + 1),
+                'val' => \App\Libraries\XlsxBuilder::col($c0) . ($tr + 2) . ':' . \App\Libraries\XlsxBuilder::col($c0 + ($n - 1)) . ($tr + 2),
+                'colors' => array_slice($blue, 0, $n)]);
+        };
+
+        $x->set(3, 1, 'BUILDING A & B', $sGrp);
+        $block(0, 4, 'FAILED BONDING BY BUILDING ' . $year . ': A & B', 'FAILED BONDING BY BUILDING', $fb['bld']);
+        $block(1, 4, 'BUILDING A & B: PORTION OF FAILURE ' . $year, 'BUILDING A & B: PORTION OF FAILURE', $fb['por']);
+        $block(2, 4, 'BUILDING A & B: REASON OF FAILURE ' . $year, 'BUILDING A & B: REASON OF FAILURE', $fb['rea']);
+        $x->set(26, 1, 'BUILDING A AND BUILDING B', $sGrp);
+        $block(0, 27, 'BUILDING A FAILED SPECIMENS ' . $year . ': PORTION OF FAILURE', 'BUILDING A: PORTION OF FAILURE', $fb['byB']['A']['por']);
+        $block(1, 27, 'BUILDING A FAILED SPECIMENS ' . $year . ': REASON OF FAILURE', 'BUILDING A: REASON OF FAILURE', $fb['byB']['A']['rea']);
+        $block(2, 27, 'BUILDING B FAILED SPECIMENS ' . $year . ': PORTION OF FAILURE', 'BUILDING B: PORTION OF FAILURE', $fb['byB']['B']['por']);
+        $block(3, 27, 'BUILDING B FAILED SPECIMENS ' . $year . ': REASON OF FAILURE', 'BUILDING B: REASON OF FAILURE', $fb['byB']['B']['rea']);
+        $x->merge(48, 1, 48, 16, 'Portion and Reason count a failed specimen once per portion / reason it names, so their totals can be higher than the failed reports. Reason: Material = weak material; Rubber Foxing/Outsole = foxing tape, rubber outsole; Workmanship = cementing, priming, buffing, pressing and the rest.'
+            . ($fb['noPortion'] || $fb['noReason'] ? ' Not counted: ' . (int) $fb['noPortion'] . ' without a portion, ' . (int) $fb['noReason'] . ' without a reason recorded.' : ''), $sNote);
+        $x->height(48, 34);
+
+        // sheet 2: the failed specimen log
+        $l = new \App\Libraries\XlsxBuilder('Failure Log', $x);
+        $lHd  = $x->style(['bold' => true, 'size' => 9, 'fill' => '9DC3E6', 'border' => true, 'h' => 'center', 'wrap' => true]);
+        $lTx  = $x->style(['size' => 8, 'border' => true, 'h' => 'center', 'wrap' => true]);
+        $lTxL = $x->style(['size' => 8, 'border' => true, 'h' => 'left', 'wrap' => true]);
+        $lWm  = $x->style(['size' => 8, 'border' => true, 'h' => 'center', 'wrap' => true, 'fill' => 'DEEAF6']);
+        $lFail = $x->style(['bold' => true, 'size' => 8, 'color' => 'FF0000', 'border' => true, 'h' => 'center']);
+        $l->merge(1, 1, 1, 13, 'FAILED BONDING SPECIMENS ' . strtoupper($label), $sBanner);
+        $l->height(1, 24);
+        $heads = ['PRODUCTION DATE', 'COLLECTED DATE', 'LINE', 'MTL', 'STYLE', 'COLORWAY', 'LAB REF NO', 'TECHNICIAN', 'POSSIBLE CAUSE', 'PORTION OF FAILURE', 'REASON OF FAILURE', 'TESTED DATE', 'RESULT'];
+        $widths = [13, 13, 8, 16, 26, 26, 24, 15, 44, 24, 20, 13, 9];
+        foreach ($heads as $i => $h) {
+            $l->set(2, $i + 1, $h, $lHd);
+            $l->width($i + 1, $widths[$i]);
+        }
+        $l->height(2, 28);
+        $r = 3;
+        foreach ($fb['log'] as $row) {
+            foreach ([$row['prod'], $row['recv'], $row['line'], $row['mtl'], $row['style'], $row['color'], $row['ref'], $row['tech'], $row['cause'], $row['portion'], $row['reason'], $row['tested']] as $i => $v) {
+                $l->set($r, $i + 1, $v, $i === 8 ? $lTxL : ($i === 10 ? $lWm : $lTx));
+            }
+            $l->set($r, 13, $row['result'], $lFail);
+            $r++;
+        }
+        $l->merge($r, 1, $r, 12, 'TOTAL FAILED BONDING SPECIMENS', $lHd);
+        $l->set($r, 13, count($fb['log']), $lFail);
+
+        $name = 'Bonding_Failure_Overview_' . ($this->from !== '' ? $this->from . '_to_' . ($this->to ?: 'now') : 'all') . '.xlsx';
+
+        return $this->response->setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . $name . '"')->setBody($x->build());
     }
 
-    /** Daily Works Monitoring: year of materials received vs encoded (+ by type) and the day-by-day lab workload with encoding progress. */
-    private function dailyWorks($db): array
+    /**
+     * GET analytics/export-failed-portion?from=&to= : "Overall Failed Portion Times Monitoring" as an Excel file: one row per failed shoe with its possible
+     * cause under Upper to Foxing / Foxing to Outsole (Medial, Toe, Lateral, Heel) and Filler to Outsole (Center), the failed times per cause and portion
+     * with their %, and the failure-cause pie chart.
+     */
+    public function exportFailedPortion()
     {
-        $ok     = static fn ($d) => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $d) ? (string) $d : '';
-        $period = strtolower((string) ($this->request->getGet('period') ?: 'daily'));
-        if (!in_array($period, ['daily', 'weekly', 'monthly'], true)) {
-            $period = 'daily';
+        $db = \Config\Database::connect();
+        $ok = static fn ($d) => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $d) ? (string) $d : '';
+        $this->from = $ok($this->request->getGet('from'));
+        $this->to   = $ok($this->request->getGet('to'));
+        if ($this->from === '' && $this->to === '' && $this->request->getGet('all') === null) {
+            $this->from = date('Y-m-01');
+            $this->to   = date('Y-m-t');
         }
-        $year = (int) ($this->request->getGet('year') ?: date('Y'));
-        $year = ($year >= 2020 && $year <= 2100) ? $year : (int) date('Y');
-        $asof = $ok($this->request->getGet('asof')) ?: date('Y-m-d');
-        $reqWeek  = (string) ($this->request->getGet('week') ?: '');
-        $reqMonth = (int) ($this->request->getGet('month') ?: 0);
+        if ($this->from !== '' && $this->to !== '' && $this->from > $this->to) {
+            [$this->from, $this->to] = [$this->to, $this->from];
+        }
+        $pd   = \App\Services\Analytics\AnalyticsBase::BOND_DATE;
+        $base = $this->svc('bonding')->bondingBaseWhere($pd) . ' AND ' . $this->svc('bonding')->dateWhere($pd);
+        $rows = $db->query("SELECT LabRefNo, ModelStyle, Color, {$pd} AS d, Cause, FailPart, ModeOfFailure, PossibleCause, ProbableCause
+            FROM tbl_dtr_bonding_info WHERE {$base} AND (UPPER(Result) LIKE 'FAIL%' OR UPPER(Result) = 'REJECTED') ORDER BY d ASC, LabRefNo ASC")->getResultArray();
 
-        if ($period === 'weekly') {
-            if (preg_match('/^(\d{4})-W(0[1-9]|[1-4]\d|5[0-3])$/', $reqWeek, $wm)) {
-                $wy = (int) $wm[1];
-                $ww = (int) $wm[2];
-                $year = ($wy >= 2020 && $wy <= 2100) ? $wy : $year;
-            } else {
-                $baseTs = (int) date('Y', strtotime($asof)) === $year ? strtotime($asof) : strtotime("{$year}-01-04");
-                $wy = $year;
-                $ww = (int) date('W', $baseTs);
-            }
-            $mon = (new \DateTimeImmutable())->setISODate($wy, $ww, 1);
-            $sun = $mon->modify('+6 days');
-            $winFrom = $mon->format('Y-m-d');
-            $winTo   = $sun->format('Y-m-d');
-            $asof    = $winTo;
-            $week    = $mon->format('o-\WW');
-            $month   = (int) $mon->format('n');
-            $encFrom = $winFrom;
-            $encTo   = $winTo;
-            $periodTitle = 'Week ' . $mon->format('W') . ' (' . $mon->format('M j') . ' – ' . $sun->format('M j, Y') . ')';
-            $windowTag   = 'Weekly';
-            $windowShort = 'Weekly';
-            $windowLabel = 'Weekly (' . $mon->format('M j') . ' – ' . $sun->format('M j, Y') . ')';
-            $buckets = [];
-            for ($k = 6; $k >= 0; $k--) {
-                $dt = $mon->modify("+{$k} days");
-                $ds = $dt->format('Y-m-d');
-                $buckets[] = ['date' => $ds, 'from' => $ds, 'to' => $ds, 'label' => $dt->format('M j, Y'), 'short' => $dt->format('D m/d')];
-            }
-        } elseif ($period === 'monthly') {
-            $month = ($reqMonth >= 1 && $reqMonth <= 12) ? $reqMonth : (int) date('n', strtotime($asof));
-            $m1    = sprintf('%04d-%02d-01', $year, $month);
-            $mEnd  = date('Y-m-t', strtotime($m1));
-            $winFrom = $m1;
-            $winTo   = $mEnd;
-            $asof    = $mEnd;
-            $week    = date('o-\WW', strtotime($m1));
-            $encFrom = $m1;
-            $encTo   = $mEnd;
-            $periodTitle = date('F Y', strtotime($m1));
-            $windowTag   = date('M', strtotime($m1));
-            $windowShort = date('M Y', strtotime($m1));
-            $windowLabel = 'Monthly (' . date('F Y', strtotime($m1)) . ')';
-            $buckets = [];
-            $cur = new \DateTimeImmutable($m1);
-            $end = new \DateTimeImmutable($mEnd);
-            while ($cur <= $end) {
-                $dow    = (int) $cur->format('N'); // 1=Mon .. 7=Sun
-                $sliceEnd = $cur->modify('+' . (7 - $dow) . ' days');
-                if ($sliceEnd > $end) {
-                    $sliceEnd = $end;
-                }
-                $bFrom = $cur->format('Y-m-d');
-                $bTo   = $sliceEnd->format('Y-m-d');
-                $bShort = $bFrom === $bTo ? $cur->format('M j') : ($cur->format('M j') . '–' . $sliceEnd->format('j'));
-                $buckets[] = ['date' => $bTo, 'from' => $bFrom, 'to' => $bTo, 'label' => $bShort . ', ' . $year, 'short' => $bShort];
-                $cur = $sliceEnd->modify('+1 day');
-            }
-            $buckets = array_reverse($buckets); // newest slice first to match daily order
-        } else {
-            $winFrom = $asof;
-            $winTo   = $asof;
-            $week    = date('o-\WW', strtotime($asof));
-            $month   = (int) date('n', strtotime($asof));
-            $encFrom = $asof;
-            $encTo   = $asof;
-            $periodTitle = date('M j, Y', strtotime($asof));
-            $windowTag   = date('M j', strtotime($asof));
-            $windowShort = 'Daily';
-            $windowLabel = 'Daily (' . date('M j, Y', strtotime($asof)) . ')';
-            $buckets = [
-                ['date' => $asof, 'from' => $asof, 'to' => $asof, 'label' => date('M j, Y', strtotime($asof)), 'short' => date('M j', strtotime($asof))],
-            ];
-        }
+        // columns 6..9 Upper to Foxing, 10..13 Foxing to Outsole, 14 Filler to Outsole (Center)
+        $colsOf = ['U' => [6, 7, 8, 9], 'F' => [10, 11, 12, 13], 'I' => [14]];
+        $parse  = fn (array $r): array => $this->svc('bonding')->failParse($r);   // [portion letter => [causes]]
 
-        // ---- A. materials received per month, encoded in INTERLINK, per material type ----
-        $types  = ['Fabric', 'Leather', 'Synthetic', 'Accessories', 'Rubber'];
-        $months = \App\Libraries\DataCache::remember('analytics_months_' . $year, 600, function () use ($db, $year, $types) {   // two scans of the materials tables: kept 10 minutes
-        $months = [];
-        for ($i = 1; $i <= 12; $i++) {
-            $months[$i] = ['recv' => 0, 'enc' => 0, 'types' => array_fill_keys($types, 0)];
-        }
-        // 1) All material test reports in tbl_dtr_unified_labrefs (covers Jan..Dec across all material categories)
-        $uMo = "CAST(COALESCE(
-            CASE WHEN lab_ref_no REGEXP '^DTP{$year}[0-1][0-9]' THEN SUBSTR(lab_ref_no, 8, 2) END,
-            MONTH(STR_TO_DATE(received_date, '%d %b %Y')),
-            MONTH(STR_TO_DATE(tested_date, '%d %b %Y')),
-            CASE WHEN received_date REGEXP '^{$year}-[0-9]{2}' THEN SUBSTR(received_date, 6, 2) END,
-            CASE WHEN tested_date REGEXP '^{$year}-[0-9]{2}' THEN SUBSTR(tested_date, 6, 2) END
-        ) AS UNSIGNED)";
-        $uTy = "CASE
-            WHEN UPPER(COALESCE(material_type,'')) LIKE '%SYNTHETIC%' OR UPPER(COALESCE(material_type,'')) LIKE '%SUEDE%' THEN 'Synthetic'
-            WHEN form_slug = 'leather' OR UPPER(COALESCE(material_type,'')) LIKE '%LEATHER%' THEN 'Leather'
-            WHEN form_slug = 'fabric' OR UPPER(COALESCE(material_type,'')) REGEXP 'FABRIC|LINING|MESH|CANVAS|TEXTILE' THEN 'Fabric'
-            WHEN form_slug IN ('rubber', 'fthl') OR UPPER(COALESCE(material_type,'')) REGEXP 'RUBBER|OUTSOLE|FOXING|SOLE|HEEL LOGO' THEN 'Rubber'
-            ELSE 'Accessories'
-        END";
-        $uEnc = "(COALESCE(overall_result,'') <> '' OR COALESCE(interlink_flag,'') <> '' OR COALESCE(status,'') IN ('Completed','Done','Pass','Passed','Fail','Failed'))";
-        if ($db->tableExists('tbl_dtr_unified_labrefs')) {
-            $uRows = $db->query("SELECT {$uMo} mo, {$uTy} tp, COUNT(*) n, SUM({$uEnc}) e
-                FROM tbl_dtr_unified_labrefs
-                WHERE form_slug NOT IN ('bonding', 'wholeshoe', 'pulltest')
-                  AND (lab_ref_no LIKE 'DTP{$year}%' OR received_date LIKE '%{$year}%' OR tested_date LIKE '%{$year}%')
-                GROUP BY mo, tp")->getResultArray();
-            foreach ($uRows as $r) {
-                $mo = (int) $r['mo'];
-                if ($mo < 1 || $mo > 12) {
+        $cnt = [];       // [cause][col] => times
+        $shoes = [];
+        $noPortion = 0;
+        foreach ($rows as $r) {
+            $pc  = $parse($r);
+            $txt = [];   // col => [causes]
+            $any = false;
+            foreach ($pc as $p => $causes) {
+                if ($p === '') {
                     continue;
                 }
-                $months[$mo]['recv'] += (int) $r['n'];
-                $months[$mo]['enc']  += (int) $r['e'];
-                $months[$mo]['types'][$r['tp']] = ($months[$mo]['types'][$r['tp']] ?? 0) + (int) $r['n'];
+                foreach ($colsOf[$p] as $col) {
+                    foreach ($causes as $cn) {
+                        $cnt[$cn][$col] = ($cnt[$cn][$col] ?? 0) + 1;
+                        $txt[$col][]    = $cn;
+                        $any            = true;
+                    }
+                }
+            }
+            if (! $any) {
+                $noPortion++;
+            }
+            $line = preg_match('/^DTP\d{8}[A-Z]{2}([A-Z]\d+)-([LR])/i', (string) $r['LabRefNo'], $m) ? strtoupper($m[1] . '-' . $m[2]) : (preg_match('/-([LR])(?:-|$)/i', (string) $r['LabRefNo'], $m2) ? (stripos((string) $r['LabRefNo'], 'TRIAL') !== false ? 'TRIAL' : '') . '-' . strtoupper($m2[1]) : '');
+            $shoes[] = ['d' => date('m-d-Y', strtotime((string) $r['d'])), 'line' => $line, 'style' => (string) $r['ModelStyle'], 'color' => (string) $r['Color'], 'txt' => $txt, 'any' => $any];
+        }
+        $shoes = array_values(array_filter($shoes, static fn ($s) => $s['any']));
+
+        $order = ['OVERDRIED CEMENT', 'POOR CEMENT', 'POOR CEMENTING', 'POOR PRIMER', 'POOR PRIMING', 'POOR BUFFING', 'DUSTY FOXING TAPE', 'SPLITTING OF FOXING TAPE', 'WEAK MATERIAL', 'POOR PRESSING', 'DUSTY OUTSOLE', 'SPLITTING OF RUBBER OUTSOLE', 'INSUFFICIENT SKIRTING', 'INK DELAMINATION'];
+        $causes = $order;
+        foreach (array_keys($cnt) as $cn) {
+            if (! in_array($cn, $causes, true)) {
+                $causes[] = $cn;
             }
         }
-        // 2) Supplement with any months in tbl_dtr_materials_master that have additional IQC intake records not yet in unified_labrefs
-        $md  = "COALESCE(NULLIF(LEFT(m.MaterialDateReceivedInLab,10),'0000-00-00'), NULLIF(LEFT(c.DateReceivedInLab,10),'0000-00-00'), NULLIF(LEFT(m.MaterialDateArrived,10),'0000-00-00'), NULLIF(LEFT(c.DateArrived,10),'0000-00-00'))";
-        $ty  = "CASE WHEN UPPER(m.MaterialType) LIKE '%LEATHER%' THEN 'Leather' WHEN UPPER(m.MaterialType) REGEXP 'RUBBER|OUTSOLE|FOXING|SOLE' THEN 'Rubber' WHEN UPPER(m.MaterialType) LIKE '%SYNTHETIC%' OR UPPER(m.MaterialType) LIKE '%SUEDE%' THEN 'Synthetic' WHEN UPPER(m.MaterialType) REGEXP 'FABRIC|LINING|MESH|CANVAS|TEXTILE' THEN 'Fabric' ELSE 'Accessories' END";
-        $enc = "(UPPER(COALESCE(m.IQCERP,''))='OK' OR UPPER(COALESCE(m.FinalStatus,'')) IN ('PASS','TOLERABLE','FAILED') OR EXISTS (SELECT 1 FROM tbl_interlink_reports r WHERE r.synced_to_interlink=1 AND r.material_code<>'' AND r.material_code = m.MaterialCode COLLATE utf8mb4_general_ci))";
-        $rows = $db->query("SELECT CAST(SUBSTR({$md},6,2) AS UNSIGNED) mo, {$ty} tp, COUNT(*) n, SUM({$enc}) e
-            FROM tbl_dtr_materials_master m LEFT JOIN tbl_dtr_containers c ON c.ContainerID = m.ContainerID
-            WHERE {$md} BETWEEN '{$year}-01-01' AND '{$year}-12-31'
-              AND (m.LabReference IS NULL OR m.LabReference = '' OR NOT EXISTS (SELECT 1 FROM tbl_dtr_unified_labrefs u WHERE u.lab_ref_no = m.LabReference))
-            GROUP BY mo, tp")->getResultArray();
-        foreach ($rows as $r) {
-            $mo = (int) $r['mo'];
-            if ($mo < 1 || $mo > 12 || $months[$mo]['recv'] > 0) {
+        $colTot = array_fill(6, 9, 0);
+        $grand  = 0;
+        foreach ($cnt as $cn => $byCol) {
+            foreach ($byCol as $col => $n) {
+                $colTot[$col] += $n;
+                $grand        += $n;
+            }
+        }
+
+        $x = new \App\Libraries\XlsxBuilder('Failed Portion');
+        $S = static fn (array $o) => $o;
+        $sBlack  = $x->style(['bold' => true, 'size' => 14, 'color' => 'FFFFFF', 'fill' => '000000', 'h' => 'center']);
+        $sHdr    = $x->style(['bold' => true, 'size' => 8, 'fill' => '9DC3E6', 'border' => true, 'h' => 'center', 'wrap' => true]);
+        $sPC     = $x->style(['bold' => true, 'size' => 8, 'fill' => '9DC3E6', 'border' => true, 'h' => 'center']);
+        $sUp     = $x->style(['bold' => true, 'size' => 8, 'fill' => 'F4B183', 'border' => true, 'h' => 'center', 'wrap' => true]);
+        $sFo     = $x->style(['bold' => true, 'size' => 8, 'fill' => 'FFD966', 'border' => true, 'h' => 'center', 'wrap' => true]);
+        $sFi     = $x->style(['bold' => true, 'size' => 8, 'fill' => '70AD47', 'border' => true, 'h' => 'center', 'wrap' => true]);
+        $sTxt    = $x->style(['size' => 8, 'border' => true, 'h' => 'center']);
+        $sTxtL   = $x->style(['size' => 8, 'border' => true, 'h' => 'left']);
+        $sRed    = $x->style(['size' => 8, 'border' => true, 'h' => 'center', 'color' => 'FF0000']);
+        $sGreen  = $x->style(['bold' => true, 'size' => 8, 'fill' => 'A9D08E', 'border' => true, 'h' => 'center']);
+        $sOrange = $x->style(['bold' => true, 'size' => 20, 'fill' => 'F4B183', 'border' => true, 'h' => 'center', 'wrap' => true]);
+        $sBlue   = $x->style(['bold' => true, 'size' => 48, 'fill' => '9DC3E6', 'border' => true, 'h' => 'center']);
+        $sLabB   = $x->style(['bold' => true, 'size' => 9, 'fill' => '9DC3E6', 'border' => true, 'h' => 'center']);
+        $sLabO   = $x->style(['bold' => true, 'size' => 9, 'fill' => 'F4B183', 'border' => true, 'h' => 'center']);
+        $sPLab   = $x->style(['bold' => true, 'size' => 6, 'fill' => 'DEEAF6', 'border' => true, 'h' => 'center']);
+        $sPLabO  = $x->style(['bold' => true, 'size' => 6, 'fill' => 'FBE5D6', 'border' => true, 'h' => 'center']);
+        $sVB     = $x->style(['size' => 7, 'fill' => 'DEEAF6', 'border' => true, 'h' => 'center']);
+        $sVO     = $x->style(['size' => 7, 'fill' => 'FBE5D6', 'border' => true, 'h' => 'center']);
+        $sPB     = $x->style(['size' => 7, 'fill' => 'DEEAF6', 'border' => true, 'h' => 'center', 'fmt' => 10]);
+        $sPO     = $x->style(['size' => 7, 'fill' => 'FBE5D6', 'border' => true, 'h' => 'center', 'fmt' => 10]);
+        $sTB     = $x->style(['bold' => true, 'size' => 8, 'color' => 'FF0000', 'fill' => 'DEEAF6', 'border' => true, 'h' => 'center']);
+        $sTO     = $x->style(['bold' => true, 'size' => 8, 'color' => 'FF0000', 'fill' => 'FBE5D6', 'border' => true, 'h' => 'center']);
+        $sTPB    = $x->style(['bold' => true, 'size' => 7, 'color' => 'FF0000', 'fill' => 'DEEAF6', 'border' => true, 'h' => 'center', 'fmt' => 10]);
+        $sTPO    = $x->style(['bold' => true, 'size' => 7, 'color' => 'FF0000', 'fill' => 'FBE5D6', 'border' => true, 'h' => 'center', 'fmt' => 10]);
+        $sSec    = $x->style(['bold' => true, 'size' => 11, 'color' => '0F2A47']);
+        $sNote   = $x->style(['size' => 8, 'color' => '7C5A00', 'fill' => 'FFF8E1', 'wrap' => true, 'border' => true]);
+
+        $widths = [1 => 12, 2 => 8, 3 => 17, 4 => 15, 5 => 34];
+        foreach ($widths as $c => $w) {
+            $x->width($c, $w);
+        }
+        for ($c = 6; $c <= 14; $c++) {
+            $x->width($c, 19);
+        }
+        $x->width(15, 9);
+
+        $period = $this->from !== '' ? strtoupper(date('F Y', strtotime($this->from))) . ($this->to !== '' && date('Y-m', strtotime($this->to)) !== date('Y-m', strtotime($this->from)) ? ' - ' . strtoupper(date('F Y', strtotime($this->to))) : '') : 'ALL DATES';
+        $x->merge(1, 1, 1, 15, 'OVERALL FAILED PORTION TIMES MONITORING ' . $period, $sBlack);
+        $x->height(1, 24);
+        foreach ([1 => 'PRODUCTION DATE', 2 => 'LINE', 3 => 'STYLE', 4 => 'MATERIAL TOE/HEEL', 5 => 'COLORWAY'] as $c => $t) {
+            $x->merge(2, $c, 4, $c, $t, $sHdr);
+        }
+        $x->merge(2, 6, 2, 14, 'POSSIBLE CAUSE', $sPC);
+        $x->merge(3, 6, 3, 9, 'UPPER TO FOXING', $sUp);
+        $x->merge(3, 10, 3, 13, 'FOXING TO OUTSOLE', $sFo);
+        $x->set(3, 14, 'FILLER TO OUTSOLE', $sFi);
+        foreach (['MEDIAL', 'TOE', 'LATERAL', 'HEEL'] as $i => $pn) {
+            $x->set(4, 6 + $i, $pn . "\n(POSSIBLE CAUSE)", $sUp);
+            $x->set(4, 10 + $i, $pn . "\n(POSSIBLE CAUSE)", $sFo);
+        }
+        $x->set(4, 14, 'CENTER', $sFi);
+        $x->merge(2, 15, 4, 15, 'TOTAL', $sHdr);
+        $x->height(4, 26);
+
+        $r = 5;
+        $nRows = max(12, count($shoes));
+        for ($i = 0; $i < $nRows; $i++, $r++) {
+            $s = $shoes[$i] ?? null;
+            $x->set($r, 1, $s['d'] ?? '', $sTxt);
+            $x->set($r, 2, $s['line'] ?? '', $sRed);
+            $x->set($r, 3, $s['style'] ?? '', $sRed);
+            $x->set($r, 4, '', $sRed);
+            $x->set($r, 5, $s['color'] ?? '', $sRed);
+            for ($c = 6; $c <= 14; $c++) {
+                $x->set($r, $c, $s ? implode(' / ', $s['txt'][$c] ?? []) : '', $sRed);
+            }
+            $x->set($r, 15, '', $sTxt);
+        }
+        // failed times per column
+        $x->merge($r, 1, $r, 5, '', $sTxt);
+        for ($c = 6; $c <= 14; $c++) {
+            $x->set($r, $c, $colTot[$c], $sGreen);
+        }
+        $x->set($r, 15, $grand, $sGreen);
+        $r++;
+
+        // the failed times of every cause per column (count, then its % of all failed times)
+        $r0 = $r;
+        $rEnd = $r0 + count($causes) * 2 - 1;
+        $x->merge($r0, 1, $rEnd, 2, "Total\nFAILED\ntimes\nper portion", $sOrange);
+        $x->merge($r0, 3, $rEnd, 4, $grand, $sBlue);
+        $k = 0;
+        foreach ($causes as $cn) {
+            $blue = $k % 2 === 0;
+            $tot  = array_sum($cnt[$cn] ?? []);
+            $x->set($r, 5, $cn, $blue ? $sLabB : $sLabO);
+            $x->set($r + 1, 5, 'TOTAL PERCENTAGE:', $blue ? $sPLab : $sPLabO);
+            for ($c = 6; $c <= 14; $c++) {
+                $v = (int) ($cnt[$cn][$c] ?? 0);
+                $x->set($r, $c, $v, $blue ? $sVB : $sVO);
+                $x->set($r + 1, $c, $grand > 0 ? $v / $grand : 0, $blue ? $sPB : $sPO);
+            }
+            $x->set($r, 15, $tot, $blue ? $sTB : $sTO);
+            $x->set($r + 1, 15, $grand > 0 ? $tot / $grand : 0, $blue ? $sTPB : $sTPO);
+            $r += 2;
+            $k++;
+        }
+
+        // pie chart of the failure causes (its numbers are this small table)
+        $r += 1;
+        $x->merge($r, 5, $r, 7, 'FAILURE CAUSE DISTRIBUTION', $sSec);
+        $r++;
+        $pieR1 = $r;
+        $pieCol = ['OVERDRIED CEMENT' => '5B9BD5', 'POOR CEMENT' => 'ED7D31', 'POOR CEMENTING' => 'A5A5A5', 'POOR PRIMER' => 'FFC000', 'POOR PRIMING' => '70AD47', 'POOR BUFFING' => '9E480E',
+            'DUSTY FOXING TAPE' => '636363', 'SPLITTING OF FOXING TAPE' => '997300', 'WEAK MATERIAL' => '264478', 'POOR PRESSING' => '4472C4', 'DUSTY OUTSOLE' => '43682B',
+            'SPLITTING OF RUBBER OUTSOLE' => 'B35A1F', 'INSUFFICIENT SKIRTING' => '7CAFDD', 'INK DELAMINATION' => 'FFCD33'];
+        $fb = ['8E7CC3', 'C27BA0', '76A5AF', 'E06666', '93C47D', 'F6B26B', '6D9EEB', 'B4A7D6'];
+        $fi = 0;
+        $colors = [];
+        $pieTot = 0;
+        foreach ($causes as $cn) {
+            $t = array_sum($cnt[$cn] ?? []);
+            if ($t <= 0) {
                 continue;
             }
-            $months[$mo]['recv'] += (int) $r['n'];
-            $months[$mo]['enc']  += (int) $r['e'];
-            $months[$mo]['types'][$r['tp']] = ($months[$mo]['types'][$r['tp']] ?? 0) + (int) $r['n'];
+            $pieTot += $t;
         }
-
-        return $months;
-        });
-
-        // ---- B. day-by-day bonding workload (specimens collected that day) ----
-        $isPull = static fn (string $lab): bool => (bool) preg_match('/^DTP\d{8}(EY|DR|RVT|HP|LLH)/i', $lab);
-        $classify = static function (array $r): array {
-            $t = strtoupper((string) $r['TestType']); $lab = strtoupper((string) $r['LabRefNo']);
-            if (trim((string) $r['RetestOf']) !== '' || str_contains($t, 'RETEST') || preg_match('/-R\d+$/', $lab)) {
-                return ['retest', 'Daily Bonding'];
+        foreach ($causes as $cn) {
+            $t = array_sum($cnt[$cn] ?? []);
+            if ($t <= 0) {
+                continue;
             }
-            if (str_contains($t, 'SAMPLE')) {
-                if (preg_match('/STRIP|OSNA/', $lab)) { return ['sample', 'Rubber Strip Test']; }
-                if (str_contains($t, 'RIVET') || str_contains($lab, 'RIVET')) { return ['sample', 'Rivet']; }
-
-                return ['sample', 'Bonding Shoe'];
-            }
-            if (str_contains($t, 'RIVET')) { return ['sample', 'Rivet']; }
-            if (str_contains($t, 'FIRST')) { return ['first', 'Bonding Shoe']; }
-            if (str_contains($t, 'TRIAL')) { return ['trial', 'Bonding Shoe']; }
-            if (! str_contains($t, 'DAILY')) { return ['', '']; }   // only what the Lab Tracker counts as Daily
-
-            return ['daily', 'Daily Bonding Shoe'];
-        };
-        $sections = [
-            'daily'  => ['DAILY BONDING TEST', ['Daily Bonding Shoe', 'Daily Bonding Shoe (Advance)', 'Daily Bonding Shoe (Lacking)']],
-            'retest' => ['BONDING FAILED RE-TEST', ['Daily Bonding']],
-            'first'  => ['PRODUCTION FIRST ARTICLE', ['Bonding Shoe', 'Whole Shoe']],
-            'sample' => ['SAMPLE', ['Bonding Shoe', 'Rubber Strip Test', 'Rivet']],
-            'trial'  => ['TECH TRIAL', ['Bonding Shoe']],
-        ];
-        $dayExpr = "LEFT(COALESCE(NULLIF(ReceivedDate,''),NULLIF(TestedDate,''),NULLIF(ProductionDate,'')),10)";
-        $baseW   = 'NOT (' . self::SHUTDOWN_ROW . ') AND ' . self::BOND_DEDUP;
-        // the tracker table is tbl_dtr_bondingtracker on some servers: tableExists() is case sensitive, so both spellings are tried (the queries themselves are not)
-        $hasTrk  = ($db->tableExists('tbl_dtr_BondingTracker') || $db->tableExists('tbl_dtr_bondingtracker')) && $db->fieldExists('Shutdown', 'tbl_dtr_BondingTracker');
-        $hasWs   = $db->tableExists('tbl_dtr_WholeshoeTracker');
-        $days    = [];
-        $eWinFrom = $db->escape($winFrom);
-        $eWinTo   = $db->escape($winTo);
-        // Same rules as the Lab Tracker chips: Test Type from the intake tracker, COLLECTION date (Daily counts the next working day, Saturday -> Monday),
-        // Advance / Lacking / Shutdown count on the day they were loaded (CreatedAt) or on the day their Daily batch counts
-        $eCollFrom = $db->escape(date('Y-m-d', strtotime($winFrom . ' -3 day')));
-        $bondRows = $db->query("SELECT b.LabRefNo, b.Result, b.RetestOf, b.TestedDate, b.ProductionDate, COALESCE(" . ($hasTrk ? "NULLIF(LEFT(t.ProductionDate, 10), ''), " : '') . "LEFT(b.ProductionDate, 10)) AS pd2,
-                UPPER(COALESCE(" . ($hasTrk ? "NULLIF(t.TestType COLLATE utf8mb4_general_ci, ''), " : '') . "NULLIF(b.TestType COLLATE utf8mb4_general_ci, ''), '')) AS TestType,
-                COALESCE(" . ($hasTrk ? "NULLIF(LEFT(t.CollectionDate, 10), ''), " : '') . "NULLIF(LEFT(b.ReceivedDate, 10), ''), NULLIF(LEFT(b.TestedDate, 10), ''), LEFT(b.ProductionDate, 10)) AS cd
-            FROM (SELECT * FROM tbl_dtr_bonding_info WHERE {$baseW} AND COALESCE(TestType, '') <> 'LACKING') b"
-            . ($hasTrk ? " LEFT JOIN (SELECT LabRefNo, MAX(TrackerID) AS tid FROM tbl_dtr_BondingTracker WHERE LabRefNo IS NOT NULL GROUP BY LabRefNo) tm ON tm.LabRefNo = b.LabRefNo COLLATE utf8mb4_general_ci
-                LEFT JOIN tbl_dtr_BondingTracker t ON t.TrackerID = tm.tid" : '') . "
-            HAVING cd BETWEEN {$eCollFrom} AND {$eWinTo}")->getResultArray();
-        $effOf = static function (string $tt, string $lab, string $cd, string $pd = ''): string {
-            $daily = str_contains($tt, 'DAILY') && ! preg_match('/^DTP\d{8}(HP|EY|DR|RVT|LLH)/i', $lab);
-            if (! $daily || $cd === '') {
-                return $cd;
-            }
-            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $pd) && $pd < $cd) {
-                $cd = $pd;   // collected late: it stays with its production batch (same rule as the Lab Tracker)
-            }
-
-            return date('Y-m-d', strtotime($cd . ((int) date('N', strtotime($cd)) === 6 ? ' +2 day' : ' +1 day')));
-        };
-        $resByRef = [];
-        foreach ($bondRows as $r) {
-            if (trim((string) $r['Result']) !== '') { $resByRef[strtoupper((string) $r['LabRefNo'])] = true; }
+            $x->set($r, 5, $cn, $sTxtL);
+            $x->set($r, 6, $t, $sTxt);
+            $x->set($r, 7, $pieTot > 0 ? $t / $pieTot : 0, $x->style(['size' => 8, 'border' => true, 'h' => 'center', 'fmt' => 10]));
+            $colors[] = $pieCol[$cn] ?? $fb[$fi++ % count($fb)];
+            $r++;
         }
-        // a shoe whose pull test (EY / RVT / DR / HP / LLH of the same date, line and side) already has a result counts as finished too, like the Lab Tracker row result
-        $pullDone = [];
-        if ($db->tableExists('tbl_dtr_pull_tests')) {
-            foreach ($db->query("SELECT LabRefNo FROM tbl_dtr_pull_tests WHERE Result IS NOT NULL AND Result <> '' AND LabRefNo REGEXP '^DTP[0-9]{8}(HP|EY|DR|RVT|LLH)[A-Z][0-9]+-[LR]' AND LEFT(LabRefNo, 11) >= " . $db->escape('DTP' . date('Ym', strtotime($winFrom . ' -3 day')) . '00'))->getResultArray() as $pr) {
-                if (preg_match('/^(DTP\d{8})(?:HP|EY|DR|RVT|LLH)([A-Z]\d+)-([LR])/i', (string) $pr['LabRefNo'], $pm)) {
-                    $pullDone[strtoupper($pm[1] . '|' . $pm[2] . '|' . $pm[3])] = true;
-                }
-            }
+        if ($pieTot > 0) {
+            $x->chart(['type' => 'pie', 'anchor' => [7, $pieR1 - 2, 14, $pieR1 + 17], 'title' => 'Distribution of Failure Cause (%) - ' . $period, 'name' => 'Failed times', 'cat' => 'E' . $pieR1 . ':E' . ($r - 1), 'val' => 'F' . $pieR1 . ':F' . ($r - 1), 'colors' => $colors]);
+            $r = max($r, $pieR1 + 18);
         }
-        $trkMarks = $hasTrk ? $db->query("SELECT LabRefNo, Lacking, Shutdown, UPPER(TestType) tt, COALESCE(PullTestType, '') pt, LEFT(CreatedAt, 10) cr, LEFT(CollectionDate, 10) cd
-            FROM tbl_dtr_BondingTracker WHERE (Lacking IN (1, 2) OR Shutdown = 1 OR UPPER(TestType) = 'SHUTDOWN')
-              AND (LEFT(CreatedAt, 10) BETWEEN {$eWinFrom} AND {$eWinTo} OR LEFT(CollectionDate, 10) BETWEEN {$eCollFrom} AND {$eWinTo})")->getResultArray() : [];
-        $wsRows   = $hasWs ? $db->query("SELECT LEFT(CollectionDate,10) d, Status, FinalResult, ProductionDate, TimeCompleted FROM tbl_dtr_WholeshoeTracker WHERE LEFT(CollectionDate,10) BETWEEN {$eWinFrom} AND {$eWinTo}")->getResultArray() : [];
-        $shutInfoRows = $db->query('SELECT ' . $dayExpr . ' d, COUNT(*) c FROM tbl_dtr_bonding_info WHERE ' . self::SHUTDOWN_ROW . " AND {$dayExpr} BETWEEN {$eWinFrom} AND {$eWinTo} GROUP BY d")->getResultArray();
-
-        foreach ($buckets as $bk) {
-            $bFrom = $bk['from'];
-            $bTo   = $bk['to'];
-            $cells = [];
-            foreach ($sections as $sk => [$title, $labels]) {
-                foreach ($labels as $lb) {
-                    $cells[$sk][$lb] = ['q' => 0, 'f' => 0, 'prod' => '', 'test' => ''];
-                }
-            }
-            foreach ($bondRows as $r) {
-                $rd = $effOf((string) $r['TestType'], (string) $r['LabRefNo'], (string) $r['cd'], (string) $r['pd2']);
-                if ($rd < $bFrom || $rd > $bTo || $isPull((string) $r['LabRefNo'])) {
-                    continue;
-                }
-                [$sk, $lb] = $classify($r);
-                if ($sk === '') {
-                    continue;
-                }
-                $c = &$cells[$sk][$lb];
-                $c['q']++;
-                $pd = substr((string) $r['ProductionDate'], 0, 10);
-                if ($pd > $c['prod']) { $c['prod'] = $pd; }
-                $pullKey = preg_match('/^(DTP\d{8})SH([A-Z]\d+)-([LR])/i', (string) $r['LabRefNo'], $bm) ? strtoupper($bm[1] . '|' . $bm[2] . '|' . $bm[3]) : '';
-                if (trim((string) $r['Result']) !== '' || ($pullKey !== '' && isset($pullDone[$pullKey]))) {
-                    $c['f']++;
-                    $td = substr((string) $r['TestedDate'], 0, 10);
-                    if ($td > $c['test']) { $c['test'] = $td; }
-                }
-                unset($c);
-            }
-            foreach ($wsRows as $r) {
-                $rd = (string) $r['d'];
-                if ($rd < $bFrom || $rd > $bTo) {
-                    continue;
-                }
-                $c = &$cells['first']['Whole Shoe'];
-                $c['q']++;
-                $pd = substr((string) $r['ProductionDate'], 0, 10);
-                if ($pd > $c['prod']) { $c['prod'] = $pd; }
-                if (trim((string) $r['FinalResult']) !== '' || in_array(strtoupper((string) $r['Status']), ['COMPLETED', 'DONE', 'FINISHED', 'PASSED', 'FAILED'], true)) {
-                    $c['f']++;
-                    $td = substr((string) $r['TimeCompleted'], 0, 10) ?: $rd;
-                    if ($td > $c['test']) { $c['test'] = $td; }
-                }
-                unset($c);
-            }
-            $shut = 0;
-            foreach ($shutInfoRows as $sr) {
-                $rd = (string) $sr['d'];
-                if ($rd >= $bFrom && $rd <= $bTo) {
-                    $shut += (int) $sr['c'];
-                }
-            }
-            foreach ($trkMarks as $mk) {
-                $cr  = (string) $mk['cr'];
-                $sh  = $mk['cd'] !== '' ? date('Y-m-d', strtotime($mk['cd'] . ((int) date('N', strtotime($mk['cd'])) === 6 ? ' +2 day' : ' +1 day'))) : '';
-                if (! (($cr >= $bFrom && $cr <= $bTo) || ($sh >= $bFrom && $sh <= $bTo))) {
-                    continue;
-                }
-                $noPull = trim((string) $mk['pt']) === '';
-                if ((int) $mk['Lacking'] === 1 && ! ($sh >= $bFrom && $sh <= $bTo)) {
-                    continue;   // a LACKING line belongs to the testing day it is due (next working day), not the day it was marked
-                }
-                if ((int) $mk['Lacking'] === 2 && ! ($cr >= $bFrom && $cr <= $bTo) && isset($resByRef[strtoupper((string) $mk['LabRefNo'])])) {
-                    continue;   // an Advance shoe already tested is in the Daily record of its day, no longer an Advance of a later day (same rule as the Lab Tracker)
-                }
-                if ((int) $mk['Shutdown'] === 1 || $mk['tt'] === 'SHUTDOWN') {
-                    $shut++;
-                } elseif ((int) $mk['Lacking'] === 2 && $noPull) {
-                    $c = &$cells['daily']['Daily Bonding Shoe (Advance)'];
-                    $c['q']++;
-                    if (isset($resByRef[strtoupper((string) $mk['LabRefNo'])])) { $c['f']++; }
-                    unset($c);
-                } elseif ((int) $mk['Lacking'] === 1 && ($mk['tt'] === 'LACKING' || $noPull)) {
-                    $cells['daily']['Daily Bonding Shoe (Lacking)']['q']++;
-                }
-            }
-            $tot = ['q' => 0, 'f' => 0];
-            foreach ($cells as $sec) { foreach ($sec as $c) { $tot['q'] += $c['q']; $tot['f'] += $c['f']; } }
-            $days[] = ['date' => $bk['date'], 'from' => $bFrom, 'to' => $bTo, 'label' => $bk['label'], 'short' => $bk['short'], 'cells' => $cells, 'total' => $tot, 'shut' => $shut];
+        if ($noPortion > 0) {
+            $x->merge($r + 1, 1, $r + 1, 14, '*Note: ' . $noPortion . ' failed shoe(s) of the dates have no portion / cause recorded and are not counted above. A cause is counted once in every position of its portion (Medial, Toe, Lateral, Heel), the Filler to Outsole portion in Center.', $sNote);
+            $x->height($r + 1, 28);
         }
+        $bin  = $x->build();
+        $name = 'Overall_Failed_Portion_Times_' . ($this->from !== '' ? date('Y-m', strtotime($this->from)) : 'All') . '.xlsx';
 
-        // ---- C. test reports encoded in the selected period from tbl_dtr_unified_labrefs: ETRF / INTERLINK / ERP ----
-        $eEncFrom = $db->escape($encFrom);
-        $eEncTo   = $db->escape($encTo);
-        $cat = [
-            'Bonding'    => ['q' => 0, 'etrf' => 0, 'il' => 0, 'erp' => 0],
-            'Pull Test'  => ['q' => 0, 'etrf' => 0, 'il' => 0, 'erp' => 0],
-            'Re-Test'    => ['q' => 0, 'etrf' => 0, 'il' => 0, 'erp' => 0],
-            'Whole Shoe' => ['q' => 0, 'etrf' => 0, 'il' => 0, 'erp' => 0],
-        ];
-        $materials = ['q' => 0, 'etrf' => 0, 'il' => 0, 'erp' => 0];
-        if ($db->tableExists('tbl_dtr_unified_labrefs')) {
-            \App\Libraries\ErpMonitor::ensureColumns();
-            $uDateExpr = "COALESCE(
-                CASE WHEN lab_ref_no REGEXP '^DTP20[0-9]{6}' THEN CONCAT(SUBSTR(lab_ref_no, 4, 4), '-', SUBSTR(lab_ref_no, 8, 2), '-', SUBSTR(lab_ref_no, 10, 2)) END,
-                CASE WHEN received_date REGEXP '^20[0-9]{2}-[0-9]{2}-[0-9]{2}' THEN LEFT(received_date, 10) END,
-                CASE WHEN received_date REGEXP '^[0-9]{2}-[0-9]{2}-20[0-9]{2}' THEN CONCAT(SUBSTR(received_date, 7, 4), '-', SUBSTR(received_date, 1, 2), '-', SUBSTR(received_date, 4, 2)) END,
-                DATE_FORMAT(STR_TO_DATE(received_date, '%d %b %Y'), '%Y-%m-%d'),
-                CASE WHEN tested_date REGEXP '^20[0-9]{2}-[0-9]{2}-[0-9]{2}' THEN LEFT(tested_date, 10) END,
-                CASE WHEN tested_date REGEXP '^[0-9]{2}-[0-9]{2}-20[0-9]{2}' THEN CONCAT(SUBSTR(tested_date, 7, 4), '-', SUBSTR(tested_date, 1, 2), '-', SUBSTR(tested_date, 4, 2)) END,
-                DATE_FORMAT(STR_TO_DATE(tested_date, '%d %b %Y'), '%Y-%m-%d'),
-                ''
-            )";
-            $uEncRows = $db->query("SELECT lab_ref_no, tr_no, form_slug, form_category, status, overall_result,
-                etrf_mat_app, etrf_mat_hist, etrf_prod_app, etrf_prod_hist, etrf_pull_app, etrf_pull_hist,
-                etrf_bonding_app, etrf_bonding_hist, etrf_whole_app, etrf_whole_hist, etrf_adult_app, etrf_adult_hist,
-                erp_status, interlink_flag
-                FROM tbl_dtr_unified_labrefs
-                WHERE {$uDateExpr} BETWEEN {$eEncFrom} AND {$eEncTo}")->getResultArray();
-            $extraPullEtrf = 0;
-            $extraPullIl   = 0;
-            $extraPullErp  = 0;
-            foreach ($uEncRows as $r) {
-                $slug = strtolower(trim((string) $r['form_slug']));
-                $lab  = trim((string) $r['lab_ref_no']);
-                $fcat = strtoupper((string) $r['form_category']);
-                $st   = strtoupper(trim((string) $r['status']));
-                if ($slug === 'pulltest' || ($slug === 'bonding' && $isPull($lab))) {
-                    $k = 'Pull Test';
-                } elseif ($slug === 'bonding' && (preg_match('/-R\d+$/i', $lab) || str_contains($fcat, 'RETEST') || str_contains($st, 'RETEST'))) {
-                    $k = 'Re-Test';
-                } elseif ($slug === 'bonding') {
-                    $k = 'Bonding';
-                } elseif (in_array($slug, ['wholeshoe', 'wst'], true)) {
-                    $k = 'Whole Shoe';
-                } else {
-                    $k = 'Materials';
-                }
-                $trNo = trim((string) $r['tr_no']);
-                $isEtrf = match ($k) {
-                    'Pull Test'  => $trNo !== '' || trim((string) $r['etrf_pull_app']) !== '' || trim((string) $r['etrf_pull_hist']) !== '',
-                    'Bonding', 'Re-Test' => $trNo !== '' || trim((string) $r['etrf_bonding_app']) !== '' || trim((string) $r['etrf_bonding_hist']) !== '' || trim((string) $r['etrf_prod_app']) !== '' || trim((string) $r['etrf_adult_app']) !== '',
-                    'Whole Shoe' => $trNo !== '' || trim((string) $r['etrf_whole_app']) !== '' || trim((string) $r['etrf_whole_hist']) !== '' || trim((string) $r['etrf_prod_app']) !== '' || trim((string) $r['etrf_adult_app']) !== '',
-                    default      => $trNo !== '' || trim((string) $r['etrf_mat_app']) !== '' || trim((string) $r['etrf_mat_hist']) !== '',
-                };
-                $hasRes = trim((string) $r['overall_result']) !== '' || in_array($st, ['COMPLETE', 'COMPLETED', 'DONE', 'PASS', 'PASSED', 'FAIL', 'FAILED'], true);
-                $isIl   = trim((string) $r['interlink_flag']) !== '' || (($k === 'Materials' || $k === 'Whole Shoe') && $isEtrf && $hasRes);
-                $isErp  = in_array(strtoupper(trim((string) $r['erp_status'])), ['OK', 'SUBMITTED', 'DONE', '1', 'COMPLETED'], true);
-                if ($k === 'Materials') {
-                    $materials['q']++;
-                    if ($isEtrf) { $materials['etrf']++; }
-                    if ($isIl) { $materials['il']++; }
-                    if ($isErp) { $materials['erp']++; }
-                } else {
-                    $cat[$k]['q']++;
-                    if ($isEtrf) { $cat[$k]['etrf']++; }
-                    if ($isIl) { $cat[$k]['il']++; }
-                    if ($isErp) { $cat[$k]['erp']++; }
-                }
-                // Bonding rows that also carry a Pull Test TR in etrf_pull_app/etrf_pull_hist
-                if ($k === 'Bonding' && (trim((string) $r['etrf_pull_app']) !== '' || trim((string) $r['etrf_pull_hist']) !== '')) {
-                    $extraPullEtrf++;
-                    if ($isIl) { $extraPullIl++; }
-                    if ($isErp) { $extraPullErp++; }
-                }
-            }
-            if ($extraPullEtrf > 0) {
-                if ($cat['Pull Test']['q'] < $cat['Pull Test']['etrf'] + $extraPullEtrf) {
-                    $cat['Pull Test']['q'] = $cat['Pull Test']['etrf'] + $extraPullEtrf;
-                }
-                $cat['Pull Test']['etrf'] = min($cat['Pull Test']['q'], $cat['Pull Test']['etrf'] + $extraPullEtrf);
-                $cat['Pull Test']['il']   = min($cat['Pull Test']['q'], $cat['Pull Test']['il'] + $extraPullIl);
-                $cat['Pull Test']['erp']  = min($cat['Pull Test']['q'], $cat['Pull Test']['erp'] + $extraPullErp);
-            }
+        return $this->response->setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . $name . '"')->setBody($bin);
+    }
+    /** Edit mode, bottom rows of the failed-specimen grid: a typed total (kind B / F / T) for one date; an empty value clears it (back to the counted total). */
+    public function bondingTotal()
+    {
+        $db   = \Config\Database::connect();
+        $kind = strtoupper(trim((string) $this->request->getPost('kind')));
+        $b    = strtoupper(trim((string) $this->request->getPost('building')));
+        $d    = trim((string) $this->request->getPost('date'));
+        $v    = trim((string) $this->request->getPost('value'));
+        $b    = $kind === 'B' ? $b : '-';
+        if (! in_array($kind, ['B', 'F', 'T'], true) || ! in_array($b, ['A', 'B', '-'], true) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) || ($v !== '' && ! preg_match('/^\d{1,5}$/', $v))) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => 'Type a whole number.', 'csrf' => csrf_hash()]);
         }
+        $this->svc('bonding')->ensureTotalsTable($db);
+        if ($v === '') {
+            $db->table('tbl_an_bonding_totals')->where(['Kind' => $kind, 'Building' => $b, 'ProdDate' => $d])->delete();
+        } else {
+            $db->query('INSERT INTO tbl_an_bonding_totals (Kind, Building, ProdDate, Val) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE Val = VALUES(Val)', [$kind, $b, $d, (int) $v]);
+        }
+        \App\Libraries\DataCache::bump();
 
-        return ['dw' => ['year' => $year, 'asof' => $asof, 'period' => $period, 'week' => $week, 'month' => $month, 'winFrom' => $winFrom, 'winTo' => $winTo, 'encFrom' => $encFrom, 'encTo' => $encTo, 'windowTag' => $windowTag, 'windowShort' => $windowShort, 'windowLabel' => $windowLabel, 'types' => $types, 'months' => $months, 'days' => $days, 'sections' => $sections, 'cat' => $cat, 'materials' => $materials, 'monthName' => $periodTitle],
-            'kpis' => [], 'chartTitle' => '', 'months' => [], 'lists' => []];
+        return $this->response->setJSON(['ok' => true, 'csrf' => csrf_hash()]);
     }
 
-    /** SQL condition: the column holds a real date and falls inside the chosen range. */
-    private function dateWhere(string $col): string
+    /** Edit mode of the failed-specimen grid: Mark = '1' (failed), 'S' (shutdown) or '' (clear) for one line and production date. */
+    public function bondingMark()
     {
-        $w = "{$col} REGEXP '^20[0-9]{2}-[0-9]{2}-[0-9]{2}'";
-        if ($this->from !== '') {
-            $w .= " AND LEFT({$col}, 10) >= '{$this->from}'";
+        $db = \Config\Database::connect();
+        $b  = strtoupper(trim((string) $this->request->getPost('building')));
+        $n  = (int) $this->request->getPost('line');
+        $d  = trim((string) $this->request->getPost('date'));
+        $m  = strtoupper(trim((string) $this->request->getPost('mark')));
+        if (! in_array($b, ['A', 'B'], true) || $n < 1 || $n > 30 || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) || ! in_array($m, ['', '0', '1', 'S', 'N'], true)) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => 'Invalid cell.', 'csrf' => csrf_hash()]);
         }
-        if ($this->to !== '') {
-            $w .= " AND LEFT({$col}, 10) <= '{$this->to}'";
+        $this->svc('bonding')->ensureMarksTable($db);
+        $key = ['Building' => $b, 'LineNo' => $n, 'ProdDate' => $d];
+        if ($m === '') {
+            $db->table('tbl_an_bonding_marks')->where($key)->delete();
+        } else {
+            $db->query('INSERT INTO tbl_an_bonding_marks (Building, `LineNo`, ProdDate, Mark) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE Mark = VALUES(Mark)', [$b, $n, $d, $m]);
         }
+        \App\Libraries\DataCache::bump();
 
-        return $w;
+        return $this->response->setJSON(['ok' => true, 'csrf' => csrf_hash()]);
     }
 
-    /** SQL expression of the chart bucket (day / week / month / year) of a date column. */
-    private function bucket(string $col): string
+    /** GET analytics/export-wholeshoe?from=&to= : Whole Shoe Physical Test Monthly Summary as Excel (.xlsx). */
+    public function exportWholeShoe()
     {
-        return match ($this->group) {
-            'day'   => "LEFT({$col}, 10)",
-            'week'  => "DATE_FORMAT(STR_TO_DATE(LEFT({$col}, 10), '%Y-%m-%d'), '%x-W%v')",
-            'year'  => "LEFT({$col}, 4)",
-            default => "LEFT({$col}, 7)",
-        };
-    }
-
-    /** Buckets kept: the latest N for the chosen period, more when a custom range is set. */
-    private function bucketLimit(): int
-    {
-        $custom = $this->from !== '' || $this->to !== '';
-
-        return match ($this->group) {
-            'day'   => $custom ? 92 : 31,
-            'week'  => $custom ? 53 : 12,
-            'year'  => 10,
-            default => $custom ? 36 : 24,
-        };
-    }
-
-    private function periodWord(): string
-    {
-        return ['day' => 'day', 'week' => 'week', 'month' => 'month', 'year' => 'year'][$this->group];
-    }
-
-    private function bonding($db): array
-    {
-        $pd = self::BOND_DATE;
-        $w  = $this->bondingBaseWhere($pd);
-        $wChart = $w . ' AND ' . $this->dateWhere($pd);
-        $t  = $db->query("SELECT COUNT(*) AS total, COALESCE(SUM(UPPER(Result) LIKE 'PASS%'), 0) AS pass, COALESCE(SUM(UPPER(Result) LIKE 'TOL%'), 0) AS tol, COALESCE(SUM(UPPER(Result) LIKE 'FAIL%' OR UPPER(Result) = 'REJECTED'), 0) AS fail FROM tbl_dtr_bonding_info WHERE {$w}")->getRowArray();
-        $n  = max(1, (int) $t['total']);
-        $b  = $this->bucket($pd);
-
-        return [
-            'kpis' => [
-                ['Total Lab Test Reports', number_format((int) $t['total']), 'Bonding Shoe Collection', ''],
-                ['Passed Reports', number_format((int) $t['pass']), $this->pct((int) $t['pass'], $n) . '% pass rate', 'an-pass'],
-                ['Tolerable / Data', number_format((int) $t['tol']), $this->pct((int) $t['tol'], $n) . '% of tests', 'an-tol'],
-                ['Failed Reports', number_format((int) $t['fail']), $this->pct((int) $t['fail'], $n) . '% fail rate', 'an-fail'],
-            ],
-            'chartTitle' => 'Tests per ' . $this->periodWord(),
-            'months'     => array_reverse($db->query("SELECT {$b} AS m, COUNT(*) AS total, SUM(UPPER(Result) LIKE 'PASS%') AS pass, SUM(UPPER(Result) LIKE 'TOL%') AS tol, SUM(UPPER(Result) LIKE 'FAIL%' OR UPPER(Result) = 'REJECTED') AS fail
-                FROM tbl_dtr_bonding_info WHERE {$wChart} GROUP BY m ORDER BY m DESC LIMIT " . $this->bucketLimit())->getResultArray()),
-            'lists' => [
-                ['Styles with the most failures', 'ratio', $db->query("SELECT ModelStyle AS name, SUM(UPPER(Result) LIKE 'FAIL%' OR UPPER(Result) = 'REJECTED') AS a, COUNT(*) AS b FROM tbl_dtr_bonding_info
-                    WHERE {$w} AND ModelStyle IS NOT NULL AND ModelStyle <> '' GROUP BY ModelStyle HAVING a > 0 ORDER BY a DESC, b DESC LIMIT 8")->getResultArray()],
-                ['Technician workload (fails / tests)', 'ratio', $db->query("SELECT Technician AS name, SUM(UPPER(Result) LIKE 'FAIL%' OR UPPER(Result) = 'REJECTED') AS a, COUNT(*) AS b FROM tbl_dtr_bonding_info
-                    WHERE {$w} AND Technician IS NOT NULL AND Technician <> '' GROUP BY Technician ORDER BY b DESC LIMIT 8")->getResultArray()],
-                ['Top modes of failure', 'count', $db->query("SELECT ModeOfFailure AS name, COUNT(*) AS a FROM tbl_dtr_bonding_info
-                    WHERE {$w} AND (UPPER(Result) LIKE 'FAIL%' OR UPPER(Result) = 'REJECTED') AND ModeOfFailure IS NOT NULL AND ModeOfFailure <> '' GROUP BY ModeOfFailure ORDER BY a DESC LIMIT 8")->getResultArray()],
-            ],
-        ];
-    }
-
-    private function wholeShoe($db): array
-    {
-        if (! $db->tableExists('tbl_dtr_wholeshoe_intake')) {
-            return ['kpis' => [['Whole shoe lines', '0', 'nothing saved yet', '']], 'chartTitle' => 'Whole shoes collected per ' . $this->periodWord(), 'months' => [], 'lists' => [], 'empty' => 'No whole shoe intake saved yet. Use + Whole Shoe Collected on the Lab Tracker.'];
+        $db = \Config\Database::connect();
+        $ok = static fn ($d) => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $d) ? (string) $d : '';
+        $this->from = $ok($this->request->getGet('from'));
+        $this->to   = $ok($this->request->getGet('to'));
+        if ($this->from !== '' && $this->to !== '' && $this->from > $this->to) {
+            [$this->from, $this->to] = [$this->to, $this->from];
         }
-        $w = $this->dateWhere('CollectionDate');
-        $t = $db->query("SELECT COUNT(*) AS lines_, COALESCE(SUM(NoOfShoes), 0) AS shoes, COALESCE(SUM(Building = 'A'), 0) AS a, COALESCE(SUM(Building = 'B'), 0) AS b FROM tbl_dtr_wholeshoe_intake WHERE {$w}")->getRowArray();
-        $reports = $db->tableExists('tbl_dtr_wholeshoe_reports') ? (int) $db->table('tbl_dtr_wholeshoe_reports')->countAllResults() : 0;
-        $b = $this->bucket('CollectionDate');
+        $wa = $this->svc('wholeshoe')->wholeShoeAudit($db)['wsAudit'];
 
-        // each ticked test type counts once per line
-        $tests = [];
-        foreach ($db->query("SELECT TestTypes FROM tbl_dtr_wholeshoe_intake WHERE {$w} AND TestTypes <> ''")->getResultArray() as $r) {
-            foreach (array_filter(array_map('trim', explode(',', (string) $r['TestTypes']))) as $x) {
-                $tests[$x] = ($tests[$x] ?? 0) + 1;
-            }
+        $x      = new \App\Libraries\XlsxBuilder('Whole Shoe Summary');
+        $navy   = '0F2A47';
+        $sTitle = $x->style(['bold' => true, 'size' => 14, 'color' => $navy]);
+        $sSub   = $x->style(['size' => 9, 'color' => '64748B']);
+        $sSec   = $x->style(['bold' => true, 'size' => 11, 'color' => $navy]);
+        $sTh    = $x->style(['bold' => true, 'color' => 'FFFFFF', 'fill' => $navy, 'border' => true, 'h' => 'center', 'size' => 10]);
+        $sThL   = $x->style(['bold' => true, 'color' => 'FFFFFF', 'fill' => $navy, 'border' => true, 'h' => 'left', 'size' => 10]);
+        $sTxt   = $x->style(['border' => true, 'h' => 'left']);
+        $sNum   = $x->style(['border' => true, 'h' => 'center']);
+        $sTotL  = $x->style(['bold' => true, 'border' => true, 'h' => 'left', 'fill' => 'DCE9F8']);
+        $sTot   = $x->style(['bold' => true, 'border' => true, 'h' => 'center', 'fill' => 'DCE9F8']);
+
+        foreach ([1 => 22, 2 => 15, 3 => 14, 4 => 14, 5 => 14, 6 => 16, 7 => 15] as $col => $w) {
+            $x->width($col, $w);
         }
-        arsort($tests);
-        $testRows = [];
-        foreach ($tests as $k => $v) {
-            $testRows[] = ['name' => $k, 'a' => $v];
+        $x->merge(1, 1, 1, 7, 'WHOLE SHOE PHYSICAL TEST — MONTHLY SUMMARY', $sTitle);
+        $x->merge(2, 1, 2, 7, 'Period: ' . $wa['periodText'] . ' · Total Samples: ' . $wa['totalSamples'], $sSub);
+        foreach (['Month', 'Total Tested', 'Passed', 'Tolerable', 'Failed', 'Pending Remark', 'Pass Rate (%)'] as $ci => $h) {
+            $x->set(4, $ci + 1, $h, $ci === 0 ? $sThL : $sTh);
+        }
+        $r = 5;
+        foreach ($wa['monthly'] as $mo) {
+            $rated = (int) $mo['pass'] + (int) $mo['tol'] + (int) $mo['fail'];
+            $pRate = $rated > 0 ? round((int) $mo['pass'] / $rated * 100, 1) . '%' : '—';
+            $x->set($r, 1, $mo['full'] . ' ' . $wa['year'], $sTxt);
+            $x->set($r, 2, (int) $mo['total'], $sNum);
+            $x->set($r, 3, (int) $mo['pass'], $sNum);
+            $x->set($r, 4, (int) $mo['tol'], $sNum);
+            $x->set($r, 5, (int) $mo['fail'], $sNum);
+            $x->set($r, 6, (int) $mo['pend'], $sNum);
+            $x->set($r, 7, $pRate, $sNum);
+            $r++;
+        }
+        $x->set($r, 1, 'TOTAL', $sTotL);
+        $x->set($r, 2, (int) $wa['totalSamples'], $sTot);
+        $x->set($r, 3, (int) $wa['passTotal'], $sTot);
+        $x->set($r, 4, (int) $wa['tolTotal'], $sTot);
+        $x->set($r, 5, (int) $wa['failTotal'], $sTot);
+        $x->set($r, 6, (int) $wa['pendTotal'], $sTot);
+        $x->set($r, 7, $wa['passPct'] . '%', $sTot);
+
+        $r += 2;
+        $x->merge($r, 1, $r, 7, 'TEST METHOD PASS / TOLERABLE / FAIL DISTRIBUTION', $sSec);
+        $r++;
+        foreach (['Test Method', 'Evaluated (n)', 'Passed', 'Tolerable', 'Initial Fails', 'Passed on Retest', 'Pass Rate (%)'] as $ci => $h) {
+            $x->set($r, $ci + 1, $h, $ci === 0 ? $sThL : $sTh);
+        }
+        $r++;
+        foreach ($wa['methods'] as $me) {
+            $x->set($r, 1, $me['label'], $sTxt);
+            $x->set($r, 2, (int) $me['n'], $sNum);
+            $x->set($r, 3, (int) $me['pass'], $sNum);
+            $x->set($r, 4, (int) $me['tol'], $sNum);
+            $x->set($r, 5, (int) $me['failTotal'], $sNum);
+            $x->set($r, 6, (int) $me['failRetest'], $sNum);
+            $x->set($r, 7, $me['passPct'] . '%', $sNum);
+            $r++;
         }
 
-        return [
-            'kpis' => [
-                ['Whole shoe lines', number_format((int) $t['lines_']), 'saved at intake', ''],
-                ['Shoes collected', number_format((int) $t['shoes']), 'total No. of Shoes', ''],
-                ['Building A / B', (int) $t['a'] . ' / ' . (int) $t['b'], 'lines per building', ''],
-                ['Reports saved', number_format($reports), 'Whole Footwear Test Results', 'an-pass'],
-            ],
-            'chartTitle' => 'Whole shoes collected per ' . $this->periodWord(),
-            'months'     => array_reverse($db->query("SELECT {$b} AS m, COALESCE(SUM(NoOfShoes), 0) AS total FROM tbl_dtr_wholeshoe_intake
-                WHERE {$w} GROUP BY m ORDER BY m DESC LIMIT " . $this->bucketLimit())->getResultArray()),
-            'lists' => [
-                ['Tests requested', 'count', $testRows],
-                ['Styles collected most', 'count', $db->query("SELECT s.StyleNo AS name, COALESCE(SUM(i.NoOfShoes), 0) AS a FROM tbl_dtr_wholeshoe_intake i JOIN tbl_dtr_shoe_list s ON s.ProdCode = i.ProdCode
-                    WHERE " . $this->dateWhere('i.CollectionDate') . " AND s.StyleNo <> '' GROUP BY s.StyleNo ORDER BY a DESC LIMIT 8")->getResultArray()],
-                ['Encoded by', 'count', $db->query("SELECT EncodedBy AS name, COUNT(*) AS a FROM tbl_dtr_wholeshoe_intake WHERE {$w} AND EncodedBy <> '' GROUP BY EncodedBy ORDER BY a DESC LIMIT 8")->getResultArray()],
-            ],
-        ];
+        $name = 'WholeShoe_Monthly_Summary_' . ($this->from !== '' ? $this->from . '_to_' . ($this->to ?: 'now') : $wa['year']) . '.xlsx';
+
+        return $this->response->setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . $name . '"')->setBody($x->build());
     }
 
-    private function materials($db): array
+    /** GET analytics/export-materials?from=&to= : Material Test Monthly Summary (Pass / Tolerable / Fail) as Excel (.xlsx). */
+    public function exportMaterials()
     {
-        $w = "form_slug <> 'bonding' AND " . $this->dateWhere('tested_date');
-        $t = $db->query("SELECT COUNT(*) AS total, SUM(overall_result IN ('Pass','P')) AS pass, SUM(overall_result = 'Tolerable') AS tol, SUM(overall_result = 'Fail') AS fail FROM tbl_dtr_unified_labrefs WHERE {$w}")->getRowArray();
-        $n = max(1, (int) $t['total']);
-        $b = $this->bucket('tested_date');
+        $db = \Config\Database::connect();
+        $ok = static fn ($d) => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $d) ? (string) $d : '';
+        $this->from = $ok($this->request->getGet('from'));
+        $this->to   = $ok($this->request->getGet('to'));
+        if ($this->from !== '' && $this->to !== '' && $this->from > $this->to) {
+            [$this->from, $this->to] = [$this->to, $this->from];
+        }
+        $ma = $this->svc('materials')->materialsAudit($db)['matAudit'];
 
-        return [
-            'kpis' => [
-                ['Material tests', number_format((int) $t['total']), 'all material forms', ''],
-                ['Passed', number_format((int) $t['pass']), $this->pct((int) $t['pass'], $n) . '% pass rate', 'an-pass'],
-                ['Tolerable', number_format((int) $t['tol']), $this->pct((int) $t['tol'], $n) . '% of tests', 'an-tol'],
-                ['Failed', number_format((int) $t['fail']), $this->pct((int) $t['fail'], $n) . '% fail rate', 'an-fail'],
-            ],
-            'chartTitle' => 'Material tests per ' . $this->periodWord(),
-            'months'     => array_reverse($db->query("SELECT {$b} AS m, COUNT(*) AS total, SUM(overall_result IN ('Pass','P')) AS pass, SUM(overall_result = 'Tolerable') AS tol, SUM(overall_result = 'Fail') AS fail
-                FROM tbl_dtr_unified_labrefs WHERE {$w} GROUP BY m ORDER BY m DESC LIMIT " . $this->bucketLimit())->getResultArray()),
-            'lists' => [
-                ['Material categories (fails / tests)', 'ratio', $db->query("SELECT form_category AS name, SUM(overall_result = 'Fail') AS a, COUNT(*) AS b FROM tbl_dtr_unified_labrefs WHERE {$w} GROUP BY form_category ORDER BY b DESC LIMIT 8")->getResultArray()],
-                ['Suppliers (fails / tests)', 'ratio', $db->query("SELECT supplier AS name, SUM(overall_result = 'Fail') AS a, COUNT(*) AS b FROM tbl_dtr_unified_labrefs WHERE {$w} AND supplier <> '' GROUP BY supplier ORDER BY b DESC LIMIT 8")->getResultArray()],
-                ['Technicians', 'count', $db->query("SELECT technician AS name, COUNT(*) AS a FROM tbl_dtr_unified_labrefs WHERE {$w} AND technician <> '' GROUP BY technician ORDER BY a DESC LIMIT 8")->getResultArray()],
-            ],
-        ];
+        $x      = new \App\Libraries\XlsxBuilder('Materials Summary');
+        $navy   = '0F2A47';
+        $sTitle = $x->style(['bold' => true, 'size' => 14, 'color' => $navy]);
+        $sSub   = $x->style(['size' => 9, 'color' => '64748B']);
+        $sSec   = $x->style(['bold' => true, 'size' => 11, 'color' => $navy]);
+        $sTh    = $x->style(['bold' => true, 'color' => 'FFFFFF', 'fill' => $navy, 'border' => true, 'h' => 'center', 'size' => 10]);
+        $sThL   = $x->style(['bold' => true, 'color' => 'FFFFFF', 'fill' => $navy, 'border' => true, 'h' => 'left', 'size' => 10]);
+        $sTxt   = $x->style(['border' => true, 'h' => 'left']);
+        $sNum   = $x->style(['border' => true, 'h' => 'center']);
+        $sTotL  = $x->style(['bold' => true, 'border' => true, 'h' => 'left', 'fill' => 'DCE9F8']);
+        $sTot   = $x->style(['bold' => true, 'border' => true, 'h' => 'center', 'fill' => 'DCE9F8']);
+
+        foreach ([1 => 20, 2 => 22, 3 => 22, 4 => 42, 5 => 28, 6 => 16] as $col => $w) {
+            $x->width($col, $w);
+        }
+        $x->merge(1, 1, 1, 6, 'MATERIAL TEST — MONTHLY SUMMARY (PASS / TOLERABLE / FAIL)', $sTitle);
+        $x->merge(2, 1, 2, 6, 'Period: ' . $ma['periodText'] . ' · Total Evaluated: ' . $ma['total'], $sSub);
+        foreach (['Month', 'Total Tested', 'Passed', 'Tolerable', 'Failed', 'Pass Rate (%)'] as $ci => $h) {
+            $x->set(4, $ci + 1, $h, $ci === 0 ? $sThL : $sTh);
+        }
+        $r = 5;
+        foreach ($ma['monthly'] as $mo) {
+            $x->set($r, 1, $mo['full'] . ' ' . $ma['year'], $sTxt);
+            $x->set($r, 2, (int) $mo['total'], $sNum);
+            $x->set($r, 3, (int) $mo['pass'], $sNum);
+            $x->set($r, 4, (int) $mo['tol'], $sNum);
+            $x->set($r, 5, (int) $mo['fail'], $sNum);
+            $x->set($r, 6, $mo['passPct'] . '%', $sNum);
+            $r++;
+        }
+        $x->set($r, 1, 'TOTAL', $sTotL);
+        $x->set($r, 2, (int) $ma['total'], $sTot);
+        $x->set($r, 3, (int) $ma['pass'], $sTot);
+        $x->set($r, 4, (int) $ma['tol'], $sTot);
+        $x->set($r, 5, (int) $ma['fail'], $sTot);
+        $x->set($r, 6, $ma['passPct'] . '%', $sTot);
+
+        $r += 2;
+        $x->merge($r, 1, $r, 6, 'FAILED & TOLERABLE MATERIAL BATCHES', $sSec);
+        $r++;
+        foreach (['Date', 'Lab Ref No.', 'Supplier', 'Material Description', 'Flagged Test(s)', 'Result'] as $ci => $h) {
+            $x->set($r, $ci + 1, $h, $ci === 5 ? $sTh : $sThL);
+        }
+        $r++;
+        foreach (array_merge($ma['failLog'], $ma['tolLog']) as $row) {
+            $x->set($r, 1, $row['date'] ?: $row['month'], $sTxt);
+            $x->set($r, 2, $row['labNo'], $sTxt);
+            $x->set($r, 3, $row['supplier'], $sTxt);
+            $x->set($r, 4, $row['material'], $sTxt);
+            $x->set($r, 5, implode(', ', $row['tests'] ?? []), $sTxt);
+            $x->set($r, 6, $row['remark'], $sNum);
+            $r++;
+        }
+
+        $name = 'Materials_Monthly_Summary_' . ($this->from !== '' ? $this->from . '_to_' . ($this->to ?: 'now') : $ma['year']) . '.xlsx';
+
+        return $this->response->setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . $name . '"')->setBody($x->build());
     }
 }

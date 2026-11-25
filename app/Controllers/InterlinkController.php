@@ -32,13 +32,13 @@ class InterlinkController extends BaseController
     public function index(): string
     {
         $model    = model(InterlinkReportModel::class);
-        $reports  = $model->orderBy('application_no', 'DESC')->findAll(15);
+        // Report Submission list always loads live from InterLink via NexusInterlinkService (never stale DB rows on initial load)
+        $reports  = [];
         $logs     = $model->getRecentLogs(15);
         $partners = $model->getPartners();
 
-        $allReports   = $model->select('id, synced_to_interlink')->findAll();
-        $syncedCount  = count(array_filter($allReports, static fn ($r) => (int) ($r['synced_to_interlink'] ?? 0) === 1));
-        $pendingCount = count($allReports) - $syncedCount;
+        $syncedCount  = (int) $model->where('synced_to_interlink', 1)->countAllResults(false);
+        $pendingCount = (int) $model->where('synced_to_interlink !=', 1)->countAllResults(false);
 
         $db = \Config\Database::connect();
         $initialLabRefs = [];
@@ -58,7 +58,7 @@ class InterlinkController extends BaseController
         return $this->render('interlink/index', [
             'title'          => 'InterLink Sync',
             'withCss'        => 'interlink.css',
-            'withJs'         => ['qrcode.js', 'interlink.js', 'interlink_center.js'],
+            'withJs'         => ['qrcode.js', 'interlink.js', 'interlink_center.js', 'interlink_batch.js'],
             'reports'        => $reports,
             'logs'           => $logs,
             'partners'       => $partners,
@@ -69,6 +69,7 @@ class InterlinkController extends BaseController
             'totalLabRefs'   => $totalLabRefs,
             'searchUrl'      => self::DEFAULT_SEARCH_URL,
             'uploadUrl'      => self::DEFAULT_UPLOAD_URL,
+            'source'         => \App\Libraries\SystemSettings::get('interlink.source', 'interlink'),
             'normalUrl'      => self::DEFAULT_NORMAL_URL,
             'openUrl'        => self::PORTAL_HOME_URL,
         ]);
@@ -93,9 +94,9 @@ class InterlinkController extends BaseController
 
         $liveData = $this->pullInterlinkGridPage($page, $pageSize, $forceRefresh);
 
-        $model      = model(InterlinkReportModel::class);
-        $allReports = $model->select('id, synced_to_interlink')->findAll();
-        $syncedCnt  = count(array_filter($allReports, static fn ($r) => (int) ($r['synced_to_interlink'] ?? 0) === 1));
+        $model     = model(InterlinkReportModel::class);
+        $syncedCnt = (int) $model->where('synced_to_interlink', 1)->countAllResults(false);
+        $pendCnt   = (int) $model->where('synced_to_interlink !=', 1)->countAllResults(false);
 
         return $this->response->setJSON([
             'ok'           => $liveData['ok'],
@@ -108,7 +109,7 @@ class InterlinkController extends BaseController
             'rows'         => $liveData['rows'],
             'changedApps'  => $liveData['changedApps'] ?? [],
             'syncedCount'  => $syncedCnt,
-            'pendingCount' => count($allReports) - $syncedCnt,
+            'pendingCount' => $pendCnt,
             'syncedAt'     => date('H:i:s'),
             'csrf'         => csrf_hash(),
         ]);
@@ -140,6 +141,10 @@ class InterlinkController extends BaseController
         $start    = ($page - 1) * $pageSize;
         $first    = intdiv($start, 15) + 1;
         $count    = min(10, intdiv($start + $pageSize - 1, 15) + 1 - $first + 1);
+
+        if (\App\Libraries\SystemSettings::get('interlink.source', 'interlink') === 'database') {
+            return $this->mirrorGrid($page, $pageSize);
+        }
 
         $baseUrl = \App\Libraries\SystemSettings::serviceUrl();
         $key     = (string) \App\Libraries\SystemSettings::get('interlink.service.key', '');
@@ -183,10 +188,355 @@ class InterlinkController extends BaseController
 
                 return $this->processGridPayload(['pages' => $out['pages'], 'firstPage' => $first, 'page' => $page, 'pageSize' => $pageSize]);
             }
-            sleep(1);
+            usleep(250000);
         }
 
         return $this->response->setStatusCode(504)->setJSON(['ok' => false, 'error' => 'The InterLink service took too long to answer.', 'csrf' => csrf_hash()]);
+    }
+
+    /**
+     * POST /interlink/service-search {q, col}: searches live InterLink's Inhouse & 3rd party Lab Upload grid
+     * through NexusInterlinkService (trying dtp_qcasst@dtshoes.com first, then dtp_lab@dtshoes.com if no match),
+     * upserts any found rows into dbnexus.tbl_interlink_reports, and returns them.
+     */
+    public function serviceSearch()
+    {
+        @set_time_limit(220);
+        $p   = $this->request->getJSON(true);
+        if (! is_array($p)) {
+            $p = json_decode((string) $this->request->getBody(), true);
+        }
+        if (! is_array($p)) {
+            $p = $this->request->getPost() ?: [];
+        }
+        $q   = trim((string) ($p['q'] ?? ''));
+        $col = trim((string) ($p['col'] ?? 'Application No.'));
+        if ($q === '' || mb_strlen($q) < 3) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'error' => 'Enter at least 3 characters to search live InterLink.', 'csrf' => csrf_hash()]);
+        }
+
+        // Smart column inference for general search (__all)
+        $inferAll = static function (string $val): string {
+            if (preg_match('/^A\d{4,12}/i', $val)) {
+                return 'Application No.';
+            }
+            if (preg_match('/^DTP\d{6,}/i', $val)) {
+                return 'Report No.';
+            }
+            if (preg_match('/^\d{7,12}$/', $val)) {
+                return 'Vendor ID';
+            }
+            if (preg_match('/^(submitted|draft|completed|cancelled|pending)$/i', $val)) {
+                return 'Job Status';
+            }
+            if (preg_match('/^(pass|passed|fail|failed|tolerable)$/i', $val)) {
+                return 'Overall Result';
+            }
+            return 'Company Name';
+        };
+
+        // Map local DB column keys to InterLink grid column header labels
+        $colMap = [
+            'application_no'      => 'Application No.',
+            'report_no'           => 'Report No.',
+            'sample_type'         => 'Sample Type',
+            'trf_submission_date' => 'Online TRF Submission Date',
+            'report_issue_date'   => 'Report Issue Date',
+            'job_status'          => 'Job Status',
+            'overall_result'      => 'Overall Result',
+            'company_name'        => 'Company Name',
+            'vendor_id'           => 'Vendor ID',
+            'vendor_name'         => 'Vendor Name',
+            'factory_id'          => 'Factory ID',
+            'factory_name'        => 'Factory Name',
+            'supplier_id'         => 'Supplier ID',
+            'supplier_name'       => 'Supplier Name',
+            'buyer_brand'         => 'Buyer / Brand',
+            'test_stage'          => 'Test Stage',
+            'product_export_to'   => 'Product Export To',
+            'service_test_type'   => 'Service / Test Type',
+            'style_no'            => 'Style No.',
+            'material_code'       => 'Material Code',
+            'style_color_no'      => 'Style / Color No.',
+            'season'              => 'Season',
+            'sourcing_office'     => 'Sourcing Office',
+            'test_package'        => 'Test Package(s)',
+            'test_packages'       => 'Test Package(s)',
+            'color_code'          => 'Color Code',
+            'colorway_name'       => 'Colorway Name',
+            '__all'               => $inferAll($q),
+        ];
+        $headerCol = $colMap[strtolower($col)] ?? ($col !== '' ? $col : 'Application No.');
+
+        if (\App\Libraries\SystemSettings::get('interlink.source', 'interlink') === 'database') {
+            return $this->mirrorSearch($q);
+        }
+
+        $baseUrl = \App\Libraries\SystemSettings::serviceUrl();
+        $key     = (string) \App\Libraries\SystemSettings::get('interlink.service.key', '');
+        if (! \App\Libraries\SystemSettings::bool('interlink.service.enabled', true) || $baseUrl === '' || strlen($key) < 16) {
+            return $this->response->setStatusCode(503)->setJSON(['ok' => false, 'error' => 'The InterLink background service is not set up (Settings > InterLink service).', 'csrf' => csrf_hash()]);
+        }
+
+        $db = \Config\Database::connect();
+        $me = (array) service('auth')->user();
+
+        // Dispatch BOTH accounts in parallel (each account has its own lock in NexusInterlinkService, so they run simultaneously)
+        $accounts   = ['dtp_qcasst@dtshoes.com', 'dtp_lab@dtshoes.com'];
+        $isExactApp = (bool) preg_match('/^A\d{8,12}$/i', $q);
+        $jobs       = [];
+        $lastErr    = '';
+
+        foreach ($accounts as $acc) {
+            $uid = bin2hex(random_bytes(12));
+            $db->table('tbl_interlink_service_jobs')->insert([
+                'job_uid' => $uid, 'application_no' => 'GRID-SEARCH', 'report_no' => mb_substr('Search ' . $q, 0, 80),
+                'mode' => 'grid_html', 'user_id' => (int) ($me['id'] ?? 0), 'user_name' => (string) ($me['name'] ?? ''),
+                'status' => 'queued', 'created_at' => date('Y-m-d H:i:s'),
+            ]);
+            try {
+                $res = service('curlrequest')->post($baseUrl . '/jobs', [
+                    'headers' => ['X-Service-Key' => $key],
+                    'json'    => [
+                        'job_uid' => $uid, 'application_no' => 'GRID-SEARCH', 'report_no' => mb_substr('Search ' . $q, 0, 80),
+                        'mode' => 'grid_html', 'account' => $acc, 'user_name' => (string) ($me['name'] ?? ''),
+                        'callback_url' => site_url('interlink/service/callback'),
+                        'job' => ['first_page' => 1, 'count' => 1, 'q' => $q, 'col' => $headerCol, 'fresh' => true],
+                    ],
+                    'timeout' => 15, 'http_errors' => false,
+                ]);
+                $body = json_decode((string) $res->getBody(), true) ?: [];
+                if ($res->getStatusCode() !== 200 || empty($body['ok'])) {
+                    throw new \RuntimeException((string) ($body['error'] ?? 'Service HTTP ' . $res->getStatusCode()));
+                }
+                $jobs[$uid] = ['account' => $acc, 'done' => false];
+            } catch (\Throwable $e) {
+                $db->table('tbl_interlink_service_jobs')->where('job_uid', $uid)->update(['status' => 'failed', 'message' => mb_substr($e->getMessage(), 0, 480), 'finished_at' => date('Y-m-d H:i:s')]);
+                $lastErr = $e->getMessage();
+            }
+        }
+
+        $merged   = [];
+        $seen     = [];
+        $hitAccs  = [];
+        $ql       = strtolower($q);
+        $deadline = time() + 95;
+
+        while ($jobs && time() < $deadline) {
+            $pendingUids = array_keys(array_filter($jobs, static fn ($j) => ! $j['done']));
+            if (! $pendingUids) {
+                break;
+            }
+            $rowsDb = $db->table('tbl_interlink_service_jobs')->whereIn('job_uid', $pendingUids)->get()->getResultArray();
+            foreach ($rowsDb as $row) {
+                $uid = (string) $row['job_uid'];
+                if (! isset($jobs[$uid]) || $jobs[$uid]['done']) {
+                    continue;
+                }
+                if (! in_array($row['status'], ['done', 'failed', 'signin-required'], true)) {
+                    continue;
+                }
+                $jobs[$uid]['done'] = true;
+                $acc = $jobs[$uid]['account'];
+                if ($row['status'] !== 'done') {
+                    $lastErr = (string) ($row['message'] ?: 'Live search failed.');
+                    continue;
+                }
+                $out = json_decode((string) ($row['result_json'] ?? ''), true);
+                $db->table('tbl_interlink_service_jobs')->where('job_uid', $uid)->update(['result_json' => null]);
+                $pages   = is_array($out['pages'] ?? null) ? $out['pages'] : [];
+                $allRows = [];
+                foreach ($pages as $html) {
+                    $html = (string) $html;
+                    if ($html !== '' && strpos($html, 'PH1_SF1_GVBUILDER_BuilderGridView') !== false) {
+                        $parsed = $this->parseInterlinkGridHtml($html);
+                        foreach ($parsed['rows'] as $r) {
+                            $allRows[] = $r;
+                        }
+                    }
+                }
+                $upserted = $allRows ? $this->upsertGridRowsIntoDbNexus($allRows) : ['rows' => []];
+                $foundHere = false;
+                foreach ($upserted['rows'] as $r) {
+                    $matchesQ = false;
+                    foreach ($r as $v) {
+                        if (is_scalar($v) && str_contains(strtolower((string) $v), $ql)) {
+                            $matchesQ = true;
+                            break;
+                        }
+                    }
+                    if (! $matchesQ) {
+                        continue;
+                    }
+                    $key = strtoupper(trim((string) ($r['application_no'] ?? '')));
+                    if ($key !== '' && isset($seen[$key])) {
+                        continue;
+                    }
+                    if ($key !== '') {
+                        $seen[$key] = true;
+                    }
+                    $merged[]  = $r;
+                    $foundHere = true;
+                }
+                if ($foundHere) {
+                    $hitAccs[] = $acc;
+                    if ($isExactApp) {
+                        break 2;   // Exact Application No. found — return immediately without waiting for the other account
+                    }
+                }
+            }
+            if (! array_filter($jobs, static fn ($j) => ! $j['done'])) {
+                break;
+            }
+            usleep(250000);
+        }
+
+        return $this->response->setJSON([
+            'ok' => true, 'live' => true, 'account' => implode(', ', $hitAccs),
+            'rows' => $merged, 'matches' => count($merged),
+            'note' => $merged ? '' : $lastErr, 'csrf' => csrf_hash(),
+        ]);
+    }
+
+    /** Grid column label (as the Mirror stores it) => row key used by upsertGridRowsIntoDbNexus(). */
+    private const MIRROR_GRID_KEYS = [
+        'Sample Type' => 'sample_type', 'Application No.' => 'application_no', 'Online TRF Submission Date' => 'trf_submission_date',
+        'Report No.' => 'report_no', 'Report Issue Date' => 'report_issue_date', 'Job Status' => 'job_status', 'Overall Result' => 'overall_result',
+        'Company Name' => 'company_name', 'Vendor ID' => 'vendor_id', 'Vendor Name' => 'vendor_name', 'Factory ID' => 'factory_id',
+        'Factory Name' => 'factory_name', 'Supplier ID' => 'supplier_id', 'Supplier Name' => 'supplier_name', 'Brand Name' => 'buyer_brand',
+        'Test Stage' => 'test_stage', 'Product Export To' => 'product_export_to', 'Service Test Type' => 'service_test_type',
+        'Service Provider' => 'service_provider', 'GCC/CPC Required?' => 'gcc_cpc_required', 'Style No.' => 'style_no',
+        'Material Code' => 'material_code', 'SKU No.' => 'style_color_no', 'Season' => 'season', 'Sourcing Office' => 'sourcing_office',
+        'Test Package(s)' => 'test_packages', 'Color Code' => 'color_code', 'Color Description' => 'colorway_name', 'Lab Location' => 'lab_location',
+        'Review Result' => 'review_result', 'Review Status' => 'review_status', 'Related TRF Number' => 'related_trf_no',
+        'Latest Review Comment' => 'latest_review_comment', 'Cancellation Reason' => 'cancellation_reason',
+    ];
+
+    /** Mirror rows (grid_json) -> the row shape the Report Submission list uses. */
+    private function mirrorGridRows(array $src): array
+    {
+        $grid = [];
+        foreach ($src as $s) {
+            $g = json_decode((string) $s['grid_json'], true) ?: [];
+            $r = array_fill_keys(array_values(self::MIRROR_GRID_KEYS), '');
+            foreach (self::MIRROR_GRID_KEYS as $label => $key) {
+                $r[$key] = trim((string) ($g[$label] ?? ''));
+            }
+            $r['form_code']       = $r['sample_type'] === 'Material' ? '10076' : '10072';
+            $r['has_detail_page'] = true;
+            $r['detail_url']      = '';
+            $r['e_form_url']      = '';
+            $r['u_form_url']      = '';
+            $r['coc_url']         = '';
+            $grid[]               = $r;
+        }
+
+        return $grid;
+    }
+
+    /** Setting "Report Submission loads from: database": the search box reads the Mirror copy instead of InterLink. */
+    private function mirrorSearch(string $q)
+    {
+        \App\Controllers\InterlinkMirrorController::tables();
+        $db   = \Config\Database::connect();
+        $src  = $db->table('tbl_interlink_rows')->select('grid_json')->groupStart()->like('application_no', $q)->orLike('report_no', $q)->orLike('grid_json', $q)->groupEnd()->orderBy('application_no', 'DESC')->limit(100)->get()->getResultArray();
+        $rows = $this->upsertGridRowsIntoDbNexus($this->mirrorGridRows($src))['rows'];
+
+        return $this->response->setJSON(['ok' => true, 'live' => true, 'source' => 'database', 'account' => 'database', 'rows' => $rows, 'matches' => count($rows), 'note' => '', 'csrf' => csrf_hash()]);
+    }
+
+    /** Setting "Report Submission loads from: database": one view page read from the Mirror's copy of the InterLink grid. */
+    private function mirrorGrid(int $page, int $pageSize)
+    {
+        \App\Controllers\InterlinkMirrorController::tables();
+        $db    = \Config\Database::connect();
+        $total = (int) $db->table('tbl_interlink_rows')->countAllResults();
+        $src   = $db->table('tbl_interlink_rows')->select('grid_json')->orderBy('application_no', 'DESC')->limit($pageSize, ($page - 1) * $pageSize)->get()->getResultArray();
+        $grid  = $this->mirrorGridRows($src);
+        $up    = $this->upsertGridRowsIntoDbNexus($grid);
+        $model = model(InterlinkReportModel::class);
+        $last  = $db->table('tbl_interlink_mirror_state')->where('k', 'last_run')->get(1)->getRowArray();
+
+        return $this->response->setJSON([
+            'ok' => true, 'live' => true, 'source' => 'database',
+            'message'      => "Page {$page} of " . max(1, (int) ceil($total / $pageSize)) . " ({$total} items) from the Mirror copy of InterLink.",
+            'currentPage'  => $page,
+            'totalPages'   => max(1, (int) ceil($total / $pageSize)),
+            'totalItems'   => $total,
+            'pageSize'     => $pageSize,
+            'rows'         => $up['rows'],
+            'changedApps'  => [],
+            'syncedCount'  => (int) $model->where('synced_to_interlink', 1)->countAllResults(false),
+            'pendingCount' => (int) $model->where('synced_to_interlink !=', 1)->countAllResults(false),
+            'syncedAt'     => date('H:i:s'),
+            'mirrorAt'     => (string) ($last['v'] ?? ''),
+            'csrf'         => csrf_hash(),
+        ]);
+    }
+
+    /** Blank-label U form controls: id fragment => report column. */
+    private const MIRROR_U_IDS = [
+        'ITS_OFFICE_DISP' => 'lab_location', 'CAL_CDTL_11' => 'service_test_type', 'EMAIL_ADHOC_LIST' => 'email_recipients',
+        'TRPT_SUPPLIER_NAME' => 'vendor_name', 'TRPT_STYLE_NO' => 'style_no', 'CAL_SKU' => 'style_color_no', 'TRPT_ITEM_DESC' => 'product_name',
+        'TRPT_CDI_BRAND_NAME' => 'buyer_brand', 'CAL_CDTL_2' => 'color_code', 'CAL_CDTL_4' => 'colorway_name', 'CAL_PO_COUNTRY' => 'product_export_to',
+        'TRPT_COUNTRY_ORIGIN' => 'country_of_origin', 'TRPT_SEASON' => 'season', 'DETOX_SUPPLIER_COUNTRY' => 'sourcing_office',
+        'TRPT_PRD_CAT' => 'product_category', 'CAL_CDTL_5' => 'test_packages', 'TRPT_PRODUCT_ID' => 'product_id',
+        'TRPT_MODEL_NO' => 'material_code', 'DETOX_ACCOUNT_NAME' => 'material_name',
+    ];
+
+    /** The row's U (upload form) or E (eTRF) page as the Mirror saved it, as report columns; [] when it has none yet. */
+    private function mirrorFormFields(string $appNo, string $formType): array
+    {
+        $row = \Config\Database::connect()->table('tbl_interlink_rows')->select('e_json, u_json')->where('application_no', $appNo)->get(1)->getRowArray();
+        $j   = $row ? json_decode((string) ($formType === 'normal' ? $row['e_json'] : $row['u_json']), true) : null;
+        if (! is_array($j)) {
+            return [];
+        }
+        $pairs = [];   // label => value, then column => value for blank-label controls
+        $cols  = [];
+        foreach ((array) ($j['fields'] ?? []) as $f) {
+            $v = trim((string) ($f['value'] ?? ''));
+            $l = trim(preg_replace('/^\*\s*/', '', (string) ($f['label'] ?? '')));
+            $id = (string) ($f['id'] ?? '');
+            if ($v === '' || preg_match('/_(VI|ValueInput|DDD_L_VI|RB\d_I)$/', $id)) {
+                continue;
+            }
+            if ($l !== '' && ! isset($pairs[$l])) {
+                $pairs[$l] = $v;
+            } elseif ($l === '') {
+                foreach (self::MIRROR_U_IDS as $frag => $col) {
+                    if (strpos($id, 'TpEdr_' . $frag . '_') !== false) {
+                        $cols[$col] = $v;
+                    }
+                }
+            }
+        }
+        foreach (preg_split('/\R/', (string) ($j['text'] ?? '')) as $line) {   // E page: "Label<TAB>Value" lines
+            $c = explode("\t", $line);
+            if (count($c) >= 2 && trim($c[0]) !== '' && trim($c[1]) !== '' && ! isset($pairs[trim($c[0])])) {
+                $pairs[trim($c[0])] = trim($c[1]);
+            }
+        }
+        unset($pairs['Application No.']);
+        if (isset($pairs['Manufacture Date (MM/YYYY)']) && strpos($pairs['Manufacture Date (MM/YYYY)'], '_') !== false) {
+            unset($pairs['Manufacture Date (MM/YYYY)']);
+        }
+        $html = '<tr>';
+        foreach ($pairs as $l => $v) {
+            $html .= '<td class="dxgvEditFormCell"><label>' . htmlspecialchars($l) . '</label><input type="text" value="' . htmlspecialchars($v, ENT_QUOTES) . '"></td>';
+        }
+        $out = $this->parseInterlinkFormHtml($html . '</tr>');
+        foreach ($cols as $c => $v) {
+            $out[$c] ??= $v;
+        }
+        if (isset($out['interlink_code'])) {
+            $out['interlink_code'] = trim($out['interlink_code']);
+        }
+        if (! empty($out['product_name'])) {
+            $out['style_name'] = $out['product_name'];
+        }
+
+        return $out;
     }
 
     private function processGridPayload(array $payload)
@@ -224,10 +574,10 @@ class InterlinkController extends BaseController
         }
         $totalPages = max(1, (int) ceil($first['totalItems'] / $viewSize));
 
-        $model      = model(InterlinkReportModel::class);
-        $allReports = $model->select('id, synced_to_interlink')->findAll();
-        $syncedCnt  = count(array_filter($allReports, static fn ($r) => (int) ($r['synced_to_interlink'] ?? 0) === 1));
-        $parsed     = ['currentPage' => $page, 'totalPages' => $totalPages, 'totalItems' => $first['totalItems'], 'pageSize' => $viewSize];
+        $model     = model(InterlinkReportModel::class);
+        $syncedCnt = (int) $model->where('synced_to_interlink', 1)->countAllResults(false);
+        $pendCnt   = (int) $model->where('synced_to_interlink !=', 1)->countAllResults(false);
+        $parsed    = ['currentPage' => $page, 'totalPages' => $totalPages, 'totalItems' => $first['totalItems'], 'pageSize' => $viewSize];
         $upserted['rows'] = $rows;
 
         return $this->response->setJSON([
@@ -241,7 +591,7 @@ class InterlinkController extends BaseController
             'rows'         => $upserted['rows'],
             'changedApps'  => $upserted['changedApps'],
             'syncedCount'  => $syncedCnt,
-            'pendingCount' => count($allReports) - $syncedCnt,
+            'pendingCount' => $pendCnt,
             'syncedAt'     => date('H:i:s'),
             'csrf'         => csrf_hash(),
         ]);
@@ -282,6 +632,14 @@ class InterlinkController extends BaseController
         $scrapedFields = [];
         $effectiveUrl  = '';
         $liveFetched   = false;
+
+        // Setting "load from database": the Mirror's copy of this row's U / E page is what InterLink showed, so use it
+        $mirrorFields = \App\Libraries\SystemSettings::get('interlink.source', 'interlink') === 'database' ? $this->mirrorFormFields($appNo, $formType) : [];
+        if ($mirrorFields) {
+            $scrapedFields = $mirrorFields;
+            $liveFetched   = true;
+            $targetUrl     = '';
+        }
 
         if ($targetUrl !== '') {
             if (strpos($targetUrl, 'http') !== 0) {

@@ -26,6 +26,7 @@ class MaterialTestModel extends Model
         'timer_duration_sec',
         'timer_started_at',
         'timer_elapsed_sec',
+        'target_end_at',
         'current_cycles',
         'recorded_cycles',
         'status',

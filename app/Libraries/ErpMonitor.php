@@ -10,6 +10,8 @@ namespace App\Libraries;
  */
 class ErpMonitor
 {
+    private static bool $ready = false;
+
     private static function db()
     {
         return \Config\Database::connect();
@@ -17,6 +19,9 @@ class ErpMonitor
 
     public static function ensureColumns(): void
     {
+        if (self::$ready) {
+            return;
+        }
         EtrfAppNos::ensureColumns();
         $db   = self::db();
         $have = array_column($db->query('SHOW COLUMNS FROM tbl_dtr_unified_labrefs')->getResultArray(), 'Field');
@@ -30,6 +35,7 @@ class ErpMonitor
         if ($add) {
             $db->query('ALTER TABLE tbl_dtr_unified_labrefs ' . implode(', ', $add));
         }
+        self::$ready = true;
     }
 
     /**

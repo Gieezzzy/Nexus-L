@@ -112,6 +112,7 @@
         lab.classList.toggle('on', cb.checked);
         lab.append(cb, t, s, m);
         if (it.in_this_box) lab.append(el('div', 'whc-card-n', 'Already in this box'));
+        else if (it.also_in) lab.append(el('div', 'whc-card-n', 'Also in: ' + it.also_in));
         else if (it.in_box) { lab.classList.add('is-in'); lab.append(el('div', 'whc-card-n warn', 'Already in box: ' + it.in_box + ' (mark it Transferred or Removed there first)')); }
         grid.append(lab); cards.push({ cb, it });
       });

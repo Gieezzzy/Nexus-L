@@ -5,95 +5,7 @@
  * (KC Test Package, GB - Full Package, CPSIA Product Testing Package, RSL), and automates Copy as New with dberp.production_orders.
  */
 ?>
-<style>
-.vfr-wrap{padding:16px}
-.vfr-top{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:14px}
-.vfr-controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
-.vfr-controls select,.vfr-controls input{border:1px solid var(--line,#cbd5e1);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;background:#fff;color:var(--ink)}
-.vfr-btn{border:1px solid var(--line,#cbd5e1);border-radius:8px;padding:7px 12px;font:inherit;font-size:12.5px;font-weight:600;background:#fff;color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
-.vfr-btn:hover{border-color:#93c5fd;background:#eff6ff}
-.vfr-btn.primary{background:var(--brand,#2563eb);border-color:var(--brand,#2563eb);color:#fff}
-.vfr-btn.primary:hover{filter:brightness(1.06)}
-.vfr-btn.sm{padding:3px 9px;font-size:11.5px;border-radius:6px}
-.vfr-tbl-wrap{max-height:360px;overflow:auto;border:1px solid var(--line,#e2e8f0);border-radius:10px;background:#fff}
-.vfr-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
-.vfr-tbl th{position:sticky;top:0;background:#f1f5f9;color:#334155;font-weight:700;padding:11px 16px;text-align:left;border-bottom:1px solid #cbd5e1;white-space:nowrap;z-index:1}
-.vfr-tbl td{padding:10px 16px;border-bottom:1px solid #e2e8f0;vertical-align:middle}
-.vfr-tbl th:first-child,.vfr-tbl td:first-child{padding-left:20px}
-.vfr-tbl th:last-child,.vfr-tbl td:last-child{padding-right:20px}
-.vfr-tbl tr:hover td{background:#f8fafc}
-.vfr-link{color:#2563eb;font-weight:700;cursor:pointer;text-decoration:underline;background:none;border:0;font:inherit;padding:0}
-.vfr-badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}
-.vfr-b-req{background:#fef3c7;color:#92400e}
-.vfr-b-sub{background:#dbeafe;color:#1e40af}
-.vfr-b-ok{background:#dcfce7;color:#166534}
-.vfr-b-err{background:#fee2e2;color:#991b1b}
-.vfr-tree .vfr-grp td{background:#f8fafc;cursor:pointer;font-weight:600;border-bottom:1px solid #e2e8f0}
-.vfr-tree .vfr-grp:hover td{background:#eff6ff}
-.vfr-tree .vfr-chev{display:inline-block;width:14px;color:#64748b;transition:transform .15s}
-.vfr-tree .vfr-grp.open .vfr-chev{transform:rotate(90deg)}
-.vfr-tree .vfr-cnt{display:inline-block;min-width:20px;padding:1px 7px;margin-left:6px;border-radius:999px;background:#e2e8f0;color:#334155;font-size:11px;font-weight:700;text-align:center}
-.vfr-tree .vfr-kidwrap{display:none}
-.vfr-tree .vfr-kidwrap.open{display:table-row}
-.vfr-tree .vfr-kidwrap > td{padding:0 0 4px 34px;background:#fff}
-.vfr-kids{width:100%;border-collapse:collapse;font-size:12.5px}
-.vfr-kids th{background:transparent;color:#64748b;font-size:11px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;white-space:nowrap}
-.vfr-kids td{padding:10px 14px;border-bottom:1px solid #eef2f7;vertical-align:middle}
-.vfr-kids tr.vfr-item{cursor:pointer}
-.vfr-kids tr.vfr-item:hover td{background:#eff6ff}
-.vfr-doc{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border:1px solid #bfdbfe;border-radius:7px;background:#eff6ff;color:#2563eb;font-size:13px}
-.vfr-sub{font-weight:400;color:#64748b;font-size:11.5px}
-.vfr-sec{margin-top:16px}
-.vfr-sec h4{margin:0 0 8px;font-size:14px;display:flex;align-items:center;gap:8px}
-.vfr-modal{position:fixed;inset:0;z-index:9990;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;padding:16px}
-.vfr-modal.open{display:flex}
-.vfr-card{background:#fff;color:var(--ink,#0f172a);width:min(860px,100%);max-height:92vh;overflow:auto;border-radius:14px;padding:18px 20px;box-shadow:0 24px 60px rgba(15,23,42,.35)}
-.vfr-card h4{margin:0 0 10px;display:flex;align-items:center;justify-content:space-between}
-.vfr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:8px}
-.vfr-grid label{display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px}
-.vfr-grid input,.vfr-grid select,.vfr-grid textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:6px 8px;font:inherit;font-size:13px}
-.vfr-erp-box{padding:11px 12px;border:1px solid #93c5fd;border-radius:10px;background:#eff6ff;margin-bottom:12px}
-.vfr-kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;font-size:12.5px}
-.vfr-kv div{background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:6px 9px}
-.vfr-kv small{display:block;color:#64748b;font-size:11px}
-
-/* Liquid Glass Dark Mode */
-html[data-theme="dark"] .vfr-controls select,html[data-theme="dark"] .vfr-controls input{background:rgba(15,23,42,.82);border-color:rgba(148,163,184,.26);color:#f1f5f9}
-html[data-theme="dark"] .vfr-btn{background:rgba(30,41,59,.74);border-color:rgba(148,163,184,.28);color:#e2e8f0}
-html[data-theme="dark"] .vfr-btn:hover{border-color:rgba(96,165,250,.55);background:rgba(37,99,235,.22)}
-html[data-theme="dark"] .vfr-btn.primary{background:linear-gradient(135deg,#2563eb,#1d4ed8);border-color:#3b82f6;color:#fff}
-html[data-theme="dark"] .vfr-tbl-wrap{background:rgba(15,23,42,.62);border-color:rgba(148,163,184,.22)}
-html[data-theme="dark"] .vfr-tbl th{background:rgba(15,23,42,.92);color:#cbd5e1;border-bottom-color:rgba(148,163,184,.25)}
-html[data-theme="dark"] .vfr-tbl td{color:#e2e8f0;border-bottom-color:rgba(148,163,184,.16)}
-html[data-theme="dark"] .vfr-tbl tr:hover td{background:rgba(51,65,85,.35)}
-html[data-theme="dark"] .vfr-link{color:#60a5fa}
-html[data-theme="dark"] .vfr-b-req{background:rgba(245,158,11,.2);color:#fcd34d}
-html[data-theme="dark"] .vfr-b-sub{background:rgba(59,130,246,.22);color:#93c5fd}
-html[data-theme="dark"] .vfr-b-ok{background:rgba(16,185,129,.2);color:#6ee7b7}
-html[data-theme="dark"] .vfr-b-err{background:rgba(239,68,68,.2);color:#fca5a5}
-html[data-theme="dark"] .vfr-tree .vfr-grp td{background:rgba(30,41,59,.68);color:#f1f5f9;border-bottom-color:rgba(148,163,184,.2)}
-html[data-theme="dark"] .vfr-tree .vfr-grp:hover td{background:rgba(37,99,235,.2)}
-html[data-theme="dark"] .vfr-tree .vfr-chev{color:#94a3b8}
-html[data-theme="dark"] .vfr-tree .vfr-cnt{background:rgba(51,65,85,.8);color:#e2e8f0}
-html[data-theme="dark"] .vfr-tree .vfr-kidwrap > td{background:rgba(11,18,34,.55)}
-html[data-theme="dark"] .vfr-kids th{color:#94a3b8;border-bottom-color:rgba(148,163,184,.2)}
-html[data-theme="dark"] .vfr-kids td{border-bottom-color:rgba(148,163,184,.14);color:#e2e8f0}
-html[data-theme="dark"] .vfr-kids tr.vfr-item:hover td{background:rgba(37,99,235,.18)}
-html[data-theme="dark"] .vfr-doc{background:rgba(37,99,235,.22);border-color:rgba(96,165,250,.4);color:#93c5fd}
-html[data-theme="dark"] .vfr-sub{color:#94a3b8}
-html[data-theme="dark"] .vfr-modal{background:rgba(2,6,23,.72);backdrop-filter:blur(6px)}
-html[data-theme="dark"] .vfr-card{background:rgba(15,23,42,.94);color:#f1f5f9;border:1px solid rgba(148,163,184,.26);box-shadow:inset 1px 1px 0 rgba(255,255,255,.1),0 24px 60px rgba(0,0,0,.65);backdrop-filter:blur(18px)}
-html[data-theme="dark"] .vfr-grid label{color:#94a3b8}
-html[data-theme="dark"] .vfr-grid input,html[data-theme="dark"] .vfr-grid select,html[data-theme="dark"] .vfr-grid textarea{background:rgba(15,23,42,.82);border-color:rgba(148,163,184,.26);color:#f1f5f9}
-html[data-theme="dark"] .vfr-erp-box{background:rgba(37,99,235,.16);border-color:rgba(96,165,250,.35)}
-html[data-theme="dark"] .vfr-erp-box[style*="#f0fdf4"]{background:rgba(16,185,129,.14)!important;border-color:rgba(52,211,153,.35)!important}
-html[data-theme="dark"] .vfr-erp-box [style*="#1e3a8a"]{color:#93c5fd!important}
-html[data-theme="dark"] .vfr-erp-box [style*="#166534"]{color:#6ee7b7!important}
-html[data-theme="dark"] .vfr-kv div{background:rgba(15,23,42,.72);border-color:rgba(148,163,184,.22);color:#e2e8f0}
-html[data-theme="dark"] .vfr-kv small{color:#94a3b8}
-html[data-theme="dark"] .vfr-modal [style*="color:#475569"]{color:#94a3b8!important}
-html[data-theme="dark"] .vfr-modal [style*="color:#0f172a"]{color:#f1f5f9!important}
-</style>
+<link rel="stylesheet" href="<?= base_url('assets/css/views/interlink-vf_test_request-1.css') ?>?v=<?= @filemtime(FCPATH . 'assets/css/views/interlink-vf_test_request-1.css') ?>">
 
 <div class="card glass vfr-wrap" id="vfr-root" data-base="<?= esc(base_url(), 'attr') ?>">
     <div class="vfr-top">
@@ -252,7 +164,9 @@ html[data-theme="dark"] .vfr-modal [style*="color:#0f172a"]{color:#f1f5f9!import
             <button type="button" class="vfr-btn sm" data-close="vfr-detail-modal">Close</button>
         </h4>
         <div class="vfr-kv" id="vfr-det-kv"></div>
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;flex-wrap:wrap">
+            <a href="#" download class="vfr-btn" id="vfr-det-pdf-dl" style="display:none;text-decoration:none;border-color:#16a34a;color:#15803d">Download InterLink PDF</a>
+            <button type="button" class="vfr-btn" id="vfr-det-pdf-fetch" style="display:none;border-color:#16a34a;color:#15803d">Download InterLink PDF</button>
             <button type="button" class="vfr-btn" data-close="vfr-detail-modal">Close</button>
             <button type="button" class="vfr-btn primary" id="vfr-det-copy">Copy as New</button>
         </div>

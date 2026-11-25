@@ -1,0 +1,219 @@
+/* ==========================================================================
+   Test Results Summary - Executive Clean Layout (Whole Shoe / Material Parity)
+   ========================================================================== */
+#summary-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 30px;
+}
+
+@media (max-width: 1200px) {
+    .wst-kpi-strip { grid-template-columns: repeat(3, 1fr) !important; }
+}
+@media (max-width: 768px) {
+    .wst-kpi-strip { grid-template-columns: repeat(2, 1fr) !important; }
+}
+@media (max-width: 480px) {
+    .wst-kpi-strip { grid-template-columns: 1fr !important; }
+}
+
+/* Custom Badges & Pills */
+.sum-suite-wholeshoe {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    background: #f0f9ff;
+    color: #0369a1;
+    border: 1px solid #bae6fd;
+}
+.sum-suite-material {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    background: #faf5ff;
+    color: #7e22ce;
+    border: 1px solid #e9d5ff;
+}
+
+.sum-pill-outcome {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+}
+.sum-outcome-pass {
+    background: #dcfce7;
+    color: #15803d;
+    border: 1px solid #86efac;
+}
+.sum-outcome-fail {
+    background: #fee2e2;
+    color: #b91c1c;
+    border: 1px solid #fca5a5;
+}
+.sum-outcome-stopped {
+    background: #fef3c7;
+    color: #b45309;
+    border: 1px solid #fcd34d;
+}
+.sum-outcome-running {
+    background: #e0f2fe;
+    color: #0369a1;
+    border: 1px solid #7dd3fc;
+}
+.sum-outcome-pending {
+    background: #f1f5f9;
+    color: #64748b;
+    border: 1px solid #cbd5e1;
+}
+
+/* Progress bar inside table */
+.sum-progress-bar-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 140px;
+}
+.sum-progress-track {
+    width: 100%;
+    height: 6px;
+    background: #e2e8f0;
+    border-radius: 999px;
+    overflow: hidden;
+}
+.sum-progress-fill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width .3s ease;
+}
+.sum-progress-fill.done { background: #22c55e; }
+.sum-progress-fill.run  { background: #0284c7; }
+.sum-progress-fill.fail { background: #ef4444; }
+.sum-progress-fill.stop { background: #f59e0b; }
+
+/* Technician Tag */
+.sum-tech-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #1d4ed8;
+}
+.sum-tech-tag svg {
+    width: 12px;
+    height: 12px;
+    color: #3b82f6;
+}
+
+/* Pulse Dot */
+.sum-pulse-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+    animation: sumPulse 1.8s infinite;
+}
+@keyframes sumPulse {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+    70% { transform: scale(1); box-shadow: 0 0 0 5px rgba(34, 197, 94, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+.sum-btn-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 13px;
+    font-size: 12.5px;
+    font-weight: 600;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #334155;
+    cursor: pointer;
+    transition: all .15s ease;
+}
+.sum-btn-action:hover {
+    background: #f8fafc;
+    border-color: #94a3b8;
+    color: #0f172a;
+}
+.sum-btn-action.primary {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #ffffff;
+}
+.sum-btn-action.primary:hover {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+}
+
+/* Liquid Glass Dark Mode Overrides */
+html[data-theme="dark"] .sum-suite-wholeshoe {
+    background: rgba(14, 165, 233, .18);
+    color: #7dd3fc;
+    border-color: rgba(56, 189, 248, .35);
+}
+html[data-theme="dark"] .sum-suite-material {
+    background: rgba(168, 85, 247, .18);
+    color: #d8b4fe;
+    border-color: rgba(192, 132, 252, .35);
+}
+html[data-theme="dark"] .sum-outcome-pass {
+    background: rgba(16, 185, 129, .2);
+    color: #6ee7b7;
+    border-color: rgba(52, 211, 153, .35);
+}
+html[data-theme="dark"] .sum-outcome-fail {
+    background: rgba(239, 68, 68, .2);
+    color: #fca5a5;
+    border-color: rgba(248, 113, 113, .35);
+}
+html[data-theme="dark"] .sum-outcome-stopped {
+    background: rgba(245, 158, 11, .2);
+    color: #fcd34d;
+    border-color: rgba(251, 191, 36, .35);
+}
+html[data-theme="dark"] .sum-outcome-running {
+    background: rgba(56, 189, 248, .2);
+    color: #7dd3fc;
+    border-color: rgba(56, 189, 248, .35);
+}
+html[data-theme="dark"] .sum-outcome-pending {
+    background: rgba(100, 116, 139, .24);
+    color: #cbd5e1;
+    border-color: rgba(148, 163, 184, .3);
+}
+html[data-theme="dark"] .sum-progress-track {
+    background: rgba(30, 41, 59, .85);
+}
+html[data-theme="dark"] .sum-tech-tag {
+    color: #93c5fd;
+}
+html[data-theme="dark"] .sum-tech-tag svg {
+    color: #60a5fa;
+}
+html[data-theme="dark"] .sum-btn-action {
+    background: rgba(30, 41, 59, .78);
+    border-color: rgba(148, 163, 184, .28);
+    color: #e2e8f0;
+}
+html[data-theme="dark"] .sum-btn-action:hover {
+    background: rgba(51, 65, 85, .88);
+    border-color: rgba(96, 165, 250, .5);
+    color: #f8fafc;
+}

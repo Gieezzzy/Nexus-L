@@ -843,6 +843,57 @@ class WstController extends BaseController
         return $this->response->setJSON(['success' => true, 'date' => $date, 'csrf' => csrf_hash()]);
     }
 
+    /** POST /wst/end-date/{id} {end_date, end_time?}: customize the Target End Date of a test (Open Monitor) */
+    public function endDate(int $id): ResponseInterface
+    {
+        $p       = $this->request->getJSON(true) ?? [];
+        $endDate = trim((string) ($p['end_date'] ?? $p['date'] ?? ''));
+        $endTime = trim((string) ($p['end_time'] ?? ''));
+        $d       = \DateTime::createFromFormat('Y-m-d', $endDate);
+        if (! ($d && $d->format('Y-m-d') === $endDate)) {
+            return $this->response->setStatusCode(422)->setJSON(['success' => false, 'message' => 'Choose a valid End Date.', 'csrf' => csrf_hash()]);
+        }
+        $model  = new MaterialTestModel();
+        $record = $model->find($id);
+        if (! $record) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'message' => 'That test was not found.', 'csrf' => csrf_hash()]);
+        }
+        if (! preg_match('/^\d{2}:\d{2}(:\d{2})?$/', $endTime)) {
+            $existing = (string) ($record['target_end_at'] ?? '');
+            $endTime  = preg_match('/\d{2}:\d{2}:\d{2}/', $existing, $tm) ? $tm[0] : date('H:i:00');
+        } elseif (strlen($endTime) === 5) {
+            $endTime .= ':00';
+        }
+        $targetEndAt = $endDate . ' ' . $endTime;
+        $endTs       = strtotime($targetEndAt);
+        $nowTs       = time();
+        $upd         = ['target_end_at' => $targetEndAt, 'updated_at' => date('Y-m-d H:i:s')];
+
+        // Recalculate timer_duration_sec if this test has a timer (or is currently running)
+        $timerState = self::computeTimerState($record);
+        if ($timerState['has_timer'] || ! empty($record['timer_duration_sec'])) {
+            $elapsed = (int) ($timerState['elapsed_sec'] ?? 0);
+            $rem     = max(60, $endTs - $nowTs);
+            $upd['timer_duration_sec'] = $elapsed + $rem;
+        }
+
+        $model->update($id, $upd);
+        $fresh = $model->find($id);
+        if (! $fresh || substr((string) ($fresh['target_end_at'] ?? ''), 0, 10) !== $endDate) {
+            return $this->response->setStatusCode(500)->setJSON(['success' => false, 'message' => 'The End Date could not be saved. Please try again.', 'csrf' => csrf_hash()]);
+        }
+        \App\Libraries\DataCache::bump('wholeshoe');
+        \App\Libraries\ActivityLog::record('wholeshoe', 'end-date', (string) ($record['labreference'] ?? ''), 'Target End Date -> ' . $targetEndAt);
+
+        return $this->response->setJSON([
+            'success'       => true,
+            'target_end_at' => $targetEndAt,
+            'end_date'      => $endDate,
+            'timer'         => self::computeTimerState($fresh),
+            'csrf'          => csrf_hash(),
+        ]);
+    }
+
     // ------------------------------------------------------------------------------------------------------------------ Whole Shoes: parent + its tests, add / remove a test
     /** test type name => [code, category] of the tests a whole shoe can have */
     private const SHOE_TESTS = [
@@ -871,27 +922,81 @@ class WstController extends BaseController
         $to   = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $this->request->getGet('to')) ? (string) $this->request->getGet('to') : '';
         $page = max(1, (int) $this->request->getGet('page'));
         $size = 12;
-        $w    = [];
-        $args = [];
-        if ($q !== '') {
-            $w[]  = '(parent LIKE ? OR prod LIKE ? OR style LIKE ? OR child LIKE ?)';
-            $like = '%' . $db->escapeLikeString($q) . '%';
-            array_push($args, $like, $like, $like, $like);
+
+        // Fast parent-page lookup (replaces correlated NOT EXISTS scan; loads ONLY the 12 rows of the current page)
+        $cacheKey = ($q === '' && $from === '' && $to === '') ? ('wst_shoes_idx_v' . \App\Libraries\DataCache::version('wholeshoe')) : '';
+        $byP      = $cacheKey !== '' ? cache($cacheKey) : null;
+        if (! is_array($byP)) {
+            $w1 = ["WholeshoeLabRefNo IS NOT NULL", "WholeshoeLabRefNo <> ''"];
+            $a1 = [];
+            $w2 = ["LabRefNo LIKE 'DTP%'", "LabRefNo REGEXP '^DTP[0-9]{8}WH'"];
+            $a2 = [];
+            if ($q !== '') {
+                $like = '%' . $db->escapeLikeString($q) . '%';
+                $w1[] = '(WholeshoeLabRefNo LIKE ? OR ProductionCode LIKE ? OR Style LIKE ? OR LabRefNo LIKE ?)';
+                array_push($a1, $like, $like, $like, $like);
+                $w2[] = '(LabRefNo LIKE ? OR ProdCode LIKE ? OR Style LIKE ?)';
+                array_push($a2, $like, $like, $like);
+            }
+            if ($from !== '') {
+                $w1[] = 'COALESCE(ProductionDate, CollectionDate) >= ?';
+                $a1[] = $from;
+                $w2[] = 'COALESCE(ProductionDate, CollectionDate) >= ?';
+                $a2[] = $from;
+            }
+            if ($to !== '') {
+                $w1[] = 'COALESCE(ProductionDate, CollectionDate) <= ?';
+                $a1[] = $to;
+                $w2[] = 'COALESCE(ProductionDate, CollectionDate) <= ?';
+                $a2[] = $to;
+            }
+            $byP     = [];
+            $baseSet = [];
+            foreach ($db->query('SELECT WholeshoeLabRefNo parent, MAX(COALESCE(ProductionDate, CollectionDate)) pd FROM tbl_dtr_wholeshoetracker WHERE ' . implode(' AND ', $w1) . ' GROUP BY WholeshoeLabRefNo', $a1)->getResultArray() as $r) {
+                $p            = (string) $r['parent'];
+                $byP[$p]      = (string) ($r['pd'] ?? '');
+                $baseSet[strtoupper($p)] = true;
+            }
+            // If a search matched an intake-only row, ensure we still skip ones already present in tracker
+            if ($q !== '' || $from !== '' || $to !== '') {
+                foreach ($db->query("SELECT DISTINCT WholeshoeLabRefNo parent FROM tbl_dtr_wholeshoetracker WHERE WholeshoeLabRefNo IS NOT NULL AND WholeshoeLabRefNo <> ''")->getResultArray() as $tr) {
+                    $baseSet[strtoupper((string) $tr['parent'])] = true;
+                }
+            }
+            foreach ($db->query('SELECT LabRefNo parent, MAX(COALESCE(ProductionDate, CollectionDate)) pd FROM tbl_dtr_wholeshoe_intake WHERE ' . implode(' AND ', $w2) . ' GROUP BY LabRefNo', $a2)->getResultArray() as $r) {
+                $p = (string) $r['parent'];
+                $b = strtoupper((string) preg_replace('/-[LR]$/i', '', $p));
+                if (isset($baseSet[$b])) {
+                    continue;
+                }
+                $pd = (string) ($r['pd'] ?? '');
+                if (! isset($byP[$p]) || strcmp($pd, $byP[$p]) > 0) {
+                    $byP[$p] = $pd;
+                }
+            }
+            uksort($byP, static function (string $a, string $b) use ($byP): int {
+                $cmp = strcmp($byP[$b], $byP[$a]);
+
+                return $cmp !== 0 ? $cmp : strcmp($a, $b);
+            });
+            if ($cacheKey !== '') {
+                try {
+                    cache()->save($cacheKey, $byP, 60);
+                } catch (\Throwable $e) {
+                }
+            }
         }
-        if ($from !== '') {
-            $w[] = 'pd >= ?';
-            $args[] = $from;
+        $total   = count($byP);
+        $pages   = max(1, (int) ceil($total / $size));
+        if ($page > $pages) {
+            $page = $pages;
         }
-        if ($to !== '') {
-            $w[] = 'pd <= ?';
-            $args[] = $to;
+        $slice   = array_slice($byP, ($page - 1) * $size, $size, true);
+        $parents = [];
+        foreach ($slice as $p => $pd) {
+            $parents[] = ['parent' => $p, 'pd' => $pd];
         }
-        $src = "(SELECT WholeshoeLabRefNo parent, LabRefNo child, COALESCE(ProductionDate, CollectionDate) pd, ProductionCode prod, Style style FROM tbl_dtr_wholeshoetracker WHERE COALESCE(WholeshoeLabRefNo, '') <> ''
-                 UNION ALL SELECT i.LabRefNo, '', COALESCE(i.ProductionDate, i.CollectionDate), i.ProdCode, i.Style FROM tbl_dtr_wholeshoe_intake i WHERE COALESCE(i.LabRefNo, '') REGEXP '^DTP[0-9]{8}WH'
-                   AND NOT EXISTS (SELECT 1 FROM tbl_dtr_wholeshoetracker t WHERE CONVERT(t.WholeshoeLabRefNo USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(REGEXP_REPLACE(i.LabRefNo, '-[LR]\$', '') USING utf8mb4) COLLATE utf8mb4_general_ci)) x" . ($w ? ' WHERE ' . implode(' AND ', $w) : '');
-        $total   = (int) ($db->query("SELECT COUNT(DISTINCT parent) n FROM {$src}", $args)->getRow('n') ?? 0);
-        $parents = $db->query("SELECT parent, MAX(pd) pd FROM {$src} GROUP BY parent ORDER BY pd DESC, parent LIMIT {$size} OFFSET " . (($page - 1) * $size), $args)->getResultArray();
-        $names   = array_column($parents, 'parent');
+        $names   = array_keys($slice);
         $out     = [];
         if ($names) {
             $in = implode(',', array_map(static fn ($n) => $db->escape($n), $names));
@@ -941,7 +1046,7 @@ class WstController extends BaseController
             }
         }
 
-        return $this->response->setJSON(['ok' => true, 'shoes' => $out, 'total' => $total, 'page' => $page, 'pages' => max(1, (int) ceil($total / $size)), 'can_edit' => true, 'csrf' => csrf_hash()]);
+        return $this->response->setJSON(['ok' => true, 'shoes' => $out, 'total' => $total, 'page' => $page, 'per_page' => $size, 'pages' => max(1, (int) ceil($total / $size)), 'can_edit' => true, 'csrf' => csrf_hash()]);
     }
 
     /** the whole shoe's index (Lab Tracker) row follows its tests */
@@ -961,11 +1066,15 @@ class WstController extends BaseController
     public function shoeTestOptions(): ResponseInterface
     {
         $db   = \Config\Database::connect();
-        $have = array_map(static fn ($r) => self::shoeKey((string) $r['TestType'], (string) $r['TestCode']), $db->table('tbl_dtr_wholeshoetracker')->select('TestType, TestCode')->where('WholeshoeLabRefNo', trim((string) $this->request->getGet('parent')))->get()->getResultArray());
+        $haveSides = [];   // test key => sides (L / R) the whole shoe already has
+        foreach ($db->table('tbl_dtr_wholeshoetracker')->select('TestType, TestCode, Side')->where('WholeshoeLabRefNo', trim((string) $this->request->getGet('parent')))->get()->getResultArray() as $r) {
+            $haveSides[self::shoeKey((string) $r['TestType'], (string) $r['TestCode'])][] = strtoupper(trim((string) $r['Side'])) === 'R' ? 'R' : 'L';
+        }
         $opts = [];
         foreach (self::SHOE_TESTS as $name => [$code, $cat]) {
-            if (! in_array($cat, $have, true)) {
-                $opts[] = ['type' => $name, 'code' => $code];
+            // one entry per test AND side that is not recorded yet (Left / Right)
+            foreach (array_diff(['L', 'R'], $haveSides[$cat] ?? []) as $sd) {
+                $opts[] = ['type' => $name, 'code' => $code, 'side' => $sd];
             }
         }
 
@@ -988,20 +1097,21 @@ class WstController extends BaseController
         if (! $sib && ! $ink) {
             return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'That whole shoe was not found.', 'csrf' => csrf_hash()]);
         }
-        $have = array_map(static fn ($r) => self::shoeKey((string) $r['TestType'], (string) $r['TestCode']), $db->table('tbl_dtr_wholeshoetracker')->select('TestType, TestCode')->where('WholeshoeLabRefNo', $parent)->get()->getResultArray());
-        if (in_array($cat, $have, true)) {
-            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => $type . ' is already on this whole shoe.', 'csrf' => csrf_hash()]);
+        $side = strtoupper(trim((string) ($p['side'] ?? '')));
+        if (! in_array($side, ['L', 'R'], true)) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => 'Choose the side of the test: L or R.', 'csrf' => csrf_hash()]);
+        }
+        foreach ($db->table('tbl_dtr_wholeshoetracker')->select('TestType, TestCode, Side')->where('WholeshoeLabRefNo', $parent)->get()->getResultArray() as $hv) {
+            if (self::shoeKey((string) $hv['TestType'], (string) $hv['TestCode']) === $cat && (strtoupper(trim((string) $hv['Side'])) === 'R' ? 'R' : 'L') === $side) {
+                return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => $type . ' (' . $side . ') is already on this whole shoe.', 'csrf' => csrf_hash()]);
+            }
         }
         if (! preg_match('/^DTP(\d{8})WH([AB]?)(\d*)(?:-([RL]))?/', $parent, $m)) {
             return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => 'This whole shoe has no standard Lab Reference.', 'csrf' => csrf_hash()]);
         }
-        $side = $m[4] ?? '';
-        if ($side === '') {
-            $side = (string) ($sib['Side'] ?? $ink['Side'] ?? 'L') ?: 'L';
-        }
         $bld  = $m[2];
         $line = $m[3];
-        $base = 'DTP' . $m[1] . $code . $bld . $line . ($code === 'UV' ? '' : '-' . $side);
+        $base = 'DTP' . $m[1] . $code . $bld . $line . '-' . $side;   // the side the user chose (L / R) is part of the test Lab Ref
         $ref  = $base;
         for ($n = 2; $db->table('tbl_dtr_wholeshoetracker')->where('LabRefNo', $ref)->countAllResults() > 0; $n++) {
             $ref = $base . '-' . $n;
@@ -1018,6 +1128,11 @@ class WstController extends BaseController
             'EncodedBy' => $by, 'CreatedAt' => $now, 'WholeshoeLabRefNo' => $parent, 'TestType' => $type, 'TestCode' => $code, 'Side' => $side, 'Status' => 'PENDING',
             'ShoeID' => (string) ($sib['ShoeID'] ?? $ink['ShoeID'] ?? '') ?: null, 'SourceSystem' => 'nexus', 'IntakeType' => $sib['IntakeType'] ?? 'DAILY',
         ]);
+        $newTrackerId = (int) $db->insertID();
+        // the test is also listed under its mother Lab Ref (mother -> child list)
+        if ($newTrackerId > 0 && $db->tableExists('tbl_dtr_wholeshoetrackertests')) {
+            $db->table('tbl_dtr_wholeshoetrackertests')->insert(['TrackerID' => $newTrackerId, 'MotherLabRefNo' => $parent, 'ChildLabRefNo' => $ref, 'TestType' => $type, 'TestCode' => $code, 'CreatedAt' => $now]);
+        }
         if ($db->tableExists('tbl_material_tests') && $db->table('tbl_material_tests')->where('labreference', $ref)->countAllResults() === 0) {
             $db->table('tbl_material_tests')->insert([
                 'category' => $cat, 'labreference' => $ref, 'testdate' => ($sib['CollectionDate'] ?? $ink['CollectionDate'] ?? null) ?: date('Y-m-d'), 'type' => trim($style . ($color !== '' ? ' - ' . $color : '')) ?: 'Standard',
@@ -1028,7 +1143,7 @@ class WstController extends BaseController
             ]);
         }
         $this->shoeRefresh($db, $parent);
-        \App\Libraries\ActivityLog::record('wholeshoe', 'test-add', $ref, 'test added to ' . $parent . ': ' . $type);
+        \App\Libraries\ActivityLog::record('wholeshoe', 'test-add', $ref, 'test added to ' . $parent . ': ' . $type . ' (' . $side . ')');
 
         return $this->response->setJSON(['ok' => true, 'message' => $type . ' was added to ' . $parent . ' (' . $ref . ').', 'lab_ref' => $ref, 'csrf' => csrf_hash()]);
     }
@@ -1261,7 +1376,31 @@ class WstController extends BaseController
             ? (int) $record['timer_duration_sec']
             : self::getDefaultTimerDuration($category);
 
-        $now = date('Y-m-d H:i:s');
+        $payload = $this->request->getJSON(true) ?? [];
+        $endDate = trim((string) ($payload['end_date'] ?? ''));
+        $endTime = trim((string) ($payload['end_time'] ?? ''));
+        $nowTs   = time();
+        $now     = date('Y-m-d H:i:s', $nowTs);
+
+        $targetEndAt = null;
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $endDate)) {
+            if (! preg_match('/^\d{2}:\d{2}(:\d{2})?$/', $endTime)) {
+                $endTime = date('H:i:00', $nowTs);
+            } elseif (strlen($endTime) === 5) {
+                $endTime .= ':00';
+            }
+            $targetEndAt = $endDate . ' ' . $endTime;
+            $endTs       = strtotime($targetEndAt);
+            if ($endTs === false || $endTs <= $nowTs) {
+                return $this->response->setStatusCode(422)->setJSON(['success' => false, 'message' => 'End Date & Time must be in the future.', 'csrf' => csrf_hash()]);
+            }
+            $elapsed  = (int) ($record['timer_elapsed_sec'] ?? 0);
+            $duration = $elapsed + ($endTs - $nowTs);
+        } elseif ($duration !== null) {
+            $elapsed     = (int) ($record['timer_elapsed_sec'] ?? 0);
+            $targetEndAt = date('Y-m-d H:i:s', $nowTs + max(0, $duration - $elapsed));
+        }
+
         $updateData = [
             'status'          => 'RUNNING',
             'is_running'      => 1,
@@ -1269,6 +1408,9 @@ class WstController extends BaseController
             'updated_at'      => $now,
         ];
 
+        if ($targetEndAt !== null) {
+            $updateData['target_end_at'] = $targetEndAt;
+        }
         if ($duration !== null) {
             $updateData['timer_duration_sec'] = $duration;
             $updateData['timer_started_at']   = $now;
@@ -1285,9 +1427,11 @@ class WstController extends BaseController
         $timerState = self::computeTimerState($fresh);
 
         return $this->response->setJSON([
-            'success'     => true,
-            'message'     => 'Test session started.',
-            'timer'       => $timerState,
+            'success'       => true,
+            'message'       => 'Test session started.' . ($targetEndAt ? ' Target end: ' . substr($targetEndAt, 0, 16) : ''),
+            'target_end_at' => $targetEndAt,
+            'timer'         => $timerState,
+            'csrf'          => csrf_hash(),
         ]);
     }
 

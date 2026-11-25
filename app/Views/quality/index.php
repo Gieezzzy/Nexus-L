@@ -114,16 +114,20 @@
             <div class="qi-capa-tools">
                 <label class="qi-field"><input type="search" id="qi-capa-q" class="qi-capa-search" placeholder="Search Lab Ref, line, style, cement…" autocomplete="off"></label>
                 <div class="qi-seg" role="group" aria-label="Show" id="qi-capa-status"><button type="button" data-st="Open" class="active">Open</button><button type="button" data-st="Closed">Closed</button><button type="button" data-st="All">All</button></div>
+                <button type="button" class="cal-btn-glass" id="qi-capa-mklink" title="Generate 1 shareable link for selected (or visible Open) CAPA cards">🔗 Create CAPA Link</button>
+                <button type="button" class="cal-btn-glass" id="qi-capa-export" title="Download Daily Bonding Failure CAPA Excel report">📊 Export Excel</button>
             </div>
         </div>
+        <div class="cal-glass qi-capa-linkbox" id="qi-capa-linkbox" hidden></div>
         <div class="qi-kpis" id="qi-capa-kpis"></div>
-        <div class="qi-help"><b>How it works:</b> each failed bonding report creates a CAPA case.
-            <span class="qi-badge amber">OPEN</span> needs root cause, corrective action &amp; passing retest &middot;
-            <span class="qi-badge red">OVERDUE 3+ DAYS</span> open 3 days or more &middot;
-            <span class="qi-badge green">CLOSED</span> passing retest verified and closed.</div>
+        <div class="qi-help"><b>How it works:</b> each failed bonding report creates a CAPA case (max <b>3 photos</b> per case; removed photos stay in 72-hour audit history).
+            <span class="qi-badge amber">OPEN</span> draft / waiting &middot;
+            <span class="qi-badge red">OVERDUE 3+ DAYS</span> open 3+ days &middot;
+            <span class="qi-badge green">CLOSED</span> passing retest verified. Check cards and click <b>Create CAPA Link</b> to send 1 link for multiple lines.</div>
         <div id="qi-capa-list" class="qi-capa-list"></div>
         <div id="qi-capa-pager" class="qi-capa-pager" hidden></div>
     </section>
+    <div class="qi-capa-lb" id="qi-capa-lb" hidden><img src="" alt="CAPA photo preview"></div>
 
     <!-- Side panel (same look as Calendar Monitoring) -->
     <div class="cal-drawer-backdrop" id="qi-backdrop" aria-hidden="true"></div>

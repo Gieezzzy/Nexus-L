@@ -158,7 +158,7 @@
   // my decision is in flight: no "already decided" screen for myself
   ['#apv-approve', '#apv-reject'].forEach((s) => $(s)?.addEventListener('click', () => { deciding = true; setTimeout(() => { if (!busy) deciding = false; }, 1500); }, true));
   setLocked(true);                                                   // locked until the server says this page holds the report
-  tick(); timer = setInterval(tick, 4000);
+  tick(); timer = setInterval(tick, 10000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
   window.addEventListener('pagehide', () => { if (role && !closing) ping('leave').catch(() => {}); });
 })();

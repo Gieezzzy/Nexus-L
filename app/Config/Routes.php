@@ -31,6 +31,9 @@ $routes->post('interlink/service/callback', 'InterlinkServiceController::callbac
 $routes->post('interlink/service/session', 'InterlinkServiceController::sessionState');
 $routes->get('interlink/service/verify', 'InterlinkServiceController::verify');
 $routes->post('interlink/service/lov', 'InterlinkLovController::receive');
+$routes->get('interlink/service/mirror-state', 'InterlinkMirrorController::state');
+$routes->post('interlink/service/mirror', 'InterlinkMirrorController::ingest');
+$routes->post('interlink/service/mirror-run', 'InterlinkMirrorController::run');
 
 // the QR picture of a live approval link: fetched by Synology / the mail program, so no sign-in; the link itself is the key and it dies when used or expired
 $routes->get('approve/(:segment)/qr.png', 'ApprovalController::qr/$1');
@@ -89,6 +92,15 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->get('thirdparty', 'ThirdPartyController::index');
     $routes->get('thirdparty/(:segment)', 'ThirdPartyController::index/$1');
     $routes->get('analytics', 'AnalyticsController::index', ['as' => 'analytics']);
+    $routes->get('analytics/monthly-report', 'AnalyticsController::monthlyReport');
+    $routes->post('analytics/bonding-mark', 'AnalyticsController::bondingMark');
+    $routes->get('analytics/export-monthly', 'AnalyticsController::exportMonthly');
+    $routes->get('analytics/export-failed-portion', 'AnalyticsController::exportFailedPortion');
+    $routes->get('analytics/export-failure-overview', 'AnalyticsController::exportFailureOverview');
+    $routes->get('analytics/export-wholeshoe', 'AnalyticsController::exportWholeShoe');
+    $routes->get('analytics/export-materials', 'AnalyticsController::exportMaterials');
+    $routes->get('analytics/export-yearly-pies', 'AnalyticsController::exportYearlyPies');
+    $routes->post('analytics/bonding-total', 'AnalyticsController::bondingTotal');
     $routes->get('account', 'AccountController::index', ['as' => 'account']);
     $routes->post('account/save', 'AccountController::save');
     $routes->post('account/password', 'AccountController::password');
@@ -172,12 +184,12 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->get('lab-monitoring/erp-log', 'LabMonitoringController::erpLog');
     $routes->get('lab-monitoring/agent-status', 'LabMonitoringController::agentStatus');
     $routes->post('lab-monitoring/erp-status', 'LabMonitoringController::setErp');
+    $routes->post('lab-monitoring/row-save', 'LabMonitoringController::rowSave');
     $routes->post('lab-monitoring/erp-submit', 'LabMonitoringController::erpSubmit');
 
     $routes->get('interlink', 'InterlinkController::index', ['as' => 'interlink']);
     $routes->get('interlink/reports', 'InterlinkController::reports');
     $routes->get('interlink/report/(:segment)', 'InterlinkController::report/$1');
-    $routes->post('lab-monitoring/row-save', 'LabMonitoringController::rowSave');
     $routes->post('interlink/report/save', 'InterlinkController::saveReport');
     $routes->post('interlink/report/grids', 'InterlinkController::saveGrids');
     $routes->post('interlink/sync', 'InterlinkController::sync');
@@ -185,8 +197,13 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->post('interlink/fetch-live-page', 'InterlinkController::fetchLivePage');
     $routes->post('interlink/pull-grid-html', 'InterlinkController::pullGridHtml');
     $routes->post('interlink/service-grid', 'InterlinkController::serviceGrid');
+    $routes->post('interlink/service-search', 'InterlinkController::serviceSearch');
     $routes->post('interlink/fetch-live-form', 'InterlinkController::fetchLiveForm');
     $routes->get('interlink/labrefs', 'InterlinkController::labrefs');
+    $routes->get('interlink/batch/data', 'InterlinkBatchController::data');
+    $routes->get('interlink/batch/status', 'InterlinkBatchController::status');
+    $routes->get('interlink/mirror/search', 'InterlinkMirrorController::search');
+    $routes->get('interlink/mirror/row/(:segment)', 'InterlinkMirrorController::row/$1');
     $routes->get('interlink/search', 'InterlinkController::search');
     $routes->get('interlink/labref-detail', 'InterlinkController::labrefDetail');
     $routes->get('interlink/proxy', 'InterlinkController::proxy');
@@ -197,6 +214,9 @@ $routes->group('', ['filter' => 'auth'], static function (RouteCollection $route
     $routes->get('interlink/vf-test-request', 'VfTestRequestController::index', ['as' => 'interlink_vf_request']);
     $routes->get('interlink/vf-test-request/data', 'VfTestRequestController::data');
     $routes->get('interlink/vf-test-request/detail/(:segment)', 'VfTestRequestController::detail/$1');
+    $routes->get('interlink/vf-test-request/app-pdf/(:segment)', 'VfTestRequestController::appPdf/$1');
+    $routes->get('interlink/vf-test-request/app-pdf-status/(:segment)', 'VfTestRequestController::appPdfStatus/$1');
+    $routes->post('interlink/vf-test-request/fetch-app-pdf', 'VfTestRequestController::fetchAppPdf');
     $routes->get('interlink/vf-test-request/erp-lookup', 'VfTestRequestController::erpLookup');
     $routes->post('interlink/vf-test-request/fill-form', 'VfTestRequestController::fillForm');
     $routes->post('interlink/vf-test-request/submit', 'VfTestRequestController::submit');
@@ -237,6 +257,7 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->post('dtr/update-entry', 'DtrController::updateEntry');
     $routes->post('dtr/sync-edits', 'DtrController::syncEdits');
     $routes->get('dtr/kpis', 'DtrController::kpis');
+    $routes->post('dtr/export-table', 'DtrController::exportTable');
     $routes->get('dtr/appsheet-archive', 'DtrController::appsheetArchive');
     $routes->get('dtr/record', 'DtrController::record');
     $routes->get('dtr/bonding-labrefs', 'DtrController::bondingLabRefs');
@@ -272,6 +293,7 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('dtr/report-pdf', 'ApprovalController::reportPdf');
     $routes->get('dtr/approval/status', 'ApprovalController::status');
     $routes->post('dtr/approval/request', 'ApprovalController::request');
+    $routes->get('dtr/approval/approvers', 'ApprovalController::approvers');
     $routes->post('dtr/approval/replace-file', 'ApprovalController::replaceFile');
     $routes->get('dtr/approval/file/(:segment)', 'ApprovalController::file/$1');
     $routes->get('dtr/approval/verify', 'ApprovalController::verify');
@@ -376,15 +398,16 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('materials/machines', 'MaterialsController::machines');
     $routes->get('materials/sheet', 'MaterialsController::sheet');
     $routes->post('materials/to-report', 'MaterialsController::toReport');
+    $routes->post('materials/sheet-layout', 'MaterialsController::sheetLayout');
+    $routes->post('materials/test-remove', 'MaterialsController::testRemove');
+    $routes->get('materials/test-options', 'MaterialsController::testOptions');
+    $routes->post('materials/test-add', 'MaterialsController::testAdd');
+    $routes->post('materials/delete', 'MaterialsController::deleteMaterial');
     $routes->post('materials/sheet-calc', 'MaterialsController::sheetCalc');
     $routes->post('materials/sheet-save', 'MaterialsController::sheetSave');
 
     // Whole Shoe Physical & Monitoring Test Suite (Marc)
     $routes->get('wholeshoe', 'WstController::wholeshoe', ['as' => 'wholeshoe']);
-    $routes->post('materials/sheet-layout', 'MaterialsController::sheetLayout');
-    $routes->post('materials/test-remove', 'MaterialsController::testRemove');
-    $routes->get('materials/test-options', 'MaterialsController::testOptions');
-    $routes->post('materials/test-add', 'MaterialsController::testAdd');
     $routes->get('whole-shoe-test', 'WstController::wholeshoe');
 
     // Test Results Summary (Material Testing & Whole Shoe Test Combined - Marc)
@@ -395,20 +418,17 @@ $routes->get('interlink/etrf-preview', 'InterlinkController::etrfPreview');
     $routes->get('wst/export-summary', 'WstController::exportSummary');
 
     // Whole Shoe Cyclic Test Execution & Monitoring API (Marc)
+    $routes->post('wst/test-date/(:num)', 'WstController::testDate/$1');
+    $routes->post('wst/end-date/(:num)', 'WstController::endDate/$1');
+    $routes->get('wst/shoes', 'WstController::shoes');
+    $routes->get('wst/shoe-test-options', 'WstController::shoeTestOptions');
+    $routes->post('wst/shoe-test-add', 'WstController::shoeTestAdd');
+    $routes->post('wst/shoe-test-remove', 'WstController::shoeTestRemove');
     $routes->get('wst/records', 'WstController::records');
     $routes->get('wst/record/(:num)', 'WstController::record/$1');
     $routes->get('wst/state/(:num)', 'WstController::state/$1');
     $routes->get('wst/next-labref', 'WstController::nextLabref');
     $routes->post('wst/create', 'WstController::create');
-    $routes->post('wst/test-date/(:num)', 'WstController::testDate/$1');
-    $routes->get('wst/shoes', 'WstController::shoes');
-    $routes->get('wst/shoe-test-options', 'WstController::shoeTestOptions');
-    $routes->post('wst/shoe-test-add', 'WstController::shoeTestAdd');
-    $routes->post('wst/shoe-test-remove', 'WstController::shoeTestRemove');
-    $routes->get('wst/shoes', 'WstController::shoes');
-    $routes->get('wst/shoe-test-options', 'WstController::shoeTestOptions');
-    $routes->post('wst/shoe-test-add', 'WstController::shoeTestAdd');
-    $routes->post('wst/shoe-test-remove', 'WstController::shoeTestRemove');
     $routes->post('wst/start/(:num)', 'WstController::start/$1');
     $routes->post('wst/pause/(:num)', 'WstController::pause/$1');
     $routes->post('wst/stop/(:num)', 'WstController::stop/$1');

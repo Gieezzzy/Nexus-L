@@ -184,16 +184,166 @@ class VfTestRequestController extends BaseController
     }
 
     /** GET interlink/vf-test-request/detail/(:segment) */
+    private function findStoredAppPdf(string $appNo): array
+    {
+        $safeApp = preg_replace('/[^A-Z0-9_-]/', '', strtoupper(trim($appNo)));
+        if ($safeApp === '') {
+            return ['', ''];
+        }
+        $req = $this->db()->table('tbl_vf_test_requests')
+            ->select('etrf_pdf_path, etrf_pdf_name')
+            ->where('generated_application_no', $safeApp)
+            ->where('etrf_pdf_path <>', '')
+            ->orderBy('id', 'DESC')->get(1)->getRowArray();
+        if ($req && is_file((string) $req['etrf_pdf_path'])) {
+            return [(string) $req['etrf_pdf_path'], (string) ($req['etrf_pdf_name'] ?: ($safeApp . '.pdf'))];
+        }
+        $cached = WRITEPATH . 'uploads' . DIRECTORY_SEPARATOR . 'vf_etrf_pdfs' . DIRECTORY_SEPARATOR . 'apps' . DIRECTORY_SEPARATOR . $safeApp . '.pdf';
+        if (is_file($cached)) {
+            return [$cached, $safeApp . '.pdf'];
+        }
+        return ['', ''];
+    }
+
     public function detail(string $appNo)
     {
         $this->svc()->ensureTables();
         $appNo = strtoupper(trim($appNo));
         $row   = $this->db()->table('tbl_interlink_reports')->where('application_no', $appNo)->orderBy('id', 'DESC')->get(1)->getRowArray();
+        [$pdfPath, $pdfName] = $this->findStoredAppPdf($appNo);
+        $hasPdf = $pdfPath !== '';
         if (! $row) {
-            return $this->json(['ok' => false, 'error' => "Application {$appNo} was not found locally. Run Sync Applicant Grid first."], 404);
+            $req = $this->db()->table('tbl_vf_test_requests')->where('generated_application_no', $appNo)->orderBy('id', 'DESC')->get(1)->getRowArray();
+            $row = [
+                'application_no'    => $appNo,
+                'test_packages'     => (string) ($req['test_package'] ?? ''),
+                'style_no'          => (string) ($req['style_no'] ?? ''),
+                'style_color_no'    => (string) ($req['mtl_no'] ?? ''),
+                'colorway_name'     => (string) ($req['colorway'] ?? ''),
+                'job_status'        => (string) ($req['stage'] ?? 'Submitted'),
+                'factory_name'      => (string) ($req['factory'] ?? ''),
+            ];
         }
 
-        return $this->json(['ok' => true, 'report' => $row]);
+        return $this->json([
+            'ok'               => true,
+            'report'           => $row,
+            'has_pdf'          => $hasPdf,
+            'pdf_name'         => $pdfName,
+            'pdf_url'          => $hasPdf ? site_url('interlink/vf-test-request/app-pdf/' . rawurlencode($appNo)) : '',
+            'pdf_download_url' => $hasPdf ? site_url('interlink/vf-test-request/app-pdf/' . rawurlencode($appNo)) . '?download=1' : '',
+        ]);
+    }
+
+    /** GET interlink/vf-test-request/app-pdf/(:segment) : serves stored InterLink eTRF PDF for an Application No. */
+    public function appPdf(string $appNo)
+    {
+        $this->svc()->ensureTables();
+        [$path, $name] = $this->findStoredAppPdf($appNo);
+        if ($path === '' || ! is_file($path)) {
+            return $this->response->setStatusCode(404)->setBody('InterLink PDF has not been fetched for ' . strtoupper(trim($appNo)) . ' yet.');
+        }
+        $disp = $this->request->getGet('download') ? 'attachment' : 'inline';
+
+        return $this->response
+            ->setHeader('Content-Type', 'application/pdf')
+            ->setHeader('Content-Disposition', $disp . '; filename="' . addslashes($name) . '"')
+            ->setBody((string) file_get_contents($path));
+    }
+
+    /** POST interlink/vf-test-request/fetch-app-pdf {application_no} : returns immediately (instant if cached, or queues background vf_pdf job) */
+    public function fetchAppPdf()
+    {
+        $this->svc()->ensureTables();
+        $p = $this->request->getJSON(true);
+        if (! is_array($p)) {
+            $p = json_decode((string) $this->request->getBody(), true);
+        }
+        if (! is_array($p)) {
+            $p = $this->request->getPost() ?: [];
+        }
+        $appNo = strtoupper(trim((string) ($p['application_no'] ?? '')));
+        if (! preg_match('/^A\d{8,12}(-REV\d+)?$/', $appNo)) {
+            return $this->json(['ok' => false, 'error' => 'Invalid InterLink Application No.'], 422);
+        }
+        [$existingPath, $existingName] = $this->findStoredAppPdf($appNo);
+        if ($existingPath !== '' && empty($p['force'])) {
+            return $this->json([
+                'ok'               => true,
+                'ready'            => true,
+                'pdf_name'         => $existingName,
+                'pdf_url'          => site_url('interlink/vf-test-request/app-pdf/' . rawurlencode($appNo)),
+                'pdf_download_url' => site_url('interlink/vf-test-request/app-pdf/' . rawurlencode($appNo)) . '?download=1',
+            ]);
+        }
+
+        $baseUrl = \App\Libraries\SystemSettings::serviceUrl();
+        $key     = (string) \App\Libraries\SystemSettings::get('interlink.service.key', '');
+        if (! \App\Libraries\SystemSettings::bool('interlink.service.enabled', true) || $baseUrl === '' || strlen($key) < 16) {
+            return $this->json(['ok' => false, 'error' => 'The InterLink background service is not configured.'], 503);
+        }
+        $db  = $this->db();
+        $me  = (array) service('auth')->user();
+        $uid = bin2hex(random_bytes(12));
+        $db->table('tbl_interlink_service_jobs')->insert([
+            'job_uid' => $uid, 'application_no' => $appNo, 'lab_ref_no' => '', 'report_no' => 'eTRF PDF',
+            'mode' => 'vf_pdf', 'user_id' => (int) ($me['id'] ?? 0), 'user_name' => (string) ($me['name'] ?? ''),
+            'status' => 'queued', 'created_at' => date('Y-m-d H:i:s'),
+        ]);
+        try {
+            $res = service('curlrequest')->post($baseUrl . '/jobs', [
+                'headers' => ['X-Service-Key' => $key],
+                'json'    => [
+                    'job_uid' => $uid, 'application_no' => $appNo, 'report_no' => 'eTRF PDF',
+                    'mode' => 'vf_pdf', 'account' => 'dtp_qcasst@dtshoes.com', 'user_name' => (string) ($me['name'] ?? ''),
+                    'callback_url' => site_url('interlink/service/callback'),
+                    'job' => ['application_no' => $appNo],
+                ],
+                'timeout' => 15, 'http_errors' => false,
+            ]);
+            $body = json_decode((string) $res->getBody(), true) ?: [];
+            if ($res->getStatusCode() !== 200 || empty($body['ok'])) {
+                throw new \RuntimeException((string) ($body['error'] ?? 'Service HTTP ' . $res->getStatusCode()));
+            }
+        } catch (\Throwable $e) {
+            $db->table('tbl_interlink_service_jobs')->where('job_uid', $uid)->update(['status' => 'failed', 'message' => mb_substr($e->getMessage(), 0, 480), 'finished_at' => date('Y-m-d H:i:s')]);
+            return $this->json(['ok' => false, 'error' => 'Could not reach InterLink service: ' . $e->getMessage()], 502);
+        }
+
+        return $this->json([
+            'ok'      => true,
+            'ready'   => false,
+            'job_uid' => $uid,
+            'app_no'  => $appNo,
+        ]);
+    }
+
+    /** GET interlink/vf-test-request/app-pdf-status/(:segment)?job_uid= : non-blocking background poll for PDF readiness */
+    public function appPdfStatus(string $appNo)
+    {
+        $this->svc()->ensureTables();
+        $appNo = strtoupper(trim($appNo));
+        $uid   = trim((string) ($this->request->getGet('job_uid') ?? ''));
+        [$savedPath, $savedName] = $this->findStoredAppPdf($appNo);
+        if ($savedPath !== '') {
+            return $this->json([
+                'ok'               => true,
+                'ready'            => true,
+                'pdf_name'         => $savedName,
+                'pdf_url'          => site_url('interlink/vf-test-request/app-pdf/' . rawurlencode($appNo)),
+                'pdf_download_url' => site_url('interlink/vf-test-request/app-pdf/' . rawurlencode($appNo)) . '?download=1',
+            ]);
+        }
+        if ($uid !== '') {
+            $row = $this->db()->table('tbl_interlink_service_jobs')->where('job_uid', $uid)->get(1)->getRowArray();
+            if ($row && in_array($row['status'], ['failed', 'signin-required'], true)) {
+                return $this->json(['ok' => true, 'ready' => false, 'failed' => true, 'error' => (string) ($row['message'] ?: 'InterLink did not return the PDF.')]);
+            }
+            if ($row && $row['status'] === 'done') {
+                return $this->json(['ok' => true, 'ready' => false, 'failed' => true, 'error' => 'InterLink finished, but no PDF file was saved.']);
+            }
+        }
+        return $this->json(['ok' => true, 'ready' => false, 'failed' => false]);
     }
 
     /** GET interlink/vf-test-request/erp-lookup?mtl=&prod_code=&q= */

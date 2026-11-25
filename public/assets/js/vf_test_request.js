@@ -213,7 +213,7 @@
           <td class="mono">${esc(it.mtl_no)}</td>
           <td>${esc(it.test_package)}</td>
           <td>${esc(String(it.submitted_at || '').slice(0, 16))}</td>
-          <td>${it.etrf_pdf_name ? esc(it.etrf_pdf_name) : '<span class="muted">-</span>'}</td>
+          <td>${it.etrf_pdf_name ? `<a href="${base}lab-monitoring/vf-requests/pdf/etrf/${it.id}?download=1" download class="vfr-link" title="Download InterLink eTRF PDF">${esc(it.etrf_pdf_name)}</a>` : (it.generated_application_no ? `<button type="button" class="vfr-btn sm vfr-fetch-sent-pdf" data-app="${esc(it.generated_application_no)}">Download PDF</button>` : '<span class="muted">-</span>')}</td>
           <td><span class="vfr-badge ${ic}">${esc(il)}</span>${failed || it.pdf_capture_warning ? `<div style="font-size:11px;color:#b91c1c;margin-top:3px;max-width:320px;white-space:normal">${esc(failed ? it.interlink_message : it.pdf_capture_warning)}</div>` : ''}${failed ? ` <button type="button" class="vfr-btn sm vfr-prepare" data-id="${it.id}" style="margin-top:3px">Try again</button>` : ''}</td>
           <td><span class="vfr-badge ${cl}">${esc(lb)}</span></td>
         </tr>`; }).join('') : '<tr><td colspan="9" class="muted" style="text-align:center;padding:18px">Nothing submitted yet.</td></tr>';
@@ -344,7 +344,107 @@
     document.getElementById('vfr-det-kv').innerHTML = pairs.map(([k, v]) => `<div><small>${esc(k)}</small><b>${esc(v || '-')}</b></div>`).join('');
     document.getElementById('vfr-det-copy').dataset.app = rep.application_no;
     document.getElementById('vfr-det-copy').dataset.pkg = rep.test_packages || '';
+    const vDl = document.getElementById('vfr-det-pdf-dl');
+    const vFetch = document.getElementById('vfr-det-pdf-fetch');
+    if (vDl && vFetch) {
+      vFetch.dataset.app = rep.application_no;
+      vFetch.disabled = false;
+      vFetch.textContent = 'Download InterLink PDF';
+      if (j.has_pdf && j.pdf_download_url) {
+        vDl.href = j.pdf_download_url; vDl.style.display = 'inline-flex';
+        vFetch.style.display = 'none';
+      } else {
+        vDl.style.display = 'none';
+        vFetch.style.display = 'inline-flex';
+      }
+    }
     openModal('vfr-detail-modal');
+  });
+
+  function triggerSilentDownload(url, filename) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename || '';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => a.remove(), 1000);
+  }
+
+  const bgPdfJobs = new Set();
+  async function fetchAndDownloadAppPdf(appNo, btnEl) {
+    if (!appNo) return;
+    if (bgPdfJobs.has(appNo)) { toast(`PDF for ${appNo} is already downloading in the background…`); return; }
+    bgPdfJobs.add(appNo);
+    const orig = btnEl ? btnEl.textContent : '';
+    if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'Queued in background…'; }
+    try {
+      const r = await fetch(`${base}interlink/vf-test-request/fetch-app-pdf`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ application_no: appNo }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j || !j.ok) throw new Error((j && j.error) || 'Could not queue PDF download.');
+      if (j.ready && j.pdf_download_url) {
+        bgPdfJobs.delete(appNo);
+        if (btnEl) { btnEl.disabled = false; btnEl.textContent = orig; }
+        triggerSilentDownload(j.pdf_download_url, j.pdf_name || `${appNo}.pdf`);
+        toast(`✓ Downloading ${j.pdf_name || appNo + '.pdf'}`);
+        return;
+      }
+      // Runs in the background — user can close the modal and keep working; auto-downloads once ready
+      toast(`Fetching ${appNo}.pdf in the background — it will download automatically when ready.`);
+      const jobUid = j.job_uid || '';
+      const started = Date.now();
+      const poll = async () => {
+        if (Date.now() - started > 120000) {
+          bgPdfJobs.delete(appNo);
+          if (btnEl) { btnEl.disabled = false; btnEl.textContent = orig; }
+          toast(`Timed out fetching ${appNo}.pdf.`, 'error');
+          return;
+        }
+        try {
+          const sr = await fetch(`${base}interlink/vf-test-request/app-pdf-status/${encodeURIComponent(appNo)}?job_uid=${encodeURIComponent(jobUid)}`, { credentials: 'same-origin' });
+          const sj = await sr.json().catch(() => null);
+          if (sj && sj.ready && sj.pdf_download_url) {
+            bgPdfJobs.delete(appNo);
+            const vDl = document.getElementById('vfr-det-pdf-dl');
+            const vFetch = document.getElementById('vfr-det-pdf-fetch');
+            if (vDl && vFetch && vFetch.dataset.app === appNo) {
+              vDl.href = sj.pdf_download_url; vDl.style.display = 'inline-flex';
+              vFetch.style.display = 'none';
+            }
+            if (btnEl) { btnEl.disabled = false; btnEl.textContent = orig; }
+            triggerSilentDownload(sj.pdf_download_url, sj.pdf_name || `${appNo}.pdf`);
+            toast(`✓ Downloaded ${sj.pdf_name || appNo + '.pdf'}`);
+            loadData();
+            return;
+          }
+          if (sj && sj.failed) {
+            bgPdfJobs.delete(appNo);
+            if (btnEl) { btnEl.disabled = false; btnEl.textContent = orig; }
+            toast(sj.error || `Could not fetch ${appNo}.pdf.`, 'error');
+            return;
+          }
+        } catch { /* keep polling */ }
+        setTimeout(poll, 1500);
+      };
+      setTimeout(poll, 1500);
+    } catch (err) {
+      bgPdfJobs.delete(appNo);
+      toast(err.message || 'Could not queue PDF download.', 'error');
+      if (btnEl) { btnEl.disabled = false; btnEl.textContent = orig; }
+    }
+  }
+
+  document.getElementById('vfr-det-pdf-fetch')?.addEventListener('click', (e) => {
+    fetchAndDownloadAppPdf(e.currentTarget.dataset.app || '', e.currentTarget);
+  });
+  document.getElementById('vfr-sent-body')?.addEventListener('click', (e) => {
+    const b = e.target.closest('.vfr-fetch-sent-pdf');
+    if (b) fetchAndDownloadAppPdf(b.dataset.app || '', b);
   });
 
   document.getElementById('vfr-det-copy').addEventListener('click', (e) => {

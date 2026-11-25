@@ -40,9 +40,9 @@ $a = $approval;
             <?php if (! $signatory): ?>
                 <h3>Not an approver</h3>
                 <p class="sm">Only a registered Manager or Supervisor can approve reports. Ask an admin to add your account in <b>Report Designer → Signatories</b>.</p>
-            <?php elseif (! empty($a['required_name']) && ! \App\Libraries\ReportPdf::nameMatches((string) $a['required_name'], (string) $signatory['full_name'])): ?>
+            <?php elseif (! \App\Libraries\ReportPdf::mayDecide($a, $signatory)): ?>
                 <h3>Another approver</h3>
-                <p class="sm">This report is signed off by <b><?= esc($a['required_name']) ?></b>. Only <?= esc($a['required_name']) ?> can approve it; you are signed in as <?= esc($signatory['full_name']) ?>.</p>
+                <p class="sm">This report was sent to other approvers chosen by the requester. You are signed in as <?= esc($signatory['full_name']) ?>.</p>
                 <?php if (! empty($nextUrl)): ?><p><a class="nx-btn nx-primary" href="<?= esc($nextUrl, 'attr') ?>">Go to the next report</a></p><?php endif ?>
             <?php else: ?>
                 <h3>Your decision</h3>

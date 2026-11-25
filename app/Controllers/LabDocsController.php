@@ -1764,6 +1764,9 @@ class LabDocsController extends BaseController
      */
     private function streamOut(string $ext, string $name, bool $download, int $size, string $etag, callable $emit): ResponseInterface
     {
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();                              // a long download must not hold the session lock (other requests of this user wait for it)
+        }
         $res = $this->response->setHeader('Content-Type', self::TYPES[$ext] ?? 'application/octet-stream')
             ->setHeader('Content-Disposition', ($download ? 'attachment' : 'inline') . "; filename*=UTF-8''" . rawurlencode($name))
             ->setHeader('X-Content-Type-Options', 'nosniff')->setHeader('Accept-Ranges', 'bytes')->setHeader('ETag', '"' . $etag . '"')->setHeader('Cache-Control', 'private, max-age=0, must-revalidate');

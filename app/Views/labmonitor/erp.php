@@ -1,13 +1,20 @@
 <?php
 /** Lab Monitoring: ERP Finish Monitoring. Data comes from lab-monitoring/data (JS). Data: $meId */
 ?>
+<?= view('partials/plain_help') ?>
 <div class="lm" id="lm-root" data-me="<?= (int) $meId ?>">
+    <?= anGuide('lm-erp', 'New here? How this page works', [
+        'Each row is one lab reference (one tested bonding report). Pick the month above, and Bonding or Whole Shoe.',
+        'The summary boxes count the reports by status. Click a box to show only those rows.',
+        'InterLink is where the finished report is sent to the customer. ERP is the company system that also needs the result.',
+        'Press Submit, tick the reports that are ready, then press Submit to ERP. The "Sent to ERP" list below shows what was sent and whether it worked.',
+    ], 'Tip: the small "i" badges explain unfamiliar words. Hover over one, or tap it on a phone.') ?>
     <header class="lm-top">
         <div>
             <h2>ERP Finish Monitoring</h2>
             <p class="lm-sub" id="lm-sub">Bonding lab references per production day: InterLink numbers and ERP status.</p>
         </div>
-        <span class="lm-agent" id="lm-agent" role="status" title="The program on the ERP PC that enters the reports in the ERP">ERP PC: checking...</span>
+        <span class="lm-agent" id="lm-agent" role="status" title="The program on the ERP PC that enters the reports in the ERP. If it says offline, reports cannot be sent until the ERP PC is switched on and its program is running.">ERP PC: checking...</span>
         <label class="lm-field">
             <span>Month</span>
             <select id="lm-date" aria-label="Month"></select>
@@ -24,7 +31,7 @@
         <div class="lm-grp" id="lm-s-il">
             <small>InterLink status</small>
             <span class="lm-trio">
-                <button type="button" class="lm-chip ok" data-f="ok"><b>-</b> OK</button>
+                <button type="button" class="lm-chip ok" data-f="ok"><b>-</b> Submitted</button>
                 <button type="button" class="lm-chip pending" data-f="pending"><b>-</b> Pending</button>
                 <button type="button" class="lm-chip bad" data-f="bad"><b>-</b> Not submitted</button>
             </span>

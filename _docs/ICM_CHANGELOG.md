@@ -4,13 +4,9 @@
 
 ---
 
-## Phase 230 - Whole Shoe Test > Whole Shoes tab: parent with its tests, add / remove a test (2026-11-20)
-- New first tab **Whole Shoes** on `/wholeshoe` (`wholeshoe/shoes.js`, `WstController::shoes`): one table line per parent Lab Ref (same table design as the category tabs); click the Lab Ref -> modal with all its tests (status pill, result, technician, Open Monitor). Add test (`wst/shoe-test-add`: Flexing, Heat Aging, Hydrolysis, Washing, UV Light, Dip Test that the shoe does not have) and remove a test that does not apply (`wst/shoe-test-remove`: deletes the tracker row + bench session; a started test asks first). Roles as Material Testing (`MaterialsController::canEdit`). `window.WstOpenMonitor` opens a bench session.
-
-## Phase 229 - AppSheet whole shoes connected: parent + tests + TR (2026-11-20)
-- **`php spark wholeshoe:appsheet-sync [file.tsv] [--apply]`** (`app/Commands/WholeShoeAppsheetSync.php`): reads the AppSheet Whole Shoe Log scan (`writable/wholeshoe-scan/appsheet-import.tsv`, rows from 10/28/2026 with ERP OK / N/A / # remarks) and makes the parent Lab Ref `DTP<date>WH<bld><line>-<side of the AppSheet mother>` the `WholeshoeLabRefNo` of every test, the `LabRefNo` of the intake rows and of the Lab Tracker (index) rows (the old import used one side-less parent for both L and R shoes). Missing tests/shoes are added (never-started tests are not), a test only moves forward, nothing is deleted, backup JSON of changed rows in `writable/wholeshoe-scan/`.
-- **TR:** the same Application No for every test of the whole shoe, written to `etrf_<flexing|aging|hydrolysis|washing|uv>_app` (+ `etrf_whole_app`) of the parent and ERP status OK, so ERP Finish Monitoring > Whole Shoe shows it. Two AppSheet shoes with the same mother ref get `-2` (DTP20261104WHA12-R / -R-2).
-- Rows without an AppSheet id in NEXUS-L and no TR (11/7-11/9 N/A rows entered natively) are left untouched.
+## Phase 229 - InterLink Mirror (2026-11-23)
+- **Separate program `E:\desktop\MaterialTest\NexusInterlinkMirror` (installer `installer\output\NexusInterlinkMirror-Setup-1.0.0.exe`, HKCU Run autostart):** tray app, headless Chrome/Edge with the exported session (picked up from Downloads `interlink-session*.json`), reads the Inhouse & 3rd party grid (608 pages) and each row's E (NormalForm text) and U (UploadForm fields) pages, 5 in parallel, only for new/changed rows. Runs at start, 07:00 (full), 12:00, 14:00 and when NEXUS-L raises the trigger.
+- **NEXUS-L side:** `InterlinkMirrorController` (tables `tbl_interlink_rows`, `tbl_interlink_mirror_state`; `interlink/service/mirror-state|mirror|mirror-run` key-protected + CSRF exceptions; login routes `interlink/mirror/search`, `interlink/mirror/row/<app>`). `InterlinkServiceController::callback` calls `InterlinkMirrorController::trigger()` on a finished job.
 
 ## Phase 228 - Material Testing <-> Lab Material Test Collection <-> Material Test Report (2026-11-19)
 - **Material Testing lists the whole Collection:** the received materials (Material Receive, one line per Lab Ref even if the tracker holds duplicates) plus the AppSheet bench-log groups (category mapped to the catalog, tests read only with machine, technician, PASS/FAIL). Group ids are strings (`L:<labref>` for the bench log).
@@ -577,3 +573,68 @@
 - Adding pull tests to a bonding row (Edit > Pull Type) is limited to Admin, Supervisor and Bonding PIC: DtrController::canAddPullTests (server 403 for others), button flag window.dtrCanAddPull.
 - ERP Finish Monitoring: two tabs, Bonding (the original view, unchanged) and Whole Shoe (same view for form_slug wholeshoe lab refs, one line per lab ref, with the Whole Shoe / Product / Product (Adult) / Material TR numbers from tbl_dtr_unified_labrefs etrf_<key>_app). lab-monitoring/data?kind=wholeshoe; Submit to ERP stays on the Bonding tab (the ERP PC enters bonding reports); the ERP status dropdown of a whole shoe line updates every row of that lab ref.
 - Shoe Bonding (U60) > Generate Report > FT Adhesion Graph: items below a table are moved down just enough to clear it (bond-graph.js reflow). The default layout was drawn for two curves; with Upper-Foxing, Foxing-Outsole and Filler-Outsole data the tests table ran into points table 1, that into points table 2 and that into the graph. Footer stays, graph shortens if needed. Also used by the Report Designer preview.
+- QC Lab Reports > Whole Shoe tab: Cancel and Save Report buttons are always visible (disabled until Edit Report is pressed) instead of hidden; dtr.js wsSetEditMode, dtr/index.php, min/js/dtr.js.
+- Merged DEV2-Ja/Update into live (kept live's newer code): Whole Shoe report L/R side toggle + Supplier/Country/Material Description/Send by fields saved and printed (dtr.js, dtr.css), Analytics card range filter into Lab Tracker (dtr.js), pull-test eTRF No falls back to InterLink's (DtrController, EtrfAppNos::forLabRef), Material Records QC qty CSS. Update's min/ copies and older dtr/index.php not applied.
+- Whole Shoe report (Lab Reports): Save with a Side L / R renames the whole shoe Lab Ref (DTP...WSA10-1 -> DTP...WSA10-1-L) in tbl_dtr_wholeshoe_intake, tbl_dtr_unified_labrefs, tbl_dtr_wholeshoetracker.WholeshoeLabRefNo and tbl_dtr_wholeshoe_reports (DtrController::wsRenameLabRef, skipped if the new ref already exists); child test refs (HAA, HYA...) unchanged.
+- QC Lab Reports: Whole Shoe and Material Test reports opened from Lab Tracker (or the list / calculators) show a '← Back to Lab Tracker · <sub tab> · <date range>' button; Back re-shows the same Lab Tracker panel (sub tab, date range, filters, search, open rows, scroll). dtr.js switchTab / dtrGoBack. Not shown when the report is opened from a link / other module.
+
+- Approval: requester picks max 2 approvers (modal; tbl_dtr_report_approvals.approver_ids, ReportPdf::mayDecide gates feed/page/decide). Stamp: sign-off lines found on the LAST page, name written into Reviewed/Approved by (empty or different), signature centred on the name.
+
+- Phase (approved reports): in `public/assets/js/dtr.js` a capture-phase click guard on Print/Preview and Edit buttons (material, bonding/pull, whole shoe). If the Lab Ref has an approved approval (`dtr/approval/status`), Print/Preview opens the signed PDF (`approval.file`) in a new tab and Edit is blocked. Client-side only; server save endpoints are not locked.
+
+## Phase 230 - Report Submission: "load from database" setting
+- Settings > InterLink service > `interlink.source` (interlink | database). Database = list pages come from `tbl_interlink_rows.grid_json` (Mirror copy, ordered application_no DESC) via `InterlinkController::mirrorGrid()`; U / E views come from `u_json` / `e_json` via `mirrorFormFields()` (label map + `MIRROR_U_IDS` for blank-label controls). Rows with no detail yet fall back to the live path.
+- `interlink.js`: DB mode skips the service connection gate for listing; label shows "Database (Mirror hh:mm)". ADD / 1-click send unchanged (goes through the service by application no.).
+- eTRF submit: `InterlinkServiceController::callback()` already triggers the Mirror on any 'done' job, so the new row appears after the next Mirror run (<= 60 s poll).
+
+## Phase 231 - Interlink service 1.3.41
+- JobQueue.Enqueue: duplicate check counts only jobs really in _waiting/_runningBy (stale status entries are closed), so a resend after a failed send is no longer refused as already in the queue.
+- Log window (JobQueue.Recent): read jobs (grid_html etc.) no longer flood it, list sorted newest first, finished sends stay.
+- Settings Check status shows Checking... and the time it checked.
+- Original 500 on send: Windows commit memory exhausted (OutOfMemory), not a code fault.
+
+## Phase 232 - Generate Report blank PDF
+- dtr.js export=1: waits for a real sheet (the container held only an HTML comment, so a blank 1 KB PDF was sent) and re-presses the preview if the page was slow.
+- DtrController::sheetPdf keeps public failure diagnostics in writable/cache/sheet_pdfs/last_failed.*; broken Chrome profile folder there was deleted.
+
+## Phase 233 - Database source: search + instant new eTRF, faster Mirror, service 1.3.48 (2026-11-24)
+- interlink.source=database: the Report Submission search box (InterlinkController::serviceSearch -> mirrorSearch) now reads tbl_interlink_rows; list rows share mirrorGridRows() with mirrorGrid().
+- A finished eTRF / report job (InterlinkServiceController::callback) triggers the Mirror and, in database mode, puts a stub row (InterlinkMirrorController::stub, empty row_hash) in the copy so it shows at once; the Mirror replaces it with the real row.
+- Mirror 1.1.2: trigger checked every 5 s (was 60), trigger kept when a sync is running. Service 1.3.48 (self-contained, built from the 1.3.40 source): faster grid search polling. Installers in Desktop\New Installations.
+- Not browser-verified.
+
+## Phase 234 - data fix: style of DTP20261123SHA2-R-2
+Style "JN LX OLD SKOOL 36" changed to "UA LX OLD SKOOL 36" for that lab ref only: tbl_dtr_bonding_info.ModelStyle, tbl_dtr_bondingtracker.Style, tbl_dtr_unified_labrefs.model_style (1 row each). The lab ref appears in no other table (tbl_activity_log only logs it); other lab refs with the old style were left alone.
+Phase 234b: same style change for DTP20261123EYA2-R and DTP20261123RVTA2-R (tbl_dtr_bondingtracker.Style, tbl_dtr_pull_tests.ModelStyle, tbl_dtr_unified_labrefs.model_style).
+Phase 235: Mirror 1.1.3 - rows already stored are skipped. A row that only lacks its E/U pages (failed detail, "!") is no longer re-sent and no longer forces a full 38-minute grid pass; only its details are retried. Timeouts on detail pages no longer make every later run full. Installer on Desktop\New Installations.
+Phase 236: Mirror 1.1.4 - keep-alive: every 5 min while idle the saved InterLink session is touched over HTTP (no browser) so the idle timeout never runs out; renewed cookies are written back to session.json (also after each sync). Logs "keep-alive: ..." in mirror.log. Replaces 1.1.2/1.1.3 installers.
+Phase 237: ERP Agent 1.1.2 - after any failed task in hidden mode the hidden ERP is closed (HiddenDesk.CloseErp), so the next report starts a fresh ERP and a rejected record left in its list cannot cause "Key violation" on later saves. Installer in Desktop\New Installations.
+Phase 238: ERP Agent 1.1.3 - CloseErp asks the hidden ERP to close (WM_CLOSE, waits 8 s) before killing it, so it signs out on the ERP server (07:23 "Remote error EEFFACE" at sign-in after a force kill, manual sign-in worked).
+
+## Phase 239 - InterLink Generate Report "Cannot access src before initialization"
+- dtr.js export=1 (hidden frame PDF) assigned `src` before its `const src` (TDZ); removed the stray assignment, rebuilt min assets. Obsidian/graphify: no structural change.
+
+## Phase 240 - InterLink Service 1.3.50 (eTRF material fields + wrong-person sessions)
+- interlink-core.js: Material template now sets Sourcing Office / Service Required / Quotation through the editors (like pull). Service: keep-alive and Login refuse to save a session whose InterLink user is not the account owner (qcasst=Danica, lab=Faye). Installer in Desktop\New Installations and New folder.
+
+## Phase 241 - Signature stamp back on the fixed bottom area
+- Cause: Apache runs as LocalSystem, so tools/pdf_signoff.py could not import PyMuPDF (installed in the user site-packages); no sign-off lines found -> stamp-pdf.js fell back to fixed area, names not written in Reviewed/Approved by. Fix: pdf_signoff.py adds C:\Users\*\AppData\Roaming\Python\Python3*\site-packages to sys.path on ImportError (tested with python -s).
+
+## Phase 241 - Signature stamp fell back to the fixed bottom area
+- Cause: Apache runs as LocalSystem, so tools/pdf_signoff.py could not import PyMuPDF (installed in a user's site-packages); no sign-off lines found, so stamp-pdf.js used the fixed area and did not write the names in Reviewed / Approved by. Fix: pdf_signoff.py adds the Roaming Python site-packages to sys.path when the import fails (tested with python -s).
+
+## Phase 242 - InterLink Service 1.3.51: editable "at once" limits
+- Settings window: Reports/eTRF sent at once (1-3; 2 = one per account), Searches at once per account (1-5), Searches at once on all accounts (1-10), PDFs at once (1-10). Keys Service:MaxParallelSubmits / MaxParallelPerAccount / MaxParallelReads / MaxParallelPdfs in appsettings.Local.json (AppSettings.cs, SettingsForm.cs). JobQueue: _submitSlots global limit; per-account semaphore has N permits, searches take 1, a submission takes all (alone on its account). Defaults 2/4/4/4. Includes the 1.3.50 fixes (material eTRF fields, wrong-person sign-in guard).
+
+## Phase 243 — InterLink Service 1.3.52 (safer defaults, browser start retry)
+- Log errors after 1.3.51 ("No browser could be started", grid not found, upload not finished) came from the higher default parallelism (4 searches per account, 4 PDFs). Defaults now: per-account searches 1, all-account searches 3, PDFs 2, submits 2 (still editable in Settings). BrowserLauncher retries once after 4 s. Installer: NexusInterlinkService-Setup-1.3.52.exe.
+
+## Phase 244 — InterLink Service 1.3.53 (retry before save)
+- add/edit jobs that fail BEFORE Save with "not found in the search grid", "not an Upload form", "did not finish uploading" or "did not open the Upload Form" are retried up to 3 times (4 s apart, fresh page). interlink-core.js: "not found" now says when the row IS there but has no Upload icon. Installer 1.3.53 (self-contained).
+
+## Phase 245 — InterLink Service 1.3.54
+- Navigation timeouts on InterLink Home.aspx (network/proxy) are retried like the other pre-save errors. Installer 1.3.54.
+
+- Phase 246 - Server PDF (Generate Report / eTRF reports): every PDF run now uses its own temporary Chrome/Edge profile folder (deleted after) instead of one shared writable/cache/sheet_pdfs/profile that a leftover browser could lock, which made "The PDF could not be created on the server (Chrome or Edge is required)". Files: app/Services/Dtr/DtrPdf.php, app/Controllers/DtrController.php (sheet PDF).
+
+- Phase 247 - InterLink "Batch Approval" window (button next to Company Reports): lists every Application No. (tbl_interlink_rows) with a searchable Lab Reference box (datalist from interlink/labrefs), checkbox column, Generate Request (builds the report PDFs in the browser, same logic as the Upload Form's Generate Report), Request for approval (one approver dialog, max 2, then dtr/approval/request per row), live Approval status (polls interlink/batch/status every 5 s), View Doc eye, and Move to InterLink (window.nxMoveToInterlink in interlink.js: opens the application, syncs the chosen Lab Ref, attaches the signed report). New: InterlinkBatchController (interlink/batch/data, interlink/batch/status), public/assets/js/interlink_batch.js, CSS in interlink.css.

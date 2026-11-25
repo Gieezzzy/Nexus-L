@@ -49,14 +49,16 @@
   }
   loadWarnings();
 
-  // ---------------------------------------------------------------- Failed sample CAPA: root cause + corrective action + a passing retest before a case can be closed
-  const capa = { status: 'Open', edit: false, cases: [], page: 1, pageSize: 8 };
+  // ---------------------------------------------------------------- Failed sample CAPA: Excel fields, up to 3 photos, 72h deleted-photo audit, batch links & real-time updates
+  const capa = { status: 'Open', edit: false, cases: [], page: 1, pageSize: 8, selected: new Set(), sig: '' };
   const csrfMeta = document.querySelector('meta[name="X-CSRF-TOKEN"]');
+  const capaLb = $('#qi-capa-lb');
+  capaLb?.addEventListener('click', () => { capaLb.hidden = true; });
   const renderCapa = () => {
     const list = $('#qi-capa-list');
     const pager = $('#qi-capa-pager');
     const q = ($('#qi-capa-q')?.value || '').trim().toLowerCase();
-    const rows = q ? capa.cases.filter((c) => [c.ref, c.line, c.style, c.cement, c.mode, c.retest].join(' ').toLowerCase().includes(q)) : capa.cases;
+    const rows = q ? capa.cases.filter((c) => [c.ref, c.line, c.style, c.cement, c.mode, c.prepared_by, c.retest].join(' ').toLowerCase().includes(q)) : capa.cases;
     const total = rows.length;
     const pages = Math.max(1, Math.ceil(total / capa.pageSize));
     if (capa.page > pages) capa.page = pages;
@@ -64,6 +66,8 @@
     const start = (capa.page - 1) * capa.pageSize;
     const slice = rows.slice(start, start + capa.pageSize);
     list.innerHTML = slice.length ? slice.map(capaCard).join('') : '<p class="qi-empty">' + (q ? 'No CAPA cases match "' + esc(q) + '".' : 'No CAPA cases in this view.') + '</p>';
+    const mkBtn = $('#qi-capa-mklink');
+    if (mkBtn) mkBtn.textContent = capa.selected.size ? ('🔗 Create CAPA Link (' + capa.selected.size + ')') : '🔗 Create CAPA Link';
     if (pager) {
       if (total <= capa.pageSize) {
         pager.hidden = true;
@@ -80,49 +84,99 @@
       }
     }
   };
-  async function loadCapa() {
-    const list = $('#qi-capa-list'); list.innerHTML = skelRows(4);
-    const pager = $('#qi-capa-pager'); if (pager) pager.hidden = true;
+  async function loadCapa(silent = false) {
+    const list = $('#qi-capa-list');
+    if (!silent) {
+      list.innerHTML = skelRows(4);
+      const pager = $('#qi-capa-pager'); if (pager) pager.hidden = true;
+    }
     try {
       const r = await fetch(base + 'capa?status=' + capa.status, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
       const j = await r.json(); if (!j.ok) throw new Error('bad');
+      const nextSig = JSON.stringify([j.open, j.closed, j.overdue, (j.cases || []).map((x) => [x.id, x.status, x.submitted_at, (x.photos || []).length, (x.deleted_photos || []).length, x.root_cause, x.action, x.preventive_action, x.retest])]);
+      if (silent && nextSig === capa.sig) return;
+      capa.sig = nextSig;
       capa.edit = !!j.can_edit;
       capa.cases = j.cases || [];
-      $('#qi-capa-hint').textContent = 'Failed bonding Lab Refs since ' + j.since + ' (closes only after a passing retest is linked).';
+      $('#qi-capa-hint').textContent = 'Failed bonding Lab Refs since ' + j.since + ' (real-time photo & link updates active).';
       $('#qi-capa-kpis').innerHTML = [['Open Cases', j.open, j.open ? 'amber' : 'green'], ['Open 3+ Days', j.overdue, j.overdue ? 'red' : 'green'], ['Closed Cases', j.closed, 'green']]
         .map(([l, n, c]) => '<div class="qi-kpi ' + c + '"><b>' + n + '</b><span>' + l + '</span></div>').join('');
       const badge = $('#qi-capa-badge'); badge.hidden = !j.open; badge.textContent = j.open;
+      const mkBtn = $('#qi-capa-mklink'); if (mkBtn) mkBtn.hidden = !capa.edit;
       renderCapa();
-    } catch (e) { list.innerHTML = '<p class="qi-note">Could not load the CAPA cases.</p>'; }
+    } catch (e) { if (!silent) list.innerHTML = '<p class="qi-note">Could not load the CAPA cases.</p>'; }
   }
   const capaCard = (c) => {
     const closed = c.status === 'Closed', late = !closed && c.age >= 3, ro = closed || !capa.edit ? ' disabled' : '';
-    const cands = (c.candidates || []).map((x) => '<button type="button" class="qi-chip qi-capa-cand" data-pick="' + esc(x.ref) + '" title="Passed ' + esc(x.tested) + '">' + esc(x.ref) + ' passed</button>').join('');
-    const badgeCls = closed ? 'green' : (late ? 'red' : 'amber');
-    const badgeTxt = closed ? 'CLOSED' : (late ? 'OVERDUE · ' + c.age + 'd' : 'OPEN · ' + c.age + 'd');
-    return '<article class="cal-glass qi-capa ' + (closed ? 'done' : (late ? 'late' : '')) + '" data-id="' + c.id + '">'
+    const photos = c.photos || [], delPhotos = c.deleted_photos || [], hist = c.history || [];
+    const hasCause = !!(c.root_cause || '').trim();
+    const hasAction = !!(c.action || '').trim();
+    const hasPhoto = photos.length > 0;
+    const hasRetest = !!(c.retest || '').trim();
+    const readyToClose = !closed && hasCause && hasAction && hasRetest;
+    const stepPill = (ok, lbl) => '<span class="qi-step ' + (ok ? 'ok' : 'miss') + '">' + (ok ? '&#10003;' : '&#9675;') + ' ' + lbl + '</span>';
+    const cands = (c.candidates || []).map((x) => '<button type="button" class="qi-chip qi-capa-cand" data-pick="' + esc(x.ref) + '" title="Passed ' + esc(x.tested) + '">&#9889; ' + esc(x.ref) + ' passed</button>').join('');
+    const badgeCls = closed ? 'green' : (readyToClose ? 'green' : (late ? 'red' : 'amber'));
+    const badgeTxt = closed ? 'CLOSED' : (readyToClose ? 'READY' : (late ? 'OVERDUE · ' + c.age + 'd' : 'OPEN · ' + c.age + 'd'));
+    const checked = capa.selected.has(c.id) ? ' checked' : '';
+    const slotsHtml = [0, 1, 2].map((idx) => {
+      const p = photos[idx];
+      if (p) {
+        return '<div class="qi-capa-thumb" data-pid="' + p.id + '"><img src="' + esc(p.url) + '" alt="CAPA photo ' + (idx + 1) + '" loading="lazy" decoding="async">'
+          + (closed || !capa.edit ? '' : '<button type="button" class="qi-capa-rm" data-rm-photo="' + p.id + '" title="Remove photo (kept 72h in audit history)">&times;</button>') + '</div>';
+      }
+      return '<div class="qi-capa-slot-empty" title="Empty photo slot ' + (idx + 1) + ' of 3">' + (idx + 1) + '</div>';
+    }).join('');
+    const delHtml = delPhotos.length ? '<details class="qi-capa-delhist"><summary>Deleted photos (' + delPhotos.length + ' · 72h audit)</summary><div class="qi-capa-delgrid">'
+      + delPhotos.map((p) => '<div class="qi-capa-delitem"><img src="' + esc(p.url) + '" alt="Removed photo"><div><b>' + esc(p.orig_name || 'Photo') + '</b><small>Removed by ' + esc(p.deleted_by || 'Staff') + ' · ' + esc((p.deleted_at || '').slice(0, 16)) + ' (' + (p.hours_left || 1) + 'h left)</small></div></div>').join('')
+      + '</div></details>' : '';
+    const histHtml = hist.length ? '<details class="qi-capa-delhist"><summary>History (' + hist.length + ')</summary><ul class="qi-capa-hlist">'
+      + hist.slice(0, 6).map((h) => '<li><b>' + esc(h.actor) + '</b>: ' + esc(h.detail) + ' <small>' + esc((h.created_at || '').slice(5, 16)) + '</small></li>').join('')
+      + '</ul></details>' : '';
+
+    return '<article class="cal-glass qi-capa ' + (closed ? 'done' : (readyToClose ? 'ready' : (late ? 'late' : ''))) + '" data-id="' + c.id + '">'
       + '<header class="qi-capa-head">'
       + '<div class="qi-capa-id">'
+      + (!closed && capa.edit ? '<input type="checkbox" class="qi-capa-sel" data-sel="' + c.id + '" title="Select for batch CAPA link"' + checked + '>' : '')
       + (c.line ? '<span class="qi-capa-line">' + esc(c.line) + '</span>' : '')
       + '<b class="qi-capa-ref">' + esc(c.ref) + '</b>'
+      + '<span class="qi-badge ' + badgeCls + '" style="margin-left:auto">' + esc(badgeTxt) + '</span>'
       + '<span class="qi-capa-meta">' + esc(c.style || '—') + (c.cement ? ' · ' + esc(c.cement) : '') + '</span>'
       + '</div>'
       + '<div class="qi-capa-right">'
-      + (c.mode ? '<span class="qi-pill bad">' + esc(c.mode) + '</span>' : '')
+      + (c.submitted_at ? '<span class="qi-pill ok" title="Submitted via link by ' + esc(c.submitted_by) + '">Link Submitted</span>' : '')
+      + (c.mode ? '<span class="qi-pill bad" title="' + esc(c.mode) + '">' + esc(c.mode) + '</span>' : '')
       + '<span class="qi-capa-date">Failed ' + esc(c.failed_date || '—') + '</span>'
-      + '<span class="qi-badge ' + badgeCls + '">' + esc(badgeTxt) + '</span>'
-      + '</div></header>'
+      + '</div>'
+      + '<div class="qi-capa-steps" aria-label="Completion checklist">'
+      + stepPill(hasCause, 'Cause') + stepPill(hasAction, 'Action') + stepPill(hasPhoto, 'Photo') + stepPill(hasRetest, 'Retest')
+      + '</div>'
+      + '</header>'
+      + '<div class="qi-capa-meta-in">'
+      + '<label><span>Prepared by</span><input type="text" data-f="prepared_by" value="' + esc(c.prepared_by || '') + '" placeholder="Name"' + ro + '></label>'
+      + '<label><span>Production Date</span><input type="date" data-f="production_date" value="' + esc(c.production_date || '') + '"' + ro + '></label>'
+      + '</div>'
       + '<div class="qi-capa-grid">'
-      + '<label><span>Root cause</span><textarea rows="2" data-f="root_cause" placeholder="Describe why it failed…"' + ro + '>' + esc(c.root_cause) + '</textarea></label>'
-      + '<label><span>Corrective action</span><textarea rows="2" data-f="corrective_action" placeholder="Action taken on line / adhesive / process…"' + ro + '>' + esc(c.action) + '</textarea></label>'
+      + '<label class="' + (hasCause ? 'is-ok' : 'is-miss') + '"><span>Problem Statement</span><textarea rows="2" data-f="root_cause" placeholder="Describe why it failed…"' + ro + '>' + esc(c.root_cause) + '</textarea></label>'
+      + '<label class="' + (hasAction ? 'is-ok' : 'is-miss') + '"><span>Action Plan</span><textarea rows="2" data-f="corrective_action" placeholder="Action taken on line / adhesive / process…"' + ro + '>' + esc(c.action) + '</textarea></label>'
+      + '<label><span>Preventive Action</span><textarea rows="1" data-f="preventive_action" placeholder="Preventive measure…"' + ro + '>' + esc(c.preventive_action || '') + '</textarea></label>'
+      + '</div>'
+      + '<div class="qi-capa-photos">'
+      + '<div class="qi-capa-ptop"><span>Photos (' + photos.length + ' / 3)</span>'
+      + (closed || !capa.edit ? '' : '<div class="qi-capa-pbtns-sm"><input type="file" accept="image/*" capture="environment" class="qi-f-cam" hidden><input type="file" accept="image/*" class="qi-f-up" hidden>'
+        + '<button type="button" class="qi-mini-btn" data-cam' + (photos.length >= 3 ? ' disabled' : '') + ' title="Take photo with camera">📷</button>'
+        + '<button type="button" class="qi-mini-btn" data-up' + (photos.length >= 3 ? ' disabled' : '') + ' title="Upload image">📁 Upload</button></div>')
+      + '</div>'
+      + '<div class="qi-capa-thumbs">' + slotsHtml + '</div>'
+      + delHtml + histHtml
       + '</div>'
       + '<div class="qi-capa-retest">'
-      + '<label><span>Retest Lab Ref</span><input type="text" data-f="retest_lab_ref" value="' + esc(c.retest) + '"' + ro + ' placeholder="e.g. ' + esc(c.ref) + '-R01"></label>'
-      + (closed || !capa.edit ? '' : '<div class="qi-capa-cands">' + (cands ? '<span>Suggested passing retests:</span> ' + cands : '<small>No passing retest saved yet for this Lab Ref.</small>') + '</div>')
+      + '<label class="' + (hasRetest ? 'is-ok' : 'is-miss') + '"><span>Retest Lab Ref</span><input type="text" data-f="retest_lab_ref" value="' + esc(c.retest) + '"' + ro + ' placeholder="e.g. ' + esc(c.ref) + '-R01"></label>'
+      + (closed || !capa.edit ? '' : '<div class="qi-capa-cands">' + (cands ? '<span>Passing:</span> ' + cands : '<small>No passing retest saved yet.</small>') + '</div>')
       + '</div>'
       + (closed
         ? '<footer class="qi-capa-foot"><small class="qi-capa-closed">Closed by <b>' + esc(c.closed_by || '—') + '</b>' + (c.closed_at ? ' on ' + esc(c.closed_at.slice(0, 10)) : '') + '</small></footer>'
-        : (!capa.edit ? '' : '<footer class="qi-capa-act"><button type="button" class="cal-btn-glass" data-act="save">Save draft</button><button type="button" class="qi-capa-close-btn" data-act="close">Verify &amp; Close Case</button><small class="qi-capa-msg" role="status"></small></footer>'))
+        : (!capa.edit ? '' : '<footer class="qi-capa-act"><button type="button" class="cal-btn-glass" data-act="save">Save draft</button><button type="button" class="qi-capa-close-btn" data-act="close">Verify &amp; Close</button><small class="qi-capa-msg" role="status"></small></footer>'))
       + '</article>';
   };
   $('#qi-capa-q')?.addEventListener('input', () => { capa.page = 1; renderCapa(); });
@@ -132,8 +186,89 @@
     renderCapa();
     $('#qi-panel-capa')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
+  $('#qi-capa-export')?.addEventListener('click', () => { window.location.href = base + 'capa/export?status=' + encodeURIComponent(capa.status); });
+  $('#qi-capa-mklink')?.addEventListener('click', async () => {
+    let ids = [...capa.selected];
+    if (!ids.length) {
+      ids = capa.cases.filter((c) => c.status === 'Open').slice(0, 8).map((c) => c.id);
+    }
+    if (!ids.length) { alert('No open CAPA cases available to include in a link.'); return; }
+    const box = $('#qi-capa-linkbox');
+    const btn = $('#qi-capa-mklink'); btn.disabled = true;
+    try {
+      const r = await fetch(base + 'capa/link', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfMeta ? csrfMeta.content : '' },
+        body: JSON.stringify({ ids })
+      });
+      const j = await r.json();
+      if (csrfMeta && j.csrf) csrfMeta.content = j.csrf;
+      if (!r.ok || !j.ok) throw new Error(j.message || 'Could not create link.');
+      if (box) {
+        box.hidden = false;
+        box.innerHTML = '<div><b>CAPA Link Ready (' + j.count + ' card' + (j.count > 1 ? 's' : '') + '):</b> <input type="text" readonly value="' + esc(j.url) + '" id="qi-capa-link-in"></div>'
+          + '<div class="qi-capa-lacts"><button type="button" class="cal-btn-glass" id="qi-capa-copy">Copy Link</button><a class="cal-btn-glass" href="' + esc(j.url) + '" target="_blank" rel="noopener">Open</a><button type="button" class="cal-btn-text" id="qi-capa-lclose">&times;</button></div>';
+        $('#qi-capa-copy')?.addEventListener('click', () => {
+          const inp = $('#qi-capa-link-in'); inp?.select();
+          navigator.clipboard?.writeText(j.url).catch(() => document.execCommand('copy'));
+          $('#qi-capa-copy').textContent = 'Copied!';
+        });
+        $('#qi-capa-lclose')?.addEventListener('click', () => { box.hidden = true; });
+      }
+      capa.selected.clear();
+      renderCapa();
+    } catch (err) { alert(err.message); }
+    btn.disabled = false;
+  });
+  $('#qi-capa-list').addEventListener('change', async (e) => {
+    const sel = e.target.closest('.qi-capa-sel');
+    if (sel) {
+      const id = +sel.dataset.sel;
+      if (sel.checked) capa.selected.add(id); else capa.selected.delete(id);
+      const mkBtn = $('#qi-capa-mklink');
+      if (mkBtn) mkBtn.textContent = capa.selected.size ? ('🔗 Create CAPA Link (' + capa.selected.size + ')') : '🔗 Create CAPA Link';
+      return;
+    }
+    const fin = e.target.closest('.qi-f-cam,.qi-f-up');
+    if (fin && fin.files && fin.files[0]) {
+      const card = fin.closest('.qi-capa'), msg = card.querySelector('.qi-capa-msg');
+      const fd = new FormData();
+      fd.append('capa_id', card.dataset.id);
+      fd.append('photo', fin.files[0]);
+      if (msg) { msg.textContent = 'Uploading photo...'; msg.className = 'qi-capa-msg ok'; }
+      try {
+        const r = await fetch(base + 'capa/photo', { method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfMeta ? csrfMeta.content : '' }, body: fd });
+        const j = await r.json();
+        if (csrfMeta && j.csrf) csrfMeta.content = j.csrf;
+        if (!r.ok || !j.ok) throw new Error(j.message || 'Upload failed.');
+        await loadCapa(true);
+      } catch (err) { if (msg) { msg.textContent = err.message; msg.className = 'qi-capa-msg bad'; } }
+      fin.value = '';
+    }
+  });
   $('#qi-capa-list').addEventListener('click', async (e) => {
+    const img = e.target.closest('.qi-capa-thumb img, .qi-capa-delitem img');
+    if (img && capaLb) { capaLb.querySelector('img').src = img.src; capaLb.hidden = false; return; }
     const card = e.target.closest('.qi-capa'); if (!card) return;
+    if (e.target.closest('[data-cam]')) { card.querySelector('.qi-f-cam')?.click(); return; }
+    if (e.target.closest('[data-up]')) { card.querySelector('.qi-f-up')?.click(); return; }
+    const rmBtn = e.target.closest('[data-rm-photo]');
+    if (rmBtn) {
+      if (!confirm('Remove this photo? (It will be logged in history and kept for 72 hours.)')) return;
+      rmBtn.disabled = true;
+      try {
+        const r = await fetch(base + 'capa/photo/delete', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfMeta ? csrfMeta.content : '' },
+          body: JSON.stringify({ capa_id: +card.dataset.id, photo_id: +rmBtn.dataset.rmPhoto })
+        });
+        const j = await r.json();
+        if (csrfMeta && j.csrf) csrfMeta.content = j.csrf;
+        if (!r.ok || !j.ok) throw new Error(j.message || 'Could not remove.');
+        await loadCapa(true);
+      } catch (err) { alert(err.message); rmBtn.disabled = false; }
+      return;
+    }
     const pick = e.target.closest('[data-pick]');
     if (pick) { card.querySelector('[data-f="retest_lab_ref"]').value = pick.dataset.pick; return; }
     const b = e.target.closest('[data-act]'); if (!b) return;
@@ -145,13 +280,20 @@
       const j = await r.json().catch(() => ({}));
       if (csrfMeta && j.csrf) csrfMeta.content = j.csrf;
       msg.textContent = j.message || (r.ok ? 'Saved.' : 'Not saved.'); msg.className = 'qi-capa-msg ' + (r.ok ? 'ok' : 'bad');
-      if (r.ok && body.close) setTimeout(loadCapa, 900);
+      if (r.ok && body.close) setTimeout(() => loadCapa(false), 900);
     } catch (err) { msg.textContent = 'Could not save.'; msg.className = 'qi-capa-msg bad'; }
     b.disabled = false;
   });
-  $$('#qi-capa-status button').forEach((b) => b.addEventListener('click', () => { $$('#qi-capa-status button').forEach((x) => x.classList.toggle('active', x === b)); capa.status = b.dataset.st; capa.page = 1; loadCapa(); }));
-  // the open count on the tab, whichever tab is showing
-  fetch(base + 'capa?status=Open', { headers: { Accept: 'application/json' }, credentials: 'same-origin' }).then((r) => r.json()).then((j) => { if (j && j.ok) { const b = $('#qi-capa-badge'); b.hidden = !j.open; b.textContent = j.open; } }).catch(() => {});
+  // Real-time CAPA refresh every 25s while CAPA tab is visible and user is not typing in a card
+  setInterval(() => {
+    const panel = $('#qi-panel-capa');
+    if (!panel || panel.classList.contains('hidden') || document.hidden) return;
+    if (document.activeElement && document.activeElement.closest('#qi-capa-list')) return;
+    loadCapa(true);
+  }, 25000);
+  $$('#qi-capa-status button').forEach((b) => b.addEventListener('click', () => { $$('#qi-capa-status button').forEach((x) => x.classList.toggle('active', x === b)); capa.status = b.dataset.st; capa.page = 1; capa.sig = ''; loadCapa(); }));
+  // Lightweight open count on the tab (single COUNT query, avoids loading all cases on initial page load)
+  fetch(base + 'capa?badge=1', { headers: { Accept: 'application/json' }, credentials: 'same-origin' }).then((r) => r.json()).then((j) => { if (j && j.ok) { const b = $('#qi-capa-badge'); b.hidden = !j.open; b.textContent = j.open; } }).catch(() => {});
 
   // ---------------------------------------------------------------- shimmer
   const skelKpis = (n) => Array.from({ length: n }, () => '<div class="qi-kpi"><i class="qi-skel" style="width:48px;height:24px"></i><i class="qi-skel" style="width:90px;height:11px;margin-top:8px"></i></div>').join('');

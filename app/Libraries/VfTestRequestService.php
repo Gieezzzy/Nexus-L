@@ -689,19 +689,16 @@ class VfTestRequestService
         return preg_replace('/[\\\\\/:*?"<>|\x00-\x1f]+/', '_', $raw) ?: ($appNo . '.PDF');
     }
 
-    /** Handles the callback of a "vf_pdf" job: the printed eTRF PDF of an existing Application is saved on the request that holds that Application No. */
+    /** Handles the callback of a "vf_pdf" job: saves the printed eTRF PDF by Application No. (and links it on any matching tbl_vf_test_requests row). */
     public function handlePdfCallback(array $job, array $p): void
     {
         $this->ensureTables();
         $db  = $this->db();
         $app = strtoupper(trim((string) ($job['application_no'] ?? '')));
         $req = $db->table('tbl_vf_test_requests')->where('generated_application_no', $app)->orderBy('id', 'DESC')->get(1)->getRowArray();
-        if (! $req) {
-            return;
-        }
         $now = date('Y-m-d H:i:s');
         if (($p['state'] ?? '') !== 'done') {
-            if (($p['state'] ?? '') !== 'running') {
+            if ($req && ($p['state'] ?? '') !== 'running') {
                 $db->table('tbl_vf_test_requests')->where('id', $req['id'])->update(['pdf_capture_warning' => mb_substr('PDF from InterLink failed: ' . (string) ($p['message'] ?? ''), 0, 250), 'updated_at' => $now]);
             }
 
@@ -709,8 +706,22 @@ class VfTestRequestService
         }
         $bytes = base64_decode((string) ($p['pdf_b64'] ?? ''), true);
         if ($bytes === false || strlen($bytes) < 500 || ! str_starts_with($bytes, '%PDF')) {
-            $db->table('tbl_vf_test_requests')->where('id', $req['id'])->update(['pdf_capture_warning' => 'InterLink returned no real PDF.', 'updated_at' => $now]);
+            if ($req) {
+                $db->table('tbl_vf_test_requests')->where('id', $req['id'])->update(['pdf_capture_warning' => 'InterLink returned no real PDF.', 'updated_at' => $now]);
+            }
 
+            return;
+        }
+        // Always cache a copy by Application No. so InterLink > VF - Test Request can view/download any Application's eTRF PDF
+        $safeApp = preg_replace('/[^A-Z0-9_-]/', '', $app);
+        if ($safeApp !== '') {
+            $appDir = WRITEPATH . 'uploads' . DIRECTORY_SEPARATOR . 'vf_etrf_pdfs' . DIRECTORY_SEPARATOR . 'apps' . DIRECTORY_SEPARATOR;
+            if (! is_dir($appDir)) {
+                @mkdir($appDir, 0775, true);
+            }
+            @file_put_contents($appDir . $safeApp . '.pdf', $bytes);
+        }
+        if (! $req) {
             return;
         }
         $name = self::formatPdfFilename($app, (string) $req['mtl_no'], (string) $req['test_package']);

@@ -526,7 +526,7 @@
     wMsgs.innerHTML = '';
     win.hidden = false; card.hidden = true;
     await pullChat();
-    if (cur.status === 'open') cur.timer = setInterval(() => { if (!document.hidden) pullChat(); }, 2500);
+    if (cur.status === 'open') cur.timer = setInterval(() => { if (!document.hidden) pullChat(); }, 5000);
     wInput.focus();
   };
   window.nxAdminChat = openChat;
@@ -555,6 +555,6 @@
   const deep = Number(new URLSearchParams(location.search).get('nxsession') || 0);
   if (deep) openChat(deep);
   setTimeout(liveTick, 1200);
-  setInterval(liveTick, 4000);
+  setInterval(liveTick, 8000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) liveTick(); });
 })();

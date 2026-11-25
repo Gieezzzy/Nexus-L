@@ -8,28 +8,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>Shoe photo - NEXUS-L</title>
-<style>
-:root { --ink: #0f172a; --mute: #5b6a7e; --line: #dbe3ee; --brand: #2563eb; }
-* { box-sizing: border-box; }
-body { margin: 0; min-height: 100vh; background: #f1f5f9; color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; display: flex; align-items: flex-start; justify-content: center; padding: 16px; }
-.card { width: 100%; max-width: 480px; background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 20px 18px; box-shadow: 0 8px 28px rgba(15,23,42,.08); }
-h1 { margin: 0 0 4px; font-size: 20px; }
-.sub { margin: 0 0 14px; color: var(--mute); font-size: 14px; }
-.facts { display: grid; gap: 4px; margin: 0 0 14px; padding: 10px 12px; background: #f8fafc; border-radius: 10px; font-size: 14px; }
-.facts b { font-variant-numeric: tabular-nums; }
-.pick { display: block; width: 100%; min-height: 56px; border: 0; border-radius: 12px; background: var(--brand); color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
-.pick:active { background: #1d4ed8; }
-.pick.alt { background: #fff; color: var(--ink); border: 1px solid #cbd5e1; margin-top: 10px; }
-.pick:disabled { opacity: .55; }
-#prev { display: none; width: 100%; max-height: 52vh; object-fit: contain; border-radius: 12px; background: #0f172a; margin-bottom: 12px; }
-.msg { margin: 12px 0 0; font-size: 14px; min-height: 1.4em; }
-.msg.err { color: #b91c1c; } .msg.ok { color: #15803d; font-weight: 600; }
-.time { font-size: 13px; color: var(--mute); margin-top: 10px; }
-.gone { text-align: center; padding: 28px 8px; }
-.gone h2 { margin: 0 0 4px; font-size: 18px; }
-.gone .x.amber { background: #fef3c7; color: #b45309; }
-.gone .x { width: 52px; height: 52px; border-radius: 50%; background: #fee2e2; color: #b91c1c; display: inline-grid; place-items: center; font-size: 28px; font-weight: 700; margin-bottom: 8px; }
-</style>
+<link rel="stylesheet" href="<?= base_url('assets/css/views/photo-capture-1.css') ?>?v=<?= @filemtime(FCPATH . 'assets/css/views/photo-capture-1.css') ?>">
 </head>
 <body>
 <div class="card">

@@ -135,7 +135,7 @@
   { const b = $('#sc-status-install'); if (b) b.textContent = `Install the sender for ${(BROWSERS[browserKind()] || BROWSERS.chrome).name}`; }
   renderSenderStatus();
   window.addEventListener('focus', renderSenderStatus);   // catches "I just installed it and switched back to this tab"
-  setInterval(renderSenderStatus, 4000);
+  setInterval(() => { if (!document.hidden) renderSenderStatus(); }, 10000);
 
   window.addEventListener('message', (e) => {
     if (e.source !== window || !e.data || e.data.type !== 'NXL_SEND_STATUS') return;

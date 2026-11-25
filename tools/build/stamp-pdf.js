@@ -14,7 +14,7 @@ const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
   const [, , inPdf, outPdf, stampFile] = process.argv;
   const s = JSON.parse(fs.readFileSync(stampFile, 'utf8'));
   const doc = await PDFDocument.load(fs.readFileSync(inPdf));
-  const page = doc.getPage(0);
+  const page = doc.getPage(Math.min(doc.getPageCount() - 1, Math.max(0, (s.pos && s.pos.page) || 0)));
   const { width, height } = page.getSize();
   const font = await doc.embedFont(StandardFonts.HelveticaBold);
   const small = await doc.embedFont(StandardFonts.Helvetica);
@@ -37,13 +37,35 @@ const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
     const bottom = Math.max(ap.label[3], rv ? rv.label[3] : ap.label[3]);
     // the signature is laid over the printed name(s) on the Reviewed by / Approved by lines (transparent, so the name stays readable)
     // a SMALL copy of the signature on each printed name that is the signer's (transparent, so the name stays readable)
+    // Reviewed by / Approved by must carry the signer's name: empty -> written in, different -> replaced
+    const signerName = String(s.name || '').trim();
+    const same = (a, b) => { const n = (x) => String(x).toLowerCase().replace(/[^a-z]+/g, ' ').trim().split(' ').filter(Boolean); const p = n(a), f = n(b); return p.length > 0 && p.every((t) => f.some((u) => u === t || (t.length === 1 && u[0] === t))) || p.join('') === f.map((u) => u[0]).join(''); };
+    const fillName = (row) => {
+      if (!row || !row.label || !signerName) return;
+      if (row.name && same(row.name, signerName)) return;
+      const lh = row.label[3] - row.label[1];
+      const size = Math.max(7, Math.min(10, lh * 0.9));
+      let x;
+      if (row.name_rect) {                                       // a different name: whiten it, then write the signer's
+        const r = row.name_rect;
+        page.drawRectangle({ x: r[0] - 1, y: H - r[3] - 1.5, width: Math.max(r[2] - r[0], 60) + 2, height: r[3] - r[1] + 3, color: rgb(1, 1, 1), borderWidth: 0 });
+        x = r[0];
+      } else {
+        x = (row.row_end || row.label[2]) + 4;
+      }
+      page.drawText(signerName.toUpperCase(), { x, y: H - row.label[3] + 1.5, size, font, color: rgb(0, 0, 0) });
+      const w = font.widthOfTextAtSize(signerName.toUpperCase(), size);
+      row.name_rect = [x, row.label[1], x + w, row.label[3]];    // the signature goes over the new name
+    };
+    fillName(ap);
+    fillName(rv);
     if (s.png) {
       const img = await doc.embedPng(Buffer.from(s.png, 'base64'));
       const place = (row) => {
         const r = row && row.name_rect;
         if (!r) return;
         const nameW = r[2] - r[0], nameH = r[3] - r[1];
-        const w = Math.min(Math.max(nameW * 0.55, 24), 34), h = Math.max(nameH * 1.05, 9);     // small: smaller than the name itself, kept inside its line
+        const w = Math.min(Math.max(nameW * 0.9, 44), 84), h = Math.max(nameH * 2.2, 20);     // readable, centred on the name
         const k = Math.min(w / img.width, h / img.height);
         const iw = img.width * k, ih = img.height * k;
         const cx = (r[0] + r[2]) / 2, cy = (r[1] + r[3]) / 2;                            // centre of the name (top-origin y)
@@ -57,7 +79,7 @@ const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
         page.drawImage(img, { x: bx + (bw - img.width * k) / 2, y: by + (bh - img.height * k) / 2, width: img.width * k, height: img.height * k });
       }
     }
-    const sx = ap.label[0], sw = width - 6 - sx, sh = 19, sy = H - bottom - 3 - sh;
+    const sx = ap.label[0], sw = width - 6 - sx, sh = 19, sy = H - bottom - 15 - sh;
     stampBox(sx, Math.max(3, sy), sw, sh, line1, line2);
   } else {
     // no printed sign-off lines found: fixed areas measured on the A4 reports (origin bottom-left)

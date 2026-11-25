@@ -76,11 +76,12 @@ class QualityInsightsController extends BaseController
         $bd   = self::BOND_DATE;
         $td   = self::TEST_DATE;
         $rows = $this->db()->query("
-            SELECT BondingTestID id, LabRefNo ref, Result, {$bd} AS pd, {$td} AS td,
-                (SELECT COUNT(*) FROM tbl_dtr_bonding_info x WHERE x.LabRefNo = tbl_dtr_bonding_info.LabRefNo AND x.Result IS NOT NULL AND x.Result <> '') AS n_res
-            FROM tbl_dtr_bonding_info
-            WHERE LabRefNo IS NOT NULL AND LabRefNo <> '' AND LabRefNo NOT LIKE '%TRIAL%' AND LabRefNo NOT LIKE '%SHUTDOWN%' AND COALESCE(POLotNO, '') <> 'SHUTDOWN'
-              AND COALESCE(ModelStyle, '') <> 'SHUTDOWN' AND COALESCE(TestType, '') <> 'LACKING'
+            SELECT b.BondingTestID id, b.LabRefNo ref, b.Result, {$bd} AS pd, {$td} AS td,
+                COALESCE(rc.cnt, 0) AS n_res
+            FROM tbl_dtr_bonding_info b
+            LEFT JOIN (SELECT LabRefNo lr, COUNT(*) cnt FROM tbl_dtr_bonding_info WHERE Result IS NOT NULL AND Result <> '' GROUP BY LabRefNo) rc ON rc.lr = b.LabRefNo
+            WHERE b.LabRefNo IS NOT NULL AND b.LabRefNo <> '' AND b.LabRefNo NOT LIKE '%TRIAL%' AND b.LabRefNo NOT LIKE '%SHUTDOWN%' AND COALESCE(b.POLotNO, '') <> 'SHUTDOWN'
+              AND COALESCE(b.ModelStyle, '') <> 'SHUTDOWN' AND COALESCE(b.TestType, '') <> 'LACKING'
             HAVING (pd BETWEEN ? AND ?) OR (td BETWEEN ? AND ?)", [$from, $to, $from, $to])->getResultArray();
         $out     = [];
         $waiting = [];
@@ -130,12 +131,16 @@ class QualityInsightsController extends BaseController
         return $this->response->setJSON(['ok' => true, 'config' => \App\Libraries\EarlyWarning::config(), 'warnings' => $w]);
     }
 
-    /** GET quality-insights/capa?status=Open|Closed|All: the failed-sample cases (created from the failed bonding reports since capa.start_date) */
+    /** GET quality-insights/capa?status=Open|Closed|All (&badge=1 for fast count only) */
     public function capa(): ResponseInterface
     {
-        $st = (string) $this->request->getGet('status');
+        if ($this->request->getGet('badge') === '1') {
+            return $this->response->setJSON(['ok' => true] + \App\Libraries\Capa::badgeCounts());
+        }
+        $st    = (string) $this->request->getGet('status');
+        $force = $this->request->getGet('refresh') === '1';
 
-        return $this->response->setJSON(['ok' => true, 'can_edit' => \App\Libraries\Capa::canEdit()] + \App\Libraries\Capa::listing(in_array($st, ['Open', 'Closed'], true) ? $st : 'All'));
+        return $this->response->setJSON(['ok' => true, 'can_edit' => \App\Libraries\Capa::canEdit()] + \App\Libraries\Capa::listing(in_array($st, ['Open', 'Closed'], true) ? $st : 'All', $force));
     }
 
     /** POST quality-insights/capa/save {id, root_cause, corrective_action, retest_lab_ref, close}: Admin, Supervisor, Manager, Bonding PIC; closing needs a passing retest */
@@ -153,6 +158,123 @@ class QualityInsightsController extends BaseController
         }
 
         return $this->response->setStatusCode($r['ok'] ? 200 : 422)->setJSON($r + ['csrf' => csrf_hash()]);
+    }
+
+    /** POST quality-insights/capa/photo (multipart: capa_id, photo) */
+    public function capaPhotoUpload(): ResponseInterface
+    {
+        if (! \App\Libraries\Capa::canEdit()) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'message' => 'Only an Admin, Supervisor, Manager or Bonding PIC can upload CAPA photos.', 'csrf' => csrf_hash()]);
+        }
+        $u   = service('auth')->user();
+        $by  = (string) ($u['name'] ?? $u['username'] ?? '');
+        $cid = (int) ($this->request->getPost('capa_id') ?? 0);
+        $res = \App\Libraries\Capa::uploadPhoto($cid, $this->request->getFile('photo'), $by, 'web', null);
+
+        return $this->response->setStatusCode($res['ok'] ? 200 : 422)->setJSON($res + ['csrf' => csrf_hash()]);
+    }
+
+    /** POST quality-insights/capa/photo/delete {capa_id, photo_id} */
+    public function capaPhotoDelete(): ResponseInterface
+    {
+        if (! \App\Libraries\Capa::canEdit()) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'message' => 'Not authorized.', 'csrf' => csrf_hash()]);
+        }
+        $p   = $this->request->getJSON(true) ?? [];
+        $u   = service('auth')->user();
+        $by  = (string) ($u['name'] ?? $u['username'] ?? '');
+        $res = \App\Libraries\Capa::removePhoto((int) ($p['capa_id'] ?? 0), (int) ($p['photo_id'] ?? 0), $by, false);
+
+        return $this->response->setStatusCode($res['ok'] ? 200 : 422)->setJSON($res + ['csrf' => csrf_hash()]);
+    }
+
+    /** GET quality-insights/capa/photo/(:num) — serves active photos AND <72h deleted photos for internal audit review */
+    public function capaPhotoServe(int $photoId): ResponseInterface
+    {
+        \App\Libraries\Capa::ensureTable();
+        \App\Libraries\Capa::purgeExpiredDeletedPhotos();
+        $db = \Config\Database::connect();
+        $p  = $db->table('tbl_dtr_capa_photos')->where('id', $photoId)->get()->getRowArray();
+        if (! $p) {
+            return $this->response->setStatusCode(404)->setBody('Photo not found or expired.');
+        }
+        if (! empty($p['deleted_at']) && ! empty($p['expires_at']) && strtotime((string) $p['expires_at']) <= time()) {
+            return $this->response->setStatusCode(410)->setBody('Deleted photo expired after 72 hours.');
+        }
+        $path = WRITEPATH . 'uploads' . DIRECTORY_SEPARATOR . 'capa' . DIRECTORY_SEPARATOR . (int) $p['capa_id'] . DIRECTORY_SEPARATOR . basename((string) $p['filename']);
+        if (! is_file($path)) {
+            return $this->response->setStatusCode(404)->setBody('Photo file missing.');
+        }
+
+        return $this->response
+            ->setHeader('Content-Type', (string) ($p['mime'] ?: 'image/jpeg'))
+            ->setHeader('Cache-Control', 'private, max-age=300')
+            ->setBody((string) file_get_contents($path));
+    }
+
+    /** POST quality-insights/capa/link {ids:[...], title?:string} — creates 1 unique shareable link for N CAPA cases */
+    public function capaCreateLink(): ResponseInterface
+    {
+        if (! \App\Libraries\Capa::canEdit()) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'message' => 'Only an Admin, Supervisor, Manager or Bonding PIC can create CAPA links.', 'csrf' => csrf_hash()]);
+        }
+        $p   = $this->request->getJSON(true) ?? [];
+        $u   = service('auth')->user();
+        $by  = (string) ($u['name'] ?? $u['username'] ?? '');
+        $res = \App\Libraries\Capa::createLink((array) ($p['ids'] ?? []), (string) ($p['title'] ?? ''), $by);
+        if ($res['ok']) {
+            \App\Libraries\ActivityLog::record('quality', 'capa-link-create', $res['token'], $res['count'] . ' cases');
+        }
+
+        return $this->response->setStatusCode($res['ok'] ? 200 : 422)->setJSON($res + ['csrf' => csrf_hash()]);
+    }
+
+    /** GET quality-insights/capa/export?status=Open|Closed|All — Excel export matching DAILY BONDING FAILURE - CORRECTIVE ACTION PLAN format */
+    public function capaExport(): ResponseInterface
+    {
+        $st   = (string) $this->request->getGet('status');
+        $data = \App\Libraries\Capa::listing(in_array($st, ['Open', 'Closed'], true) ? $st : 'All');
+        $byDate = [];
+        foreach ($data['cases'] as $c) {
+            $d = $c['failed_date'] ?: date('Y-m-d');
+            $byDate[$d][] = $c;
+        }
+        krsort($byDate);
+
+        $esc = static fn ($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
+        $html = '<html><head><meta charset="utf-8"><style>'
+            . 'table{border-collapse:collapse;font-family:Calibri,Arial,sans-serif;font-size:11pt;width:100%}'
+            . 'th,td{border:1px solid #94a3b8;padding:6px 8px;vertical-align:top}'
+            . '.hdr{background:#0f172a;color:#ffffff;font-weight:700;font-size:12pt}'
+            . '.colh{background:#e2e8f0;font-weight:700;text-align:left}'
+            . '.gap td{border:0;height:14px}'
+            . '</style></head><body><table>';
+        foreach ($byDate as $date => $rows) {
+            $html .= '<tr class="hdr"><td colspan="6">DAILY BONDING FAILURE - CORRECTIVE ACTION PLAN</td><td style="text-align:right">' . $esc($date) . '</td></tr>';
+            $html .= '<tr class="colh"><th>Line</th><th>Production Date:</th><th>Prepared by</th><th>Problem Statement</th><th>Action Plan</th><th>Preventive Action</th><th>Photo</th></tr>';
+            foreach ($rows as $r) {
+                $photoTxt = [];
+                foreach ($r['photos'] as $idx => $ph) {
+                    $photoTxt[] = 'Photo ' . ($idx + 1) . ': ' . $ph['url'];
+                }
+                $html .= '<tr>'
+                    . '<td>' . $esc($r['line']) . '</td>'
+                    . '<td>' . $esc($r['production_date']) . '</td>'
+                    . '<td>' . $esc($r['prepared_by']) . '</td>'
+                    . '<td>' . nl2br($esc($r['root_cause'] ?: $r['mode'])) . '</td>'
+                    . '<td>' . nl2br($esc($r['action'])) . '</td>'
+                    . '<td>' . nl2br($esc($r['preventive_action'])) . '</td>'
+                    . '<td>' . ($photoTxt ? implode('<br>', array_map($esc, $photoTxt)) : '') . '</td>'
+                    . '</tr>';
+            }
+            $html .= '<tr class="gap"><td colspan="7"></td></tr>';
+        }
+        $html .= '</table></body></html>';
+
+        return $this->response
+            ->setHeader('Content-Type', 'application/vnd.ms-excel; charset=utf-8')
+            ->setHeader('Content-Disposition', 'attachment; filename="DAILY_BONDING_FAILURE_CAPA_' . date('Ymd') . '.xls"')
+            ->setBody($html);
     }
 
     /** GET quality-insights/line-map?from=&to= */

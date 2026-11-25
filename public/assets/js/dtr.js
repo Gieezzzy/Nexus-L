@@ -152,7 +152,80 @@
   // =========================================================================
   // 1. TAB SWITCHING
   // =========================================================================
+  // "Back": a Whole Shoe / Material Test report opened from the Lab Tracker (or the list / calculators) remembers where it came from.
+  // The panels are only hidden, so going back shows the very same list again: same sub tab, date range, filters, search, open rows and scroll position.
+  const DTR_BACK_FROM = ['labtracker', 'tracker', 'calculators'];
+  const DTR_BACK_TO = ['wholeshoe', 'material'];
+  const DTR_TAB_NAMES = { labtracker: 'Lab Tracker', tracker: 'Lab Reports list', calculators: 'Calculators & Standards' };
+  const DTR_BACK_SUB = { wholeshoe: { sub: 'shoes', label: 'Whole Shoe Collection' }, material: { sub: 'containers', label: 'Lab Material Test Collection' } };
+  let dtrBack = null;
+  const dtrVisibleTab = () => ['tracker', 'labtracker', 'wholeshoe', 'material', 'bonding', 'calculators', 'wholeshoetest'].find((t) => !$(`#dtr-panel-${t}`)?.classList.contains('hidden')) || '';
+  const dtrRefreshBack = () => {
+    DTR_BACK_TO.forEach((t) => {
+      const bar = $(`[data-dtr-for="${t}"]`);
+      if (!bar) return;
+      let b = bar.querySelector('.js-dtr-back');
+      if (!b) {
+        b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'dtr-btn dtr-btn-outline js-dtr-back';
+        b.addEventListener('click', () => {
+          if (DTR_BACK_SUB[t]) {
+            if (dtrBack && dtrBack.tab === 'labtracker' && dtrBack.sub === DTR_BACK_SUB[t].sub) { dtrGoBack(); return; }
+            dtrBack = null;
+            switchTab('labtracker');
+            const st = $(`.dtr-subtab[data-subtab="${DTR_BACK_SUB[t].sub}"]`);
+            if (st) st.click();
+            if (typeof markDtrNav === 'function') markDtrNav('labtracker');
+            window.scrollTo(0, 0);
+            return;
+          }
+          dtrGoBack();
+        });
+        bar.prepend(b);
+      }
+      if (DTR_BACK_SUB[t]) {
+        // Whole Shoe / Material report: Back always lands on its Lab Tracker collection
+        b.style.display = '';
+        b.textContent = '\u2190 Back to ' + DTR_BACK_SUB[t].label;
+        b.title = 'Return to the ' + DTR_BACK_SUB[t].label;
+        return;
+      }
+      b.style.display = dtrBack ? '' : 'none';
+      if (dtrBack) {
+        b.textContent = '\u2190 Back to ' + dtrBack.label;
+        b.title = 'Return to ' + dtrBack.label + ' exactly as you left it';
+      }
+    });
+  };
+  const dtrGoBack = () => {
+    const b = dtrBack;
+    if (!b) return;
+    dtrBack = null;
+    switchTab(b.tab);
+    if (b.sub) {
+      const st = $(`.dtr-subtab[data-subtab="${b.sub}"]`);
+      if (st && !st.classList.contains('active')) st.click();
+    }
+    if (typeof markDtrNav === 'function') markDtrNav(b.tab);
+    requestAnimationFrame(() => window.scrollTo(0, b.scrollY || 0));
+  };
+
   const switchTab = (tabName) => {
+    const fromTab = dtrVisibleTab();
+    if (fromTab !== tabName) {
+      if (DTR_BACK_FROM.includes(fromTab) && DTR_BACK_TO.includes(tabName)) {
+        const act = $('.dtr-subtab.active');
+        const subLbl = fromTab === 'labtracker' ? (act?.textContent || '').replace(/\s+/g, ' ').trim() : '';
+        const dateLbl = fromTab === 'labtracker' ? ($('#dtr-date-label')?.textContent || '').trim() : '';
+        dtrBack = {
+          tab: fromTab, sub: fromTab === 'labtracker' ? (act?.dataset.subtab || '') : '', scrollY: window.scrollY,
+          label: [DTR_TAB_NAMES[fromTab] || fromTab, subLbl, dateLbl].filter(Boolean).join(' \u00b7 '),
+        };
+      } else if (!DTR_BACK_TO.includes(tabName)) {
+        dtrBack = null;
+      }
+    }
     $$('[data-dtr-for]').forEach((bar) => {
       bar.hidden = bar.dataset.dtrFor !== tabName;
     });
@@ -161,6 +234,7 @@
     ['tracker', 'labtracker', 'wholeshoe', 'material', 'bonding', 'calculators', 'wholeshoetest'].forEach((t) => {
       $(`#dtr-panel-${t}`)?.classList.toggle('hidden', t !== tabName);
     });
+    dtrRefreshBack();
     if (tabName === 'wholeshoetest' && typeof loadWstRecords === 'function') {
       loadWstRecords(currentWstCategory);
     }
@@ -452,6 +526,7 @@
     const apply = async (key, day, customLabel) => {
       const rg = rangeOf(key, day, customLabel);
       $('#dtr-date-label').textContent = rg ? rg.label : 'All dates';
+      btn.title = 'Date filter: ' + (rg ? rg.label : 'All dates');   // the button is an icon: the range is its tooltip
       btn.classList.toggle('on', !!rg);
       if (clearBtn) clearBtn.hidden = !rg;
       if (key !== 'range') {
@@ -470,12 +545,27 @@
     const defaultToday = $('#dtr-datefilter')?.dataset.defaultToday === '1';
     // the default range is Today (the list adds the Daily shoes of the day before and the other test types of yesterday)
     const kpiState = window.dtrListState = { rg: defaultToday ? rangeOf('today') : null, scope: '', res: '' };
+    // opened from an Analytics card (?tab=labtracker&from=&to=&lt=trial): keep that date range and the summary-button filter
+    (() => {
+      const qs = new URLSearchParams(location.search);
+      const a = qs.get('from') || '', b = qs.get('to') || '';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(a) || !/^\d{4}-\d{2}-\d{2}$/.test(b)) return;
+      kpiState.rg = { from: a, to: b, label: smartRangeLabel(a, b), key: 'range' };
+      const lbl = $('#dtr-date-label'); if (lbl) lbl.textContent = kpiState.rg.label;
+      btn.title = 'Date filter: ' + kpiState.rg.label;
+      btn.classList.add('on');
+      const clr = $('#dtr-date-clear'); if (clr) clr.hidden = false;
+      const lt = qs.get('lt') || '';
+      const bp = $('.dtr-subpanel[data-subpanel="bonding"]');
+      if (bp && /^[a-z]+$/.test(lt)) bp._ltFilter = lt;
+    })();
     // clicking a card lists only the reports of that result (Total = all)
-    $$('.dtr-top-kpis .dtr-kpi:not([data-kno])').forEach((card, i) => {
-      const res = ['', 'pass', 'tol', 'fail'][i];
+    // every card filters: Total = all, Finished = with a result, On Going = no result yet, Pending = carried from the last working day, then Passed / Tolerable / Failed
+    $$('.dtr-top-kpis .dtr-kpi').forEach((card, i) => {
+      const res = ['', 'fin', 'ong', 'carry', 'pass', 'tol', 'fail'][i];
       if (res === undefined) return;
       card.dataset.kres = res || 'all';
-      card.setAttribute('title', res ? 'Click to list only these reports (click again to clear)' : 'Click to list all reports');
+      card.setAttribute('title', (card.getAttribute('title') ? card.getAttribute('title') + ' - ' : '') + (res ? 'click to list only these reports (click again to clear)' : 'click to list all reports'));
       card.addEventListener('click', () => {
         kpiState.res = (res && kpiState.res !== res) ? res : '';
         $$('.dtr-top-kpis .dtr-kpi').forEach((c) => c.classList.toggle('kpi-on', !!kpiState.res && c.dataset.kres === kpiState.res));
@@ -486,7 +576,7 @@
     const setText = (el, v) => { if (el) el.textContent = v; };
     // Bonding tab: "Total Lab Test Reports" = the total of the summary buttons Daily + Tech Trial + Sample + Retest + First Article + Advance (Lacking and Shutdown lines are not reports)
     window.dtrSyncTotal = () => {
-      if (kpiState.scope !== 'bonding' || !kp.total) return;
+      if (kpiState.scope !== 'bonding' || !kp.total) { pendingN = 0; return; }
       const chips = $$('#lt-counts-bonding [data-lt-filter]');
       if (!chips.length) return;
       let sum = 0;
@@ -500,8 +590,10 @@
         setText(kp.pass, fmt(Number(rc.dataset.pass || 0)));
         setText(kp.tol, fmt(Number(rc.dataset.tol || 0)));
         setText(kp.fail, fmt(Number(rc.dataset.fail || 0)));
-      }
+        pendingN = Number(rc.dataset.pending || 0);
+      } else pendingN = 0;
     };
+    let pendingN = 0;   // tests of the last working day with no result yet (already inside the Total)
     const syncFinished = () => {
       const numOf = (el) => Number((el?.textContent || '0').replace(/[^\d]/g, '')) || 0;
       const pctOf = (n, d) => d > 0 ? ((n / d) * 100).toFixed(1).replace(/\.0$/, '') + '%' : '0%';
@@ -510,9 +602,12 @@
       const fail = numOf(kp.fail);
       const fin  = pass + tol + fail;
       const tot  = numOf(kp.total);
-      const ong  = Math.max(0, tot - fin);
+      const pen  = Math.min(pendingN, Math.max(0, tot - fin));
+      const ong  = Math.max(0, tot - fin - pen);   // pending ones are listed apart from On Going
       if (kp.fin) kp.fin.textContent = fmt(fin);
       if (kp.ongoing) kp.ongoing.textContent = fmt(ong);
+      setText($('#dtr-kpi-pending'), fmt(pen));
+      setText($('#dtr-kpi-pending-pct'), pctOf(pen, tot));
       setText($('#dtr-kpi-total-pct'), `${pctOf(fin, tot)} Done`);
       setText($('#dtr-kpi-fin-pct'), pctOf(fin, tot));
       setText($('#dtr-kpi-ongoing-pct'), pctOf(ong, tot));
@@ -759,7 +854,7 @@
       else dp.view.setMonth(dp.view.getMonth() + 1);
       dpRender();
     });
-    $('#dtr-dp-clear')?.addEventListener('click', () => { dp.from = ''; dp.to = ''; dpRender(); });
+    $('#dtr-dp-clear')?.addEventListener('click', () => { dp.from = ''; dp.to = ''; apply(''); });   // Clear = back to all dates
     $('#dtr-dp-apply')?.addEventListener('click', () => {
       if (!dp.from) return;
       if (wk) wk.value = ''; if (mo) mo.value = ''; if (yr) yr.value = '';
@@ -803,23 +898,24 @@
   // Test Types: TRIAL and INTERNAL TESTING have no line; SAMPLE, FIRST ARTICLE and RETEST load one row with a chosen line; DAILY loads every line
   const IK_TYPES = ['DAILY', 'TECH TRIAL', 'SAMPLE', 'INTERNAL TESTING', 'FIRST ARTICLE', 'RETEST', 'LACKING'];
   const ikNoLine = (t) => t === 'TECH TRIAL' || t === 'INTERNAL TESTING' || t === 'SAMPLE';
-  const ikPick = (t) => t === 'FIRST ARTICLE' || t === 'RETEST';
+  const ikPick = (t) => t === 'FIRST ARTICLE' || t === 'RETEST' || t === 'LACKING';   // one row, the line is chosen (LACKING: the date is the Production Date, locked)
   const intakeRowHtml = (line, extra, rightSide, o = {}) => {
     const type = o.type || 'DAILY';
     const b = String(line).charAt(0);
     const lineCount = b === 'B' ? 14 : 12;
     const lineOpts = Array.from({ length: lineCount }, (_, i) => `<option value="${b}${i + 1}"${`${b}${i + 1}` === line ? ' selected' : ''}>${b}${i + 1}</option>`).join('');
     // SAMPLE has no line: its column holds the Sample Test selection (Bonding / Strip / Osna / Rivet)
-    const lineCell = o.noLine
+    const bare = o.noLine || o.retest;   // TECH TRIAL / SAMPLE / INTERNAL TESTING / RETEST: no Active toggle and no Line column
+    const lineCell = bare
       ? '<td class="ik-linecell"><span class="muted sm">-</span></td>'
       : `<td class="ik-linecell">${o.pick ? `<select class="ik-linesel" aria-label="Line">${lineOpts}</select>` : `<b>${line}</b>`} <button type="button" class="ik-addrow" title="Add another row for ${line}" aria-label="Add another row for ${line}">+</button>${extra ? '<button type="button" class="ik-delrow" title="Remove this row" aria-label="Remove this row">&times;</button>' : ''}</td>`;
     const typeOpts = IK_TYPES.map((t) => `<option${t === type ? ' selected' : ''}>${t}</option>`).join('');
     return `
         <tr data-line="${line}"${extra ? ' data-extra="1"' : ''}>
-          <td>${o.noLine ? '' : '<label class="dtr-switch"><input type="checkbox" class="ik-active" checked><span></span></label>'}</td>
+          <td>${bare ? '' : '<label class="dtr-switch"><input type="checkbox" class="ik-active" checked><span></span></label>'}</td>
           ${lineCell}
           <td><div class="dtr-side-toggle"><button type="button" data-side="L" class="${rightSide ? '' : 'active'}">L</button><button type="button" data-side="R" class="${rightSide ? 'active' : ''}">R</button></div></td>
-          <td class="ik-labref mono"><span class="ik-lr"></span>${o.noLine ? `<button type="button" class="ik-addrow" title="Add another tech trial row" aria-label="Add another tech trial row">+</button>${extra ? '<button type="button" class="ik-delrow" title="Remove this row" aria-label="Remove this row">&times;</button>' : ''}` : ''}</td>
+          <td class="ik-labref mono"><span class="ik-lr"></span>${bare ? `<button type="button" class="ik-addrow" title="Add another tech trial row" aria-label="Add another tech trial row">+</button>${extra ? '<button type="button" class="ik-delrow" title="Remove this row" aria-label="Remove this row">&times;</button>' : ''}` : ''}</td>
           <td><select class="ik-type">${typeOpts}</select></td>
           <td><input type="text" class="ik-code" placeholder="Type to filter" autocomplete="off">${type === 'SAMPLE' ? `<select class="ik-sub" aria-label="Sample test">${[['SH', 'Bonding'], ['STRIP', 'Strip Test'], ['RIVET', 'Rivets'], ['OSNA', 'Osnaburg']].map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>` : ''}</td>
           <td>${type === 'TECH TRIAL' ? '<input type="text" class="ik-mtl" placeholder="Type MTL #" autocomplete="off">' : '<input type="text" class="ik-mtl" placeholder="MTL #" readonly tabindex="-1">'}</td>
@@ -837,20 +933,29 @@
     let html = '';
     const lineCount = b === 'B' ? 14 : 12;
     const mode = intake.mode || 'DAILY';
-    $('#dtr-intake-table')?.classList.toggle('ik-trial', ikNoLine(mode));   // Active and Line columns are hidden when there is no line
+    $('#dtr-intake-table')?.classList.toggle('ik-trial', ikNoLine(mode) || mode === 'RETEST');   // Active and Line columns are hidden when there is no line
     const codeTh = $('#dtr-intake-table thead th:nth-child(6)');
     if (codeTh) codeTh.textContent = mode === 'SAMPLE' ? 'Sample Test' : 'Production Code';   // SAMPLE: that column (after Test Type) holds the sample test selection
     // TECH TRIAL / SAMPLE / INTERNAL TESTING are not tied to a building: the Building toggle is hidden
     const bField = $('#dtr-intake-building')?.closest('.dtr-intake-field');
     if (bField) bField.style.display = ['TECH TRIAL', 'SAMPLE', 'INTERNAL TESTING'].includes(mode) ? 'none' : '';
     $('#dtr-intake-table')?.classList.toggle('ik-m-fa', mode === 'FIRST ARTICLE');  // FIRST ARTICLE: no Active column
-    $('#dtr-intake-table')?.classList.toggle('ik-nolack', mode !== 'DAILY');     // Lacking is for DAILY only
+    $('#dtr-intake-table')?.classList.toggle('ik-nolack', mode !== 'DAILY' && mode !== 'LACKING');     // Lacking is for DAILY only (its own single-row mode shows the locked Lacking box)
+    $('#dtr-intake-table')?.classList.toggle('ik-m-lack', mode === 'LACKING');   // LACKING: one row only (no + button)
     $('#dtr-intake-table')?.classList.toggle('ik-m-trial', mode === 'TECH TRIAL');    // TECH TRIAL: no Production Code / Colorway
     $('#dtr-intake-table')?.classList.toggle('ik-m-sample', mode === 'SAMPLE');   // SAMPLE: no Production Code / Style / Colorway / MTL / Image / Pull Type
     if (ikNoLine(mode)) html = intakeRowHtml(`${b}0`, false, false, { type: mode, noLine: true });          // one row, no line, no Active toggle
-    else if (ikPick(mode)) html = intakeRowHtml(`${b}1`, false, false, { type: mode, pick: true });       // one row, the line is chosen
+    else if (ikPick(mode)) html = intakeRowHtml(`${b}1`, false, false, { type: mode, pick: true, retest: mode === 'RETEST' });       // one row, the line is chosen
     else for (let i = 1; i <= lineCount; i++) html += intakeRowHtml(`${b}${i}`, false, i % 2 === 0, { type: mode });   // DAILY / RETEST: every line
     intakeEl.tbody.innerHTML = html;
+    if (mode === 'LACKING') {   // the single lacking row: Lacking is ticked and locked, its date is the Production Date (no date pop-up), Advance is off
+      intakeEl.tbody.querySelectorAll('tr').forEach((tr) => {
+        tr.classList.add('lacked');
+        const lk = tr.querySelector('.ik-lacking'); const ad = tr.querySelector('.ik-advance');
+        if (lk) { lk.checked = true; lk.disabled = true; lk.title = 'Lacking line (the date is the Production Date)'; }
+        if (ad) { ad.checked = false; ad.disabled = true; }
+      });
+    }
     const label = $('#dtr-intake-batch-label');
     if (label) label.textContent = `${b} • ${$('#dtr-intake-collection')?.value || ''}`;
     refreshIntakeLabRefs();
@@ -862,6 +967,10 @@
     $$('#dtr-intake-tbody tr').forEach((tr) => {
       // every Lab Ref carries the Production Date selected at the top of the form
       // a lacking row carries the day it was lacking (the date picked in its Lacking box)
+      if (intake.mode === 'LACKING') {   // the date of a lacking line is the Production Date at the top, locked
+        const di0 = tr.querySelector('.ik-lackdate');
+        if (di0) { di0.value = prodDate; const sh = tr.querySelector('.ik-lackshow'); if (sh) sh.textContent = prodDate.slice(5); }
+      }
       const lackOn = tr.querySelector('.ik-lacking')?.checked ? (tr.querySelector('.ik-lackdate')?.value || '') : '';
       const d = (lackOn || prodDate).replace(/-/g, '');
       const side = tr.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L';
@@ -872,16 +981,16 @@
       //   TRIAL             DTP<date>TRIALSH-<side>-<#>          (no line)
       //   SAMPLE            DTP<date>SAMPLESH<line>-<side>-<#>
       //   INTERNAL TESTING  DTP<date>ITSH-<side>-<#>             (no line)
-      //   FIRST ARTICLE     DTP<date>FASH<line>-<side>-<#>
+      //   FIRST ARTICLE     DTP<date>FA<line>-<side>-<#>
       //   RETEST            DTP<date>SH<line>-<side>-R01         (R02, R03 ... for the next retests of the same batch)
-      const pre = { 'TECH TRIAL': 'TRIALSH', 'SAMPLE': 'SAMPLESH', 'INTERNAL TESTING': 'ITSH', 'FIRST ARTICLE': 'FASH' }[type] || 'SH';
+      const pre = { 'TECH TRIAL': 'TRIALSH', 'SAMPLE': 'SAMPLESH', 'INTERNAL TESTING': 'ITSH', 'FIRST ARTICLE': 'FA' }[type] || 'SH';
       // SAMPLE has a sample test: Bonding (SH) or Strip / Osna / Rivet (DTP<date>STRIP|OSNA|RIVET-<#>, no line, no side)
       const subV = type === 'SAMPLE' ? (tr.querySelector('.ik-sub')?.value || 'SH') : 'SH';
       const isStrip = subV !== 'SH';
       tr.classList.toggle('ik-strip', isStrip);
       const key = isStrip ? `DTP${d}${subV}` : `DTP${d}${pre}${ikNoLine(type) ? '' : tr.dataset.line}`;   // the number runs per line, whatever the side
       let ref;
-      if (isRetest) ref = (tr.dataset.retestOf ? tr.dataset.retestOf.replace(/(-R\d+|-\d+)$/, '') : `DTP${d}SH${tr.dataset.line}-${side}`) + '-R01';
+      if (isRetest) ref = (tr.dataset.retestOf ? tr.dataset.retestOf.replace(/(-R\d+|-\d+)$/, '').replace(/-[LR]$/, `-${side}`) : `DTP${d}SH${tr.dataset.line}-${side}`) + '-R01';
       else if (type === 'TECH TRIAL') {
         // a trial is counted from 1 (the first entry is trial 1); the two shoes of a pair share the number: TRIALSH-L-1 / TRIALSH-R-1
         const pk = tr.dataset.pair || '';
@@ -958,16 +1067,13 @@
     const reduced = intake.mode !== 'DAILY';
     // LACKING = the same as ticking the row's Lacking box (the Lab Ref keeps the Production Date chosen at the top: pick the day the shoe was lacking)
     const lk = e.target.closest('tr')?.querySelector('.ik-lacking');
-    if (v === 'LACKING' && !reduced && lk) {
-      if (!lk.checked) { lk.checked = true; lk.dispatchEvent(new Event('change', { bubbles: true })); }
-      return;
-    }
+    // LACKING = one row only: the line is chosen there, its date is the Production Date at the top (locked, no date pop-up)
+    if (v === 'LACKING') { intake.mode = 'LACKING'; renderIntakeRows(); return; }
     if (v !== 'LACKING' && lk && lk.checked) {
       lk.checked = false; lk.dispatchEvent(new Event('change', { bubbles: true }));
       e.target.value = v;
       if (v === 'DAILY' && !reduced) return;
     }
-    if (v === 'LACKING') { intake.mode = 'DAILY'; renderIntakeRows(); return; }   // from a reduced batch: back to every line, tick Lacking on the wanted one
     if (v !== 'DAILY' || reduced) {
       intake.mode = v;
       renderIntakeRows();
@@ -1187,6 +1293,7 @@
     const sideBtn = e.target.closest('.dtr-side-toggle button');
     if (sideBtn) {
       tr.querySelectorAll('.dtr-side-toggle button').forEach((x) => x.classList.toggle('active', x === sideBtn));
+      refreshIntakeLabRefs();
       return;
     }
     if (e.target.closest('.ik-addrow') && intake.mode === 'TECH TRIAL') {
@@ -1210,7 +1317,7 @@
       const lastSide = last.querySelector('.dtr-side-toggle .active')?.dataset.side || 'L';
       // First Case: the new row keeps the Test Type and gets its own line dropdown, preset to the same line
       const firstCase = ikPick(intake.mode);
-      last.insertAdjacentHTML('afterend', intakeRowHtml(last.dataset.line, true, lastSide === 'L', { type: intake.mode, pick: firstCase, noLine: ikNoLine(intake.mode) }));
+      last.insertAdjacentHTML('afterend', intakeRowHtml(last.dataset.line, true, lastSide === 'L', { type: intake.mode, pick: firstCase, noLine: ikNoLine(intake.mode), retest: intake.mode === 'RETEST' }));
       refreshIntakeLabRefs();
       if (intake.mode === 'RETEST') {   // every retest row loads a previously saved failed record
         retestRow = last.nextElementSibling;
@@ -1273,7 +1380,7 @@
         sideBtn?.click();
         // the loaded data is locked: only the + button of the row stays usable
         retestRow.classList.add('ik-locked');
-        retestRow.querySelectorAll('input:not(.ik-addrow), select, textarea, .dtr-side-toggle button').forEach((el) => { el.disabled = true; });
+        retestRow.querySelectorAll('input:not(.ik-addrow), select, textarea').forEach((el) => { el.disabled = true; });   // the side (L / R) stays changeable
         retestEl.back.classList.add('hidden');
         retestRow = null;
       };
@@ -1300,6 +1407,11 @@
     pullTypes: [...tr.querySelectorAll('.ik-pt:checked')].map((c) => c.value),
     remarks: tr.querySelector('.ik-retest-note').value.trim().replace(/\s*\n\s*/g, ' | '),
   });
+  const lockLackTicks = (tr) => {
+    const lk = tr.querySelector('.ik-lacking'); const ad = tr.querySelector('.ik-advance');
+    if (lk) { lk.disabled = true; lk.title = 'This line is already sent as LACKING'; }
+    if (ad) { ad.checked = false; ad.disabled = true; ad.title = 'A lacking line cannot be an Advance shoe'; }
+  };
   const autoSaveLacking = async (tr, wasDate) => {
     const on = tr.querySelector('.ik-lacking').checked;
     const body = {
@@ -1318,6 +1430,8 @@
       const res = await apiFetch('dtr/intake-save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (res && res.ok) {
         if (on) tr.dataset.lackSaved = nowDate; else delete tr.dataset.lackSaved;
+        // the lacking line is sent: its Lacking / Advance ticks are locked (the row is only updated from now on; the Prod. Code etc. stay editable)
+        if (on) lockLackTicks(tr);
         showToast(on ? `Lacking saved: ${tr.querySelector('.ik-lr').textContent.trim()}` : 'Lacking removed.');
       } else if (intakeEl.msg) intakeEl.msg.textContent = (res && res.message) || 'Lacking was not saved.';
     } catch (err) {
@@ -1333,6 +1447,13 @@
   intakeEl.tbody?.addEventListener('change', (e) => {
     const tr = e.target.closest('tr');
     if (!tr || !tr.isConnected) return;   // the batch was just re-rendered by the Test Type change: this row is gone
+    // ticking Lacking on a daily row = choosing the LACKING test type: the batch becomes the single lacking row
+    if (e.target.classList.contains('ik-lacking') && e.target.checked && intake.mode !== 'LACKING') {
+      e.target.checked = false;
+      const ts0 = tr.querySelector('.ik-type');
+      if (ts0) { ts0.value = 'LACKING'; ts0.dispatchEvent(new Event('change', { bubbles: true })); }
+      return;
+    }
     if (e.target.classList.contains('ik-lacking') || e.target.classList.contains('ik-lackdate')) {
       const was = tr.dataset.lackSaved || '';
       queueMicrotask(() => { if (tr.isConnected) autoSaveLacking(tr, was || (e.target.classList.contains('ik-lacking') && !e.target.checked ? (tr.dataset.lackWas || '') : '')); });
@@ -1342,8 +1463,7 @@
     if (e.target.classList.contains('ik-lacking')) {
       const di = tr.querySelector('.ik-lackdate');
       if (e.target.checked) {
-        if (!di.value) di.value = $('#dtr-intake-production')?.value || '';
-        try { di.showPicker(); } catch (_) { /* older browsers: the default date stays */ }
+        di.value = $('#dtr-intake-production')?.value || '';   // locked to the Production Date: no date pop-up
       } else di.value = '';
       // Lacking ticked: the row is locked like a SHUTDOWN row (only the Lacking box and its date stay usable) and is recorded as lacking
       tr.classList.toggle('lacked', e.target.checked);
@@ -1509,7 +1629,7 @@
   // the row's other columns were synced and locked.
   const PULL_TYPES = [['HEEL PULL', 'Heel Pull'], ['EYELET', 'Eyelet'], ['D-RING', 'D-Ring'], ['RIVET', 'Rivet']];
   const emptyPullCell = (tr) => {
-    if (!window.dtrCanAddPull || !tr || !tr.querySelector('.dtr-del-btn[data-del="bonding"], .dtr-del-btn[data-del="lacking"]')) return null;   // Admin, Supervisor and Bonding PIC only
+    if (!window.dtrCanAddPull || !tr || !tr.querySelector('.dtr-del-btn[data-del="bonding"]')) return null;   // Admin, Supervisor and Bonding PIC only
     const heads = [...tr.closest('table').querySelectorAll('thead th')].map((th) => th.textContent.replace(/[▲▼]/g, '').trim());   // the sort arrows of a header are not part of its name
     const i = heads.indexOf('Pull Test LabRefNo');
     const td = i >= 0 ? tr.children[i] : null;
@@ -1545,14 +1665,15 @@
       const fields = {};
       tr.querySelectorAll('.dtr-edit-in').forEach((i) => { if (i.value.trim() !== '') fields[i.dataset.f] = i.value.trim(); });
       const pullTypes = [...tr.querySelectorAll('.dtr-edit-pulls .ik-pt:checked')].map((c) => c.value);
-      if (!Object.keys(fields).length && !pullTypes.length) { toast('Type or pick something in an empty column, or tick a pull type, first.'); return; }
+      const sideSel = tr.querySelector('.dtr-edit-side')?.value || '';
+      if (!Object.keys(fields).length && !pullTypes.length && !sideSel) { toast('Type or pick something in an empty column, change the shoe side, or tick a pull type, first.'); return; }
       btn.disabled = true;
       try {
         let msg = '';
-        if (Object.keys(fields).length) {
+        if (Object.keys(fields).length || sideSel) {
           const res = await apiFetch('dtr/update-entry', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ kind: btn.dataset.edit, id: Number(btn.dataset.id), fields }),
+            body: JSON.stringify({ kind: btn.dataset.edit, id: Number(btn.dataset.id), fields, side: sideSel }),
           });
           if (!(res && res.ok)) { toast((res && res.message) || 'Save failed.'); btn.disabled = false; return; }
           msg = res.message;
@@ -1561,7 +1682,7 @@
           // pull tests for THIS row: their Lab Refs and details are made from the row (same Production Code, line, date and side)
           const pr = await apiFetch('dtr/add-pull-tests', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: Number(btn.dataset.id), kind: btn.dataset.edit, pullTypes }),
+            body: JSON.stringify({ id: Number(btn.dataset.id), pullTypes }),
           });
           if (!(pr && pr.ok)) { toast((pr && pr.message) || 'The pull tests could not be added.'); btn.disabled = false; return; }
           msg = (msg ? msg + ' ' : '') + pr.message;
@@ -1574,7 +1695,7 @@
         });
         btn.dataset.mode = ''; btn.innerHTML = EDIT_ICO; btn.classList.remove('is-save'); btn.title = 'Edit the empty columns of this entry';
         leaveEditUi(tr);
-        successBox(msg, () => { if (pullTypes.length) window.dtrReloadList?.('bonding', Number($('#lt-page-bonding')?.dataset.page || 1)); }, 'Saved');
+        successBox(msg, () => { if (pullTypes.length || sideSel) window.dtrReloadList?.('bonding', Number($('#lt-page-bonding')?.dataset.page || 1)); }, 'Saved');
       } catch (ex) { toast('Save failed: ' + (ex.message || ex)); }
       btn.disabled = false;
       return;
@@ -1596,6 +1717,19 @@
         box.querySelectorAll('.ik-pt:not(:checked)').forEach((c) => { c.disabled = on >= room.left; });
       });
       n++;
+    }
+    // Shoe side of a bonding row can always be corrected (L / R): a small picker under the Lab Ref
+    if (btn.dataset.edit === 'bonding' && !locked) {
+      const li = heads.indexOf('Bonding LabRef No');
+      const lt = li >= 0 ? tr.children[li] : null;
+      if (lt && !lt.querySelector('.dtr-edit-side')) {
+        const cur = (lt.textContent.match(/-([LR])(?:-\w+)*\s*$/i) || [])[1] || '';
+        lt.dataset.editOrig = '1';
+        lt.dataset.editHtml = lt.innerHTML;
+        lt.insertAdjacentHTML('beforeend', `<label class="muted sm" style="display:block;margin-top:4px">Shoe side <select class="dtr-edit-side"><option value="">keep</option><option value="L">Left (L)</option><option value="R">Right (R)</option></select></label>`);
+        if (cur) lt.querySelector('.dtr-edit-side').value = '';
+        n++;
+      }
     }
     [...tr.children].forEach((td, i) => {
       const spec = cols[heads[i]];
@@ -2038,13 +2172,12 @@
         <td><input type="text" class="ik-mtl mono mrec-in-auto" placeholder="Auto-filled" readonly tabindex="-1"></td>
         <td class="mrec-grp-sep"><input type="text" class="mr-code mono mrec-in-lookup" placeholder="Search code..." autocomplete="off"></td>
         <td><input type="text" class="mr-name" placeholder="Material name" autocomplete="off"></td>
-        <td><input type="text" class="mr-type mrec-in-auto" placeholder="Auto-filled" readonly tabindex="-1"></td>
+        <td><div class="mr-type-wrap"><input type="text" class="mr-type mrec-in-auto" placeholder="Auto-filled" readonly tabindex="-1"><input type="number" class="mr-qcqty" min="1" step="1" value="1" title="Quantity to test (use the arrows)" aria-label="Quantity to test"></div></td>
         <td><input type="text" class="mr-supplier" placeholder="Supplier"></td>
         <td class="mrec-grp-sep"><input type="text" class="mr-container" placeholder="Container #"></td>
         <td><input type="text" class="mr-batch" placeholder="Batch #"></td>
-        <td><input type="text" class="mr-qty mrec-in-num" placeholder="0" inputmode="decimal"></td>
-        <td><input type="text" class="mr-qcqty mrec-in-num" placeholder="0" inputmode="decimal"></td>
-        <td><input type="text" class="mr-unit mrec-in-center" placeholder="Unit"></td>
+        <td><input type="text" class="mr-qty mrec-in-num" placeholder="0" inputmode="decimal"><input type="hidden" class="mr-unit"></td>
+        <td class="mrec-grp-sep mrec-td-tests"><button type="button" class="mr-tests-btn" aria-haspopup="true">Select tests</button><input type="hidden" class="mr-tests" value="[]"></td>
         <td class="mrec-td-act"><button type="button" class="mrec-del-row" title="Remove or clear line" aria-label="Remove line">&times;</button></td>
       </tr>`);
     renumberMaterialRows();
@@ -2058,9 +2191,49 @@
       tr.remove();
       renumberMaterialRows();
     } else {
-      tr.querySelectorAll('input:not([type="date"])').forEach((inp) => { inp.value = ''; });
+      tr.querySelectorAll('input:not([type="date"])').forEach((inp) => { inp.value = inp.classList.contains('mr-tests') ? '[]' : (inp.classList.contains('mr-qcqty') ? '1' : ''); });
+      mrTestsLabel(tr);
     }
   });
+  // Test Selection: the tests this material goes through (each one gets its own Lab Ref No on save)
+  const mrTestList = (() => { try { return JSON.parse($('.dtr-mrec-table')?.dataset.tests || '[]'); } catch (e) { return []; } })();
+  const mrTestsOf = (tr) => { try { return JSON.parse(tr.querySelector('.mr-tests').value || '[]'); } catch (e) { return []; } };
+  function mrTestsLabel(tr) {
+    const n = mrTestsOf(tr).length, b = tr.querySelector('.mr-tests-btn');
+    if (!b) return;
+    b.textContent = n ? ` test${n === 1 ? '' : 's'} selected` : 'Select tests';
+    b.classList.toggle('has', n > 0);
+  }
+  let mrTestPanel = null;
+  const closeMrTests = () => { mrTestPanel?.remove(); mrTestPanel = null; };
+  mrBody?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.mr-tests-btn');
+    if (!btn) return;
+    const tr = btn.closest('tr');
+    if (mrTestPanel && mrTestPanel.dataset.row === String([...mrBody.children].indexOf(tr))) { closeMrTests(); return; }
+    closeMrTests();
+    const chosen = new Set(mrTestsOf(tr));
+    const rect = btn.getBoundingClientRect();
+    mrTestPanel = document.createElement('div');
+    mrTestPanel.className = 'mr-tests-panel';
+    mrTestPanel.dataset.row = String([...mrBody.children].indexOf(tr));
+    mrTestPanel.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 340)) + 'px';
+    mrTestPanel.style.top = Math.max(8, Math.min(rect.bottom + 3, window.innerHeight - 380)) + 'px';
+    mrTestPanel.innerHTML = '<input type="search" class="mrt-q" placeholder="Search test..."><div class="mrt-act"><button type="button" data-a="clear">Clear</button><button type="button" data-a="done">Done</button></div><div class="mrt-list">'
+      + mrTestList.map((n, i) => `<label data-n="${escHtml(n.toLowerCase())}"><input type="checkbox" value="${i}"${chosen.has(n) ? ' checked' : ''}> ${escHtml(n)}</label>`).join('') + '</div>';
+    document.body.appendChild(mrTestPanel);
+    const panel = mrTestPanel;
+    const save = () => { tr.querySelector('.mr-tests').value = JSON.stringify([...panel.querySelectorAll('input[type=checkbox]:checked')].map((c) => mrTestList[Number(c.value)])); mrTestsLabel(tr); };
+    panel.addEventListener('change', save);
+    panel.querySelector('.mrt-q').addEventListener('input', (ev) => { const q = ev.target.value.trim().toLowerCase(); panel.querySelectorAll('.mrt-list label').forEach((l) => { l.style.display = !q || l.dataset.n.includes(q) ? '' : 'none'; }); });
+    panel.querySelector('.mrt-act').addEventListener('click', (ev) => {
+      const a = ev.target.dataset.a;
+      if (a === 'clear') { panel.querySelectorAll('input[type=checkbox]').forEach((c) => { c.checked = false; }); save(); }
+      else if (a === 'done') closeMrTests();
+    });
+    panel.querySelector('.mrt-q').focus();
+  });
+  document.addEventListener('mousedown', (e) => { if (mrTestPanel && !e.target.closest('.mr-tests-panel') && !e.target.closest('.mr-tests-btn')) closeMrTests(); });
   // after a Production Code is picked: the material of that ERP production order fills Name / Code / Supplier / Type / Unit.
   // One raw material = filled straight away; several = the list opens on Material Name to choose from. A line that already has a code is left alone.
   window.mrAutoMaterial = async (tr) => {
@@ -2087,7 +2260,7 @@
     } else if (e.target.classList.contains('mr-code')) {
       const tr = e.target.closest('tr');
       // typing in one of the two boxes clears the details that came from the other pick
-      const other = ['.mr-name', '.mr-type', '.mr-supplier', '.mr-unit'];
+      const other = ['.mr-name', '.mr-type', '.mr-supplier', '.mr-unit'];   // (the quantity to test next to the type stays)
       other.forEach((s) => { tr.querySelector(s).value = ''; });
       suggestMaterialCode(tr, e.target);
     }
@@ -2162,7 +2335,7 @@
     mrMsg.textContent = '';
     mrBack.classList.remove('hidden');
   };
-  const closeMaterialReceive = () => { closeLibrary(); mrBack.classList.add('hidden'); };
+  const closeMaterialReceive = () => { closeLibrary(); closeMrTests(); mrBack.classList.add('hidden'); };
   $$('[data-add-record="containers"]').forEach((b) => b.addEventListener('click', openMaterialReceive));
   $('#btn-mrec-addrow')?.addEventListener('click', addMaterialRow);
   $('#btn-mrec-addrow-foot')?.addEventListener('click', addMaterialRow);
@@ -2173,7 +2346,7 @@
     const rows = [...mrBody.children].map((tr) => ({
       date: $('#dtr-mrec-date').value, arrived: $('#dtr-mrec-arrived').value, unit: v(tr, '.mr-unit'), prod: v(tr, '.ik-code'), color: v(tr, '.ik-color'), style: v(tr, '.ik-style'), mtl: v(tr, '.ik-mtl'),
       code: v(tr, '.mr-code'), name: v(tr, '.mr-name'), type: v(tr, '.mr-type'), supplier: v(tr, '.mr-supplier'),
-      container: v(tr, '.mr-container'), batch: v(tr, '.mr-batch'), qty: v(tr, '.mr-qty'), qcqty: v(tr, '.mr-qcqty'),
+      container: v(tr, '.mr-container'), batch: v(tr, '.mr-batch'), qty: v(tr, '.mr-qty'), qcqty: v(tr, '.mr-qcqty') || '1', tests: mrTestsOf(tr),
     })).filter((r) => r.code || r.prod || r.container || r.batch);
     if (!rows.length) { mrMsg.textContent = 'Enter a Material Code on at least one line.'; return; }
     if (rows.some((r) => !r.code)) { mrMsg.textContent = 'Every line needs a Material Code.'; return; }
@@ -2201,91 +2374,545 @@
   if (wsPanel) {
     const wsSel = $('#ws-labref');
     const wsMsg = $('#ws-msg');
+    const wsSheet = $('#wsf-sheet') || $('.wsf', wsPanel);
+    const wsToolbar = $('[data-dtr-for="wholeshoe"]');
+    const wsEditBtn = $('#btn-ws-edit');
+    const wsCancelBtn = $('#btn-ws-cancel');
+    const wsPreviewBtn = $('#btn-ws-preview');
+    const wsSaveBtn = $('#btn-ws-save');
+    const wsSendWrap = wsToolbar ? $('.dtr-send-dropdown-wrap', wsToolbar) : null;
+    const wsSendBtn = wsSendWrap ? $('.js-send-toggle', wsSendWrap) : null;
+    const wsSideToggle = $('#ws-side-toggle');
     let wsSections = [];
-    const wsVal = (id) => $(id).value.trim();
+    let wsEditMode = false;
+    let wsLastLoaded = null;
+    let wsBaseRef = '';
+    let wsSide = '';
+    const wsVal = (id) => ($(id)?.value || '').trim();
+    const wsUpdateRefDisplay = () => {
+      const cleanBase = String(wsBaseRef || '').replace(/-[LR]$/i, '');
+      if (wsSel && cleanBase) {
+        wsSel.value = wsSide ? `${cleanBase}-${wsSide}` : cleanBase;
+      }
+      if (wsSideToggle) {
+        wsSideToggle.querySelectorAll('.wsf-side-btn').forEach((btn) => {
+          btn.classList.toggle('is-active', btn.dataset.side === wsSide);
+        });
+      }
+    };
 
-    // pulled = the tests of the selected Lab Ref from tbl_dtr_WholeshoeTracker (result, status, dates, findings per test type);
-    // a value typed and saved in the report wins, the pulled finding fills the rest
+    const wsNormDate = (raw) => {
+      const s = String(raw || '').trim();
+      if (!s) return '';
+      const iso = s.match(/^(\d{4}-\d{2}-\d{2})/);
+      if (iso) return iso[1];
+      const mdy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (mdy) return `${mdy[3]}-${mdy[1].padStart(2, '0')}-${mdy[2].padStart(2, '0')}`;
+      return '';
+    };
+
+    const wsSyncDateRo = () => {
+      if (!wsSheet) return;
+      wsSheet.querySelectorAll('.wsf-date-ro[data-date-for]').forEach((sp) => {
+        const inp = document.getElementById(sp.dataset.dateFor);
+        const v = (inp && inp.value) ? inp.value.trim() : '';
+        sp.textContent = v || '-';
+      });
+      wsSheet.querySelectorAll('.wsf-cdate-ro[data-sec-cdate-ro]').forEach((sp) => {
+        const sid = sp.dataset.secCdateRo;
+        const inp = wsSheet.querySelector(`.wsf-cdate[data-sec-cdate="${sid}"]`);
+        const v = (inp && inp.value) ? inp.value.trim() : (sp.dataset.rawDate || '').trim();
+        sp.textContent = v || '-';
+      });
+    };
+
+    // Exact evaluation checkbox options from Whole Shoe Test monitors (Hydrolysis, Heat Aging, Washing, UV Light, Dip Test, Flexing)
+    const WS_FIELD_OPTS = {
+      delam: ['No delamination', 'Slight delamination', 'Severe delamination'],
+      bleed: ['No bleeding', 'Slight bleeding', 'Severe bleeding'],
+      color: ['No color change', 'Slight color change', 'Severe color change', 'With color change'],
+      warp: ['No Outsole warping', 'With Outsole warping'],
+      bloom: ['No blooming', 'Slight blooming', 'Severe blooming'],
+      yellow: ['No yellowing (Grade 4.5-5.0)', 'Slight yellowing (Grade 4.0)', 'Severe yellowing (< 4.0)', 'No color change', 'Slight color change', 'Severe color change'],
+      wp: ['No water penetration', 'Slight dampness', 'Water penetration / Leaking'],
+      cut: ['No cut growth (< 20mm)', 'Cut growth >= 20mm'],
+      crack: ['No cracking', 'Minor cracks (<= 3 pts, < 5mm)', 'Severe cracking (> 3 pts or >= 5mm)'],
+      sa: ['No delamination', 'Slight delamination', 'Severe delamination', 'No cracking', 'With cracking'],
+      other: ['No other findings', 'Glue bead intact', 'Slight sole yellowing', 'Upper creasing', 'Stitching intact'],
+    };
+
+    const wsResClass = (val) => {
+      const v = String(val || '').trim().toUpperCase();
+      if (!v || v === '-') return 'is-empty';
+      if (v.startsWith('PASS')) return 'is-pass';
+      if (v.startsWith('TOL')) return 'is-tol';
+      if (v.startsWith('FAIL')) return 'is-fail';
+      return 'is-neutral';
+    };
+
+    const styleWsResSelect = (sel) => {
+      if (!sel) return;
+      const v = (sel.value || '').trim().toUpperCase();
+      const cls = wsResClass(v);
+      sel.classList.remove('is-pass', 'is-tol', 'is-fail', 'is-neutral', 'is-empty');
+      sel.classList.add(cls);
+      const sec = sel.closest('.ws-sec');
+      const badge = sec ? sec.querySelector('.wsf-res-badge') : null;
+      if (badge) {
+        const display = v || badge.dataset.origRes || '-';
+        const bCls = wsResClass(display);
+        badge.textContent = display;
+        badge.classList.remove('is-pass', 'is-tol', 'is-fail', 'is-neutral', 'is-empty');
+        badge.classList.add(bCls);
+      }
+    };
+
+    const wsSetEditMode = (on) => {
+      wsEditMode = !!on;
+      if (wsSheet) wsSheet.classList.toggle('wsf-readonly', !wsEditMode);
+      if (wsEditBtn) wsEditBtn.hidden = wsEditMode;
+      if (wsCancelBtn) { wsCancelBtn.hidden = false; wsCancelBtn.disabled = !wsEditMode; }
+      if (wsSaveBtn) { wsSaveBtn.hidden = false; wsSaveBtn.disabled = !wsEditMode; }
+      const wsSideTog = document.getElementById('ws-side-toggle');
+      if (wsSideTog) wsSideTog.hidden = !wsEditMode;
+      if (wsPreviewBtn) wsPreviewBtn.disabled = wsEditMode;
+      if (wsSendWrap) {
+        wsSendWrap.classList.toggle('is-disabled', wsEditMode);
+        if (wsEditMode) wsSendWrap.classList.remove('is-open');
+      }
+      if (wsSendBtn) wsSendBtn.disabled = wsEditMode;
+      if (wsSideToggle) {
+        wsSideToggle.hidden = !wsEditMode;
+        wsSideToggle.querySelectorAll('.wsf-side-btn').forEach((btn) => {
+          btn.disabled = !wsEditMode;
+        });
+      }
+      if (wsSheet) {
+        wsSheet.querySelectorAll('input, textarea, select').forEach((el) => {
+          if (el.id === 'ws-labref' || el.type === 'hidden') {
+            el.readOnly = true;
+            return;
+          }
+          if (el.type === 'date') {
+            el.disabled = !wsEditMode;
+            el.readOnly = !wsEditMode;
+          } else if (el.tagName === 'SELECT' || el.type === 'checkbox' || el.type === 'radio') {
+            el.disabled = !wsEditMode;
+          } else {
+            el.readOnly = !wsEditMode;
+          }
+        });
+      }
+      wsSyncDateRo();
+    };
+
+    const wsSyncFieldFromBox = (rl) => {
+      const hiddenInp = rl.querySelector('input[data-k]');
+      if (!hiddenInp) return;
+      const rate = rl.querySelector('.wsf-rate-sel');
+      if (rate) {                                   // a grade chosen from the list (UV Light Yellowing)
+        hiddenInp.value = rate.value;
+        const d0 = rl.querySelector('.wsf-ro-val');
+        if (d0) d0.textContent = rate.value || '-';
+        return;
+      }
+      const parts = [];
+      // Flexing structured builder (if present)
+      const fb = rl.querySelector('.wsf-flex-builder');
+      if (fb) {
+        const useFx = fb.querySelector('.wsf-fx-use');
+        if (useFx && useFx.checked) {
+          const ang = fb.querySelector('.wsf-fx-ang')?.value || '45°';
+          const cyc = fb.querySelector('.wsf-fx-cyc')?.value || '5000';
+          const l = fb.querySelector('.wsf-fx-l')?.value || '0';
+          const m = fb.querySelector('.wsf-fx-m')?.value || '0';
+          const dl = fb.querySelector('.wsf-fx-dl')?.value || '0';
+          const dm = fb.querySelector('.wsf-fx-dm')?.value || '0';
+          parts.push(`${ang} degrees ${cyc} cycles - (L: ${l} mm, M: ${m} mm; D:${dl} mm, D:${dm} mm)`);
+        }
+      }
+      rl.querySelectorAll('input.wsf-opt-chk:checked').forEach((chk) => {
+        if (chk.value) parts.push(chk.value);
+      });
+      const othChk = rl.querySelector('input.wsf-oth-chk');
+      const othTxt = rl.querySelector('input.wsf-oth-txt');
+      if (othChk && othTxt) {
+        othTxt.hidden = !othChk.checked;
+        if (othChk.checked && othTxt.value.trim()) parts.push(othTxt.value.trim());
+      }
+      hiddenInp.value = parts.join(', ');
+      const disp = rl.querySelector('.wsf-ro-val');
+      if (disp) disp.textContent = hiddenInp.value || '-';
+    };
+
+    // UV Light Discoloration (VF-E03): the Yellowing result is a grey-scale grade, only these values
+    const WS_UV_GRADES = ['5', '4.5', '4', '3.5', '3', '2.5', '2', '1.5', '1'];
+    const buildFieldControl = (secId, k, label, rawVal) => {
+      if (secId === 'E03' && k === 'yellow') {
+        const m = String(rawVal || '').match(/\b(5|4\.5|4|3\.5|3|2\.5|2|1\.5|1)(?:\.0)?\b/);
+        const g = m ? m[1] : '';
+        return `<div class="wsf-rl" data-field="${k}">
+        <div class="wsf-rl-top"><b>${escHtml(label)} :</b><span class="wsf-ro-val">${escHtml(g || '-')}</span></div>
+        <input type="hidden" data-k="${k}" value="${escHtml(g)}">
+        <div class="wsf-chk-wrap">
+          <select class="wsf-rate-sel" aria-label="Yellowing grade">
+            <option value="">-</option>
+            ${WS_UV_GRADES.map((n) => `<option value="${n}"${n === g ? ' selected' : ''}>${n}</option>`).join('')}
+          </select>
+        </div>
+      </div>`;
+      }
+      const opts = WS_FIELD_OPTS[k] || [];
+      const val = String(rawVal || '').trim();
+      const lowerVal = val.toLowerCase();
+      const matched = new Set();
+      let remainder = val;
+
+      // Parse Flexing pattern if present (e.g. "45° degrees 5000 cycles - (L: 0 mm, M: 0 mm; D:0 mm, D:0 mm)")
+      let fxMatch = null;
+      if (secId === 'G02' && k === 'sa') {
+        fxMatch = remainder.match(/(\d+°)\s*degrees\s*(\d+)\s*cycles\s*-\s*\(L:\s*([\d.]+)\s*mm,\s*M:\s*([\d.]+)\s*mm;\s*D:\s*([\d.]+)\s*mm,\s*D:\s*([\d.]+)\s*mm\)/i);
+        if (fxMatch) remainder = remainder.replace(fxMatch[0], '').replace(/^[\s,;]+|[\s,;]+$/g, '');
+      }
+
+      opts.forEach((opt) => {
+        const re = new RegExp(opt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+        if (re.test(remainder)) {
+          matched.add(opt);
+          remainder = remainder.replace(re, '').replace(/,\s*,/g, ',').replace(/^[\s,;]+|[\s,;]+$/g, '');
+        } else if (lowerVal === opt.toLowerCase()) {
+          matched.add(opt);
+          remainder = '';
+        }
+      });
+
+      const hasOther = remainder.trim() !== '';
+      const flexHtml = (secId === 'G02' && k === 'sa') ? `
+        <div class="wsf-flex-builder">
+          <label class="wsf-chk-pill wsf-fx-toggle"><input type="checkbox" class="wsf-fx-use"${fxMatch ? ' checked' : ''}><span>Flexing Measurement</span></label>
+          <select class="wsf-fx-ang"><option value="45°"${!fxMatch || fxMatch[1] === '45°' ? ' selected' : ''}>45°</option><option value="60°"${fxMatch && fxMatch[1] === '60°' ? ' selected' : ''}>60°</option><option value="30°"${fxMatch && fxMatch[1] === '30°' ? ' selected' : ''}>30°</option></select>
+          <select class="wsf-fx-cyc">${['5000', '10000', '15000', '25000', '35000', '50000', '75000', '100000', '125000'].map((c) => `<option value="${c}"${fxMatch && fxMatch[2] === c ? ' selected' : ''}>${Number(c).toLocaleString()} cyc</option>`).join('')}</select>
+          <span class="wsf-fx-mm">L:<input type="number" step="0.1" min="0" class="wsf-fx-l" value="${fxMatch ? fxMatch[3] : '0'}"></span>
+          <span class="wsf-fx-mm">M:<input type="number" step="0.1" min="0" class="wsf-fx-m" value="${fxMatch ? fxMatch[4] : '0'}"></span>
+          <span class="wsf-fx-mm">D(L):<input type="number" step="0.1" min="0" class="wsf-fx-dl" value="${fxMatch ? fxMatch[5] : '0'}"></span>
+          <span class="wsf-fx-mm">D(M):<input type="number" step="0.1" min="0" class="wsf-fx-dm" value="${fxMatch ? fxMatch[6] : '0'}"></span>
+        </div>` : '';
+
+      const pillsHtml = opts.map((opt) =>
+        `<label class="wsf-chk-pill${matched.has(opt) ? ' on' : ''}"><input type="checkbox" class="wsf-opt-chk" value="${escHtml(opt)}"${matched.has(opt) ? ' checked' : ''}><span>${escHtml(opt)}</span></label>`
+      ).join('');
+
+      return `<div class="wsf-rl" data-field="${k}">
+        <div class="wsf-rl-top"><b>${escHtml(label)} :</b><span class="wsf-ro-val">${escHtml(val !== '' ? val : '-')}</span></div>
+        <input type="hidden" data-k="${k}" value="${escHtml(val)}">
+        <div class="wsf-chk-wrap">
+          ${flexHtml}
+          <div class="wsf-chk-group">
+            ${pillsHtml}
+            <label class="wsf-chk-pill wsf-oth-pill${hasOther ? ' on' : ''}"><input type="checkbox" class="wsf-oth-chk"${hasOther ? ' checked' : ''}><span>Other</span></label>
+          </div>
+          <input type="text" class="wsf-oth-txt" placeholder="Specify other finding..." value="${escHtml(remainder)}"${hasOther ? '' : ' hidden'}>
+        </div>
+      </div>`;
+    };
+
     const wsRenderSections = (sections, data, pulled = []) => {
       wsSections = sections;
       const pb = {};
       pulled.forEach((p) => { pb[p.section] = p; });
-      const chip = (p) => {
-        if (!p) return '';
-        const r = (p.result || '').toUpperCase();
-        const cls = r.startsWith('FAIL') ? 'res-fail' : (r.startsWith('TOL') ? 'res-tol' : (r.startsWith('PASS') ? 'res-pass' : ''));
-        const when = (p.completed || p.started || '').slice(0, 10);
-        return ` <span class="wsf-pr ${cls}">${escHtml(r || p.status || 'PENDING')}</span> <b class="wsf-pl">${escHtml(p.labRef || '')}</b> <span class="wsf-ps">${escHtml([p.status, when].filter(Boolean).join(' · '))}</span>`;   // the child Lab Ref of the test sits beside its result
-      };
-      $('#ws-sections').innerHTML = sections.map((s) => `
+      const sMeta = data.sectionMeta || {};
+
+      $('#ws-sections').innerHTML = sections.map((s) => {
+        const p = pb[s.id] || {};
+        const sm = sMeta[s.id] || {};
+        const rawRes = String(sm.result || p.result || '').trim().toUpperCase();
+        const normRes = rawRes.startsWith('FAIL') ? 'FAILED' : (rawRes.startsWith('TOL') ? 'TOLERABLE' : (rawRes.startsWith('PASS') ? 'PASS' : ''));
+        const displayRes = normRes || rawRes || '-';
+        const resCls = wsResClass(displayRes);
+        const rawComp = String(sm.completedDate || p.completed || '').trim();
+        const compDateIso = wsNormDate(rawComp);
+        const compDateDisp = compDateIso || rawComp || '-';
+        return `
         <div class="ws-sec" data-sec="${s.id}">
           <div class="wsf-st">${escHtml(s.title)}</div>
           <table class="wsf-t wsf-sc">
-            <tr><td class="wsf-tc"><b>Test conditions测试条件:</b></td><td><b>Result结果 :</b>${chip(pb[s.id])}</td></tr>
-            <tr><td class="wsf-cd">${s.cond}</td><td class="wsf-rs">${Object.entries(s.fields).map(([k, label]) =>
-              `<div class="wsf-rl"><b>${escHtml(label)} :</b><input type="text" data-k="${k}" value="${escHtml((((data.results || {})[s.id] || {})[k]) || ((pb[s.id] || {}).fields || {})[k] || '')}"></div>`).join('')}</td></tr>
+            <tr>
+              <td class="wsf-tc"><b>Test conditions测试条件:</b></td>
+              <td class="wsf-res-hdr">
+                <div class="wsf-res-bar">
+                  <b>Result结果 :</b>
+                  <span class="wsf-res-badge ${resCls}" data-sec-res-badge="${s.id}" data-orig-res="${escHtml(rawRes)}">${escHtml(displayRes)}</span>
+                  <select class="wsf-res-sel ${resCls}" data-sec-res="${s.id}" aria-label="Test result">
+                    <option value="">-</option>
+                    <option value="PASS"${normRes === 'PASS' ? ' selected' : ''}>PASS</option>
+                    <option value="TOLERABLE"${normRes === 'TOLERABLE' ? ' selected' : ''}>TOLERABLE</option>
+                    <option value="FAILED"${normRes === 'FAILED' ? ' selected' : ''}>FAILED</option>
+                  </select>
+                  ${p.labRef ? `<b class="wsf-pl">${escHtml(p.labRef)}</b>` : ''}
+                  <label class="wsf-cdate-lbl">Complete Date: <span class="wsf-date-ro wsf-cdate-ro" data-sec-cdate-ro="${s.id}" data-raw-date="${escHtml(rawComp)}">${escHtml(compDateDisp)}</span><input type="date" class="wsf-cdate" data-sec-cdate="${s.id}" value="${escHtml(compDateIso)}"></label>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td class="wsf-cd">${s.cond}</td>
+              <td class="wsf-rs">${Object.entries(s.fields).map(([k, label]) => {
+                const savedV = (((data.results || {})[s.id] || {})[k]);
+                const pulledV = ((p.fields || {})[k]);
+                const v = (savedV !== undefined && String(savedV).trim() !== '') ? savedV : (pulledV !== undefined ? pulledV : '');
+                return buildFieldControl(s.id, k, label, v);
+              }).join('')}</td>
+            </tr>
           </table>
-        </div>`).join('');
+        </div>`;
+      }).join('');
+      wsSetEditMode(wsEditMode);
     };
+
+    const wsApplyLoaded = (j) => {
+      if (!j) return;
+      const i = j.info || {};
+      const d = j.data || {};
+      const pulled = j.pulled || [];
+      if (i.labRef) wsBaseRef = String(i.labRef).trim();
+      const rawSide = String(i.side || d.side || '').trim().toUpperCase();
+      wsSide = (rawSide === 'L' || rawSide === 'R') ? rawSide : '';
+      if (!wsSide && i.updatedLabRef && /-([LR])$/i.test(String(i.updatedLabRef))) {
+        wsSide = String(i.updatedLabRef).match(/-([LR])$/i)[1].toUpperCase();
+      }
+      wsUpdateRefDisplay();
+      if ($('#ws-etrf')) $('#ws-etrf').value = (d.etrfNo !== undefined && d.etrfNo !== '') ? d.etrfNo : (i.etrfNo || '');
+      $('#ws-supplier').value = (d.supplier !== undefined && d.supplier !== '') ? d.supplier : 'DATIAN SUBIC SHOES INC.';
+      $('#ws-country').value = (d.country !== undefined && d.country !== '') ? d.country : 'Philippines';
+      $('#ws-matdesc').value = d.matDesc || '';
+      $('#ws-sendby').value = d.sendBy || '';
+      $('#ws-style').value = (d.style !== undefined && d.style !== '') ? d.style : (i.style || '');
+      $('#ws-color').value = (d.color !== undefined && d.color !== '') ? d.color : (i.color || '');
+      $('#ws-po').value = (d.po !== undefined && d.po !== '') ? d.po : (i.prodCode || '');
+      $('#ws-qty').value = (d.qty !== undefined && d.qty !== '') ? d.qty : (i.qty != null ? String(i.qty) : '');
+      $('#ws-received').value = wsNormDate(d.receivedDate || i.received || '');
+      $('#ws-tests').value = (i.tests || []).join(', ') || 'All';
+      const starts = pulled.map((p) => wsNormDate(p.started)).filter(Boolean).sort();
+      const ends = pulled.map((p) => wsNormDate(p.completed));
+      $('#ws-tested').value = wsNormDate(d.testedDate || starts[0] || '');
+      $('#ws-finished').value = wsNormDate(d.finishedDate || (ends.length && ends.every(Boolean) ? ends.sort().pop() : ''));
+      $('#ws-tech').value = d.technician || '';
+      $('#ws-comments').value = d.comments || '';
+      $('#ws-reviewed').value = d.reviewedBy || '';
+      $('#ws-approved').value = d.approvedBy || '';
+      wsEditMode = false;
+      wsRenderSections(j.sections || [], d, pulled);
+    };
+
+    // Delegate checkbox, flexing, other-text, date, and result dropdown changes
+    $('#ws-sections')?.addEventListener('change', (e) => {
+      const resSel = e.target.closest('.wsf-res-sel');
+      if (resSel) { styleWsResSelect(resSel); return; }
+      if (e.target.classList.contains('wsf-cdate')) { wsSyncDateRo(); return; }
+      const rl = e.target.closest('.wsf-rl');
+      if (rl) {
+        const pill = e.target.closest('.wsf-chk-pill');
+        if (pill && e.target.type === 'checkbox') pill.classList.toggle('on', e.target.checked);
+        wsSyncFieldFromBox(rl);
+      }
+    });
+    $('#ws-sections')?.addEventListener('input', (e) => {
+      const rl = e.target.closest('.wsf-rl');
+      if (rl && (e.target.classList.contains('wsf-oth-txt') || e.target.closest('.wsf-flex-builder'))) {
+        wsSyncFieldFromBox(rl);
+      }
+    });
+    ['#ws-received', '#ws-tested', '#ws-finished'].forEach((id) => {
+      $(id)?.addEventListener('change', wsSyncDateRo);
+    });
 
     const wsLoad = async (ref) => {
       wsMsg.textContent = '';
       if (!ref) return;
       try {
         const j = await apiFetch('dtr/wholeshoe-report?lab_ref=' + encodeURIComponent(ref));
-        const i = j.info; const d = j.data || {};
-        $('#ws-style').value = i.style; $('#ws-color').value = i.color; $('#ws-po').value = i.prodCode;
-        $('#ws-qty').value = i.qty; $('#ws-received').value = i.received; $('#ws-tests').value = (i.tests || []).join(', ') || 'All';
-        // Tested / Finished dates default to the tracker: first test started, last test completed (only when every test is done)
-        const pulled = j.pulled || [];
-        const starts = pulled.map((p) => (p.started || '').slice(0, 10)).filter(Boolean).sort();
-        const ends = pulled.map((p) => (p.completed || '').slice(0, 10));
-        $('#ws-tested').value = d.testedDate || starts[0] || '';
-        $('#ws-finished').value = d.finishedDate || (ends.length && ends.every(Boolean) ? ends.sort().pop() : '');
-        $('#ws-tech').value = d.technician || ''; $('#ws-comments').value = d.comments || '';
-        $('#ws-reviewed').value = d.reviewedBy || ''; $('#ws-approved').value = d.approvedBy || '';
-        wsRenderSections(j.sections || [], d, pulled);
+        wsLastLoaded = j;
+        wsApplyLoaded(j);
       } catch (err) { wsMsg.textContent = err.message; }
     };
 
     const wsCollect = () => {
       const results = {};
+      const sectionMeta = {};
       $$('#ws-sections .ws-sec').forEach((sec) => {
-        results[sec.dataset.sec] = {};
-        sec.querySelectorAll('input[data-k]').forEach((inp) => { results[sec.dataset.sec][inp.dataset.k] = inp.value.trim(); });
+        const sid = sec.dataset.sec;
+        results[sid] = {};
+        sec.querySelectorAll('.wsf-rl').forEach((rl) => wsSyncFieldFromBox(rl));
+        sec.querySelectorAll('input[data-k]').forEach((inp) => { results[sid][inp.dataset.k] = inp.value.trim(); });
+        const rSel = sec.querySelector('[data-sec-res]');
+        const cIn = sec.querySelector('[data-sec-cdate]');
+        sectionMeta[sid] = { result: rSel ? rSel.value : '', completedDate: cIn ? cIn.value : '' };
       });
       return {
-        testedDate: wsVal('#ws-tested'), finishedDate: wsVal('#ws-finished'), technician: wsVal('#ws-tech'),
-        reviewedBy: wsVal('#ws-reviewed'), approvedBy: wsVal('#ws-approved'), comments: wsVal('#ws-comments'), results,
+        side: wsSide,
+        updatedLabRef: (wsSide && wsBaseRef) ? `${wsBaseRef.replace(/-[LR]$/i, '')}-${wsSide}` : '',
+        etrfNo: wsVal('#ws-etrf'),
+        supplier: wsVal('#ws-supplier'), country: wsVal('#ws-country'), matDesc: wsVal('#ws-matdesc'), sendBy: wsVal('#ws-sendby'),
+        style: wsVal('#ws-style'), color: wsVal('#ws-color'), po: wsVal('#ws-po'), qty: wsVal('#ws-qty'),
+        receivedDate: wsVal('#ws-received'), testedDate: wsVal('#ws-tested'), finishedDate: wsVal('#ws-finished'),
+        technician: wsVal('#ws-tech'), reviewedBy: wsVal('#ws-reviewed'), approvedBy: wsVal('#ws-approved'),
+        comments: wsVal('#ws-comments'), results, sectionMeta,
       };
     };
 
     const wsSave = async () => {
-      const ref = wsSel.value;
+      const ref = wsBaseRef || wsSel.value;
       if (!ref) { wsMsg.textContent = 'Choose a Lab Ref No first.'; return false; }
       try {
         const res = await apiFetch('dtr/wholeshoe-report-save', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ lab_ref: ref, data: wsCollect() }),
         });
-        if (res && res.ok) { wsMsg.textContent = res.message; return true; }
+        if (res && res.ok) {
+          if (res.renamed && res.labRef) { wsBaseRef = res.labRef; if (wsSel) wsSel.value = res.labRef; }   // the Side renamed the whole shoe Lab Ref in the database
+          wsMsg.textContent = res.message; return true;
+        }
         wsMsg.textContent = (res && res.message) || 'Save failed.';
       } catch (err) { wsMsg.textContent = 'Save failed: ' + err.message; }
       return false;
     };
 
-    $('#btn-ws-save')?.addEventListener('click', async () => { if (await wsSave()) showToast('✓ ' + wsMsg.textContent); });
-    $('#btn-ws-preview')?.addEventListener('click', async () => {
-      if (!wsSel.value) { wsMsg.textContent = 'Choose a Lab Ref No first.'; return; }
-      if (await wsSave()) window.open(BASE_URL + 'dtr/wholeshoe-report-pdf?inline=1&lab_ref=' + encodeURIComponent(wsSel.value), '_blank');
+    wsSideToggle?.addEventListener('click', (e) => {
+      if (!wsEditMode) return;
+      const btn = e.target.closest('.wsf-side-btn');
+      if (!btn) return;
+      const picked = btn.dataset.side || '';
+      wsSide = (wsSide === picked) ? '' : picked;
+      wsUpdateRefDisplay();
+    });
+
+    wsEditBtn?.addEventListener('click', () => {
+      if (!wsSel.value) { showToast('Open a Whole Shoe Lab Ref first.', 'warning'); return; }
+      if (!wsBaseRef) wsBaseRef = wsSel.value.trim();
+      wsSetEditMode(true);
+    });
+    wsCancelBtn?.addEventListener('click', () => {
+      if (wsLastLoaded) {
+        wsApplyLoaded(wsLastLoaded);
+      } else {
+        wsSetEditMode(false);
+      }
+      wsMsg.textContent = '';
+    });
+    wsSaveBtn?.addEventListener('click', async () => {
+      if (await wsSave()) {
+        const savedMsg = wsMsg.textContent;
+        await wsLoad(wsBaseRef || wsSel.value);
+        wsMsg.textContent = savedMsg;
+        showToast('✓ ' + savedMsg);
+      }
+    });
+    const openWholeShoePrintPreview = () => {
+      const ref = wsSel.value;
+      if (!ref) { wsMsg.textContent = 'Choose a Lab Ref No first.'; showToast('Open a Whole Shoe Lab Ref first.', 'warning'); return; }
+      const d = wsCollect();
+      const pulled = (wsLastLoaded && wsLastLoaded.pulled) || [];
+      const pb = {};
+      pulled.forEach((p) => { pb[p.section] = p; });
+      const fmtVal = (v) => {
+        const s = String(v == null ? '' : v).trim();
+        return s !== '' ? escHtml(s) : '-';
+      };
+      const secHtml = (wsSections || []).map((s) => {
+        const p = pb[s.id] || {};
+        const sm = (d.sectionMeta || {})[s.id] || {};
+        const rawRes = String(sm.result || p.result || '').trim().toUpperCase();
+        const normRes = rawRes.startsWith('FAIL') ? 'FAILED' : (rawRes.startsWith('TOL') ? 'TOLERABLE' : (rawRes.startsWith('PASS') ? 'PASS' : ''));
+        const dispRes = normRes || rawRes || '-';
+        const resCls = wsResClass(dispRes);
+        const compDate = String(sm.completedDate || wsNormDate(p.completed) || p.completed || '').trim() || '-';
+        const fieldsHtml = Object.entries(s.fields || {}).map(([k, label]) => {
+          const sv = (((d.results || {})[s.id] || {})[k]);
+          const pv = ((p.fields || {})[k]);
+          const v = (sv !== undefined && String(sv).trim() !== '') ? sv : (pv !== undefined ? pv : '');
+          return `<div class="wsf-rl"><div class="wsf-rl-top"><b>${escHtml(label)} :</b><span class="wsf-ro-val">${fmtVal(v)}</span></div></div>`;
+        }).join('');
+        return `
+          <div class="ws-sec">
+            <div class="wsf-st">${escHtml(s.title)}</div>
+            <table class="wsf-t wsf-sc">
+              <tr>
+                <td class="wsf-tc"><b>Test conditions测试条件:</b></td>
+                <td class="wsf-res-hdr">
+                  <div class="wsf-res-bar">
+                    <b>Result结果 :</b>
+                    <span class="wsf-res-badge ${resCls}">${escHtml(dispRes)}</span>
+                    ${p.labRef ? `<b class="wsf-pl">${escHtml(p.labRef)}</b>` : ''}
+                    <span class="wsf-cdate-lbl">Complete Date: <span class="wsf-date-ro">${escHtml(compDate)}</span></span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="wsf-cd">${s.cond}</td>
+                <td class="wsf-rs">${fieldsHtml}</td>
+              </tr>
+            </table>
+          </div>`;
+      }).join('');
+
+      const vfLogo = BASE_URL + 'assets/images/vf-logo.webp';
+      const satraLogo = BASE_URL + 'assets/images/satra-accredited.png';
+      const html = `
+        <div class="dtr-report-sheet wsf wsf-readonly wsf-print-sheet">
+          <div class="wsf-head">
+            <img src="${vfLogo}" class="wsf-vf" alt="VF">
+            <div class="wsf-title"><h2>Whole Footwear Test Results</h2><h3>整鞋测试报告</h3></div>
+            <img src="${satraLogo}" class="wsf-satra" alt="SATRA Accredited Laboratory">
+          </div>
+          <table class="wsf-t wsf-ref">
+            <tr>
+              <td class="wsf-frm">Form # : Lab VF 002</td>
+              <td class="wsf-rf">
+                <div>ETRF. No : <b>${fmtVal(d.etrfNo)}</b></div>
+                <div class="wsf-lr">Lab Ref. No : <b>${escHtml(ref)}</b></div>
+              </td>
+            </tr>
+          </table>
+          <table class="wsf-t wsf-info">
+            <tr><td>Supplier/Factory(厂商) :</td><td><b>${escHtml(d.supplier || 'DATIAN SUBIC SHOES INC.')}</b></td><td>O Prod.Material (量产材料)</td><td>O Prod.Re-test量产重测</td></tr>
+            <tr><td>Supplier's country(国家):</td><td><b>${escHtml(d.country || 'Philippines')}</b></td><td>O New/Development 开发段新材料</td><td>O Trial Test 试测测试</td></tr>
+            <tr><td>Material Description(材料):</td><td><b>${fmtVal(d.matDesc)}</b></td><td colspan="2">o Tech 1 &nbsp;&nbsp;&nbsp; Tech 2 &nbsp;&nbsp;&nbsp; Tech 3 &nbsp;&nbsp;&nbsp; Tech 4</td></tr>
+            <tr><td>Model No./Style(型体):</td><td><b>${fmtVal(d.style)}</b></td><td colspan="2">O Sales Sample (销售样品)</td></tr>
+            <tr><td>Color (颜色):</td><td><b>${fmtVal(d.color)}</b></td><td>Received Date(收到日) :</td><td><b>${fmtVal(d.receivedDate)}</b></td></tr>
+            <tr><td>P.O/Lot No(编号):</td><td><b>${fmtVal(d.po)}</b></td><td>Tested Date(测试时间) :</td><td><b>${fmtVal(d.testedDate)}</b></td></tr>
+            <tr><td>Quantity(数量):</td><td><b>${fmtVal(d.qty)}</b></td><td>Finished Date(完成时间) :</td><td><b>${fmtVal(d.finishedDate)}</b></td></tr>
+            <tr><td>Send by (提供方):</td><td><b>${fmtVal(d.sendBy)}</b></td><td>Technician(技术人员) :</td><td><b>${fmtVal(d.technician)}</b></td></tr>
+          </table>
+          ${secHtml}
+          <table class="wsf-t wsf-foot">
+            <tr>
+              <td class="wsf-cm"><b>Comments备注 :</b><div class="wsf-print-cm">${fmtVal(d.comments)}</div></td>
+              <td class="wsf-sg">
+                <div>Reviewed by 检查: <b>${fmtVal(d.reviewedBy)}</b></div>
+                <div>Approved by核准: <b>${fmtVal(d.approvedBy)}</b></div>
+              </td>
+            </tr>
+          </table>
+        </div>`;
+
+      $('#dtr-print-page2')?.classList.add('hidden');
+      const p2Img = $('#dtr-print-page2-img');
+      if (p2Img) p2Img.removeAttribute('src');
+      $('#btn-dtr-download-access-pdf')?.classList.add('hidden');
+      $('#dtr-print-modal-title').textContent = `Whole Footwear Test Results — ${ref}`;
+      $('#dtr-print-sheet-container').innerHTML = html;
+      $('#dtr-print-modal-backdrop')?.classList.remove('hidden');
+    };
+
+    wsPreviewBtn?.addEventListener('click', () => {
+      if (wsEditMode) return;
+      openWholeShoePrintPreview();
     });
     wsSel.addEventListener('change', () => wsLoad(wsSel.value));
 
     (async () => {
       try {
-        // the Lab Ref is not editable: it is the one opened from the Lab Tracker lists (or ?labref=); the sheet is blank until then
         const j = await apiFetch('dtr/wholeshoe-labrefs');
-        if (!wsSel.value) wsRenderSections(j.sections || [], {});   // blank sheet with every test section
+        if (!wsSel.value) { wsEditMode = false; wsRenderSections(j.sections || [], {}); }
         const qs = new URLSearchParams(location.search);
         const want = qs.get('labref') || (qs.get('open') === 'wholeshoe' ? qs.get('ref') : '');
         if (want && !wsSel.value) { wsSel.value = want; wsLoad(want); }
@@ -2705,6 +3332,18 @@
 
   // Reloads the Bonding / Whole Shoe / Materials Master list from the server with the search words, the date range, the KPI result and the page chosen
   let listSeq = 0;
+  // the request of a list page: search words, date range, KPI result, summary button and sort chosen (used by the list and by the Excel download)
+  window.dtrListParams = (kind, panel, page) => {
+    const st = window.dtrListState || {};
+    const q = panel.querySelector('.dtr-list-search')?.value.trim() || '';
+    const params = new URLSearchParams({ tab: 'labtracker', lk: kind, lq: q, lp: String(page) });
+    if (st.rg) { params.set('from', st.rg.from); params.set('to', st.rg.to); }
+    else { params.set('all', '1'); }
+    if (st.res) params.set('res', st.res);
+    if (kind === 'bonding' && panel._ltFilter) params.set('lt', panel._ltFilter);
+    if (panel._sort && panel._sort.key) { params.set('ls', panel._sort.key); params.set('ld', panel._sort.dir); }
+    return params;
+  };
   window.dtrReloadList = async (forceKind, forcePage = 1) => {
     const kind = forceKind || $('.dtr-subtab.active')?.dataset.subtab || $('.dtr-subpanel:not(.hidden)')?.dataset.subpanel;
     if (kind === 'containers') {
@@ -2714,17 +3353,10 @@
     if (kind !== 'bonding' && kind !== 'shoes' && kind !== 'materials') return;
     const panel = $(`.dtr-subpanel[data-subpanel="${kind}"]`);
     if (!panel) return;
-    const st = window.dtrListState || {};
-    const q = panel.querySelector('.dtr-list-search')?.value.trim() || '';
     const page = Math.max(1, Number(forcePage) || 1);
     const seq = ++listSeq;
     const wrap = panel.querySelector('.dtr-table-wrap');
-    const params = new URLSearchParams({ tab: 'labtracker', lk: kind, lq: q, lp: String(page) });
-    if (st.rg) { params.set('from', st.rg.from); params.set('to', st.rg.to); }
-    else { params.set('all', '1'); }
-    if (st.res) params.set('res', st.res);
-    if (kind === 'bonding' && panel._ltFilter) params.set('lt', panel._ltFilter);
-    if (panel._sort && panel._sort.key) { params.set('ls', panel._sort.key); params.set('ld', panel._sort.dir); }
+    const params = window.dtrListParams(kind, panel, page);
     try {
       wrap?.classList.add('is-loading');
       const r = await fetch(`${BASE_URL}dtr?${params}`, { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
@@ -2762,6 +3394,94 @@
       }
     } catch (_) { /* keep the rows shown */ } finally { wrap?.classList.remove('is-loading'); }
   };
+
+  // Download icon (Lab Tracker toolbar): the open table as an Excel file - every row of the chosen date range / search / summary button, not only the 15 of the page
+  (function () {
+    const btn = $('#dtr-export-btn');
+    if (!btn) return;
+    const cellText = (td) => {
+      const c = td.cloneNode(true);
+      c.querySelectorAll('button, svg, img, .ws-caret, .dtr-dl-btn, .pc-toggle, .dtr-sort-ind').forEach((n) => n.remove());
+      c.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
+      return c.textContent.split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
+    };
+    const dash = (s) => (s === '-' ? '' : s);
+    const headsOf = (table) => [...table.querySelectorAll(':scope > thead > tr > th')].map((th, i) => ({ i, t: cellText(th) })).filter((h) => h.t !== '');
+    const fetchPage = async (kind, panel, page) => {
+      const r = await fetch(`${BASE_URL}dtr?${window.dtrListParams(kind, panel, page)}`, { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+      return new DOMParser().parseFromString(await r.text(), 'text/html');
+    };
+    const collectList = async (kind) => {
+      const panel = $(`.dtr-subpanel[data-subpanel="${kind}"]`);
+      const pages = Math.min(300, Math.max(1, Number($(`#lt-page-${kind}`)?.dataset.pages || 1)));
+      let headers = [], rows = [];
+      for (let p = 1; p <= pages; p++) {
+        const doc = await fetchPage(kind, panel, p);
+        const fp = doc.querySelector(`.dtr-subpanel[data-subpanel="${kind}"]`);
+        const table = fp?.querySelector('table');
+        if (!table) break;
+        const hs = headsOf(table);
+        if (!headers.length) headers = hs.map((h) => h.t);
+        const body = table.querySelector(':scope > tbody');
+        if (!body) continue;
+        [...body.children].forEach((tr) => {
+          if (tr.classList.contains('ws-kids') || tr.querySelector(':scope > td[colspan]')) return;
+          const tds = [...tr.children];
+          let base = hs.map((h) => dash(cellText(tds[h.i] || document.createElement('td'))));
+          // Whole Shoe: one row per whole shoe, exactly the columns of the table (its test types are listed in the Status column)
+          if (kind === 'shoes') base = base.map((v, k) => (k === 0 ? v.replace(/\s*\(\d+ tests?\)\s*$/, '') : v));
+          rows.push(base);
+        });
+      }
+      return { headers, rows };
+    };
+    const collectBench = async () => {
+      const ls = window.dtrListState || {};
+      const q = $('.dtr-as-search[data-as-type="bench"]')?.value.trim() || '';
+      const rg = ls.rg ? `&from=${encodeURIComponent(ls.rg.from)}&to=${encodeURIComponent(ls.rg.to)}` : '';
+      const rs = ls.res ? `&res=${encodeURIComponent(ls.res)}` : '';
+      const headers = ['Lab Ref No', 'Category', 'Material Test', 'Code', 'Test Date', 'Started / Finished', 'Machine', 'Technician', 'Result', 'Other Details & Bench Breakdown'];
+      const rows = [];
+      for (let p = 1; p <= 100; p++) {
+        const res = await apiFetch(`dtr/appsheet-archive?type=bench&q=${encodeURIComponent(q)}&page=${p}&limit=200${rg}${rs}`);
+        const list = (res && res.rows) || [];
+        list.forEach((r) => {
+          const det = [r.possible_cause ? `Cause: ${r.possible_cause}` : '', r.remarks || '', r.details_summary ? `[${r.detail_count || 0}] ${r.details_summary}` : ''].filter(Boolean).join(' · ');
+          const times = [r.started_at_fmt || '', r.finished_at ? `End: ${r.finished_at}` : ''].filter(Boolean).join(' / ');
+          rows.push([r.lab_ref_no || '', r.material_category_name || '', r.material_test_name || '', r.test_code || '', r.test_date || '', times, r.machine_number || '', r.technician || '', r.result || '', det]);
+        });
+        if (!list.length || rows.length >= Number(res.total || 0)) break;
+      }
+      return { headers, rows };
+    };
+    btn.addEventListener('click', async () => {
+      if (btn.disabled) return;
+      const sub = $('.dtr-subtab.active')?.dataset.subtab || 'bonding';
+      const names = { bonding: 'Bonding Shoe Collection', shoes: 'Whole Shoe Collection', containers: 'Lab Material Test Collection' };
+      const rg = (window.dtrListState || {}).rg;
+      const rangeTxt = rg ? (rg.from === rg.to ? rg.from : `${rg.from} to ${rg.to}`) : 'All dates';
+      btn.disabled = true;
+      try {
+        nxToast('Preparing the Excel file…', 'info', 2500);
+        const data = sub === 'containers' ? await collectBench() : await collectList(sub === 'shoes' ? 'shoes' : 'bonding');
+        if (!data.rows.length) { nxToast('There is nothing to download in this table.', 'warn', 4000); return; }
+        const res = await fetch(BASE_URL + 'dtr/export-table', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name="X-CSRF-TOKEN"]')?.content || '' },
+          body: JSON.stringify({ title: names[sub] || 'Lab Tracker', range: rangeTxt, headers: data.headers, rows: data.rows }),
+        });
+        if (!res.ok) throw new Error((await res.text()).replace(/<[^>]*>/g, ' ').trim().slice(0, 160) || 'Download failed');
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${(names[sub] || 'Lab-Tracker').replace(/\s+/g, '-')}_${rangeTxt.replace(/[^0-9A-Za-z]+/g, '_')}.xlsx`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        nxToast(`Downloaded ${data.rows.length.toLocaleString()} row(s).`, 'success', 3500);
+      } catch (err) { nxToast('Could not download the table: ' + err.message, 'error', 7000); }
+      finally { btn.disabled = false; }
+    });
+  })();
 
   // Sort arrows in the column headers of the Bonding / Whole Shoe / Materials lists: click = ascending, again = descending, again = the normal (latest first) order.
   // The sort runs on the server, so it covers every page, not only the 15 rows shown.
@@ -3946,7 +4666,8 @@
       // PO/Lot No shows "Production Code / MTL #"
       if ($('#bf_POLotNO') && /^DTP\d{8}[A-Z]{2,}[AB]\d+-[LR](-R?\d+)?$/i.test(rec.LabRefNo || '')) {
         const noteMtl = (rec.MTL || '').trim() || ((rec.LabNotesComments || '').match(/MTL ([^;]+)/) || [])[1]?.trim() || '';
-        const swapped = !!rec.ETRFNo;   // older intake rows: code in ETRF No, MTL in PO/Lot No
+        // older intake rows: code in ETRF No, MTL in PO/Lot No. A row with a real PO number (digits) in PO/Lot No keeps its ETRF No as it is
+        const swapped = !!rec.ETRFNo && !/^A\d{8,}$/i.test(rec.ETRFNo.trim()) && !/^\d{6,}$/.test((rec.POLotNO || '').trim());   // a real ETRF No (A + digits) is never a Production Code
         const code = (swapped ? rec.ETRFNo : (rec.POLotNO || '')).trim();
         const mtl = noteMtl || (swapped ? (rec.POLotNO || '').trim() : '');
         $('#bf_POLotNO').value = mtl ? `${code} / ${mtl}` : code;
@@ -5464,23 +6185,16 @@
               <td><span class="${utfStat.passCls}">${utfStat.pass}</span></td>
               <td><span class="${utfStat.failCls}">${utfStat.fail}</span></td>
               <td rowspan="3" class="text-left vf-mode-cell">
-                <b>AF</b>= Failure at the adhesive/substrate interface or the adhesive/primer interface<br>
-                <b>CF</b>= Cohesive Failure of the adhesive (failure within the adhesive or between the two layers of adhesive)<br>
-                <b>PF</b>= Failure at the primer/substrate interface<br>
-                <b>SF</b>= Failure of the substrate, including the location of the failure within the substrate
+                ${[['AF', 'Failure at the adhesive/substrate interface or the adhesive/primer interface'], ['CF', 'Cohesive Failure of the adhesive (failure within the adhesive or between the two layers of adhesive)'], ['PF', 'Failure at the primer/substrate interface'], ['SF', 'Failure of the substrate, including the location of the failure within the substrate']].map(([c, t]) => {
+                  const on = modeOfFailure.toUpperCase().split(/[^A-Z]+/).includes(c);
+                  return `<div style="${on ? 'background:#fff3b0;font-weight:700;' : ''}padding:1px 2px">${on ? '&#9745;' : '&#9744;'} <b>${c}</b>= ${t}</div>`;
+                }).join('')}
               </td>
               <td rowspan="3" class="text-left vf-cause-cell">
-                (a) Poor Priming 药水不良<br>
-                (b) Poor cementing 胶水不良<br>
-                (c) Over-dried cement<br>
-                (d) Wet primer 湿的药水<br>
-                (e) Wet cement 湿的胶水<br>
-                (f) Poor pressing 压机不良<br>
-                (g) Poor Roughing 打粗不良<br>
-                (h) Upper material - weak 鞋面材料不良<br>
-                (i) EVA-Weak EVA不良<br>
-                (j) Dusty component 粉沫<br>
-                (k) Splitting of foxing tape 围条分层
+                ${[['(a)', 'Poor Priming 药水不良'], ['(b)', 'Poor cementing 胶水不良'], ['(c)', 'Over-dried cement'], ['(d)', 'Wet primer 湿的药水'], ['(e)', 'Wet cement 湿的胶水'], ['(f)', 'Poor pressing 压机不良'], ['(g)', 'Poor Roughing 打粗不良'], ['(h)', 'Upper material - weak 鞋面材料不良'], ['(i)', 'EVA-Weak EVA不良'], ['(j)', 'Dusty component 粉沫'], ['(k)', 'Splitting of foxing tape 围条分层']].map(([c, t]) => {
+                  const on = possibleCause.indexOf(c) >= 0;
+                  return `<div style="${on ? 'background:#fff3b0;font-weight:700;' : ''}padding:1px 2px">${on ? '&#9745;' : '&#9744;'} ${c} ${t}</div>`;
+                }).join('')}
               </td>
             </tr>
             <tr>
@@ -5620,11 +6334,17 @@
     return Math.max(0.4, Math.round(scale * 1000) / 1000);
   };
 
-  // The preview is a true A4 page (210 x 297 mm, 6 mm margins): whatever report fills it is scaled to fit ONE page, exactly as it prints / downloads
+  // The preview is a true A4 page (210 x 297 mm, 6 mm margins): single-page reports scale to fit ONE page; multi-page reports (Whole Shoe VF 002) keep natural 100% A4 width without stretching
   const a4Box = $('#dtr-print-sheet-container');
+  const isMultiPageSheet = (el) => !!(el && el.querySelector('.wsf-print-sheet'));
   if (a4Box) {
     new MutationObserver(() => {
       if (!a4Box.innerHTML.trim()) return;
+      if (isMultiPageSheet(a4Box)) {
+        a4Box.style.width = '100%';
+        a4Box.style.zoom = '1';
+        return;
+      }
       const s = fitOnePageScale(a4Box.innerHTML);
       a4Box.style.width = (198 / 25.4 * 96 / s) + 'px';
       a4Box.style.zoom = String(s);
@@ -5675,10 +6395,11 @@
     const label = btn.textContent;
     btn.disabled = true; btn.textContent = 'Creating PDF...';
     try {
+      const pdfScale = isMultiPageSheet(src) ? 1 : fitOnePageScale(src.innerHTML);
       const res = await fetch(BASE_URL + 'dtr/sheet-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name="X-CSRF-TOKEN"]')?.content || '' },
-        body: JSON.stringify({ scale: fitOnePageScale(src.innerHTML), html: src.innerHTML, page2_img: page2Src, page2_cap: page2Src ? page2Cap() : '', name: ($('#dtr-print-modal-title')?.textContent || 'Report').replace(/[^A-Za-z0-9._ -]+/g, '_') }),
+        body: JSON.stringify({ scale: pdfScale, html: src.innerHTML, page2_img: page2Src, page2_cap: page2Src ? page2Cap() : '', name: ($('#dtr-print-modal-title')?.textContent || 'Report').replace(/[^A-Za-z0-9._ -]+/g, '_') }),
       });
       if (!res.ok) throw new Error((await res.text()).slice(0, 200) || 'PDF failed');
       const blob = await res.blob();
@@ -5698,7 +6419,7 @@
     root.id = 'dtr-print-root';
     const p1 = document.createElement('div');
     p1.innerHTML = src.innerHTML;
-    p1.style.zoom = String(fitOnePageScale(src.innerHTML));
+    p1.style.zoom = isMultiPageSheet(src) ? '1' : String(fitOnePageScale(src.innerHTML));
     root.appendChild(p1);
     if (page2Src) {   // the report picture on its own second page
       const p2 = document.createElement('div');
@@ -5814,24 +6535,30 @@
       }, 500);
       return;
     }
-    if (!slug || !/^[a-z]+$/.test(slug) || !/^\d+$/.test(id || '')) return;
+    const openSlug = slug === 'pulltest' ? 'pull' : slug;
+    if (!openSlug || !/^[a-z]+$/.test(openSlug) || !/^\d+$/.test(id || '')) return;
     setTimeout(async () => {
       await bondingReady; // the blank form must not overwrite the linked report
       const host = $('#dtr-tracker-tbody') || document.body;
       const b = document.createElement('button');
-      b.type = 'button'; b.hidden = true; b.dataset.openRecord = slug; b.dataset.sourceId = id;
+      b.type = 'button'; b.hidden = true; b.dataset.openRecord = openSlug; b.dataset.sourceId = id;
       host.appendChild(b); b.click(); b.remove();
       if (q.get('preview') === '1') {
         await new Promise((r) => setTimeout(r, 2200));
-        (slug === 'bonding' || slug === 'pull' ? $('#btn-bond-print-preview') : $('#btn-dtr-print-preview'))?.click();
+        (openSlug === 'bonding' || openSlug === 'pull' ? $('#btn-bond-print-preview') : $('#btn-dtr-print-preview'))?.click();
       }
       // &export=1 inside the InterLink sender's hidden frame: hand the finished report PDF (as base64) to the parent page
       if (q.get('export') === '1' && window.parent !== window) {
         const reply = (m) => window.parent.postMessage(Object.assign({ type: 'NXL_REPORT_PDF' }, m), location.origin);
         try {
-          await new Promise((r) => setTimeout(r, 800));
+          // the empty container holds only a comment: wait for a real sheet, and press the preview again when the page was slow
+          const sheetReady = () => { const s = $('#dtr-print-sheet-container'); return !!s && s.innerHTML.replace(/<!--[\s\S]*?-->/g, '').trim().length > 200; };
+          for (let w = 0; w < 60 && !sheetReady(); w++) {
+            if (w > 0 && w % 10 === 0) (openSlug === 'bonding' || openSlug === 'pull' ? $('#btn-bond-print-preview') : $('#btn-dtr-print-preview'))?.click();
+            await new Promise((r) => setTimeout(r, 250));
+          }
           const src = $('#dtr-print-sheet-container');
-          if (!src || !src.innerHTML.trim()) throw new Error('The report sheet could not be prepared.');
+          if (!sheetReady()) throw new Error('The report sheet could not be prepared.');
           const res = await fetch(BASE_URL + 'dtr/sheet-pdf', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name="X-CSRF-TOKEN"]')?.content || '' },
@@ -7537,6 +8264,36 @@
       }
     });
 
+  })();
+
+  // A Lab Ref whose report was approved and signed (InterLink > Report Submission): Print / Preview opens the signed PDF, and the report can no longer be edited.
+  (() => {
+    const refOf = { 'btn-dtr-print-preview': '#mf_LabRefNo', 'btn-mat-edit': '#mf_LabRefNo', 'btn-bond-print-preview': '#bf_LabRefNo', 'btn-bond-recalc': '#bf_LabRefNo', 'btn-ws-preview': '#ws-labref', 'btn-ws-edit': '#ws-labref' };
+    const isPreview = (id) => /preview/.test(id);
+    const cache = {};
+    const approved = async (ref) => {
+      if (!ref) return null;
+      if (cache[ref] && Date.now() - cache[ref].t < 15000) return cache[ref].a;
+      let a = null;
+      try { const j = await (await fetch(BASE_URL + 'dtr/approval/status?lab_ref=' + encodeURIComponent(ref), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })).json(); a = j.approval && j.approval.status === 'approved' ? Object.assign({ admin: !!j.admin }, j.approval) : null; } catch (e) { /* unknown: leave the report as it is */ }
+      cache[ref] = { t: Date.now(), a };
+      return a;
+    };
+    document.addEventListener('click', async (e) => {
+      const b = e.target.closest('button'); const id = b && b.id;
+      if (!id || !refOf[id] || b.dataset.apvPass) return;
+      e.stopImmediatePropagation(); e.preventDefault();
+      const ref = ($(refOf[id])?.value || '').trim();
+      const w = isPreview(id) ? window.open('', '_blank') : null;     // opened now so the browser does not block it
+      const a = await approved(ref);
+      if (a && a.admin && !w) { cache[ref] = null; b.dataset.apvPass = '1'; b.click(); delete b.dataset.apvPass; return; }   // an Admin may still edit a signed report
+      if (a) {
+        if (w) { w.location = a.file; showToast('Showing the signed report of ' + ref + '.'); } else showToast(ref + ' is approved and signed: only an Admin can edit it.', true);
+        return;
+      }
+      if (w) w.close();
+      b.dataset.apvPass = '1'; b.click(); delete b.dataset.apvPass;
+    }, true);
   })();
 
 })();

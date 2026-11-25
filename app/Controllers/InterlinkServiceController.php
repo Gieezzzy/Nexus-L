@@ -211,11 +211,15 @@ class InterlinkServiceController extends BaseController
             'user_id' => (int) ($me['id'] ?? 0), 'user_name' => (string) ($me['name'] ?? $me['username'] ?? ''), 'status' => 'queued', 'created_at' => date('Y-m-d H:i:s'),
         ]);
 
+        $isPullRef = (bool) preg_match('/^DTP\d{8}(HP|EY|DR|RVT|LLH)/i', $labRef) || str_contains(strtolower($reportNo), 'pull');
+        $uploadAccount = $isPullRef ? 'dtp_lab@dtshoes.com' : 'dtp_qcasst@dtshoes.com';
+
         try {
             $res  = service('curlrequest')->post($this->baseUrl() . '/jobs', [
                 'headers'     => ['X-Service-Key' => $this->key()],
                 'json'        => [
                     'job_uid' => $uid, 'application_no' => $appNo, 'lab_ref_no' => $labRef, 'report_no' => $reportNo, 'mode' => $mode,
+                    'account' => $uploadAccount,
                     'user_name' => (string) ($me['name'] ?? ''),
                     'verify_url' => site_url('interlink/service/verify') . '?lab_ref=' . rawurlencode($labRef) . '&application_no=' . rawurlencode($appNo),
                     'callback_url' => site_url('interlink/service/callback'),
@@ -373,6 +377,29 @@ class InterlinkServiceController extends BaseController
         ]);
     }
 
+    /**
+     * Sending a report first writes its Report No. and "Submitted" into tbl_interlink_reports (when the job is queued). When the job FAILS and the application never
+     * had a finished job, that row is put back to "Not submitted" without the Report No.: it would otherwise block the same Report No. for every other application
+     * ("already used in InterLink") although InterLink holds nothing. A row that was there before the job (read from InterLink's own grid) is not touched.
+     */
+    private function undoQueuedReport(array $job): void
+    {
+        $db  = $this->db();
+        $app = (string) ($job['application_no'] ?? '');
+        $rep = (string) ($job['report_no'] ?? '');
+        if ($app === '' || $rep === '' || ! $db->tableExists('tbl_interlink_reports')) {
+            return;
+        }
+        if ($db->table('tbl_interlink_service_jobs')->where('application_no', $app)->whereIn('mode', ['add', 'edit'])->where('status', 'done')->where('id !=', (int) $job['id'])->countAllResults() > 0) {
+            return;                                   // a report of it was submitted before: InterLink does hold a report
+        }
+        $row = $db->table('tbl_interlink_reports')->where('application_no', $app)->get(1)->getRowArray();
+        if (! $row || (string) $row['report_no'] !== $rep || strtotime((string) $row['updated_at']) < strtotime((string) $job['created_at']) - 120) {
+            return;
+        }
+        $db->table('tbl_interlink_reports')->where('id', $row['id'])->update(['report_no' => '', 'job_status' => 'Not submitted', 'updated_at' => date('Y-m-d H:i:s')]);
+    }
+
     /** POST interlink/service/callback (service key): the result of a job. The user gets a Synology message; the web feed shows the toast. */
     /**
      * POST interlink/service/session {account, state: ok|expired|aging, reason, age_hours}  (service key)
@@ -445,6 +472,12 @@ class InterlinkServiceController extends BaseController
         if (! preg_match('/^A\d{6,}$/i', $newApp) && preg_match('/\b(A\d{7,12})\b/i', $newApp . ' ' . $msg, $am)) {
             $newApp = strtoupper($am[1]);
         }
+        if ($state === 'done') {
+            InterlinkMirrorController::trigger();   // an eTRF was created / a report submitted: the Mirror refreshes
+            if (preg_match('/^A\d{6,}$/i', $newApp) && SystemSettings::get('interlink.source', 'interlink') === 'database') {
+                InterlinkMirrorController::stub($newApp, (string) ($job['report_no'] ?? ''));   // visible in the list right now
+            }
+        }
         if ($state === 'running') {
             // the service took this report up: the user is told it has started (no Synology message for that)
             $this->db()->table('tbl_interlink_service_jobs')->where('id', $job['id'])->where('finished_at IS NULL')->update(['status' => 'running', 'started_at' => date('Y-m-d H:i:s')]);
@@ -463,6 +496,9 @@ class InterlinkServiceController extends BaseController
             $upd['result_json'] = (string) $p['result_json'];
         }
         $this->db()->table('tbl_interlink_service_jobs')->where('id', $job['id'])->update($upd);
+        if (in_array((string) ($job['mode'] ?? ''), ['add', 'edit'], true) && in_array($state, ['failed', 'signin-required'], true)) {
+            $this->undoQueuedReport($job);          // a report that did not reach InterLink must not stay "Submitted" in NEXUS-L
+        }
         if (($job['mode'] ?? '') === 'vf_grid') {
             // the saved copy of this list page (VF - Test Request) is filled only by the job that was claimed for it
             try {

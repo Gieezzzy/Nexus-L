@@ -101,6 +101,29 @@ class ReportPdf
         return is_array($j) && empty($j['error']) ? $j : [];
     }
 
+    /** An approved and signed report can be changed only by an Admin: true when this Lab Ref is signed and the user is not an Admin. */
+    public static function signedLocked(string $labRef): bool
+    {
+        if ($labRef === '' || \App\Libraries\Roles::isAdmin((string) (service('auth')->user()['role'] ?? ''))) {
+            return false;
+        }
+        $db = \Config\Database::connect();
+
+        return $db->tableExists('tbl_dtr_report_approvals')
+            && $db->table('tbl_dtr_report_approvals')->where(['lab_ref_no' => $labRef, 'status' => 'approved'])->countAllResults() > 0;
+    }
+
+    /** May this signatory decide this approval? Chosen approvers (approver_ids) win; else the printed required name; else anybody. */
+    public static function mayDecide(array $a, array $sg): bool
+    {
+        $ids = array_filter(array_map('intval', explode(',', (string) ($a['approver_ids'] ?? ''))));
+        if ($ids) {
+            return in_array((int) ($sg['id'] ?? 0), $ids, true);
+        }
+
+        return empty($a['required_name']) || self::nameMatches((string) $a['required_name'], (string) ($sg['full_name'] ?? ''));
+    }
+
     /** Does the name printed on a report ("nila", "KATE G.", "N.B.E.") belong to this signatory's full name? */
     public static function nameMatches(string $printed, string $fullName): bool
     {
@@ -188,7 +211,7 @@ class ReportPdf
         }
         $s['pos'] = self::signoff($in);
         // the Reviewed by line gets the signature too when its printed name is the signer's
-        $s['pos']['reviewed_is_signer'] = ! empty($s['pos']['reviewed']['name']) && self::nameMatches((string) $s['pos']['reviewed']['name'], (string) ($s['name'] ?? ''));
+        $s['pos']['reviewed_is_signer'] = ! empty($s['pos']['reviewed']['label']);
         $json = tempnam(sys_get_temp_dir(), 'stp');
         file_put_contents($json, json_encode($s));
         $node = is_file('C:\\Program Files\\nodejs\\node.exe') ? 'C:\\Program Files\\nodejs\\node.exe' : 'node';

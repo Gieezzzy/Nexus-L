@@ -79,6 +79,37 @@ class DtrLabrefIndex
         ];
     }
 
+    /** the report fields of a bonding test that have a column in the index (added on first use): everything typed in the form follows the save */
+    private static function bondingExtra($db, array $row): array
+    {
+        static $ready = false;
+        $cols = ['etrf_bonding_app' => 'VARCHAR(60)', 'po_quantity' => 'VARCHAR(40)', 'authorized_by' => 'VARCHAR(120)', 'adhesive_supplier' => 'VARCHAR(120)', 'shipped_date' => 'VARCHAR(20)',
+            'production_date' => 'VARCHAR(20)', 'send_by' => 'VARCHAR(120)', 'material_source' => 'VARCHAR(80)', 'test_type' => 'VARCHAR(60)', 'side' => 'VARCHAR(10)', 'age_category' => 'VARCHAR(30)',
+            'std' => 'VARCHAR(10)', 'mode_of_failure' => 'VARCHAR(255)', 'possible_cause' => 'TEXT', 'remarks' => 'TEXT'];
+        if (! $ready) {
+            $have = $db->getFieldNames('tbl_dtr_unified_labrefs');
+            foreach ($cols as $c => $ty) {
+                if (! in_array($c, $have, true)) {
+                    try {
+                        $db->query("ALTER TABLE tbl_dtr_unified_labrefs ADD COLUMN `{$c}` {$ty} NULL");
+                    } catch (\Throwable $e) {
+                    }
+                }
+            }
+            $ready = true;
+        }
+        $g = static fn (string $k): string => trim((string) ($row[$k] ?? ''));
+        $d = static fn (string $k): string => ($t = $g($k)) !== '' && strtotime($t) ? date('d M Y', strtotime($t)) : $t;
+        $out = [
+            'etrf_bonding_app' => $g('ETRFNo'), 'po_quantity' => $g('POQuantity'), 'authorized_by' => $g('ReviewedBy'), 'adhesive_supplier' => $g('AdhesiveSupplier'),
+            'shipped_date' => $d('ShippedDate'), 'production_date' => $d('ProductionDate'), 'send_by' => $g('Sendby'), 'material_source' => $g('MaterialSource'), 'test_type' => $g('TestType'),
+            'side' => $g('Side'), 'age_category' => $g('AgeCategory'), 'std' => $g('STD'), 'mode_of_failure' => $g('ModeOfFailure'), 'possible_cause' => $g('PossibleCause'), 'remarks' => $g('Remarks'),
+        ];
+        $have = $db->getFieldNames('tbl_dtr_unified_labrefs');
+
+        return array_intersect_key($out, array_flip($have));
+    }
+
     /** Adds or refreshes the index row of one report; skipped when the report has no Lab Ref. */
     public static function upsert($db, string $slug, int $recordId, array $row): void
     {
@@ -86,13 +117,24 @@ class DtrLabrefIndex
         if ($data['lab_ref_no'] === '') {
             return;
         }
+        if ($slug === 'bonding') {
+            $data += self::bondingExtra($db, $row);
+        }
         $t   = $db->table('tbl_dtr_unified_labrefs');
         $has = $t->where('source_table', $data['source_table'])->where('source_id', $recordId)->get()->getRowArray();
         if (! $has) {
             // no row for this record id: reuse the row already indexed under the same Lab Ref No (never a second copy of one Lab Ref)
             $has = $db->table('tbl_dtr_unified_labrefs')->where('source_table', $data['source_table'])->where('lab_ref_no', $data['lab_ref_no'])->orderBy('id', 'DESC')->get(1)->getRowArray();
         }
-        $has ? $db->table('tbl_dtr_unified_labrefs')->where('id', $has['id'])->update($data) : $db->table('tbl_dtr_unified_labrefs')->insert($data);
+        if ($has && $slug === 'bonding') {
+            // a field the save left blank never wipes what the index already holds (only the status and the result follow the report)
+            foreach ($data as $k => $v) {
+                if ($v === '' && trim((string) ($has[$k] ?? '')) !== '' && ! in_array($k, ['overall_result', 'status'], true)) {
+                    unset($data[$k]);
+                }
+            }
+        }
+        $has ?$db->table('tbl_dtr_unified_labrefs')->where('id', $has['id'])->update($data) : $db->table('tbl_dtr_unified_labrefs')->insert($data);
     }
 
     /** Pull test (HP / EY / DR / RVT): its row of tbl_dtr_pull_tests as an index row, form_slug 'pulltest' (Pending until a result is recorded). */

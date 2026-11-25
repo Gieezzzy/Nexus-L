@@ -34,7 +34,6 @@ NEXUS-L is the laboratory intelligence and execution system built on CodeIgniter
 | `app/Controllers/ApprovalController.php` | QR approval of reports by registered Managers / Supervisors: request, single-use links, sign, signed PDF, verify (`dtr/approval/verify`), signatories admin, per-user PDF name format. |
 | `app/Controllers/LabMonitoringController.php`, `app/Views/labmonitor/erp.php`, `public/assets/js/labmon.js` | Lab Monitoring > ERP Finish Monitoring: month view of bonding lab refs, ERP / InterLink status, row dialog (read-only U60 report), single and bulk **Submit to ERP**, ERP log, ERP PC badge. |
 | `app/Libraries/ErpMonitor.php`, `app/Libraries/ErpAgent.php`, `app/Controllers/ErpAgentController.php`, `app/Commands/ErpImport.php` | ERP payload / import from the daily tracker workbook; client for the ERP Agent (PC .43 / .45); result callback; `php spark erp:import`. |
-| `app/Commands/WholeShoeAppsheetSync.php` | `php spark wholeshoe:appsheet-sync [--apply]`: connects AppSheet whole shoes (parent Lab Ref, tests via WholeshoeLabRefNo, TR in the five test boxes, ERP OK) in NEXUS-L; see ICM Phase 229. |
 | `E:\desktop\MaterialTest\NexusErpAgent\` | **NEXUS-L ERP Agent** (C# tray app): HTTP API, FIFO queue, ERP driver on a hidden desktop, log view, Inno Setup installer. |
 | `app/Libraries/EtrfAppNos.php` | One Application No. column + history per eTRF type on `tbl_dtr_unified_labrefs`. |
 | `app/Controllers/PhotoLinkController.php`, `public/assets/js/dtr-photo.js`, `dtr-photo-attach.js`, `app/Views/photo/capture.php` | Phone camera QR links (shoe picture, Send Report photo): token, lock, live update. |
@@ -75,3 +74,14 @@ NEXUS-L is the laboratory intelligence and execution system built on CodeIgniter
 - NEXUS-L is detached from Access: `dbnexus` is the only database; reports print from it (ICM Phase 196).
 - Nothing is saved in InterLink without an approved, signed report (ICM Phases 194 and 197).
 - AI Assistant & Help Bot fully operational (ICM Phase 200 & 201): live read-only DB querying, Synology Chat approval reminders, 200 problem knowledge corpus, and interactive test computation engine with follow-up validation.
+
+- InterLink Mirror (tbl_interlink_rows / tbl_interlink_mirror_state; C# tray app NexusInterlinkMirror) -> Report Submission "database" source: InterlinkController::mirrorGrid, mirrorFormFields; setting interlink.source. Phase 233: serviceSearch->mirrorSearch, InterlinkMirrorController::stub (instant new eTRF), Mirror 1.1.2 5 s trigger. Phase 234-237: Mirror 1.1.3 skips stored rows (detail-only retry, no forced full pass) and 1.1.4 adds a 5-min keep-alive that renews session.json cookies; ERP Agent 1.1.2 closes the hidden ERP after a failed task (HiddenDesk.CloseErp); data fix of model style JN LX OLD SKOOL 36 -> UA LX OLD SKOOL 36 for 3 lab refs (bonding_info, bondingtracker, pull_tests, unified_labrefs).
+
+- Phases 239-241: dtr.js report export TDZ fix; InterLink Service 1.3.50 (material eTRF DevExpress fields, WrongPerson sign-in guard; built from 1.3.40 source, lacks the user's 1.3.47 parallel-limit settings); tools/pdf_signoff.py finds PyMuPDF under Apache LocalSystem so ReportPdf::stamp places the signature beside Reviewed/Approved by.
+- Phase 242-243: InterLink Service 1.3.51 editable concurrency; 1.3.52 safer defaults + browser launch retry
+- Phase 244: InterLink Service 1.3.53 retry-before-save + clearer grid message
+- Phase 245: Service 1.3.54 retries Home.aspx timeouts
+
+- Phase 246: DtrPdf::htmlToPdfBytes and DtrController sheet PDF use a per-run --user-data-dir (p_<id>, removed after) - fixes server PDF failing when the shared profile was locked.
+
+- Phase 247: Batch Approval = InterlinkBatchController (routes interlink/batch/data|status) + public/assets/js/interlink_batch.js (#btn-batch-approval, #bb-modal) + window.nxMoveToInterlink at the end of interlink.js; reuses dtr/approval/request|approvers and interlink/labref-detail.

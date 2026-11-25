@@ -18,7 +18,7 @@ async function searchAndOpenUpload(appNo, mode) {
   const visible = (el) => !!el && el.offsetParent !== null && el.getBoundingClientRect().width > 0;
   if (/login|signin|sign-in/i.test(location.pathname)) return { state: 'signin' };
   for (let i = 0; i < 20 && !window.ASPxClientControl; i++) await sleep(250);
-  await sleep(500);
+  await sleep(100);
 
   // The stable site root lands on the portal Home page, which has no grid: follow its own link to the search page
   // (its token is fresh every session - nothing stored), and run again once that page has loaded.
@@ -49,8 +49,8 @@ async function searchAndOpenUpload(appNo, mode) {
   ['keydown', 'keypress', 'keyup'].forEach((t) => field.dispatchEvent(new KeyboardEvent(t, { bubbles: true, key: 'Enter', keyCode: 13, which: 13 })));
 
   let upload = null;
-  for (let i = 0; i < 30 && !upload; i++) {                  // up to ~15 s for the grid's callback to settle
-    await sleep(500);
+  for (let i = 0; i < 100 && !upload; i++) {                  // up to ~15 s for the grid's callback to settle
+    await sleep(150);
     const cell = [...document.querySelectorAll('td.dxgv')].find((td) => td.textContent.trim() === appNo);
     const row = cell && cell.closest('tr');
     upload = row && row.querySelector('input[type=image][name*="imgBtnUForm" i]');

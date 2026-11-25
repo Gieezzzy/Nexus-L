@@ -266,6 +266,36 @@ class ReportTests
         return ['items' => $items, 'readings' => $reads, 'samples' => $sample];
     }
 
+    /**
+     * A report whose readings were loaded more than once (the same block of rows 2, 3 ... times one after the other, like 6 specimens read as 18) is
+     * reduced to one block, so InterLink is not sent the same readings again.
+     *
+     * @param list<array<string, mixed>> $rows
+     * @return list<array<string, mixed>>
+     */
+    public static function collapseRepeats(array $rows): array
+    {
+        $rows = array_values($rows);
+        $n    = count($rows);
+        for ($p = 1; $p <= intdiv($n, 2); $p++) {
+            if ($n % $p !== 0) {
+                continue;
+            }
+            $same = true;
+            for ($i = $p; $i < $n; $i++) {
+                if ($rows[$i] != $rows[$i % $p]) {
+                    $same = false;
+                    break;
+                }
+            }
+            if ($same) {
+                return array_slice($rows, 0, $p);
+            }
+        }
+
+        return $rows;
+    }
+
     /** a Pull Test report (tbl_dtr_pull_tests): the result, and the Peak of each specimen as a reading */
     public static function pullTest(array $rec): array
     {
@@ -281,7 +311,7 @@ class ReportTests
             $reads[] = self::reading($name, '', '', (string) (($rec['SampleNo' . $i] ?? '') ?: 'Specimen ' . $i), (string) $v, 'N', '', $res);
         }
 
-        return ['items' => $items, 'readings' => $reads, 'samples' => [['sample_id_code' => 'S001', 'sample_description' => trim((string) ($rec['ModelStyle'] ?? '')), 'sample_color' => (string) ($rec['Color'] ?? '')]]];
+        return ['items' => $items, 'readings' => self::collapseRepeats($reads), 'samples' => [['sample_id_code' => 'S001', 'sample_description' => trim((string) ($rec['ModelStyle'] ?? '')), 'sample_color' => (string) ($rec['Color'] ?? '')]]];
     }
 
     private static function item(string $code, string $name, string $method, string $std, string $actual, string $rating, string $raw): array

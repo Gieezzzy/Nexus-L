@@ -142,7 +142,7 @@ class WarehouseContentsController extends BaseController
         }
         $rows = $this->db()->query("SELECT u.lab_ref_no, MIN(u.form_slug) AS form_slug, MAX({$d}) AS tdate, GROUP_CONCAT(DISTINCT NULLIF(u.model_style, '') SEPARATOR ' | ') AS model_style,
                 GROUP_CONCAT(DISTINCT NULLIF(u.color, '') SEPARATOR ' | ') AS color, MAX(u.po_lot_no) AS po_lot_no, MAX(u.mtl_no) AS mtl_no, MAX(u.material_description) AS material_description, COUNT(*) AS n_rows,
-                (SELECT bi.box_name FROM tbl_warehouse_box_items bi WHERE bi.lab_reference = u.lab_ref_no COLLATE utf8mb4_general_ci AND bi.item_status = 'IN_BOX' LIMIT 1) AS in_box
+                (SELECT GROUP_CONCAT(DISTINCT bi.box_name SEPARATOR ' | ') FROM tbl_warehouse_box_items bi WHERE bi.lab_reference = u.lab_ref_no COLLATE utf8mb4_general_ci AND bi.item_status = 'IN_BOX') AS in_box
             FROM tbl_dtr_unified_labrefs u WHERE {$where} GROUP BY u.lab_ref_no ORDER BY tdate DESC, u.lab_ref_no ASC LIMIT 401", $args)->getResultArray();
         $more = count($rows) > 400;
         $rows = array_slice($rows, 0, 400);
@@ -163,7 +163,9 @@ class WarehouseContentsController extends BaseController
             $out[] = [
                 'lab_ref' => $r['lab_ref_no'], 'group' => $grp, 'slug' => $r['form_slug'], 'date' => (string) ($r['tdate'] ?? ''),
                 'style' => trim((string) ($r['model_style'] ?: $r['material_description'])), 'color' => (string) $r['color'], 'po' => (string) $r['po_lot_no'], 'mtl' => (string) $r['mtl_no'],
-                'in_this_box' => isset($mine[strtoupper($r['lab_ref_no'])]), 'in_box' => (string) ($r['in_box'] ?? ''), 'rows' => (int) $r['n_rows'],
+                'in_this_box' => isset($mine[strtoupper($r['lab_ref_no'])]),
+                // a Bonding Lab Reference is in ONE box only (the box it is in blocks it); every other type may be in several boxes (the other boxes are only shown)
+                'in_box' => $grp === 'bonding' ? (string) ($r['in_box'] ?? '') : '', 'also_in' => $grp === 'bonding' ? '' : (string) ($r['in_box'] ?? ''), 'rows' => (int) $r['n_rows'],
             ];
         }
 
@@ -204,8 +206,8 @@ class WarehouseContentsController extends BaseController
                 $skip++;
                 continue;
             }
-            $other = $db->table('tbl_warehouse_box_items')->select('box_name')->where('lab_reference', $r['lab_ref_no'])->where('item_status', 'IN_BOX')->get()->getRowArray();
-            if ($other) {          // still in another box: it must be Transferred or Removed there first (no Lab Ref in two boxes at once)
+            $other = $type === 'bonding' ? $db->table('tbl_warehouse_box_items')->select('box_name')->where('lab_reference', $r['lab_ref_no'])->where('item_status', 'IN_BOX')->get()->getRowArray() : null;
+            if ($other) {          // a Bonding Lab Ref still in another box: it must be Transferred or Removed there first (Bonding: one box only; every other type may be in several boxes)
                 $skip++;
                 $elsewhere[] = $r['lab_ref_no'] . ' (in ' . $other['box_name'] . ')';
                 continue;

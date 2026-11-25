@@ -134,10 +134,14 @@ $modeUrl = static function (string $p) use ($areaTab, $areaView, $year, $asof, $
     }
     return site_url('analytics') . '?' . http_build_query($q);
 };
-$subTabUrl = static function (string $vk) use ($areaTab, $period, $year, $asof, $weekVal, $selMonth): string {
+$wFrom = (string) ($dw['winFrom'] ?? $asof);
+$wTo   = (string) ($dw['winTo'] ?? $asof);
+$subTabUrl = static function (string $vk) use ($areaTab, $period, $year, $asof, $weekVal, $selMonth, $wFrom, $wTo): string {
     if (in_array($vk, ['workload', 'encoding'], true)) {
         $q = ['tab' => $areaTab, 'view' => $vk, 'period' => $period, 'year' => $year];
-        if ($period === 'weekly') {
+        if ($period === 'custom') {
+            $q = ['tab' => $areaTab, 'view' => $vk, 'from' => $wFrom, 'to' => $wTo];
+        } elseif ($period === 'weekly') {
             $q['week'] = $weekVal;
         } elseif ($period === 'monthly') {
             $q['month'] = $selMonth;
@@ -197,198 +201,15 @@ foreach ($rowsEncAll as $rn => $r) {
     }
 }
 ?>
-<style>
-.dw{display:grid;gap:12px;min-width:0;padding-bottom:24px}.dw *{box-sizing:border-box}
-.dw-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border-bottom:1px solid #e2e8f0;padding-bottom:10px}
-.dw-tabs{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.dw-tab{display:inline-flex;align-items:center;gap:7px;padding:7px 14px;border-radius:10px;border:1px solid transparent;background:transparent;color:#334155;font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .15s ease}
-.dw-tab svg{width:16px;height:16px;flex:none;color:#475569}
-.dw-tab:hover{background:#f1f5f9;color:#0f172a}
-.dw-tab.dw-tab-on{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8;font-weight:700}
-.dw-tab.dw-tab-on svg{color:#2563eb}
-.dw-ctl{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;background:#fff;border:1px solid #dbe3ee;border-radius:10px;padding:4px 8px;box-shadow:0 1px 2px rgba(15,23,42,.04);margin-left:auto}
-.dw-ctl label{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.04em}
-.dw-ctl select,.dw-ctl input[type=date],.dw-ctl input[type=week]{height:30px;padding:0 8px;border:1px solid #cbd5e1;border-radius:7px;background:#f8fafc;font-size:12px;font-weight:700;color:#0f172a;cursor:pointer}
-.dw-mode{display:inline-flex;align-items:center;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;padding:2px;gap:2px}
-.dw-mode a{display:inline-flex;align-items:center;justify-content:center;height:24px;padding:0 10px;border-radius:6px;font-size:11.5px;font-weight:700;color:#475569;text-decoration:none;transition:all .15s}
-.dw-mode a:hover{color:#0f172a}
-.dw-mode a.on{background:#2563eb;color:#fff;box-shadow:0 1px 2px rgba(37,99,235,.25)}
-.dw-nav{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
-.dw-nav a{display:inline-flex;align-items:center;justify-content:center;height:30px;padding:0 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#334155;font-size:12px;font-weight:700;text-decoration:none;transition:all .15s}
-.dw-nav a:hover{background:#eff6ff;border-color:#93c5fd;color:#1d4ed8}
-
-/* each stage is a tab: only the blocks of the open stage are shown */
-.dw-stage-pane{display:grid;gap:12px;min-width:0}
-.dw-stage-pane[hidden]{display:none !important}
-
-/* Executive KPI Cards (Clickable) */
-.dw-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
-@media(max-width:1180px){.dw-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:600px){.dw-kpis{grid-template-columns:1fr}}
-.dw-kpi{background:#fff;border:1.5px solid #e2e8f0;border-radius:14px;padding:14px 16px;box-shadow:0 1px 3px rgba(15,23,42,.04);display:flex;flex-direction:column;justify-content:space-between;gap:6px;position:relative;overflow:hidden;cursor:pointer;text-align:left;width:100%;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease,background-color .16s ease}
-.dw-kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--kc,#3b82f6)}
-.dw-kpi:hover{transform:translateY(-2px);border-color:var(--kc,#3b82f6);box-shadow:0 8px 18px rgba(15,23,42,.08)}
-.dw-kpi.is-active{border-color:var(--kc,#3b82f6);background:#f8fafc;box-shadow:0 0 0 3px rgba(37,99,235,.14)}
-.dw-kpi-top{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%}
-.dw-kpi-top small{font-size:11px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em}
-.dw-kpi-tag{font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:99px;background:#f1f5f9;color:#334155}
-.dw-kpi b{font-size:26px;font-weight:900;color:#0f172a;line-height:1.1;letter-spacing:-.02em}
-.dw-kpi-sub{font-size:11.5px;color:#64748b;line-height:1.35;display:flex;align-items:center;justify-content:space-between;gap:6px}
-.dw-kpi-jump{font-size:10.5px;font-weight:800;color:#2563eb;white-space:nowrap;opacity:.85}
-.dw-kpi:hover .dw-kpi-jump{opacity:1;text-decoration:underline}
-.dw-kpi-bar{height:6px;border-radius:99px;background:#e2e8f0;overflow:hidden;margin-top:2px;width:100%}
-.dw-kpi-bar i{display:block;height:100%;border-radius:99px;background:var(--kc,#3b82f6)}
-
-/* Spotlight pulse when scrolled to / filtered via card click */
-@keyframes dwPulseRing {
-  0% { box-shadow: 0 0 0 0 rgba(37,99,235,.45); }
-  70% { box-shadow: 0 0 0 10px rgba(37,99,235,0); }
-  100% { box-shadow: 0 0 0 0 rgba(37,99,235,0); }
-}
-.dw-card.dw-focus{border-color:#2563eb;animation:dwPulseRing 1.1s ease-out}
-.dw-tbl tr.dw-row-hi td,.dw-tbl td.dw-col-hi,.dw-tbl th.dw-col-hi{background:#eff6ff !important}
-.dw-tbl tr.dw-row-warn td{background:#fffbeb !important}
-
-/* Two-column layout */
-.dw-grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
-@media(max-width:1180px){.dw-grid2{grid-template-columns:1fr}}
-.dw-card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;box-shadow:0 4px 14px rgba(15,23,42,.04);overflow:hidden;min-width:0}
-.dw-card-h{padding:13px 16px;background:linear-gradient(135deg,#0f172a,#1e3a8a);color:#fff;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
-.dw-card-h-title{font-size:13px;font-weight:800;letter-spacing:.03em;text-transform:uppercase}
-.dw-card-h-sub{font-size:11.5px;color:#cbd5e1;font-weight:500;margin-top:2px}
-.dw-card-explain{padding:9px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:12px;color:#475569;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
-
-/* Charts */
-.dw-chart{background:linear-gradient(145deg,#0f172a,#1e293b);padding:14px 14px 10px;border-bottom:1px solid #e2e8f0}
-.dw-chart-title{color:#f8fafc;font-size:12px;font-weight:700;text-align:center;margin-bottom:6px;letter-spacing:.02em}
-.dw-chart svg{display:block;width:100%;height:auto;font-family:Inter,system-ui,sans-serif}
-.dw-leg{display:flex;flex-wrap:wrap;gap:8px 16px;justify-content:center;padding:6px 0 2px;font-size:11px;color:#e2e8f0;font-weight:600}
-.dw-leg span{display:inline-flex;align-items:center;gap:6px}
-.dw-leg i{width:10px;height:10px;border-radius:3px;display:inline-block}
-.dw-leg i.ln{height:3px;width:16px}
-
-/* Tables */
-.dw-tbl-wrap{overflow-x:auto}
-.dw-tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px;font-variant-numeric:tabular-nums}
-.dw .dw-tbl th:not([class*="luckysheet"]){background:#f1f5f9;color:#334155;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:9px 10px;border-bottom:2px solid #cbd5e1;text-align:right;white-space:nowrap}
-.dw .dw-tbl th:first-child:not([class*="luckysheet"]),.dw .dw-tbl td:first-child{text-align:left}
-.dw-tbl td{padding:7.5px 10px;border-bottom:1px solid #eef2f7;text-align:right;color:#1e293b;vertical-align:middle}
-.dw-tbl td:first-child{font-weight:700;color:#0f172a}
-.dw-tbl tbody tr:hover td{background:#f8fafc}
-.dw-tbl tr.dw-tot td{background:#eff6ff;font-weight:800;color:#1d4ed8;border-top:2px solid #93c5fd;border-bottom:0;font-size:13px}
-.dw-tbl .z{color:#cbd5e1}
-.dw-pct{display:inline-flex;align-items:center;gap:7px;justify-content:flex-end;min-width:95px}
-.dw-pct i{display:inline-block;width:48px;height:6px;border-radius:99px;background:#e2e8f0;overflow:hidden}
-.dw-pct i b{display:block;height:100%;background:#10b981;border-radius:99px}
-.dw-type-cell{display:inline-flex;align-items:baseline;gap:4px;justify-content:flex-end}
-.dw-type-pct{color:#64748b;font-size:10.5px;font-weight:600}
-
-/* Pills & Badges */
-.dw-pill{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:99px;font-size:10.5px;font-weight:800;white-space:nowrap}
-.dw-done{background:#dcfce7;color:#15803d;border:1px solid #bbf7d0}
-.dw-na{background:#f1f5f9;color:#94a3b8}
-.dw-wait{background:#fef3c7;color:#b45309;border:1px solid #fde68a}
-
-/* Day Switcher & Workload Table */
-.dw-day-tabs{display:flex;gap:8px;padding:12px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;flex-wrap:wrap;align-items:center;justify-content:space-between}
-.dw-day-btns{display:flex;gap:6px;flex-wrap:wrap}
-.dw-day-btn{border:1px solid #cbd5e1;background:#fff;color:#334155;padding:7px 12px;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:all .15s}
-.dw-day-btn:hover{border-color:#93c5fd;background:#eff6ff}
-.dw-day-btn.on{background:#1d4ed8;color:#fff;border-color:#1d4ed8;box-shadow:0 2px 6px rgba(29,78,216,.25)}
-.dw-day-btn span{font-size:11px;padding:1px 7px;border-radius:99px;background:rgba(15,23,42,.08);color:inherit;font-weight:800}
-.dw-day-btn.on span{background:rgba(255,255,255,.22);color:#fff}
-.dw-sechd td{background:#f1f5f9!important;color:#0f172a!important;padding:8px 12px!important;border-top:1px solid #cbd5e1!important;border-bottom:1px solid #e2e8f0!important}
-.dw-sechd-wrap{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
-.dw-sechd-title{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#1e3a8a;display:inline-flex;align-items:center;gap:6px}
-.dw-sechd-desc{font-size:11px;font-weight:500;color:#64748b}
-.dw-dt{color:#475569!important;font-size:11.5px;font-weight:600;white-space:nowrap}
-.dw-note{padding:11px 16px;font-size:12px;color:#92400e;background:#fffbeb;border-top:1px solid #fde68a;font-weight:700;display:flex;align-items:center;gap:8px}
-
-/* System Encoding Cards */
-.dw-sys-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:12px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0}
-.dw-sys-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;cursor:pointer;transition:all .15s;text-align:left}
-.dw-sys-card:hover{border-color:#93c5fd}
-.dw-sys-card.on{border:2px solid #1d4ed8;background:#eff6ff;box-shadow:0 2px 8px rgba(29,78,216,.1)}
-.dw-sys-card small{display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#64748b}
-.dw-sys-card b{display:block;font-size:18px;font-weight:900;color:#0f172a;margin:2px 0}
-.dw-sys-card span{display:block;font-size:10.5px;color:#475569;line-height:1.25}
-.dw-pane[hidden]{display:none}
-.dw-foot{padding:11px 16px;font-size:11.5px;color:#475569;background:#f8fafc;border-top:1px solid #e2e8f0;line-height:1.45}
-
-/* Liquid Glass Dark Mode Overrides */
-html[data-theme="dark"] .dw-bar{background:rgba(17,25,44,.76);border-color:rgba(148,163,184,.22);box-shadow:inset 1px 1px 0 rgba(255,255,255,.1),0 8px 28px rgba(2,6,23,.4);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
-html[data-theme="dark"] .dw-bar h2{color:#f1f5f9}
-html[data-theme="dark"] .dw-bar p{color:#94a3b8}
-html[data-theme="dark"] .dw-ctl label{color:#94a3b8}
-html[data-theme="dark"] .dw-ctl select,html[data-theme="dark"] .dw-ctl input[type=date]{background:rgba(15,23,42,.82);border-color:rgba(148,163,184,.26);color:#f1f5f9}
-html[data-theme="dark"] .dw-nav a{background:rgba(17,25,44,.76);border-color:rgba(148,163,184,.24);color:#cbd5e1}
-html[data-theme="dark"] .dw-nav a:hover{background:rgba(37,99,235,.22);border-color:rgba(96,165,250,.55);color:#93c5fd}
-html[data-theme="dark"] .dw-flow{background:rgba(17,25,44,.76);border-color:rgba(148,163,184,.22);box-shadow:inset 1px 1px 0 rgba(255,255,255,.1),0 8px 28px rgba(2,6,23,.4);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
-html[data-theme="dark"] .dw-flow-top-note{color:#cbd5e1}
-html[data-theme="dark"] .dw-step{background:rgba(15,23,42,.68);border-color:rgba(148,163,184,.22)}
-html[data-theme="dark"] .dw-step:hover{background:rgba(30,41,59,.85);border-color:rgba(96,165,250,.55);box-shadow:0 8px 22px rgba(2,6,23,.45)}
-html[data-theme="dark"] .dw-step.is-active,html[data-theme="dark"] .dw-step.dw-tab-on{background:rgba(37,99,235,.22);border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.22)}
-html[data-theme="dark"] .dw-step-num{background:rgba(37,99,235,.25);color:#93c5fd}
-html[data-theme="dark"] .dw-step b{color:#f1f5f9}
-html[data-theme="dark"] .dw-step-cta{background:rgba(37,99,235,.24);color:#93c5fd}
-html[data-theme="dark"] .dw-step p{color:#94a3b8}
-html[data-theme="dark"] .dw-step p strong{color:#f1f5f9}
-html[data-theme="dark"] .dw-sec h3{color:#f1f5f9}
-html[data-theme="dark"] .dw-sec small{color:#94a3b8}
-html[data-theme="dark"] .dw-sec-pill{background:rgba(37,99,235,.32);border:1px solid rgba(96,165,250,.4)}
-html[data-theme="dark"] .dw-kpi{background:rgba(17,25,44,.76);border-color:rgba(148,163,184,.22);box-shadow:inset 1px 1px 0 rgba(255,255,255,.1),0 6px 20px rgba(2,6,23,.35);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
-html[data-theme="dark"] .dw-kpi.is-active{background:rgba(30,41,59,.88);box-shadow:0 0 0 3px rgba(59,130,246,.24)}
-html[data-theme="dark"] .dw-kpi-top small{color:#94a3b8}
-html[data-theme="dark"] .dw-kpi-tag{background:rgba(30,41,59,.85);color:#cbd5e1;border:1px solid rgba(148,163,184,.22)}
-html[data-theme="dark"] .dw-kpi b{color:#f1f5f9}
-html[data-theme="dark"] .dw-kpi-sub{color:#94a3b8}
-html[data-theme="dark"] .dw-kpi-jump{color:#60a5fa}
-html[data-theme="dark"] .dw-kpi-bar{background:rgba(30,41,59,.85)}
-html[data-theme="dark"] .dw-card{background:rgba(17,25,44,.76);border-color:rgba(148,163,184,.22);box-shadow:inset 1px 1px 0 rgba(255,255,255,.1),0 8px 28px rgba(2,6,23,.4);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
-html[data-theme="dark"] .dw-card-hd{background:rgba(15,23,42,.65);border-bottom-color:rgba(148,163,184,.2)}
-html[data-theme="dark"] .dw-card-hd h3{color:#f1f5f9}
-html[data-theme="dark"] .dw-card-hd p{color:#94a3b8}
-html[data-theme="dark"] .dw-card-explain{background:rgba(15,23,42,.48);border-bottom-color:rgba(148,163,184,.16);color:#cbd5e1}
-html[data-theme="dark"] .dw-card-explain b{color:#f1f5f9}
-html[data-theme="dark"] .dw-chart{border:1px solid rgba(148,163,184,.24);box-shadow:inset 1px 1px 0 rgba(255,255,255,.1),0 10px 30px rgba(2,6,23,.45)}
-html[data-theme="dark"] .dw-tbl th{background:rgba(15,23,42,.82);color:#cbd5e1;border-bottom-color:rgba(148,163,184,.24)}
-html[data-theme="dark"] .dw-tbl td{color:#e2e8f0;border-bottom-color:rgba(148,163,184,.14)}
-html[data-theme="dark"] .dw-tbl td:first-child{color:#f1f5f9}
-html[data-theme="dark"] .dw-tbl tbody tr:hover td{background:rgba(51,65,85,.35)}
-html[data-theme="dark"] .dw-tbl tr.dw-tot td{background:rgba(30,41,59,.85);color:#f8fafc;border-top-color:rgba(148,163,184,.28)}
-html[data-theme="dark"] .dw-tbl tr.dw-row-hi td,html[data-theme="dark"] .dw-tbl td.dw-col-hi,html[data-theme="dark"] .dw-tbl th.dw-col-hi{background:rgba(37,99,235,.18)!important}
-html[data-theme="dark"] .dw-tbl tr.dw-row-warn td{background:rgba(245,158,11,.14)!important}
-html[data-theme="dark"] .dw-tbl .z{color:#475569}
-html[data-theme="dark"] .dw-pct i{background:rgba(30,41,59,.85);border:1px solid rgba(148,163,184,.18)}
-html[data-theme="dark"] .dw-type-pct{color:#94a3b8}
-html[data-theme="dark"] .dw-done{background:rgba(16,185,129,.18);color:#6ee7b7;border-color:rgba(16,185,129,.32)}
-html[data-theme="dark"] .dw-na{background:rgba(51,65,85,.55);color:#94a3b8}
-html[data-theme="dark"] .dw-wait{background:rgba(245,158,11,.18);color:#fcd34d;border-color:rgba(245,158,11,.32)}
-html[data-theme="dark"] .dw-day-tabs{background:rgba(15,23,42,.62);border-bottom-color:rgba(148,163,184,.2)}
-html[data-theme="dark"] .dw-day-btn{background:rgba(17,25,44,.78);border-color:rgba(148,163,184,.24);color:#cbd5e1}
-html[data-theme="dark"] .dw-day-btn:hover{border-color:rgba(96,165,250,.55);background:rgba(37,99,235,.22);color:#f8fafc}
-html[data-theme="dark"] .dw-day-btn.on{background:#2563eb;color:#fff;border-color:#2563eb}
-html[data-theme="dark"] .dw-day-btn span{background:rgba(255,255,255,.1)}
-html[data-theme="dark"] .dw-sechd td{background:rgba(30,41,59,.78)!important;color:#f1f5f9!important;border-top-color:rgba(148,163,184,.26)!important;border-bottom-color:rgba(148,163,184,.2)!important}
-html[data-theme="dark"] .dw-sechd-title{color:#93c5fd}
-html[data-theme="dark"] .dw-sechd-desc{color:#94a3b8}
-html[data-theme="dark"] .dw-dt{color:#94a3b8!important}
-html[data-theme="dark"] .dw-note{background:rgba(120,53,15,.32);border-top-color:rgba(251,191,36,.3);color:#fde68a}
-html[data-theme="dark"] .dw-sys-grid{background:rgba(15,23,42,.58);border-bottom-color:rgba(148,163,184,.2)}
-html[data-theme="dark"] .dw-sys-card{background:rgba(17,25,44,.78);border-color:rgba(148,163,184,.22)}
-html[data-theme="dark"] .dw-sys-card:hover{border-color:rgba(96,165,250,.55)}
-html[data-theme="dark"] .dw-sys-card.on{border-color:#3b82f6;background:rgba(37,99,235,.2);box-shadow:0 4px 14px rgba(37,99,235,.25)}
-html[data-theme="dark"] .dw-sys-card small{color:#94a3b8}
-html[data-theme="dark"] .dw-sys-card b{color:#f1f5f9}
-html[data-theme="dark"] .dw-sys-card span{color:#cbd5e1}
-html[data-theme="dark"] .dw-foot{background:rgba(15,23,42,.62);border-top-color:rgba(148,163,184,.2);color:#94a3b8}
-</style>
+<link rel="stylesheet" href="<?= base_url('assets/css/views/analytics-daily-1.css') ?>?v=<?= @filemtime(FCPATH . 'assets/css/views/analytics-daily-1.css') ?>">
+<link rel="stylesheet" href="<?= base_url('assets/css/datefilter.css') ?>?v=<?= @filemtime(FCPATH . 'assets/css/datefilter.css') ?>">
+<script src="<?= base_url('assets/js/datefilter.js') ?>?v=<?= @filemtime(FCPATH . 'assets/js/datefilter.js') ?>"></script>
 
 <?php
 $areaSubTabs = match ($areaTab) {
-    'wholeshoe' => ['workload' => 'Whole Shoe Workload', 'encoding' => 'System Encoding (3 Portals)', 'analytics' => 'Whole Shoe Analytics'],
-    'materials' => ['workload' => 'Material Intake (IQC)', 'encoding' => 'System Encoding (3 Portals)', 'analytics' => 'Material Test Analytics'],
-    default     => ['workload' => 'Daily Workload', 'encoding' => 'System Encoding (3 Portals)', 'daily' => 'Daily Bonding', 'monthly' => 'Monthly Summary', 'analytics' => 'Bonding Analytics', 'result' => 'Cement Analytics'],
+    'wholeshoe' => ['analytics' => 'Monthly Summary', 'monthfail' => 'Monthly Failure by Test'],
+    'materials' => ['analytics' => 'Monthly Summary', 'hotspots' => 'Parameters & Supplier Scorecard', 'batches' => 'Failed & Tolerable Batches', 'workload' => 'Material Intake (IQC)'],
+    default     => ['monthly' => 'Monthly Summary', 'workload' => 'Daily Workload', 'daily' => 'Daily Bonding', 'pulltest' => 'Rivets Monitoring', 'failure' => 'Bonding Failure Overview', 'retest' => 'Retest', 'result' => 'Cement Analytics', 'utm' => 'Universal Tensile Machines Daily Productivity'],
 };
 $activeStageNum = $areaView === 'encoding' ? 4 : ($areaTab === 'materials' ? 1 : 2);
 ?>
@@ -400,36 +221,13 @@ $activeStageNum = $areaView === 'encoding' ? 4 : ($areaTab === 'materials' ? 1 :
                 <a href="<?= esc($subTabUrl($vk), 'attr') ?>" class="dw-tab<?= $areaView === $vk ? ' dw-tab-on' : '' ?>" style="text-decoration:none"><?= esc($vl) ?></a>
             <?php endforeach ?>
         </div>
-        <form method="get" action="<?= site_url('analytics') ?>" class="dw-ctl" id="dw-form">
-            <input type="hidden" name="tab" value="<?= esc($areaTab, 'attr') ?>">
-            <input type="hidden" name="view" value="<?= esc($areaView, 'attr') ?>">
-            <input type="hidden" name="period" value="<?= esc($period, 'attr') ?>">
-            <div class="dw-mode" role="group" aria-label="Monitoring Period">
-                <a href="<?= esc($modeUrl('daily'), 'attr') ?>" class="<?= $period === 'daily' ? 'on' : '' ?>">Daily</a>
-                <a href="<?= esc($modeUrl('weekly'), 'attr') ?>" class="<?= $period === 'weekly' ? 'on' : '' ?>">Weekly</a>
-                <a href="<?= esc($modeUrl('monthly'), 'attr') ?>" class="<?= $period === 'monthly' ? 'on' : '' ?>">Monthly</a>
-            </div>
-            <label>Year
-                <select name="year" id="dw-year-sel">
-                    <?php for ($y = (int) date('Y') + 1; $y >= 2024; $y--): ?><option value="<?= $y ?>"<?= $y === $year ? ' selected' : '' ?>><?= $y ?></option><?php endfor ?>
-                </select>
-            </label>
-            <div class="dw-nav">
-                <?php if ($period === 'weekly'): ?>
-                    <label>Week <input type="week" name="week" id="dw-week-inp" value="<?= esc($weekVal, 'attr') ?>" onchange="this.form.submit()"></label>
-                <?php elseif ($period === 'monthly'): ?>
-                    <label>Month
-                        <select name="month" onchange="this.form.submit()">
-                            <?php foreach ($mNames as $mi => $mn): $mNum = $mi + 1; ?>
-                                <option value="<?= $mNum ?>"<?= $mNum === $selMonth ? ' selected' : '' ?>><?= esc($mn) ?></option>
-                            <?php endforeach ?>
-                        </select>
-                    </label>
-                <?php else: ?>
-                    <label>Date <input type="date" name="asof" id="dw-date-inp" value="<?= esc($asof, 'attr') ?>" onchange="this.form.submit()"></label>
-                <?php endif ?>
-            </div>
-        </form>
+        <div class="an-dr" id="dw-form" data-today="<?= date('Y-m-d') ?>" data-tab="<?= esc($areaTab, 'attr') ?>" data-view="<?= esc($areaView, 'attr') ?>" data-from="<?= esc($wFrom, 'attr') ?>" data-to="<?= esc($wTo, 'attr') ?>" data-action="<?= esc(site_url('analytics'), 'attr') ?>" style="margin-left:auto">
+            <?php $dwRangeText = $wFrom === $wTo ? $wFrom : ($wFrom . ' → ' . $wTo); ?>
+            <button type="button" id="dw-dr-btn" class="an-dr-btn" aria-expanded="false" title="<?= esc('Filter Date: ' . $dwRangeText, 'attr') ?>" aria-label="<?= esc('Filter Date: ' . $dwRangeText, 'attr') ?>" style="padding:9px 11px;justify-content:center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            </button>
+            <?php /* popup built by assets/js/datefilter.js (same as the Lab Tracker) */ ?>
+        </div>
     </div>
 
     <!-- ===== SECTION 1: Annual Materials Monitoring ===== -->
@@ -729,27 +527,36 @@ $activeStageNum = $areaView === 'encoding' ? 4 : ($areaTab === 'materials' ? 1 :
                 <div class="dw-kpi-bar"><i style="width:<?= $wsEnc['q'] ? round($wsEnc['etrf'] / $wsEnc['q'] * 100) : 0 ?>%"></i></div>
             </button>
         </div>
-        <?php else: ?>
+        <?php else:
+            // KPI cards open the Lab Tracker (Bonding list) for the date shown, or the Bonding Failure Overview
+            $ltUrl = static fn (string $f, string $t, string $lt = ''): string => site_url('dtr') . '?' . http_build_query(array_filter(['tab' => 'labtracker', 'subtab' => 'bonding', 'lk' => 'bonding', 'from' => $f, 'to' => $t, 'lt' => $lt], static fn ($v) => $v !== ''));
+            $lDayF  = (string) ($latestDay['from'] ?? $latestDay['date']);
+            $lDayT  = (string) ($latestDay['to'] ?? $latestDay['date']);
+            $hrefTested = $ltUrl($lDayF, $lDayT);
+            $hrefFail   = site_url('analytics') . '?' . http_build_query(['tab' => $areaTab, 'view' => 'failure', 'group' => 'day', 'from' => $wFrom, 'to' => $wTo]);
+            $hrefTrial  = $ltUrl($wFrom, $wTo, 'trial');
+            $hrefFirst  = $ltUrl($wFrom, $wTo, 'first');
+        ?>
         <div class="dw-kpis">
-            <button type="button" class="dw-kpi" style="--kc:#0284c7" data-dw-action="day-latest" data-dw-day="<?= esc($latestDay['date'], 'attr') ?>">
+            <button type="button" class="dw-kpi" style="--kc:#0284c7" data-dw-href="<?= esc($hrefTested, 'attr') ?>" title="Open the Lab Tracker for this date" data-dw-action="day-latest" data-dw-day="<?= esc($latestDay['date'], 'attr') ?>">
                 <div class="dw-kpi-top"><small><?= esc($period === 'monthly' ? 'Latest Week' : 'Tested on') ?> (<?= esc($latestDay['short'] ?? $latestDay['date']) ?>)</small><span class="dw-kpi-tag" style="background:#e0f2fe;color:#0369a1"><?= $pctTxt($latestDay['total']['f'], $latestDay['total']['q']) ?> Done</span></div>
                 <b><?= $latestDay['total']['f'] ?> <span style="font-size:16px;font-weight:700;color:#64748b">/ <?= $latestDay['total']['q'] ?> shoes</span></b>
                 <div class="dw-kpi-sub"><span><?= $latestDay['shut'] ?> shutdown line<?= $latestDay['shut'] === 1 ? '' : 's' ?> in <?= esc($latestDay['short'] ?? $latestDay['date']) ?></span><span class="dw-kpi-jump">View Latest &rarr;</span></div>
                 <div class="dw-kpi-bar"><i style="width:<?= $latestDay['total']['q'] ? round($latestDay['total']['f'] / $latestDay['total']['q'] * 100) : 0 ?>%"></i></div>
             </button>
-            <button type="button" class="dw-kpi" style="--kc:#ea580c" data-dw-action="test-sec" data-dw-sec="retest">
+            <button type="button" class="dw-kpi" style="--kc:#ea580c" data-dw-href="<?= esc($hrefFail, 'attr') ?>" title="Open the Bonding Failure Overview" data-dw-action="test-sec" data-dw-sec="retest">
                 <div class="dw-kpi-top"><small>Failed Retest Bonding (<?= esc($windowTag) ?>)</small><span class="dw-kpi-tag" style="background:#fff7ed;color:#c2410c"><?= $pctTxt($retestSec['f'], $retestSec['q']) ?> Done</span></div>
                 <b style="color:#ea580c"><?= $retestSec['f'] ?> <span style="font-size:16px;font-weight:700;color:#64748b">/ <?= $retestSec['q'] ?></span></b>
                 <div class="dw-kpi-sub"><span>Corrective re-tests on failed lines</span><span class="dw-kpi-jump">Highlight Retest &rarr;</span></div>
                 <div class="dw-kpi-bar"><i style="width:<?= $retestSec['q'] ? round($retestSec['f'] / $retestSec['q'] * 100) : 0 ?>%"></i></div>
             </button>
-            <button type="button" class="dw-kpi" style="--kc:#2563eb" data-dw-action="test-sec" data-dw-sec="trial">
+            <button type="button" class="dw-kpi" style="--kc:#2563eb" data-dw-href="<?= esc($hrefTrial, 'attr') ?>" title="Open the Lab Tracker: Tech Trial only" data-dw-action="test-sec" data-dw-sec="trial">
                 <div class="dw-kpi-top"><small>Tech Trial (<?= esc($windowTag) ?>)</small><span class="dw-kpi-tag"><?= $pctTxt($trialSec['f'], $trialSec['q']) ?> Done</span></div>
                 <b style="color:#2563eb"><?= $trialSec['f'] ?> <span style="font-size:16px;font-weight:700;color:#64748b">/ <?= $trialSec['q'] ?></span></b>
                 <div class="dw-kpi-sub"><span>Technical &amp; adhesive trial runs</span><span class="dw-kpi-jump">Highlight Trials &rarr;</span></div>
                 <div class="dw-kpi-bar"><i style="width:<?= $trialSec['q'] ? round($trialSec['f'] / $trialSec['q'] * 100) : 0 ?>%"></i></div>
             </button>
-            <button type="button" class="dw-kpi" style="--kc:#7c3aed" data-dw-action="test-sec" data-dw-sec="first sample">
+            <button type="button" class="dw-kpi" style="--kc:#7c3aed" data-dw-href="<?= esc($hrefFirst, 'attr') ?>" title="Open the Lab Tracker: First Article only" data-dw-action="test-sec" data-dw-sec="first sample">
                 <div class="dw-kpi-top"><small>First Article &amp; Samples (<?= esc($windowTag) ?>)</small><span class="dw-kpi-tag" style="background:#f5f3ff;color:#6d28d9"><?= $pctTxt($firstSampleF, $firstSampleQ) ?> Done</span></div>
                 <b style="color:#7c3aed"><?= $firstSampleF ?> <span style="font-size:16px;font-weight:700;color:#64748b">/ <?= $firstSampleQ ?></span></b>
                 <div class="dw-kpi-sub"><span>Qualification &amp; development samples</span><span class="dw-kpi-jump">Highlight Rows &rarr;</span></div>
@@ -763,96 +570,118 @@ $activeStageNum = $areaView === 'encoding' ? 4 : ($areaTab === 'materials' ? 1 :
             <div class="dw-card-h">
                 <div>
                     <div class="dw-card-h-title"><?= $areaTab === 'wholeshoe' ? 'Whole Shoe Testing Workload' : 'Daily Bonding Testing' ?></div>
-                    <div class="dw-card-h-sub">Shows how many <?= $areaTab === 'wholeshoe' ? 'whole shoe' : 'bonding shoe' ?> specimens were collected and finished testing per <?= $period === 'monthly' ? 'week' : 'day' ?> (<?= esc($windowLabel) ?>)</div>
+                    <div class="dw-card-h-sub">Shows how many <?= $areaTab === 'wholeshoe' ? 'whole shoe' : 'bonding shoe' ?> specimens were collected and finished testing (<?= esc($windowLabel) ?>)</div>
                 </div>
             </div>
-            <?php if (count($dw['days']) > 1): ?>
-            <div class="dw-day-tabs">
-                <div class="dw-day-btns">
-                    <?php foreach ($dw['days'] as $idx => $day): $dd = $day['date']; ?>
-                        <button type="button" class="dw-day-btn<?= $idx === 0 ? ' on' : '' ?>" data-day="<?= esc($dd, 'attr') ?>">
-                            <?= esc($day['short'] ?? date('M j, Y', strtotime($dd))) ?>
-                            <span><?= $day['total']['f'] ?>/<?= $day['total']['q'] ?> done</span>
-                        </button>
-                    <?php endforeach ?>
+            <?php
+            // Combine all days in the selected window into a single summary table so no day pill strip is needed
+            $aggCells = [];
+            foreach ($dw['sections'] as $sk => [$tUnused, $labels]) {
+                foreach ($labels as $lb) {
+                    $qSum = 0; $fSum = 0; $nfSum = 0; $pDates = []; $tDates = [];
+                    foreach ($dw['days'] as $dItem) {
+                        $cell = $dItem['cells'][$sk][$lb] ?? ['q' => 0, 'f' => 0, 'prod' => '', 'test' => ''];
+                        $qSum += (int) ($cell['q'] ?? 0);
+                        $fSum += (int) ($cell['f'] ?? 0);
+                        $nfSum += (int) ($cell['nf'] ?? 0);
+                        if (!empty($cell['prod'])) {
+                            $pDates[] = (string) $cell['prod'];
+                        }
+                        if (!empty($cell['test']) && $cell['test'] !== 'Pending') {
+                            $tDates[] = (string) $cell['test'];
+                        }
+                    }
+                    $aggCells[$sk][$lb] = [
+                        'q'    => $qSum,
+                        'f'    => $fSum,
+                        'nf'   => $nfSum,
+                        'prod' => $pDates ? (min($pDates) === max($pDates) ? min($pDates) : min($pDates) . ' – ' . max($pDates)) : '',
+                        'test' => $tDates ? (min($tDates) === max($tDates) ? min($tDates) : min($tDates) . ' – ' . max($tDates)) : '',
+                    ];
+                }
+            }
+            $isMultiDay = count($dw['days']) > 1;
+            $singleDay  = $dw['days'][0] ?? ['date' => $asof, 'label' => $asof];
+            $paneDate   = $isMultiDay ? $wTo : (string) $singleDay['date'];
+            $paneLabel  = $isMultiDay
+                ? $windowLabel
+                : ('Daily Bonding Tested: ' . ($singleDay['label'] ?? $paneDate) . ' (' . date('l', strtotime($paneDate)) . ')');
+            ?>
+            <div class="dw-day-pane" data-day="<?= esc($paneDate, 'attr') ?>">
+                <div class="dw-card-explain">
+                    <span><b><?= esc($paneLabel) ?></b></span>
+                    <span>Finished: <b><?= $threeDayFin ?></b> of <b><?= $threeDayQty ?></b> specimens · Shutdown Lines: <b><?= $threeDayShut ?></b></span>
                 </div>
-                <span style="font-size:11.5px;color:#64748b;font-weight:600"><?= esc($windowShort) ?> Total: <b><?= $threeDayFin ?> / <?= $threeDayQty ?></b> tested</span>
-            </div>
-            <?php endif ?>
-
-            <?php foreach ($dw['days'] as $idx => $day): $dd = $day['date']; ?>
-                <div class="dw-day-pane" data-day="<?= esc($dd, 'attr') ?>"<?= $idx === 0 ? '' : ' hidden' ?>>
-                    <div class="dw-card-explain">
-                        <span><b>Daily Bonding Tested: <?= esc($day['label'] ?? $dd) ?></b><?= $period !== 'monthly' ? ' (' . date('l', strtotime($dd)) . ')' : '' ?></span>
-                        <span>Finished: <b><?= $day['total']['f'] ?></b> of <b><?= $day['total']['q'] ?></b> specimens · Shutdown Lines: <b><?= $day['shut'] ?></b></span>
-                    </div>
-                    <div class="dw-tbl-wrap">
-                        <table class="dw-tbl">
-                            <thead>
-                                <tr>
-                                    <th>Test Category &amp; Specimen Type</th>
-                                    <th style="text-align:left">Production &rarr; Tested Date</th>
-                                    <th>Quantity</th>
-                                    <th>Finished</th>
-                                    <th>Remaining</th>
-                                    <th>Status / Timeline</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                            <?php foreach ($dw['sections'] as $sk => [$title, $labels]):
-                                [$secFriendly, $secExplain] = $sectionDescriptions[$sk] ?? [$title, ''];
+                <div class="dw-tbl-wrap">
+                    <table class="dw-tbl">
+                        <thead>
+                            <tr>
+                                <th>Test Category &amp; Specimen Type</th>
+                                <th style="text-align:left">Production &rarr; Tested Date</th>
+                                <th>Quantity</th>
+                                <th>Finished</th>
+                                <th title="Finished tests whose result is FAILED (or rejected); a tolerable result is not counted here">Failed</th>
+                                <th>Remaining</th>
+                                <th>Status / Timeline</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        <?php $totNF = 0; foreach ($dw['sections'] as $sk => [$title, $labels]):
+                            [$secFriendly, $secExplain] = $sectionDescriptions[$sk] ?? [$title, ''];
+                        ?>
+                            <tr class="dw-sechd" data-sec="<?= esc($sk, 'attr') ?>">
+                                <td colspan="7">
+                                    <div class="dw-sechd-wrap">
+                                        <span class="dw-sechd-title"><?= esc($title) ?> &mdash; <?= esc($secFriendly) ?></span>
+                                        <span class="dw-sechd-desc"><?= esc($secExplain) ?></span>
+                                    </div>
+                                </td>
+                            </tr>
+                            <?php foreach ($labels as $lb):
+                                $c = $aggCells[$sk][$lb];
+                                $rem = $c['q'] - $c['f'];
+                                $e = $est($c['q'], $c['f'], $paneDate);
                             ?>
-                                <tr class="dw-sechd" data-sec="<?= esc($sk, 'attr') ?>">
-                                    <td colspan="6">
-                                        <div class="dw-sechd-wrap">
-                                            <span class="dw-sechd-title"><?= esc($title) ?> &mdash; <?= esc($secFriendly) ?></span>
-                                            <span class="dw-sechd-desc"><?= esc($secExplain) ?></span>
-                                        </div>
+                                <tr data-sec-row="<?= esc($sk, 'attr') ?>">
+                                    <td style="font-weight:600;padding-left:16px"><?= esc($lb) ?></td>
+                                    <td class="dw-dt" style="text-align:left">
+                                        <?php if ($c['q'] > 0): ?>
+                                            Prod: <b><?= esc($c['prod'] ?: '–') ?></b> &rarr; Tested: <b><?= esc($c['test'] ?: 'Pending') ?></b>
+                                        <?php else: ?>
+                                            <span class="z">No specimens submitted</span>
+                                        <?php endif ?>
+                                    </td>
+                                    <td class="<?= $c['q'] ? '' : 'z' ?>" style="font-weight:700"><?= $c['q'] ?></td>
+                                    <td class="<?= $c['f'] ? '' : 'z' ?>" style="font-weight:700;color:#059669"><?= $c['f'] ?></td>
+                                    <?php $nf = (int) ($c['nf'] ?? 0); $totNF += $nf; ?>
+                                    <td class="<?= $nf ? '' : 'z' ?>" <?= $nf ? 'style="color:#dc2626;font-weight:800"' : '' ?>><?= $nf ?></td>
+                                    <td class="<?= $rem > 0 ? '' : 'z' ?>" <?= $rem > 0 ? 'style="color:#b45309;font-weight:800"' : '' ?>><?= $rem ?></td>
+                                    <td>
+                                        <span class="dw-pill <?= $e === 'COMPLETED' ? 'dw-done' : ($e === 'No Intake' ? 'dw-na' : 'dw-wait') ?>">
+                                            <?= $e === 'COMPLETED' ? '&#10003; DONE' : esc($e) ?>
+                                        </span>
                                     </td>
                                 </tr>
-                                <?php foreach ($labels as $lb):
-                                    $c = $day['cells'][$sk][$lb];
-                                    $rem = $c['q'] - $c['f'];
-                                    $e = $est($c['q'], $c['f'], $dd);
-                                ?>
-                                    <tr data-sec-row="<?= esc($sk, 'attr') ?>">
-                                        <td style="font-weight:600;padding-left:16px"><?= esc($lb) ?></td>
-                                        <td class="dw-dt" style="text-align:left">
-                                            <?php if ($c['q'] > 0): ?>
-                                                Prod: <b><?= esc($c['prod'] ?: '–') ?></b> &rarr; Tested: <b><?= esc($c['test'] ?: 'Pending') ?></b>
-                                            <?php else: ?>
-                                                <span class="z">No specimens submitted</span>
-                                            <?php endif ?>
-                                        </td>
-                                        <td class="<?= $c['q'] ? '' : 'z' ?>" style="font-weight:700"><?= $c['q'] ?></td>
-                                        <td class="<?= $c['f'] ? '' : 'z' ?>" style="font-weight:700;color:#059669"><?= $c['f'] ?></td>
-                                        <td class="<?= $rem > 0 ? '' : 'z' ?>" <?= $rem > 0 ? 'style="color:#b45309;font-weight:800"' : '' ?>><?= $rem ?></td>
-                                        <td>
-                                            <span class="dw-pill <?= $e === 'COMPLETED' ? 'dw-done' : ($e === 'No Intake' ? 'dw-na' : 'dw-wait') ?>">
-                                                <?= $e === 'COMPLETED' ? '&#10003; DONE' : esc($e) ?>
-                                            </span>
-                                        </td>
-                                    </tr>
-                                <?php endforeach ?>
                             <?php endforeach ?>
-                                <tr class="dw-tot">
-                                    <td>Total Specimens (<?= esc($dd) ?>)</td>
-                                    <td></td>
-                                    <td><?= $day['total']['q'] ?></td>
-                                    <td><?= $day['total']['f'] ?></td>
-                                    <td><?= $day['total']['q'] - $day['total']['f'] ?></td>
-                                    <td><?= $day['total']['q'] > 0 ? round($day['total']['f'] / $day['total']['q'] * 100) . '% Complete' : '–' ?></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <?php if ($day['shut'] > 0): ?>
-                        <div class="dw-note">
-                            <span>&#9888; Production Line Notice: <b><?= $day['shut'] ?></b> daily bonding shoe line<?= $day['shut'] === 1 ? ' was' : 's were' ?> marked <b>SHUTDOWN</b> (inactive / no production) on <?= esc($dd) ?>.</span>
-                        </div>
-                    <?php endif ?>
+                        <?php endforeach ?>
+                            <tr class="dw-tot">
+                                <td>Total Specimens (<?= esc($isMultiDay ? $windowTag : $paneDate) ?>)</td>
+                                <td></td>
+                                <td><?= $threeDayQty ?></td>
+                                <td><?= $threeDayFin ?></td>
+                                <td<?= $totNF > 0 ? ' style="color:#dc2626"' : '' ?>><?= $totNF ?></td>
+                                <td><?= max(0, $threeDayQty - $threeDayFin) ?></td>
+                                <td><?= $threeDayQty > 0 ? round($threeDayFin / $threeDayQty * 100) . '% Complete' : '–' ?></td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
-            <?php endforeach ?>
+                <?php if ($threeDayShut > 0): ?>
+                    <div class="dw-note">
+                        <span>&#9888; Production Line Notice: <b><?= $threeDayShut ?></b> daily bonding shoe line<?= $threeDayShut === 1 ? ' was' : 's were' ?> marked <b>SHUTDOWN</b> (inactive / no production) in <?= esc($isMultiDay ? $windowLabel : $paneDate) ?>.</span>
+                    </div>
+                <?php endif ?>
+            </div>
         </div>
     </div><!-- /data-stage-panel="2" -->
 
@@ -1157,6 +986,30 @@ $activeStageNum = $areaView === 'encoding' ? 4 : ($areaTab === 'materials' ? 1 :
     });
   }
 
+  // Date picker (same as Daily Bonding): Today / Yesterday, Weekly, Monthly, Custom calendar range
+  (function () {
+    var root = document.getElementById('dw-form'); if (!root) return;
+    var $ = function (id) { return document.getElementById(id); };
+    var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    var iso = function (d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+    var parse = function (s) { var p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); };
+    var today = parse(root.dataset.today);
+    var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    var short = function (d) { return MONTHS[d.getMonth()].slice(0, 3) + ' ' + d.getDate(); };
+    var isoWeek = function (d) {
+      var t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+      var dn = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - dn);
+      var y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+      return t.getUTCFullYear() + '-W' + pad(Math.ceil(((t - y0) / 86400000 + 1) / 7));
+    };
+    var go = function (q) {
+      q.tab = root.dataset.tab; q.view = root.dataset.view;
+      window.location.href = root.dataset.action + '?' + new URLSearchParams(q).toString();
+    };
+    var goDay = function (d) { go({ period: 'daily', asof: iso(d), year: d.getFullYear() }); };
+    window.NxDateFilter.mount({ host: root, btn: $('dw-dr-btn'), from: root.dataset.from, to: root.dataset.to, allowAll: false, onApply: function (f, t) { if (f === t) { goDay(parse(f)); return; } go({ from: f, to: t }); } });
+  })();
+
   // Keep week/date synced when the Year dropdown changes, then submit
   var dwForm = document.getElementById('dw-form');
   var dwYearSel = document.getElementById('dw-year-sel');
@@ -1200,6 +1053,8 @@ $activeStageNum = $areaView === 'encoding' ? 4 : ($areaTab === 'materials' ? 1 :
   var interactiveCards = document.querySelectorAll('[data-dw-action]');
   interactiveCards.forEach(function (card) {
     card.addEventListener('click', function () {
+      var href = card.getAttribute('data-dw-href');
+      if (href) { window.location.href = href; return; }
       var act = card.getAttribute('data-dw-action');
       var st = STAGE_OF[act];
       if (st) { showStage(st); }

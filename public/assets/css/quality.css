@@ -1,4 +1,4 @@
-/* Quality Insights (on top of calendar.css) */
+﻿/* Quality Insights (on top of calendar.css) */
 .qi-root .hidden { display: none !important; }
 .qi-tabs { display: flex; gap: 6px; padding: 6px; margin: 12px 0; width: fit-content; }
 .qi-tab { border: 0; background: transparent; padding: 8px 18px; border-radius: 9px; font: inherit; font-weight: 600; color: #475569; cursor: pointer; transition: background .15s, color .15s; }
@@ -206,18 +206,212 @@ html[data-theme="dark"] .qi-skel {
 .qi-warn-chip.high{background:rgba(225,29,72,.12);color:#9f1239;border-color:rgba(225,29,72,.4)}
 
 /* Failed sample CAPA */
-.qi-badge{display:inline-block;min-width:18px;padding:0 6px;border-radius:999px;background:#e11d48;color:#fff;font-size:11px;line-height:18px;text-align:center;margin-left:4px}
-.qi-capa{padding:12px 14px;margin:0 0 10px;display:grid;gap:8px;border-left:4px solid #f59e0b}
+.qi-badge{display:inline-block;min-width:18px;padding:1px 8px;border-radius:999px;background:#e11d48;color:#fff;font-size:10.5px;font-weight:800;letter-spacing:.04em;line-height:18px;text-align:center;margin-left:4px}
+.qi-badge.green{background:#d1fae5;color:#047857}.qi-badge.amber{background:#fef3c7;color:#b45309}.qi-badge.red{background:#fee2e2;color:#b91c1c}
+.qi-capa-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;max-width:100%}
+.qi-capa-tools .qi-field{flex:1 1 180px;min-width:0}
+.qi-capa-search{width:100%;min-width:0;max-width:260px}
+.qi-capa-list{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:stretch}
+@media (max-width:1440px){.qi-capa-list{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:1080px){.qi-capa-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:680px){.qi-capa-list{grid-template-columns:1fr}.qi-capa-search{max-width:100%}.qi-capa-tools{width:100%}.qi-capa-pager{justify-content:center}}
+.qi-capa{padding:12px;display:flex;flex-direction:column;gap:8px;border-left:4px solid #f59e0b;border-radius:14px;min-width:0}
 .qi-capa.late{border-left-color:#e11d48}
-.qi-capa.done{border-left-color:#16a34a;opacity:.85}
-.qi-capa header{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
-.qi-capa header span{color:#475569}
-.qi-capa header small{color:#64748b;margin-left:auto}
-.qi-capa label{display:grid;gap:3px;font-size:12px;color:#475569}
-.qi-capa textarea,.qi-capa input{font:inherit;font-size:13px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a;width:100%;box-sizing:border-box}
-.qi-capa textarea:disabled,.qi-capa input:disabled{background:#f1f5f9}
-.qi-capa-cands{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;color:#475569}
-.qi-capa-cands .qi-chip{cursor:pointer;border:1px solid #86efac;background:rgba(22,163,74,.1);color:#166534;border-radius:999px;padding:2px 10px}
-.qi-capa-act{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.qi-capa.done{border-left-color:#16a34a;opacity:.92}
+.qi-capa-head{display:flex;flex-direction:column;gap:5px;padding-bottom:8px;border-bottom:1px solid rgba(148,163,184,.22)}
+.qi-capa-id{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+.qi-capa-line{display:inline-flex;align-items:center;justify-content:center;min-width:28px;padding:1px 7px;border-radius:7px;background:rgba(15,23,42,.08);color:#0f172a;font-size:11.5px;font-weight:800;flex:none}
+.qi-capa-ref{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;color:#0f172a;word-break:break-all}
+.qi-capa-meta{font-size:11.5px;color:#475569;flex-basis:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qi-capa-right{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap}
+.qi-capa-right .qi-pill{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px}
+.qi-capa-date{font-size:11px;color:#64748b}
+.qi-capa-grid{display:grid;grid-template-columns:1fr;gap:8px}
+.qi-capa label{display:grid;gap:3px;font-size:11.5px;font-weight:600;color:#475569}
+.qi-capa textarea,.qi-capa input{font:inherit;font-size:12px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:8px;background:rgba(255,255,255,.9);color:#0f172a;width:100%;box-sizing:border-box;transition:border-color .15s,box-shadow .15s;resize:vertical}
+.qi-capa textarea:focus,.qi-capa input:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.14);outline:none}
+.qi-capa textarea:disabled,.qi-capa input:disabled{background:#f1f5f9;color:#475569;cursor:default}
+.qi-capa-retest{display:grid;grid-template-columns:1fr;gap:5px}
+.qi-capa-cands{display:flex;gap:5px;flex-wrap:wrap;align-items:center;font-size:11px;color:#475569}
+.qi-capa-cands .qi-chip.qi-capa-cand{cursor:pointer;border:1px solid #86efac;background:rgba(22,163,74,.1);color:#166534;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:600}
+.qi-capa-cands .qi-chip.qi-capa-cand:hover{background:rgba(22,163,74,.2)}
+.qi-capa-act,.qi-capa-foot{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:auto;padding-top:6px;border-top:1px solid rgba(148,163,184,.16)}
+.qi-capa-act .cal-btn-glass,.qi-capa-close-btn{padding:6px 10px;font-size:12px;flex:1;justify-content:center;text-align:center;white-space:nowrap}
+.qi-capa-close-btn{border:0;border-radius:8px;font-family:inherit;font-weight:700;background:linear-gradient(135deg,#059669,#047857);color:#fff;cursor:pointer;box-shadow:0 2px 8px rgba(5,150,105,.25)}
+.qi-capa-close-btn:hover{filter:brightness(1.06)}
+.qi-capa-close-btn:disabled{opacity:.6;cursor:wait}
+.qi-capa-msg{font-size:11.5px;font-weight:600;flex-basis:100%}
+.qi-capa-pager{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:14px;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,.65);border:1px solid rgba(148,163,184,.25)}
+.qi-capa-pinfo,.qi-capa-pnum{font-size:12.5px;font-weight:600;color:#475569}
+.qi-capa-pbtns{display:flex;align-items:center;gap:10px}
+.qi-capa-pbtns button:disabled{opacity:.45;cursor:not-allowed}
+html[data-theme="dark"] .qi-capa-pager{background:rgba(15,23,42,.65);border-color:rgba(148,163,184,.24)}
+html[data-theme="dark"] .qi-capa-pinfo,html[data-theme="dark"] .qi-capa-pnum{color:#94a3b8}
 .qi-capa-msg.ok{color:#15803d}.qi-capa-msg.bad{color:#b91c1c}
-html[data-theme="dark"] .qi-capa textarea,html[data-theme="dark"] .qi-capa input{background:#0f172a;color:#e2e8f0;border-color:#334155}
+.qi-capa-closed{font-size:12.5px;color:#475569}
+
+/* Dark mode: Early Warning & Failed Sample CAPA */
+html[data-theme="dark"] .qi-warn-h small,
+html[data-theme="dark"] .qi-capa-meta,
+html[data-theme="dark"] .qi-capa-date,
+html[data-theme="dark"] .qi-capa-cands,
+html[data-theme="dark"] .qi-capa-closed{color:#94a3b8}
+html[data-theme="dark"] .qi-warn-chip{background:rgba(245,158,11,.18);color:#fcd34d;border-color:rgba(251,191,36,.4)}
+html[data-theme="dark"] .qi-warn-chip.high{background:rgba(239,68,68,.2);color:#fda4af;border-color:rgba(248,113,113,.45)}
+html[data-theme="dark"] .qi-capa-head{border-bottom-color:rgba(148,163,184,.2)}
+html[data-theme="dark"] .qi-capa-line{background:rgba(148,163,184,.18);color:#f1f5f9}
+html[data-theme="dark"] .qi-capa-ref{color:#f8fafc}
+html[data-theme="dark"] .qi-capa label{color:#cbd5e1}
+html[data-theme="dark"] .qi-capa textarea,html[data-theme="dark"] .qi-capa input{background:rgba(15,23,42,.82);color:#f1f5f9;border-color:rgba(148,163,184,.28)}
+html[data-theme="dark"] .qi-capa textarea:disabled,html[data-theme="dark"] .qi-capa input:disabled{background:rgba(15,23,42,.45);color:#94a3b8}
+html[data-theme="dark"] .qi-capa-cands .qi-chip.qi-capa-cand{background:rgba(16,185,129,.2);border-color:rgba(52,211,153,.45);color:#6ee7b7}
+html[data-theme="dark"] .qi-capa-cands .qi-chip.qi-capa-cand:hover{background:rgba(16,185,129,.32)}
+html[data-theme="dark"] .qi-capa-msg.ok{color:#6ee7b7}
+html[data-theme="dark"] .qi-capa-msg.bad{color:#fda4af}
+
+
+/* CAPA Photos (max 3), 72h Deleted-Photo Audit, Batch Link Banner & Lightbox */
+.qi-capa-sel{width:15px !important;height:15px;accent-color:#2563eb;cursor:pointer;flex:none;margin:0}
+.qi-capa-meta-in{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:6px}
+.qi-capa-photos{border:1px dashed rgba(148,163,184,.45);border-radius:9px;padding:7px 8px;background:rgba(248,250,252,.65);display:grid;gap:6px}
+.qi-capa-ptop{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:11.5px;font-weight:700;color:#475569}
+.qi-capa-pbtns-sm{display:flex;gap:4px}
+.qi-mini-btn{border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:6px;padding:2px 7px;font-size:11px;font-weight:600;cursor:pointer}
+.qi-mini-btn:hover{background:#eff6ff;border-color:#2563eb}
+.qi-mini-btn:disabled{opacity:.45;cursor:not-allowed}
+.qi-capa-thumbs{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.qi-capa-nophoto{font-size:11px;color:#94a3b8}
+.qi-capa-thumb{position:relative;width:58px;height:58px;border-radius:7px;overflow:hidden;border:1px solid #cbd5e1;background:#fff}
+.qi-capa-thumb img{width:100%;height:100%;object-fit:cover;display:block;cursor:pointer}
+.qi-capa-rm{position:absolute;top:2px;right:2px;width:18px;height:18px;border:0;border-radius:50%;background:rgba(220,38,38,.9);color:#fff;font-size:12px;font-weight:800;line-height:1;cursor:pointer;padding:0}
+.qi-capa-delhist{font-size:11px;color:#64748b;border-top:1px solid rgba(148,163,184,.2);padding-top:4px}
+.qi-capa-delhist summary{cursor:pointer;font-weight:600;user-select:none}
+.qi-capa-delgrid{display:grid;gap:5px;margin-top:5px}
+.qi-capa-delitem{display:flex;gap:6px;align-items:center;padding:4px;border-radius:6px;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2)}
+.qi-capa-delitem img{width:38px;height:38px;border-radius:5px;object-fit:cover;cursor:pointer;flex:none}
+.qi-capa-delitem b{display:block;font-size:11px;color:#0f172a}
+.qi-capa-delitem small{display:block;font-size:10px;color:#64748b}
+.qi-capa-hlist{margin:4px 0 0;padding-left:14px;display:grid;gap:2px}
+.qi-capa-hlist li{font-size:10.5px}
+.qi-capa-linkbox{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 14px;margin-bottom:12px;border-left:4px solid #2563eb;border-radius:12px}
+.qi-capa-linkbox[hidden]{display:none !important}
+.qi-capa-linkbox > div{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1;min-width:220px}
+.qi-capa-linkbox input{flex:1;min-width:220px;padding:6px 9px;border:1px solid #cbd5e1;border-radius:7px;font-family:ui-monospace,Consolas,monospace;font-size:12px;background:#fff;color:#0f172a}
+.qi-capa-lacts{flex:0 0 auto !important;min-width:0 !important}
+.qi-capa-lb{position:fixed;inset:0;z-index:10090;background:rgba(15,23,42,.82);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px}
+.qi-capa-lb[hidden]{display:none !important}
+.qi-capa-lb img{max-width:94vw;max-height:90vh;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+html[data-theme="dark"] .qi-capa-photos{background:rgba(15,23,42,.55);border-color:rgba(148,163,184,.26)}
+html[data-theme="dark"] .qi-capa-ptop,html[data-theme="dark"] .qi-capa-delhist{color:#94a3b8}
+html[data-theme="dark"] .qi-mini-btn{background:rgba(30,41,59,.85);border-color:rgba(148,163,184,.3);color:#f1f5f9}
+html[data-theme="dark"] .qi-capa-delitem{background:rgba(239,68,68,.14);border-color:rgba(248,113,113,.3)}
+html[data-theme="dark"] .qi-capa-delitem b{color:#fecaca}
+html[data-theme="dark"] .qi-capa-linkbox input{background:rgba(15,23,42,.85);border-color:rgba(148,163,184,.3);color:#f1f5f9}
+
+
+/* Liquid Glass CAPA Card Polish & 4-Step Fast-Scan Checklist */
+.qi-capa {
+  background: rgba(255, 255, 255, .74) !important;
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, .78);
+  border-left: 4px solid #f59e0b;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .85), 0 8px 24px rgba(15, 23, 42, .06);
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+.qi-capa:hover {
+  transform: translateY(-2px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 12px 28px rgba(15, 23, 42, .11);
+}
+.qi-capa.late { border-left-color: #e11d48; box-shadow: inset 0 1px 0 rgba(255,255,255,.85), 0 8px 24px rgba(225, 29, 72, .08); }
+.qi-capa.ready { border-left-color: #059669; box-shadow: inset 0 1px 0 rgba(255,255,255,.85), 0 8px 24px rgba(5, 150, 105, .10); }
+.qi-capa.done { border-left-color: #16a34a; opacity: .88; }
+
+.qi-capa-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 2px;
+}
+.qi-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 2px 4px;
+  border-radius: 7px;
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.qi-step.ok {
+  background: rgba(16, 185, 129, .14);
+  border-color: rgba(16, 185, 129, .32);
+  color: #047857;
+}
+.qi-step.miss {
+  background: rgba(245, 158, 11, .12);
+  border-color: rgba(245, 158, 11, .28);
+  color: #b45309;
+}
+.qi-capa label.is-miss textarea,
+.qi-capa label.is-miss input {
+  border-color: rgba(245, 158, 11, .5);
+  background: rgba(255, 251, 235, .75);
+}
+.qi-capa label.is-ok textarea,
+.qi-capa label.is-ok input {
+  border-color: rgba(16, 185, 129, .38);
+}
+
+.qi-capa-slot-empty {
+  width: 58px;
+  height: 58px;
+  border-radius: 7px;
+  border: 1px dashed rgba(148, 163, 184, .5);
+  background: rgba(255, 255, 255, .45);
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+html[data-theme="dark"] .qi-capa {
+  background: rgba(17, 25, 44, .74) !important;
+  border-color: rgba(148, 163, 184, .22);
+  border-left: 4px solid #f59e0b;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1), 0 10px 28px rgba(2, 6, 23, .38);
+}
+html[data-theme="dark"] .qi-capa:hover {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 14px 32px rgba(2, 6, 23, .52);
+}
+html[data-theme="dark"] .qi-capa.late { border-left-color: #fb7185; }
+html[data-theme="dark"] .qi-capa.ready,
+html[data-theme="dark"] .qi-capa.done { border-left-color: #34d399; }
+html[data-theme="dark"] .qi-step.ok {
+  background: rgba(16, 185, 129, .18);
+  border-color: rgba(52, 211, 153, .35);
+  color: #6ee7b7;
+}
+html[data-theme="dark"] .qi-step.miss {
+  background: rgba(245, 158, 11, .16);
+  border-color: rgba(251, 191, 36, .35);
+  color: #fcd34d;
+}
+html[data-theme="dark"] .qi-capa label.is-miss textarea,
+html[data-theme="dark"] .qi-capa label.is-miss input {
+  border-color: rgba(251, 191, 36, .45);
+  background: rgba(30, 41, 59, .86);
+}
+html[data-theme="dark"] .qi-capa label.is-ok textarea,
+html[data-theme="dark"] .qi-capa label.is-ok input {
+  border-color: rgba(52, 211, 153, .4);
+}
+html[data-theme="dark"] .qi-capa-slot-empty {
+  background: rgba(15, 23, 42, .45);
+  border-color: rgba(148, 163, 184, .3);
+  color: #64748b;
+}

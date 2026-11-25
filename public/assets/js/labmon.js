@@ -28,7 +28,7 @@
 
   const fmtDay = (d) => { const t = String(d); if (!/^\d{4}-\d{2}-\d{2}/.test(t)) return t; const [y, m, dd] = t.slice(0, 10).split('-'); return `${m}-${dd}-${y}`; };
   const monthName = (ym) => { const [y, m] = ym.split('-'); return new Date(Number(y), Number(m) - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' }); };
-  const IL = { ok: 'INTERLINK OK', pending: 'PENDING', bad: 'NOT SUBMITTED' };
+  const IL = { ok: 'SUBMITTED', pending: 'PENDING', bad: 'NOT SUBMITTED' };
   const ERPL = { ok: 'ERP OK', pending: 'ONGOING', bad: 'NOT SUBMITTED' };
 
   const apps = (cur, hist) => {
@@ -40,7 +40,7 @@
   // ---- Edit button: every cell of the row can be typed except the Line and the Lab reference ----
   const editBtn = (r) => `<td class="lm-editcell"><button type="button" class="lm-edit-btn" data-edit="${r.id}" aria-label="Edit ${esc(r.lab_ref)}">Edit</button></td>`;
   const optList = (list, cur) => list.map(([v, t]) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${t}</option>`).join('');
-  const IL_OPTS = [['ok', 'INTERLINK OK'], ['pending', 'PENDING'], ['bad', 'NOT SUBMITTED']];
+  const IL_OPTS = [['ok', 'Submitted'], ['bad', 'Not Submitted']];   // the InterLink status is chosen as Submitted or Not Submitted; the ERP submission opens when it is Submitted
   const RES_OPTS = [['', '-'], ['Pass', 'Pass'], ['Tolerable', 'Tolerable'], ['Fail', 'Fail']];
   const ERP_OPTS = [['', 'Not submitted'], ['OK', 'ERP OK'], ['Submitted', 'Submitted'], ['Ongoing', 'Ongoing'], ['Pending', 'Pending']];
   const resVal = (r) => { const u = String(r.result || '').toUpperCase(); return u.startsWith('FAIL') ? 'Fail' : u.startsWith('TOL') ? 'Tolerable' : u ? 'Pass' : ''; };
@@ -57,15 +57,16 @@
       ? ['flexing', 'aging', 'hydrolysis', 'washing', 'uv'].map((k) => `<td>${trIn(k, r[k])}</td>`).join('')
       : `<td>${trIn('bonding', r.bonding)}</td><td>${trIn('pull', r.pull)}</td>`;
     return `<tr class="lm-editing" data-id="${r.id}">${common}${trs}
-      <td><select class="lm-in" data-ef="il">${optList(IL_OPTS, r.il)}</select></td>
+      <td><select class="lm-in" data-ef="il" aria-label="InterLink status">${r.il === 'pending' ? '<option value="pending" selected disabled hidden>Pending</option>' : ''}${optList(IL_OPTS, r.il)}</select></td>
       <td><select class="lm-in" data-ef="result">${optList(RES_OPTS, resVal(r))}</select></td>
-      <td><select class="lm-in" data-ef="erp">${optList(ERP_OPTS, r.erp_raw === 'OK' ? 'OK' : (r.erp_raw || ''))}</select></td></tr>`;
+      <td><select class="lm-in" data-ef="erp" ${r.il === 'ok' ? '' : 'disabled title="Choose InterLink status Submitted first"'}>${optList(ERP_OPTS, r.erp_raw === 'OK' ? 'OK' : (r.erp_raw || ''))}</select></td></tr>`;
   };
 
   const rowHtmlWS = (r) => {
     if (S.edit === r.id) return editRow(r);
     const erpSel = ['OK', 'Submitted', 'Ongoing', 'Pending', ''].map((v) => `<option value="${v}" ${v === r.erp_raw ? 'selected' : ''}>${v === '' ? 'Not submitted' : v === 'OK' ? 'ERP OK' : v}</option>`).join('');
-    const can = r.erp !== 'ok';   // ERP OK / Submitted lines are done: nothing to send again
+    const ilOk = r.il === 'ok';   // the ERP submission opens when the InterLink status is Submitted
+    const can = r.erp !== 'ok' && ilOk;   // ERP OK / Submitted lines are done: nothing to send again
     return `<tr class="lm-click" data-id="${r.id}" data-lab="${esc(r.lab_ref)}" tabindex="0" aria-label="Open ${esc(r.lab_ref)}">
       ${editBtn(r)}<td class="lm-sel"><input type="checkbox" data-pick="${r.id}" ${S.sel.has(r.id) ? 'checked' : ''} ${can ? '' : 'disabled'} aria-label="Select ${esc(r.lab_ref)} for ERP"></td>
       <td>${r.tested ? esc(fmtDay(r.tested)) : '<span class="lm-none">-</span>'}</td>
@@ -80,7 +81,7 @@
       <td>${apps(r.uv, r.uv_hist)}</td>
       <td class="s ${r.il}">${IL[r.il]}</td>
       <td class="lm-res ${r.level}">${r.result ? `<b>${esc(r.result)}</b>` : '<span class="lm-none">-</span>'}</td>
-      <td class="s ${r.erp}"><select data-id="${r.id}" aria-label="ERP status of ${esc(r.lab_ref)}">${erpSel}</select></td>
+      <td class="s ${r.erp}"><select data-id="${r.id}" aria-label="ERP status of ${esc(r.lab_ref)}" ${ilOk ? '' : 'disabled title="InterLink status must be Submitted first"'}>${erpSel}</select></td>
     </tr>`;
   };
   const rowHtml = (r) => {
@@ -89,7 +90,8 @@
     if (S.edit === r.id) return editRow(r);
     const notes = [r.notes, r.cause].filter(Boolean).join('\n');
     const erpSel = ['OK', 'Submitted', 'Ongoing', 'Pending', ''].map((v) => `<option value="${v}" ${v === r.erp_raw ? 'selected' : ''}>${v === '' ? 'Not submitted' : v === 'OK' ? 'ERP OK' : v}</option>`).join('');
-    const can = r.erp !== 'ok';   // ERP OK / Submitted rows are done: nothing to send again
+    const ilOk = r.il === 'ok';   // the ERP submission opens when the InterLink status is Submitted
+    const can = r.erp !== 'ok' && ilOk;   // ERP OK / Submitted rows are done: nothing to send again
     return `<tr class="lm-click" data-id="${r.id}" data-lab="${esc(r.lab_ref)}" tabindex="0" aria-label="Open ${esc(r.lab_ref)}">
       ${editBtn(r)}<td class="lm-sel"><input type="checkbox" data-pick="${r.id}" ${S.sel.has(r.id) ? 'checked' : ''} ${can ? '' : 'disabled'} aria-label="Select ${esc(r.lab_ref)} for ERP"></td>
       <td>${r.tested ? esc(fmtDay(r.tested)) : '<span class="lm-none">-</span>'}</td>
@@ -101,7 +103,7 @@
       <td>${apps(r.pull, r.pull_hist)}</td>
       <td class="s ${r.il}">${IL[r.il]}</td>
       <td class="lm-res ${r.level}">${r.result ? `<b>${esc(r.result)}</b>` : '<span class="lm-none">-</span>'}${notes ? `<small>${esc(notes)}</small>` : ''}</td>
-      <td class="s ${r.erp}"><select data-id="${r.id}" aria-label="ERP status of ${esc(r.lab_ref)}">${erpSel}</select></td>
+      <td class="s ${r.erp}"><select data-id="${r.id}" aria-label="ERP status of ${esc(r.lab_ref)}" ${ilOk ? '' : 'disabled title="InterLink status must be Submitted first"'}>${erpSel}</select></td>
     </tr>`;
   };
 
@@ -117,7 +119,7 @@
   };
 
   // ---- Submit (bulk): checkboxes appear on the left of every row ----
-  const eligible = () => S.rows.filter((r) => !r.shutdown && r.erp !== 'ok');
+  const eligible = () => S.rows.filter((r) => !r.shutdown && r.erp !== 'ok' && r.il === 'ok');
   const syncSelectUi = () => {
     $('#lm-table').classList.toggle('lm-selmode', S.select);
     const btn = $('#lm-submit'); const go = $('#lm-submit-go'); const cancel = $('#lm-submit-cancel');
@@ -145,7 +147,10 @@
       const first = j.invalid.slice(0, 3).map((x) => `${x.lab_ref_no}: ${x.missing.join(', ')}`).join(' | ');
       window.nxToast(`${j.invalid.length} report${j.invalid.length > 1 ? 's' : ''} not queued, missing data - ${first}${j.invalid.length > 3 ? ' ...' : ''}`, 'error', 14000);
     }
-    if (!j.queued && j.invalid && j.invalid.length) { load(true); return; }
+    if (j.not_submitted && j.not_submitted.length && window.nxToast) {   // not sent: the InterLink status is not Submitted
+      window.nxToast(`${j.not_submitted.length} report${j.not_submitted.length > 1 ? 's' : ''} not queued: the InterLink status has to be Submitted first (${j.not_submitted.slice(0, 3).join(', ')}${j.not_submitted.length > 3 ? ' ...' : ''}).`, 'error', 12000);
+    }
+    if (!j.queued && ((j.invalid && j.invalid.length) || (j.not_submitted && j.not_submitted.length))) { load(true); return; }
     if (j.queued && window.nxToast) {   // the report is now in the ERP PC's queue (or waiting for it)
       if (j.dispatch && j.dispatch.ok) window.nxToast(`Successfully submitted ${j.queued} report${j.queued > 1 ? 's' : ''} to ERP. They are entered one by one in the background; you will be told when each is completely sent.`, 'success', 8000);
       else window.nxToast(`${j.queued} report${j.queued > 1 ? 's' : ''} queued, but the ERP PC could not be reached yet${j.dispatch && j.dispatch.error ? ' (' + j.dispatch.error + ')' : ''}. They stay in the queue and are sent when it is back.`, 'error', 12000);
@@ -301,6 +306,11 @@
     const tr = e.target.closest('tr.lm-click'); if (!tr) return;
     openDlg(Number(tr.dataset.id));
   });
+  $('#lm-body').addEventListener('change', (e) => {
+    const il = e.target.closest('select[data-ef="il"]'); if (!il) return;
+    const erp = il.closest('tr').querySelector('select[data-ef="erp"]'); if (!erp) return;
+    erp.disabled = il.value !== 'ok'; erp.title = erp.disabled ? 'Choose InterLink status Submitted first' : '';
+  });
   // Edit / Save / Cancel of a row
   const postSave = async (id, fields) => {
     const r = await fetch(base + 'lab-monitoring/row-save', {
@@ -319,7 +329,7 @@
     const sv = e.target.closest('[data-save]');
     if (!sv) return;
     const tr = sv.closest('tr'); const fields = {};
-    tr.querySelectorAll('[data-ef]').forEach((el) => { fields[el.dataset.ef] = el.value; });
+    tr.querySelectorAll('[data-ef]').forEach((el) => { if (!el.disabled) fields[el.dataset.ef] = el.value; });
     sv.disabled = true;
     try {
       const j = await postSave(Number(sv.dataset.save), fields);

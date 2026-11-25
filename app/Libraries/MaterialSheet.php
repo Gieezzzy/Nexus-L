@@ -23,14 +23,19 @@ class MaterialSheet
     private const THICK_CODES = ['TEN', 'ELO', 'TRT', 'STT', 'MUL'];
 
     private static array $stdCache = [];
+    private static bool $ready = false;
 
     public static function ensureColumns(): void
     {
+        if (self::$ready) {
+            return;
+        }
         $db = \Config\Database::connect();
         $has = $db->query("SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE() AND LOWER(table_name) = 'tbl_dtr_materialtrackertests' AND LOWER(column_name) = 'valuesjson' LIMIT 1")->getRowArray();
         if (! $has) {
             $db->query('ALTER TABLE tbl_dtr_MaterialTrackerTests ADD COLUMN ValuesJson MEDIUMTEXT NULL');
         }
+        self::$ready = true;
     }
 
     // ------------------------------------------------------------------------------------------------------------------ standards

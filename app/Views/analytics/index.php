@@ -6,295 +6,80 @@ foreach ($months as $m) {
 }
 $tabs = ['bonding' => 'Shoe Bonding', 'wholeshoe' => 'Whole Shoe', 'materials' => 'Materials'];
 $segmented = $months && array_key_exists('pass', $months[0]);
+
+// Plain-language helpers shared by every Analytics view (included files reuse them).
+if (! function_exists('anTip')) {
+    /** Small "i" badge; the explanation shows on hover, keyboard focus or tap. */
+    function anTip(string $text): string
+    {
+        $t = esc($text, 'attr');
+
+        return ' <span class="an-i" tabindex="0" role="note" aria-label="' . $t . '" data-tip="' . $t . '">i</span>';
+    }
+}
+if (! function_exists('anSummary')) {
+    /** Executive status insight banner. $tone: ok | warn | bad | info. */
+    function anSummary(string $headline, string $detail = '', string $tone = 'info'): string
+    {
+        $tone = in_array($tone, ['ok', 'warn', 'bad', 'info'], true) ? $tone : 'info';
+        // Normalize any raw en-dash / em-dash to safe HTML entity / ASCII dash to prevent charset mojibake
+        $headline = str_replace(["\xE2\x80\x93", "\xE2\x80\x94", 'â€“', 'â€”'], '-', $headline);
+        $detail   = str_replace(["\xE2\x80\x93", "\xE2\x80\x94", 'â€“', 'â€”'], '-', $detail);
+
+        $hasScale = stripos($detail, '95%') !== false && stripos($detail, '85%') !== false;
+        if ($hasScale) {
+            $detail = trim((string) preg_replace('/\s*A pass rate of 95% or more is good;\s*below 85% needs action\.?\s*/i', ' ', $detail));
+        }
+
+        $badgeLabel = match ($tone) {
+            'ok'   => 'On Target',
+            'warn' => 'Needs Watch',
+            'bad'  => 'Action Needed',
+            default => 'Summary',
+        };
+        $iconSvg = match ($tone) {
+            'ok'   => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+            'warn' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+            'bad'  => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+            default => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+        };
+
+        // Emphasize leading percentage in the headline (e.g., "92.1%")
+        $hlEsc = esc($headline);
+        $hlHtml = preg_replace('/^(\d+(?:\.\d+)?%)/', '<em class="an-sum-pct">$1</em>', $hlEsc, 1) ?? $hlEsc;
+
+        $scaleHtml = '';
+        if ($hasScale) {
+            $scaleHtml = '<div class="an-sum-scale" aria-label="Pass rate target guide">'
+                . '<span class="an-sum-scale-lbl">Pass Rate Guide</span>'
+                . '<div class="an-sum-tiers">'
+                . '<span class="an-tier t-ok' . ($tone === 'ok' ? ' on' : '') . '"><i></i>&ge;95% Good</span>'
+                . '<span class="an-tier t-warn' . ($tone === 'warn' ? ' on' : '') . '"><i></i>85&ndash;94% Watch</span>'
+                . '<span class="an-tier t-bad' . ($tone === 'bad' ? ' on' : '') . '"><i></i>&lt;85% Action</span>'
+                . '</div></div>';
+        }
+
+        return '<div class="an-sum an-sum-' . esc($tone, 'attr') . '" role="status">'
+            . '<div class="an-sum-ico" aria-hidden="true">' . $iconSvg . '</div>'
+            . '<div class="an-sum-body">'
+            . '<div class="an-sum-top"><span class="an-sum-badge"><i></i>' . $badgeLabel . '</span><b>' . $hlHtml . '</b></div>'
+            . ($detail !== '' ? '<p class="an-sum-det">' . esc($detail) . '</p>' : '')
+            . '</div>'
+            . $scaleHtml
+            . '</div>';
+    }
+}
+if (! function_exists('anTone')) {
+    /** Colour tone for a pass rate (%). */
+    function anTone(float $passPct): string
+    {
+        return $passPct >= 95 ? 'ok' : ($passPct >= 85 ? 'warn' : 'bad');
+    }
+}
 ?>
-<style>
-.an{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;min-width:0;max-width:100%}.an>*{min-width:0}
-.an-filter{display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-wrap:wrap;position:relative}
-.an-seg{display:inline-flex;border:1px solid #dbe3ee;border-radius:10px;overflow:hidden;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.05)}
-.an-seg button{border:0;background:transparent;padding:9px 15px;font-size:12.5px;font-weight:600;color:#475569;cursor:pointer;border-right:1px solid #eef2f7;transition:background .15s,color .15s}
-.an-seg button:last-child{border-right:0}
-.an-seg button:hover{background:#f1f5f9}
-.an-seg button.on{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff}
-.an-dr{position:relative}
-.an-dr-btn{display:inline-flex;align-items:center;gap:9px;padding:9px 14px;border:1px solid #dbe3ee;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#0f172a;cursor:pointer;box-shadow:0 1px 2px rgba(15,23,42,.05)}
-.an-dr-btn:hover{border-color:#93c5fd}
-.an-pop{position:absolute;right:0;top:calc(100% + 8px);z-index:60;display:flex;gap:22px;padding:18px 20px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 18px 40px rgba(15,23,42,.18);width:max-content;max-width:94vw}
-.an-pop[hidden]{display:none}
-.an-pop-title{font-weight:800;font-size:13px;color:#0f172a;margin-bottom:12px}
-.an-pop-l{width:190px;display:flex;flex-direction:column;gap:10px}
-.an-quick{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.an-quick button,.an-custom-btn{padding:9px 10px;border:1px solid #dbe3ee;border-radius:9px;background:#f8fafc;font-size:12.5px;font-weight:600;color:#334155;cursor:pointer}
-.an-quick button:hover,.an-custom-btn:hover{background:#eff6ff;border-color:#93c5fd;color:#1d4ed8}
-.an-quick button.on,.an-custom-btn.on{background:#2563eb;border-color:#2563eb;color:#fff}
-.an-pop-l label{display:flex;flex-direction:column;gap:4px;font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.04em}
-.an-pop-l select{padding:8px 10px;border:1px solid #dbe3ee;border-radius:9px;background:#f8fafc;font-size:12.5px;color:#0f172a;text-transform:none;letter-spacing:0;font-weight:500}
-.an-clear-btn{border:0;background:none;color:#2563eb;font-size:12px;font-weight:600;cursor:pointer;text-align:left;padding:2px 0}
-.an-pop-r{width:286px;display:flex;flex-direction:column;align-items:stretch}
-.an-pick{display:flex;align-items:center;gap:8px;margin-bottom:12px}
-.an-pick input{flex:1;min-width:0;padding:8px 10px;border:1px solid #dbe3ee;border-radius:9px;background:#f8fafc;font-size:12.5px;text-align:center;color:#0f172a}
-.an-pick span{color:#94a3b8}
-.an-cal{border:1px solid #e2e8f0;border-radius:12px;padding:10px;background:#fff}
-.an-cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:13px}
-.an-cal-head button{border:0;background:#f1f5f9;width:26px;height:26px;border-radius:7px;cursor:pointer;color:#475569;font-size:10px}
-.an-cal-head button:hover{background:#dbeafe;color:#1d4ed8}
-.an-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
-.an-cal-grid .dow{font-size:10.5px;font-weight:800;color:#94a3b8;padding:4px 0}
-.an-cal-grid button{border:0;background:transparent;height:32px;border-radius:8px;font-size:12.5px;color:#0f172a;cursor:pointer}
-.an-cal-grid button.out{color:#cbd5e1}
-.an-cal-grid button:hover{background:#eff6ff}
-.an-cal-grid button.today{box-shadow:inset 0 0 0 1px #93c5fd}
-.an-cal-grid button.mid{background:#dbeafe;border-radius:0;color:#1e3a8a}
-.an-cal-grid button.edge{background:#2563eb;color:#fff;font-weight:700}
-.an-apply{margin-top:14px;align-self:center;border:0;background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff;border-radius:9px;padding:9px 26px;font-size:12.5px;font-weight:700;cursor:pointer}
-.an-apply:hover{background:#2563eb}
-@media (max-width:760px){.an-pop{flex-direction:column;right:auto;left:0}.an-pop-l,.an-pop-r{width:100%}}
-.an-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.an-kpis .card{padding:12px 16px}
-.an-kpi small{display:block;color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
-.an-kpi b{display:block;font-size:22px;margin-top:2px}
-.an-kpi span{font-size:12px;color:var(--muted)}
-.an-pass{color:#059669}.an-tol{color:#d97706}.an-fail{color:#dc2626}
-.an-bars{display:flex;align-items:flex-end;gap:4px;height:190px;overflow:hidden;padding:8px 4px 0;border-bottom:1px solid #cbd5e1}
-.an-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;min-width:0}
-.an-stack{width:100%;max-width:40px;display:flex;flex-direction:column-reverse;border-radius:4px 4px 0 0;overflow:hidden}
-.an-stack i{display:block;width:100%}
-.an-b{background:#3b82f6}.an-neutral{background:#3b82f6!important}.an-p{background:#10b981}.an-t{background:#f59e0b}.an-f{background:#ef4444}
-.an-lbl{font-size:10px;color:var(--muted);margin-top:5px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:clip}
-.an-num{font-size:11px;font-weight:700;margin-bottom:3px}
-.an-legend{display:flex;gap:16px;font-size:12px;margin-top:10px;color:var(--muted)}
-.an-leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:middle}
-.an-two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:12px}
-.an-row{display:grid;grid-template-columns:minmax(0,1.6fr) 1fr 50px;gap:10px;align-items:center;padding:4px 0;border-bottom:1px solid #eef2f7;font-size:12.5px}
-.an-row .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.an-meter{height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden}
-.an-meter i{display:block;height:100%;background:#ef4444}
-.an-row .v{text-align:right;font-weight:700}
-.an-tabs{display:inline-flex;flex-wrap:wrap;max-width:100%;border:1px solid #dbe3ee;border-radius:10px;overflow:hidden;background:#fff}
-.an-tabs a{padding:9px 16px;font-size:12.5px;font-weight:700;color:#475569;text-decoration:none;border-right:1px solid #eef2f7}
-.an-tabs a:last-child{border-right:0}.an-tabs a:hover{background:#f1f5f9}
-.an-tabs a.on{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff}
-.ms-kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:2px}
-.ms-kpi-card{display:flex;justify-content:space-between;align-items:center;gap:8px;min-width:0;padding:10px 12px;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc;box-shadow:0 1px 2px rgba(15,23,42,.04)}
-.ms-kpi-card>div{min-width:0}
-.ms-kpi-card small{display:block;font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.04em}
-.ms-kpi-card b{display:block;font-size:20px;font-weight:800;line-height:1.15;margin:2px 0;color:#0f172a}
-.ms-kpi-card .kpi-val-row{display:flex;align-items:baseline;gap:7px;margin:2px 0}
-.ms-kpi-card .kpi-val-row b{margin:0}
-.ms-kpi-card .kpi-pct{display:inline-flex;align-items:center;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:800;line-height:1.3}
-.ms-kpi-card .pct-pass{background:rgba(16,185,129,.14);color:#059669}
-.ms-kpi-card .pct-tol{background:rgba(245,158,11,.16);color:#d97706}
-.ms-kpi-card .pct-fail{background:rgba(239,68,68,.14);color:#dc2626}
-.ms-kpi-card span.sub{display:block;font-size:10.5px;color:#64748b}
-.ms-kpi-ico{width:34px;height:34px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;flex-shrink:0}
-.ms-ico-blue{background:rgba(37,99,235,.12);color:#2563eb}
-.ms-ico-pass{background:rgba(16,185,129,.14);color:#059669}
-.ms-ico-warn{background:rgba(245,158,11,.16);color:#d97706}
-.ms-ico-fail{background:rgba(239,68,68,.14);color:#dc2626}
-.ms-ico-shut{background:rgba(100,116,139,.14);color:#334155}
-.an-top-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
-@media (max-width:1360px){.an-top-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media (max-width:860px){.an-top-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:520px){.an-top-kpis{grid-template-columns:1fr}}
-.ms-tbl{border-collapse:collapse;width:100%;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:12px;align-self:flex-start;margin-top:0}
-.ms-tbl th,.ms-tbl td{border:1px solid #e2e8f0;padding:4px 8px;text-align:left}
-.ms-tbl th{background:#f1f5f9;text-align:center;font-weight:700;color:#334155}
-.ms-tbl th.ttl{background:#2563eb;color:#fff}
-.ms-tbl tr.tt td{font-weight:800}
-
-/* Upgraded Matrix Card & Building Toggle */
-.mx-card{background:#fff;border:1px solid #cbd5e1;border-radius:16px;box-shadow:0 4px 16px rgba(15,23,42,.05);overflow:hidden}
-.mx-head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:14px 20px;background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%);color:#fff}
-.mx-head-l h3{margin:0;font-size:14px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:#fff;display:flex;align-items:center;gap:8px}
-.mx-head-l p{margin:3px 0 0;font-size:12px;color:#cbd5e1;font-weight:500}
-.mx-head-r{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-.mx-legend{display:flex;align-items:center;gap:12px;font-size:11.5px;color:#e2e8f0;font-weight:600}
-.mx-legend span{display:inline-flex;align-items:center;gap:5px}
-.mx-legend i{display:inline-block;width:10px;height:10px;border-radius:3px}
-.bld-toggle{display:inline-flex;background:rgba(15,23,42,.45);padding:4px;border-radius:11px;border:1px solid rgba(255,255,255,.16);gap:4px}
-.bld-btn{display:inline-flex;align-items:center;gap:8px;border:0;background:transparent;color:#cbd5e1;padding:6px 14px;border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;transition:all .18s ease}
-.bld-btn:hover{color:#fff;background:rgba(255,255,255,.08)}
-.bld-btn.on{background:#fff;color:#0f172a;box-shadow:0 2px 8px rgba(0,0,0,.18)}
-.bld-btn .bld-pill{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;padding:0 6px;border-radius:999px;font-size:11px;font-weight:800;background:rgba(255,255,255,.15);color:#fff}
-.bld-btn.on .bld-pill{background:#fee2e2;color:#dc2626}
-.bld-btn.on .bld-pill.zero{background:#e2e8f0;color:#475569}
-.bld-pane[hidden]{display:none!important}
-.mx-scroll{overflow-x:auto;max-width:100%}
-.mx-tbl{border-collapse:separate;border-spacing:0;width:100%;table-layout:fixed;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:11.5px;font-variant-numeric:tabular-nums;text-align:center;background:#fff}
-.mx-tbl th,.mx-tbl td{border-right:1px solid #cbd5e1;border-bottom:1px solid #cbd5e1;padding:5px 3px;height:28px;line-height:1.2;font-weight:600;color:#334155;overflow:hidden}
-.mx-tbl tr.dh th{background:#f8fafc;color:#334155;font-size:11px;font-weight:800;height:36px;border-bottom:2px solid #94a3b8;letter-spacing:.01em}
-.mx-tbl .lc{text-align:left;padding:5px 14px;font-weight:800;white-space:nowrap;color:#0f172a;background:#fff;position:sticky;left:0;z-index:2;border-right:2px solid #94a3b8}
-.mx-tbl tr.dh th.lc{background:#f1f5f9;z-index:3;color:#1e293b;font-size:11px;letter-spacing:.03em}
-.mx-tbl .line-tag{display:inline-flex;align-items:center;justify-content:center;min-width:36px;padding:2px 8px;border-radius:6px;background:#f1f5f9;color:#0f172a;font-weight:800;font-size:11.5px;border:1px solid #cbd5e1}
-.mx-tbl tbody tr:hover td{background:#f8fafc}
-.mx-tbl tbody tr:hover td.lc{background:#f1f5f9}
-.mx-tbl col.sun{background:#fff1f2}
-.mx-tbl th.sun{background:#ffe4e6!important;color:#e11d48!important}
-.mx-tbl td.sun-cell{background:#fff5f6}
-.mx-tbl tbody tr:hover td.sun-cell{background:#ffe4e6}
-.mx-tbl td.z{color:#94a3b8;font-weight:600}
-.mx-tbl td.has-fail{background:#fef2f2!important;color:#dc2626;font-weight:800}
-.mx-tbl td.has-fail span{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;border-radius:6px;background:#dc2626;color:#fff;font-size:11px;font-weight:800;box-shadow:0 1px 3px rgba(220,38,38,.3)}
-.mx-tbl .tc{width:100px;font-weight:800;background:#f8fafc;position:sticky;right:0;z-index:2;border-left:2px solid #94a3b8;border-right:0}
-.mx-tbl tr.dh th.tc{background:#f1f5f9;z-index:3;font-size:9.5px;line-height:1.25;color:#1e293b}
-.mx-tbl tr.bt td{background:#fff7ed!important;color:#9a3412;height:32px;font-size:11.5px;font-weight:800;border-top:2px solid #fdba74;border-bottom:2px solid #fdba74;border-right:1px solid #fed7aa}
-.mx-tbl tr.bt td.z-sum{color:#fdba74;font-weight:600}
-.mx-tbl tr.bt td.lc{background:#ffedd5!important;color:#9a3412;font-size:11px;letter-spacing:.02em;border-right:2px solid #94a3b8}
-.mx-tbl tr.bt td.blue{background:#ffedd5!important;color:#1d4ed8;font-size:13px;font-weight:900;border-right:0}
-.mx-tbl td.sd{background:#e2e8f0!important;color:#475569;font-size:8px;font-weight:800;letter-spacing:.02em;padding:0}
-.mx-tbl td.mx{background:#ea580c!important;color:#fff!important;font-weight:900;font-size:12.5px}
-.mx-tbl tr.rd td{background:#fef2f2!important;color:#dc2626;height:30px;font-size:11.5px;font-weight:800;border-right:1px solid #fecaca;border-bottom:1px solid #fecaca}
-.mx-tbl tr.rd td.z-sum{color:#fca5a5;font-weight:600}
-.mx-tbl tr.rd td.lc{background:#fee2e2!important;color:#991b1b;font-size:10.5px;letter-spacing:.01em;border-right:2px solid #94a3b8}
-.mx-tbl tr.rd td.tc{background:#fee2e2!important;color:#b91c1c;font-size:12.5px;border-right:0}
-.mx-tbl tr.rt td{background:#f8fafc!important;color:#0f172a;height:30px;font-size:11.5px;font-weight:800;border-right:1px solid #cbd5e1;border-bottom:1px solid #cbd5e1}
-.mx-tbl tr.rt td.z-sum{color:#94a3b8;font-weight:600}
-.mx-tbl tr.rt td.lc{background:#f1f5f9!important;color:#1e293b;font-size:10.5px;letter-spacing:.01em;border-right:2px solid #94a3b8}
-.mx-tbl tr.rt td.tc{background:#f1f5f9!important;color:#0f172a;font-size:12.5px;border-right:0}
-.mx-tbl tr.pct-row td{font-size:10px;letter-spacing:-.02em;padding:5px 2px}
-.mx-tbl tr.pct-row td.has-pct{background:#fee2e2!important;color:#b91c1c;font-weight:900;font-size:10.5px}
-.mx-tbl tr.pct-row td.tc{font-size:12px;letter-spacing:0}
-
-/* Monthly Summary Pie & Trend Cards */
-.ms-chart-grid{display:grid;grid-template-columns:380px minmax(0,1fr);gap:16px;align-items:stretch}
-@media (max-width:1080px){.ms-chart-grid{grid-template-columns:1fr}}
-.ms-pie-card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:18px 20px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 4px 14px rgba(15,23,42,.04)}
-.ms-pie-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
-.ms-pie-head h3{margin:0;font-size:15.5px;font-weight:800;color:#0f172a}
-.ms-pie-head span{font-size:11.5px;font-weight:700;color:#475569;background:#f1f5f9;padding:4px 10px;border-radius:999px}
-.ms-pie-body{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;padding:8px 0}
-.ms-trend-card{background:linear-gradient(145deg,#0f172a 0%,#1e293b 100%);border:1px solid #1e293b;border-radius:16px;padding:18px 20px 12px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 8px 24px rgba(15,23,42,.14);color:#fff;min-width:0;overflow:hidden}
-.ms-trend-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}
-.ms-trend-head h3{margin:0;font-size:14.5px;font-weight:800;letter-spacing:.03em;color:#f8fafc;text-transform:uppercase}
-.ms-trend-head p{margin:2px 0 0;font-size:11.5px;color:#94a3b8}
-.ms-trend-leg{display:flex;align-items:center;gap:14px;font-size:11.5px;color:#cbd5e1;font-weight:600}
-.ms-trend-leg span{display:inline-flex;align-items:center;gap:6px}
-.ms-trend-leg i{display:inline-block;width:10px;height:10px;border-radius:3px}
-.ms-trend-leg i.ln{width:18px;height:2.5px;border-radius:2px;background:#38bdf8}
-
-/* Cement Analytics */
-.br-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:22px 24px;box-shadow:0 4px 14px rgba(15,23,42,.04)}
-.br-tbl{border-collapse:separate;border-spacing:0;width:100%;margin:0 0 22px 0;background:#fff;font-family:Inter,system-ui,-apple-system,sans-serif;color:#0f172a;border:1px solid #cbd5e1;border-radius:12px;overflow:hidden}
-.br-tbl th,.br-tbl td{border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;text-align:center;padding:10px 14px}
-.br-tbl th:last-child,.br-tbl td:last-child{border-right:0}
-.br-tbl tr.hd th{background:linear-gradient(135deg,#0f172a,#1e3a8a);color:#fff;font-size:11.5px;font-weight:800;letter-spacing:.04em;padding:12px 14px;border-bottom:0}
-.br-tbl tr.rw td{font-size:13px;font-weight:700;color:#334155}
-.br-tbl tr.rw:hover td{background:#f8fafc}
-.br-tbl tr.rw td.nm{background:#f8fafc;font-weight:800;color:#0f172a;text-align:left}
-.br-tbl tr.tot td{background:#f1f5f9;font-weight:800;font-size:15px;color:#0f172a;border-bottom:0;border-top:2px solid #cbd5e1}
-.br-tbl tr.tot td:first-child{text-align:left}
-.br-tbl tr.tot td.red{color:#dc2626;background:#fef2f2}
-.br-pies{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:20px}
-.br-pie{background:linear-gradient(145deg,#0f172a 0%,#1e293b 100%);border-radius:16px;padding:22px 20px 16px;color:#fff;text-align:center;box-shadow:0 6px 20px rgba(15,23,42,.12)}
-.br-pie h4{margin:0 0 6px;font-size:15px;font-weight:800;color:#f8fafc;letter-spacing:.03em}
-.br-pie svg{display:block;max-width:480px;margin:0 auto}
-.br-leg{display:flex;justify-content:center;gap:22px;margin-top:8px;font-size:12px;color:#cbd5e1;font-weight:600}
-.br-leg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:middle}
-
-/* Liquid Glass Dark Mode Overrides */
-html[data-theme="dark"] .an-seg{background:rgba(15,23,42,.76);border:1px solid rgba(148,163,184,.24)}
-html[data-theme="dark"] .an-seg button,html[data-theme="dark"] .an-seg a{color:#cbd5e1;border-right-color:rgba(148,163,184,.18)}
-html[data-theme="dark"] .an-seg button:hover,html[data-theme="dark"] .an-seg a:hover{color:#f8fafc;background:rgba(255,255,255,.07)}
-html[data-theme="dark"] .an-seg button.on,html[data-theme="dark"] .an-seg a.on{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;box-shadow:0 2px 8px rgba(37,99,235,.4)}
-html[data-theme="dark"] .an-dr-btn{background:rgba(17,25,44,.78);border-color:rgba(148,163,184,.24);color:#e2e8f0;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
-html[data-theme="dark"] .an-dr-btn:hover{border-color:rgba(96,165,250,.55);background:rgba(30,41,59,.88)}
-html[data-theme="dark"] .an-pop{background:rgba(15,23,42,.92);border-color:rgba(148,163,184,.26);box-shadow:inset 1px 1px 0 rgba(255,255,255,.1),0 18px 44px rgba(2,6,23,.65);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);color:#e2e8f0}
-html[data-theme="dark"] .an-pop-title{color:#f1f5f9}
-html[data-theme="dark"] .an-pop-l{border-right-color:rgba(148,163,184,.2)}
-html[data-theme="dark"] .an-pop-l label{color:#94a3b8}
-html[data-theme="dark"] .an-pop-l select{background:rgba(15,23,42,.82);border-color:rgba(148,163,184,.26);color:#f1f5f9}
-html[data-theme="dark"] .an-clear-btn{color:#60a5fa}
-html[data-theme="dark"] .an-quick button,html[data-theme="dark"] .an-custom-btn{background:rgba(30,41,59,.72);border-color:rgba(148,163,184,.24);color:#cbd5e1}
-html[data-theme="dark"] .an-quick button:hover,html[data-theme="dark"] .an-custom-btn:hover{background:rgba(51,65,85,.7);border-color:rgba(96,165,250,.5);color:#f8fafc}
-html[data-theme="dark"] .an-quick button.on,html[data-theme="dark"] .an-custom-btn.on{background:#2563eb;border-color:#2563eb;color:#fff}
-html[data-theme="dark"] .an-pick input{background:rgba(15,23,42,.8);border-color:rgba(148,163,184,.24);color:#f1f5f9}
-html[data-theme="dark"] .an-cal{background:rgba(17,25,44,.72);border-color:rgba(148,163,184,.2)}
-html[data-theme="dark"] .an-cal-head{color:#f1f5f9}
-html[data-theme="dark"] .an-cal-head button{background:rgba(30,41,59,.8);border-color:rgba(148,163,184,.24);color:#e2e8f0}
-html[data-theme="dark"] .an-cal-grid .dow{color:#94a3b8}
-html[data-theme="dark"] .an-cal-grid span{color:#cbd5e1}
-html[data-theme="dark"] .an-cal-grid button{color:#e2e8f0}
-html[data-theme="dark"] .an-cal-grid button.out{color:#475569}
-html[data-theme="dark"] .an-cal-grid button:hover{background:rgba(59,130,246,.22);color:#fff}
-html[data-theme="dark"] .an-cal-grid button.mid{background:rgba(37,99,235,.26);color:#93c5fd}
-html[data-theme="dark"] .an-cal-grid button.edge{background:#2563eb;color:#fff}
-html[data-theme="dark"] .an-cal-grid button.in{background:rgba(37,99,235,.24);color:#93c5fd}
-html[data-theme="dark"] .an-cal-grid button.sel{background:#2563eb;color:#fff}
-html[data-theme="dark"] .an-tabs{background:rgba(17,25,44,.76);border-color:rgba(148,163,184,.24);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
-html[data-theme="dark"] .an-tabs a{color:#cbd5e1;border-right-color:rgba(148,163,184,.18)}
-html[data-theme="dark"] .an-tabs a:hover{color:#f8fafc;background:rgba(255,255,255,.07)}
-html[data-theme="dark"] .an-tabs a.on{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff}
-html[data-theme="dark"] .an-bars{border-bottom-color:rgba(148,163,184,.28)}
-html[data-theme="dark"] .an-num{color:#f1f5f9}
-html[data-theme="dark"] .an-lbl{color:#94a3b8}
-html[data-theme="dark"] .an-pass{color:#34d399}
-html[data-theme="dark"] .an-tol{color:#fbbf24}
-html[data-theme="dark"] .an-fail{color:#f87171}
-html[data-theme="dark"] .an-row{color:#e2e8f0;border-bottom-color:rgba(148,163,184,.16)}
-html[data-theme="dark"] .an-row .v{color:#f1f5f9!important}
-html[data-theme="dark"] .an-meter{background:rgba(30,41,59,.85);border:1px solid rgba(148,163,184,.16)}
-html[data-theme="dark"] .an .card h3{color:#f1f5f9!important}
-html[data-theme="dark"] .an .card span[style*="color:#64748b"]{color:#94a3b8!important}
-html[data-theme="dark"] .ms-kpi-card{background:rgba(17,25,44,.76);border-color:rgba(148,163,184,.22);box-shadow:inset 1px 1px 0 rgba(255,255,255,.1),0 6px 20px rgba(2,6,23,.35);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
-html[data-theme="dark"] .ms-kpi-card small,html[data-theme="dark"] .ms-kpi-card span.sub{color:#94a3b8}
-html[data-theme="dark"] .ms-kpi-card b{color:#f1f5f9}
-html[data-theme="dark"] .ms-kpi-card .pct-pass{background:rgba(16,185,129,.2);color:#6ee7b7}
-html[data-theme="dark"] .ms-kpi-card .pct-tol{background:rgba(245,158,11,.2);color:#fcd34d}
-html[data-theme="dark"] .ms-kpi-card .pct-fail{background:rgba(239,68,68,.2);color:#fca5a5}
-html[data-theme="dark"] .ms-ico-shut{background:rgba(100,116,139,.25);color:#cbd5e1}
-html[data-theme="dark"] .ms-tbl th,html[data-theme="dark"] .ms-tbl td{border-color:rgba(148,163,184,.18);color:#e2e8f0}
-html[data-theme="dark"] .ms-tbl th{background:rgba(15,23,42,.82);color:#cbd5e1}
-html[data-theme="dark"] .ms-tbl th.ttl{background:#1d4ed8;color:#fff}
-html[data-theme="dark"] .mx-card{background:rgba(17,25,44,.78);border-color:rgba(148,163,184,.24);box-shadow:inset 1px 1px 0 rgba(255,255,255,.1),0 10px 30px rgba(2,6,23,.45);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
-html[data-theme="dark"] .bld-btn.on{background:#2563eb;color:#fff}
-html[data-theme="dark"] .bld-btn.on .bld-pill{background:rgba(239,68,68,.28);color:#fecaca}
-html[data-theme="dark"] .bld-btn.on .bld-pill.zero{background:rgba(255,255,255,.18);color:#e2e8f0}
-html[data-theme="dark"] .mx-tbl{background:transparent}
-html[data-theme="dark"] .mx-tbl th,html[data-theme="dark"] .mx-tbl td{border-right-color:rgba(148,163,184,.18);border-bottom-color:rgba(148,163,184,.18);color:#cbd5e1}
-html[data-theme="dark"] .mx-tbl tr.dh th{background:rgba(15,23,42,.92);color:#e2e8f0;border-bottom-color:rgba(148,163,184,.3)}
-html[data-theme="dark"] .mx-tbl .lc{background:rgba(15,23,42,.92);color:#f1f5f9;border-right-color:rgba(148,163,184,.3)}
-html[data-theme="dark"] .mx-tbl tr.dh th.lc{background:rgba(15,23,42,.96);color:#f8fafc}
-html[data-theme="dark"] .mx-tbl .line-tag{background:rgba(30,41,59,.88);color:#f1f5f9;border-color:rgba(148,163,184,.28)}
-html[data-theme="dark"] .mx-tbl tbody tr:hover td{background:rgba(51,65,85,.38)}
-html[data-theme="dark"] .mx-tbl tbody tr:hover td.lc{background:rgba(30,41,59,.95)}
-html[data-theme="dark"] .mx-tbl col.sun{background:rgba(127,29,29,.16)}
-html[data-theme="dark"] .mx-tbl th.sun{background:rgba(127,29,29,.45)!important;color:#fecaca!important}
-html[data-theme="dark"] .mx-tbl td.sun-cell{background:rgba(127,29,29,.16)}
-html[data-theme="dark"] .mx-tbl tbody tr:hover td.sun-cell{background:rgba(127,29,29,.3)}
-html[data-theme="dark"] .mx-tbl td.z{color:#64748b}
-html[data-theme="dark"] .mx-tbl td.has-fail{background:rgba(127,29,29,.28)!important;color:#fca5a5}
-html[data-theme="dark"] .mx-tbl .tc{background:rgba(15,23,42,.9);border-left-color:rgba(148,163,184,.3);color:#f1f5f9}
-html[data-theme="dark"] .mx-tbl tr.dh th.tc{background:rgba(15,23,42,.96);color:#e2e8f0}
-html[data-theme="dark"] .mx-tbl tr.bt td{background:rgba(124,45,18,.32)!important;color:#fdba74;border-top-color:rgba(251,146,60,.45);border-bottom-color:rgba(251,146,60,.45);border-right-color:rgba(251,146,60,.25)}
-html[data-theme="dark"] .mx-tbl tr.bt td.z-sum{color:rgba(253,186,116,.5)}
-html[data-theme="dark"] .mx-tbl tr.bt td.lc{background:rgba(124,45,18,.48)!important;color:#fed7aa;border-right-color:rgba(148,163,184,.3)}
-html[data-theme="dark"] .mx-tbl tr.bt td.blue{background:rgba(124,45,18,.48)!important;color:#93c5fd}
-html[data-theme="dark"] .mx-tbl td.sd{background:rgba(51,65,85,.72)!important;color:#cbd5e1}
-html[data-theme="dark"] .mx-tbl tr.rd td{background:rgba(127,29,29,.28)!important;color:#fca5a5;border-right-color:rgba(248,113,113,.22);border-bottom-color:rgba(248,113,113,.22)}
-html[data-theme="dark"] .mx-tbl tr.rd td.z-sum{color:rgba(252,165,165,.45)}
-html[data-theme="dark"] .mx-tbl tr.rd td.lc{background:rgba(127,29,29,.45)!important;color:#fecaca;border-right-color:rgba(148,163,184,.3)}
-html[data-theme="dark"] .mx-tbl tr.rd td.tc{background:rgba(127,29,29,.45)!important;color:#fca5a5}
-html[data-theme="dark"] .mx-tbl tr.rt td{background:rgba(30,41,59,.75)!important;color:#f1f5f9;border-right-color:rgba(148,163,184,.24);border-bottom-color:rgba(148,163,184,.24)}
-html[data-theme="dark"] .mx-tbl tr.rt td.z-sum{color:#64748b}
-html[data-theme="dark"] .mx-tbl tr.rt td.lc,html[data-theme="dark"] .mx-tbl tr.rt td.tc{background:rgba(15,23,42,.9)!important;color:#f8fafc;border-right-color:rgba(148,163,184,.3)}
-html[data-theme="dark"] .mx-tbl tr.pct-row td.has-pct{background:rgba(127,29,29,.45)!important;color:#fecaca}
-html[data-theme="dark"] .ms-pie-card{background:rgba(17,25,44,.76);border-color:rgba(148,163,184,.22);box-shadow:inset 1px 1px 0 rgba(255,255,255,.1),0 8px 28px rgba(2,6,23,.4);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
-html[data-theme="dark"] .ms-pie-head h3{color:#f1f5f9}
-html[data-theme="dark"] .ms-pie-head span{background:rgba(30,41,59,.85);color:#cbd5e1;border:1px solid rgba(148,163,184,.2)}
-html[data-theme="dark"] .ms-trend-card{background:linear-gradient(145deg,rgba(15,23,42,.88) 0%,rgba(30,41,59,.82) 100%);border-color:rgba(148,163,184,.24);box-shadow:inset 1px 1px 0 rgba(255,255,255,.1),0 10px 30px rgba(2,6,23,.5)}
-html[data-theme="dark"] .br-wrap{background:rgba(17,25,44,.76);border-color:rgba(148,163,184,.22);box-shadow:inset 1px 1px 0 rgba(255,255,255,.1),0 8px 28px rgba(2,6,23,.4);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
-html[data-theme="dark"] .br-wrap h3[style*="color:#0f172a"]{color:#f1f5f9!important}
-html[data-theme="dark"] .br-wrap p[style*="color:#64748b"]{color:#94a3b8!important}
-html[data-theme="dark"] .br-wrap div[style*="background:#f8fafc"]{background:rgba(15,23,42,.62)!important;border-color:rgba(148,163,184,.22)!important}
-html[data-theme="dark"] .br-wrap div[style*="color:#0f172a"]{color:#f1f5f9!important}
-html[data-theme="dark"] .br-wrap div[style*="color:#475569"]{color:#94a3b8!important}
-html[data-theme="dark"] .br-tbl{background:rgba(15,23,42,.68);border-color:rgba(148,163,184,.22);color:#e2e8f0}
-html[data-theme="dark"] .br-tbl th,html[data-theme="dark"] .br-tbl td{border-right-color:rgba(148,163,184,.18);border-bottom-color:rgba(148,163,184,.18)}
-html[data-theme="dark"] .br-tbl tr.rw td{color:#cbd5e1}
-html[data-theme="dark"] .br-tbl tr.rw:hover td{background:rgba(51,65,85,.35)}
-html[data-theme="dark"] .br-tbl tr.rw td.nm{background:rgba(15,23,42,.75);color:#f1f5f9}
-html[data-theme="dark"] .br-tbl tr.tot td{background:rgba(30,41,59,.82);color:#f8fafc;border-top-color:rgba(148,163,184,.28)}
-html[data-theme="dark"] .br-tbl tr.tot td.red{background:rgba(127,29,29,.35);color:#fca5a5}
-html[data-theme="dark"] .br-pie{border:1px solid rgba(148,163,184,.24);box-shadow:inset 1px 1px 0 rgba(255,255,255,.1),0 10px 30px rgba(2,6,23,.45)}
-</style>
+<link rel="stylesheet" href="<?= base_url('assets/css/views/analytics-index-1.css') ?>?v=<?= @filemtime(FCPATH . 'assets/css/views/analytics-index-1.css') ?>">
+<link rel="stylesheet" href="<?= base_url('assets/css/datefilter.css') ?>?v=<?= @filemtime(FCPATH . 'assets/css/datefilter.css') ?>">
+<script src="<?= base_url('assets/js/datefilter.js') ?>?v=<?= @filemtime(FCPATH . 'assets/js/datefilter.js') ?>"></script>
 
 <div class="an">
     <form method="get" action="<?= site_url('analytics') ?>" class="an-filter" id="an-form" data-today="<?= date('Y-m-d') ?>">
@@ -302,14 +87,15 @@ html[data-theme="dark"] .br-pie{border:1px solid rgba(148,163,184,.24);box-shado
         <input type="hidden" name="view" value="<?= esc($view, 'attr') ?>">
         <?php
         $areaSubTabs = match ($tab) {
-            'wholeshoe' => ['workload' => 'Whole Shoe Workload', 'encoding' => 'System Encoding (3 Portals)', 'analytics' => 'Whole Shoe Analytics'],
-            'materials' => ['workload' => 'Material Intake (IQC)', 'encoding' => 'System Encoding (3 Portals)', 'analytics' => 'Material Test Analytics'],
-            default     => ['workload' => 'Daily Workload', 'encoding' => 'System Encoding (3 Portals)', 'daily' => 'Daily Bonding', 'monthly' => 'Monthly Summary', 'analytics' => 'Bonding Analytics', 'result' => 'Cement Analytics'],
+            'wholeshoe' => ['analytics' => 'Monthly Summary', 'monthfail' => 'Monthly Failure by Test'],
+            'materials' => ['analytics' => 'Monthly Summary', 'hotspots' => 'Parameters & Supplier Scorecard', 'batches' => 'Failed & Tolerable Batches', 'workload' => 'Material Intake (IQC)'],
+            default     => ['monthly' => 'Monthly Summary', 'workload' => 'Daily Workload', 'daily' => 'Daily Bonding', 'pulltest' => 'Rivets Monitoring', 'failure' => 'Bonding Failure Overview', 'retest' => 'Retest', 'result' => 'Cement Analytics', 'utm' => 'Universal Tensile Machines Daily Productivity'],
         };
         ?>
         <div class="an-tabs" style="margin-right:auto">
             <?php foreach ($areaSubTabs as $vk => $vl): ?>
-                <a href="<?= esc(site_url('analytics') . '?' . http_build_query(array_filter(['tab' => $tab, 'view' => $vk, 'group' => $group, 'from' => $from, 'to' => $to, 'all' => ($from === '' && $to === '') ? '1' : null], static fn ($v) => $v !== null && $v !== '')), 'attr') ?>" class="<?= $view === $vk ? 'on' : '' ?>"><?= esc($vl) ?></a>
+                <?php /* Daily Workload opens on today; Rivets Monitoring opens on the full-year summary (calendar filter narrows it) */ ?>
+                <a href="<?= esc(site_url('analytics') . '?' . http_build_query(in_array($vk, ['workload', 'pulltest'], true) ? ['tab' => $tab, 'view' => $vk] : array_filter(['tab' => $tab, 'view' => $vk, 'group' => $group, 'from' => $from, 'to' => $to, 'all' => ($from === '' && $to === '') ? '1' : null], static fn ($v) => $v !== null && $v !== '')), 'attr') ?>" class="<?= $view === $vk ? 'on' : '' ?>"><?= esc($vl) ?></a>
             <?php endforeach ?>
         </div>
         <input type="hidden" name="group" id="an-group" value="<?= esc($group, 'attr') ?>">
@@ -317,41 +103,63 @@ html[data-theme="dark"] .br-pie{border:1px solid rgba(148,163,184,.24);box-shado
         <input type="hidden" name="to" id="an-to" value="<?= esc($to, 'attr') ?>">
         <input type="hidden" id="an-allflag" value="">
 
-
-
+        <?php
+        $isAreaMonthly = ($tab === 'bonding' && $view === 'monthly') || (in_array($tab, ['wholeshoe', 'materials'], true) && $view === 'analytics');
+        ?>
+        <?php if ($isAreaMonthly): ?>
+            <button type="button" id="btn-ms-yearly" class="an-dr-btn" title="Show whole-year monthly pie charts" style="margin-right:6px;padding:8px 13px">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+                <span>Yearly Pie Summary</span>
+            </button>
+        <?php endif ?>
+        <?php
+        $yrParam = $from !== '' ? substr($from, 0, 4) : ($to !== '' ? substr($to, 0, 4) : date('Y'));
+        $dlUrl   = null;
+        $dlTitle = 'Download Monthly Summary Report (12-Month Pie Charts) as Excel';
+        if ($isAreaMonthly) {
+            $dlUrl = site_url('analytics/export-yearly-pies') . '?tab=' . urlencode($tab) . '&year=' . urlencode($yrParam);
+        } elseif ($tab === 'bonding' && in_array($view, ['daily', 'failure'], true)) {
+            $dlRoute = $view === 'daily' ? 'analytics/export-failed-portion' : 'analytics/export-failure-overview';
+            $dlTitle = $view === 'daily'
+                ? 'Download the Overall Failed Portion Times Monitoring of these dates as an Excel file'
+                : 'Download Excel report for the selected dates';
+            $dlUrl = site_url($dlRoute) . '?' . http_build_query(array_filter(['from' => $from, 'to' => $to, 'all' => ($from === '' && $to === '') ? '1' : null], static fn ($v) => $v !== null && $v !== ''));
+        }
+        ?>
+        <?php if ($dlUrl !== null): ?>
+            <a class="an-dr-btn an-dl-btn" href="<?= esc($dlUrl, 'attr') ?>" title="<?= esc($dlTitle, 'attr') ?>" aria-label="Download Excel" style="text-decoration:none;margin-right:6px;padding:9px 11px">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+                <span style="display:none">Download Excel</span>
+            </a>
+            <script>
+            // download through a hidden frame so the Analytics page stays exactly where it is
+            (function () {
+                var a = document.querySelector('a.an-dl-btn');
+                if (!a) { return; }
+                a.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    var f = document.getElementById('an-dl-frame');
+                    if (!f) {
+                        f = document.createElement('iframe');
+                        f.id = 'an-dl-frame';
+                        f.style.display = 'none';
+                        document.body.appendChild(f);
+                    }
+                    f.src = a.href;
+                });
+            })();
+            </script>
+        <?php endif ?>
+        <a href="<?= esc(site_url('analytics/monthly-report') . '?tab=' . urlencode($tab) . '&year=' . urlencode($yrParam), 'attr') ?>" target="_blank" rel="noopener" class="an-dr-btn" style="text-decoration:none;margin-right:6px;padding:9px 11px" title="Monthly summary (print) — ready to print or save as PDF" aria-label="Monthly summary (print)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        </a>
         <div class="an-dr">
-            <button type="button" id="an-dr-btn" class="an-dr-btn" aria-expanded="false">
+            <button type="button" id="an-dr-btn" class="an-dr-btn" aria-expanded="false" aria-label="Select date range" title="<?= ($from !== '' || $to !== '') ? esc(($from ?: '…') . ' → ' . ($to ?: '…'), 'attr') : 'All dates' ?>" style="padding:9px 11px">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                <span id="an-dr-label"><?= ($from !== '' || $to !== '') ? esc(($from ?: '…') . '  →  ' . ($to ?: '…')) : 'All dates' ?></span>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
+                <span id="an-dr-label" style="display:none"><?= ($from !== '' || $to !== '') ? esc(($from ?: '…') . '  →  ' . ($to ?: '…')) : 'All dates' ?></span>
             </button>
 
-            <div class="an-pop" id="an-pop" hidden>
-                <div class="an-pop-l">
-                    <div class="an-pop-title">Select Date Range</div>
-                    <div class="an-quick">
-                        <button type="button" data-quick="today">Today</button>
-                        <button type="button" data-quick="yesterday">Yesterday</button>
-                    </div>
-                    <label>Weekly<select id="an-week"><option value="">Select Weekly</option></select></label>
-                    <label>Monthly<select id="an-month"><option value="">Select Monthly</option></select></label>
-                    <button type="button" class="an-custom-btn" id="an-custom">Custom</button>
-                    <button type="button" class="an-clear-btn" id="an-all">Show all dates</button>
-                </div>
-                <div class="an-pop-r">
-                    <div class="an-pop-title">Custom Record</div>
-                    <div class="an-pick">
-                        <input type="text" id="an-pick-from" placeholder="yyyy-mm-dd" readonly>
-                        <span>–</span>
-                        <input type="text" id="an-pick-to" placeholder="yyyy-mm-dd" readonly>
-                    </div>
-                    <div class="an-cal">
-                        <div class="an-cal-head"><button type="button" id="an-prev" aria-label="Previous month">&#9664;</button><b id="an-cal-title"></b><button type="button" id="an-next" aria-label="Next month">&#9654;</button></div>
-                        <div class="an-cal-grid" id="an-cal-grid"></div>
-                    </div>
-                    <button type="button" class="an-apply" id="an-apply">Apply</button>
-                </div>
-            </div>
+            <?php /* the popup (Quick Presets / By Week / Month / Year / calendar) is built by assets/js/datefilter.js - the same one as the Lab Tracker */ ?>
         </div>
     </form>
     <?php if (! empty($empty)): ?><div class="card glass"><p class="muted sm" style="margin:0"><?= esc($empty) ?></p></div><?php endif ?>
@@ -359,87 +167,194 @@ html[data-theme="dark"] .br-pie{border:1px solid rgba(148,163,184,.24);box-shado
 <?php if ($view === 'result'): ?>
     <?php
     $sum = ['total' => 0, 'pass' => 0, 'tol' => 0, 'fail' => 0];
-    foreach ($suppliers as $s) { foreach ($sum as $k => $_) { $sum[$k] += (int) $s[$k]; } }
-    $pc = static fn ($n, $d) => $d > 0 ? number_format($n / $d * 100, 2) . '%' : '0.00%';
-    // 3D pie: ellipse top + extruded side, slices start at 12 o'clock and run clockwise
-    $pie = static function (array $parts, int $t): string {
-        $cx = 220; $cy = 120; $rx = 205; $ry = 98; $dp = 42;
-        $pt = static fn (float $a, float $k = 1, int $dy = 0) => [round($cx + $rx * $k * sin(deg2rad($a)), 1), round($cy - $ry * $k * cos(deg2rad($a)) + $dy, 1)];
-        $sides = ''; $tops = ''; $lbl = ''; $acc = 0;
-        if (array_sum(array_column($parts, 1)) <= 0) {
-            return '<svg viewBox="0 0 440 280" width="100%" role="img"><path d="M15,120 v42 A205,98 0 0 0 425,162 v-42 Z" fill="#4a4a4a"/><ellipse cx="220" cy="120" rx="205" ry="98" fill="#6b6b6b"/><text x="220" y="120" text-anchor="middle" dominant-baseline="middle" fill="#e5e7eb" font-size="18" font-weight="700">No tests in this period</text></svg>';
+    foreach ($suppliers as $s) {
+        foreach ($sum as $k => $_) {
+            $sum[$k] += (int) $s[$k];
         }
-        foreach ($parts as [$n, $v, $col, $dark]) {
-            if ($v <= 0) { continue; }
-            $a0 = $acc / $t * 360; $acc += $v; $a1 = $acc / $t * 360;
-            if ($v >= $t) {
-                $sides .= "<path d=\"M" . ($cx - $rx) . ",$cy v$dp A$rx,$ry 0 0 0 " . ($cx + $rx) . "," . ($cy + $dp) . " v-$dp Z\" fill=\"$dark\"/>";
-                $tops .= "<ellipse cx=\"$cx\" cy=\"$cy\" rx=\"$rx\" ry=\"$ry\" fill=\"$col\"/>";
-            } else {
-                $lo = max($a0, 90); $hi = min($a1, 270);
-                if ($lo < $hi) {
-                    [$x1, $y1] = $pt($lo); [$x2, $y2] = $pt($hi);
-                    $sides .= "<path d=\"M$x1,$y1 A$rx,$ry 0 0 1 $x2,$y2 L$x2," . ($y2 + $dp) . " A$rx,$ry 0 0 0 $x1," . ($y1 + $dp) . " Z\" fill=\"$dark\"/>";
+    }
+    $pc  = static fn ($n, $d) => $d > 0 ? number_format($n / $d * 100, 2) . '%' : '0.00%';
+    $pc1 = static fn ($n, $d) => $d > 0 ? round($n / $d * 100, 1) : 0.0;
+    $supLabel = static fn (string $n) => match (strtoupper(trim($n))) {
+        'NANPAO'  => 'Nan Pao',
+        'ZHONGBU' => 'Zhong Bu',
+        default   => ucwords(strtolower(trim($n))),
+    };
+    $supDonut = static function (array $s): string {
+        $tot = max(0, (int) $s['total']);
+        $cx  = 110;
+        $cy  = 110;
+        $r   = 78;
+        $c   = 2 * M_PI * $r;
+        $o   = '<svg viewBox="0 0 220 220" width="185" height="185" role="img" style="display:block;margin:0 auto;flex-shrink:0">';
+        $o  .= '<circle cx="' . $cx . '" cy="' . $cy . '" r="' . $r . '" fill="none" stroke="#e2e8f0" stroke-width="24"/>';
+        if ($tot > 0) {
+            $off = 0;
+            foreach ([['Passed', (int) $s['pass'], '#10b981'], ['Tolerable', (int) $s['tol'], '#f59e0b'], ['Failed', (int) $s['fail'], '#ef4444']] as [$nm, $v, $col]) {
+                if ($v <= 0) {
+                    continue;
                 }
-                [$x1, $y1] = $pt($a0); [$x2, $y2] = $pt($a1);
-                $big = ($a1 - $a0) > 180 ? 1 : 0;
-                $tops .= "<path d=\"M$cx,$cy L$x1,$y1 A$rx,$ry 0 $big 1 $x2,$y2 Z\" fill=\"$col\"/>";
+                $len = ($v / $tot) * $c;
+                $o  .= '<circle cx="' . $cx . '" cy="' . $cy . '" r="' . $r . '" fill="none" stroke="' . $col . '" stroke-width="24" stroke-dasharray="' . round($len, 2) . ' ' . round($c - $len, 2) . '" stroke-dashoffset="' . round(-$off, 2) . '" transform="rotate(-90 ' . $cx . ' ' . $cy . ')"><title>' . esc($nm) . ': ' . $v . '</title></circle>';
+                $off += $len;
             }
-            [$lx, $ly] = $pt(($a0 + $a1) / 2, 0.55);
-            $lbl .= "<text x=\"$lx\" y=\"$ly\" text-anchor=\"middle\" dominant-baseline=\"middle\" fill=\"#e5e7eb\" font-size=\"19\" font-weight=\"700\">" . round($v / $t * 100) . "%</text>";
         }
-
-        return '<svg viewBox="0 0 440 280" width="100%" role="img">' . $sides . $tops . $lbl . '</svg>';
+        $o .= '<text x="' . $cx . '" y="' . ($cy + 2) . '" text-anchor="middle" font-size="25" font-weight="900" fill="#0f172a">' . number_format($tot) . '</text>';
+        $o .= '<text x="' . $cx . '" y="' . ($cy + 19) . '" text-anchor="middle" font-size="10" font-weight="800" letter-spacing=".06em" fill="#64748b">SPECIMENS</text></svg>';
+        return $o;
     };
     ?>
-    <div class="br-wrap">
-        <?php if (! $suppliers): ?><div class="card glass"><p class="muted sm" style="margin:0">No bonding results with a cement supplier in this period.</p></div><?php else: ?>
-        <?php
-        $supLabel = static fn (string $n) => match (strtoupper(trim($n))) {
-            'NANPAO'  => 'Nan Pao',
-            'ZHONGBU' => 'Zhong Bu',
-            default   => ucwords(strtolower(trim($n))),
-        };
-        ?>
-        <div style="margin-bottom:20px">
-            <h3 style="margin:0 0 3px;font-size:15.5px;font-weight:800;color:#0f172a">Cement Suppliers of Failed Bonding</h3>
-            <p style="margin:0 0 12px;font-size:12px;color:#64748b">Compares failure rates between adhesive glue suppliers used on tested shoes.</p>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
-                <?php foreach ($suppliers as $s): ?>
-                    <div style="border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;background:#f8fafc">
-                        <div style="font-size:13.5px;font-weight:800;color:#0f172a;margin-bottom:6px"><?= esc($supLabel((string) $s['name'])) ?></div>
-                        <div style="display:flex;justify-content:space-between;font-size:12px;color:#475569;margin-bottom:6px">
-                            <span>Specimens: <b><?= number_format((int) $s['total']) ?></b></span>
-                            <span>Failed: <b style="color:#dc2626"><?= number_format((int) $s['fail']) ?></b></span>
-                        </div>
-                        <div style="font-size:20px;font-weight:900;color:#dc2626"><?= $pc((int) $s['fail'], (int) $s['total']) ?> <span style="font-size:11.5px;font-weight:600;color:#64748b">Failed</span></div>
-                    </div>
-                <?php endforeach ?>
+    <?php if ((int) $sum['total'] > 0): $cemPass = round(((int) $sum['pass']) / ((int) $sum['total']) * 100, 1); ?>
+        <?= anSummary(
+            $cemPass . '% of tested shoes with a recorded cement (glue) supplier passed bonding.',
+            number_format((int) $sum['total']) . ' specimens were tested: ' . number_format((int) $sum['pass']) . ' passed, ' . number_format((int) $sum['tol']) . ' were borderline and ' . number_format((int) $sum['fail']) . ' failed. The table below compares each supplier. A pass rate of 95% or more is good; below 85% needs action.',
+            anTone((float) $cemPass)
+        ) ?>
+    <?php endif ?>
+    <!-- Top Executive KPI Cards for Cement Analytics -->
+    <div class="an-kpis">
+        <div class="card glass ms-kpi-card">
+            <div>
+                <small>Total Cement Specimens</small>
+                <b><?= number_format($sum['total']) ?></b>
+                <span class="sub">Tested shoes with recorded adhesive supplier</span>
             </div>
+            <span class="ms-kpi-ico ms-ico-blue"><svg class="ic" width="18" height="18" aria-hidden="true"><use href="#i-flask"/></svg></span>
         </div>
-        <table class="br-tbl">
-            <tr class="hd"><th>CEMENT SUPPLIER</th><th>QTY PASS</th><th>QTY FAILED</th><th>QTY TOLERABLE</th><th>QTY&nbsp; SPECIMENS</th><th>PERCENTAGE FAILED<br>PER CEMENT SUPPLIER</th></tr>
-            <?php foreach ($suppliers as $s): ?>
-                <tr class="rw"><td class="nm"><?= esc($s['name']) ?></td><td><?= (int) $s['pass'] ?></td><td><?= (int) $s['fail'] ?></td><td><?= (int) $s['tol'] ?></td><td><?= (int) $s['total'] ?></td><td><?= $pc((int) $s['fail'], (int) $s['total']) ?></td></tr>
-            <?php endforeach ?>
-            <tr class="tot"><td>TOTAL</td><td><?= $sum['pass'] ?></td><td><?= $sum['fail'] ?></td><td><?= $sum['tol'] ?></td><td><?= $sum['total'] ?></td><td class="red"><?= $pc($sum['fail'], $sum['total']) ?></td></tr>
-        </table>
-        <div class="br-pies">
-            <?php foreach ($suppliers as $s): ?>
-                <?php $parts = [['QTY PASS', (int) $s['pass'], '#4f94d8', '#2c5f94'], ['QTY FAILED', (int) $s['fail'], '#ee7d2d', '#a8501a'], ['QTY TOLERABLE', (int) $s['tol'], '#a5a5a5', '#6b6b6b']]; ?>
-                <div class="br-pie">
-                    <h4>CEMENT: <?= esc($s['name']) ?></h4>
-                    <?= $pie($parts, max(1, (int) $s['total'])) ?>
-                    <div class="br-leg"><?php foreach ($parts as [$n, $_v, $col]): ?><span><i style="background:<?= $col ?>"></i><?= esc($n) ?></span><?php endforeach ?></div>
+        <div class="card glass ms-kpi-card">
+            <div>
+                <small>Passed Specimens</small>
+                <div class="kpi-val-row">
+                    <b class="an-pass"><?= number_format($sum['pass']) ?></b>
+                    <span class="kpi-pct pct-pass"><?= $pc1($sum['pass'], $sum['total']) ?>%</span>
                 </div>
+                <span class="sub">Meets VF / Vans bonding peel specification</span>
+            </div>
+            <span class="ms-kpi-ico ms-ico-pass">&#10003;</span>
+        </div>
+        <div class="card glass ms-kpi-card">
+            <div>
+                <small>Tolerable Specimens</small>
+                <div class="kpi-val-row">
+                    <b class="an-tol"><?= number_format($sum['tol']) ?></b>
+                    <span class="kpi-pct pct-tol"><?= $pc1($sum['tol'], $sum['total']) ?>%</span>
+                </div>
+                <span class="sub">Within acceptable tolerance band</span>
+            </div>
+            <span class="ms-kpi-ico ms-ico-warn"><svg class="ic" width="18" height="18" aria-hidden="true"><use href="#i-bolt"/></svg></span>
+        </div>
+        <div class="card glass ms-kpi-card">
+            <div>
+                <small>Failed Specimens</small>
+                <div class="kpi-val-row">
+                    <b class="an-fail"><?= number_format($sum['fail']) ?></b>
+                    <span class="kpi-pct pct-fail"><?= $pc($sum['fail'], $sum['total']) ?></span>
+                </div>
+                <span class="sub">Bond separation below minimum threshold</span>
+            </div>
+            <span class="ms-kpi-ico ms-ico-fail">&#10005;</span>
+        </div>
+    </div>
+
+    <?php if (! $suppliers): ?>
+        <div class="card glass"><p class="muted sm" style="margin:0">No bonding results with a cement supplier in this period.</p></div>
+    <?php else: ?>
+        <!-- Side-by-Side Supplier Performance Cards -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(380px,100%),1fr));gap:16px">
+            <?php foreach ($suppliers as $s):
+                $sTot  = (int) $s['total'];
+                $sPass = (int) $s['pass'];
+                $sTol  = (int) $s['tol'];
+                $sFail = (int) $s['fail'];
+                $fPct  = $pc($sFail, $sTot);
+            ?>
+            <div style="background:#fff;border:1px solid #cbd5e1;border-radius:16px;box-shadow:0 4px 12px rgba(15,23,42,.05);overflow:hidden;display:flex;flex-direction:column">
+                <div style="background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%);padding:13px 18px;color:#fff;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+                    <div>
+                        <span style="display:block;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#93c5fd">ADHESIVE / CEMENT SUPPLIER</span>
+                        <h4 style="margin:2px 0 0;font-size:16px;font-weight:800;color:#fff"><?= esc($supLabel((string) $s['name'])) ?> <span style="font-size:12px;font-weight:600;color:#cbd5e1">(<?= esc($s['name']) ?>)</span></h4>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <span style="padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.15);color:#fff;font-size:11.5px;font-weight:800"><?= number_format($sTot) ?> Specimens</span>
+                        <span style="padding:4px 10px;border-radius:999px;background:<?= $sFail > 0 ? '#fef2f2' : '#f0fdf4' ?>;color:<?= $sFail > 0 ? '#dc2626' : '#15803d' ?>;font-size:11.5px;font-weight:800"><?= $fPct ?> Failed</span>
+                    </div>
+                </div>
+                <div style="padding:18px;display:grid;grid-template-columns:185px minmax(0,1fr);gap:20px;align-items:center">
+                    <?= $supDonut($s) ?>
+                    <div style="display:flex;flex-direction:column;gap:10px">
+                        <?php foreach ([
+                            ['Passed (Meets Spec)', $sPass, '#10b981', '#ecfdf5', '#059669'],
+                            ['Tolerable (Borderline)', $sTol, '#f59e0b', '#fffbeb', '#d97706'],
+                            ['Failed (Below Spec)', $sFail, '#ef4444', '#fef2f2', '#dc2626'],
+                        ] as [$lbl, $val, $barCol, $bgCol, $txtCol]):
+                            $pVal = $sTot > 0 ? round(($val / $sTot) * 100, 2) : 0;
+                        ?>
+                        <div style="padding:9px 12px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc">
+                            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:5px">
+                                <span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:800;color:#0f172a">
+                                    <i style="width:10px;height:10px;border-radius:50%;background:<?= $barCol ?>;display:inline-block"></i>
+                                    <?= esc($lbl) ?>
+                                </span>
+                                <span style="display:inline-flex;align-items:baseline;gap:6px">
+                                    <b style="font-size:15px;font-weight:900;color:#0f172a"><?= number_format($val) ?></b>
+                                    <span style="padding:1px 7px;border-radius:999px;font-size:11px;font-weight:800;background:<?= $bgCol ?>;color:<?= $txtCol ?>"><?= number_format($pVal, 2) ?>%</span>
+                                </span>
+                            </div>
+                            <div style="height:7px;border-radius:999px;background:#e2e8f0;overflow:hidden">
+                                <div style="height:100%;width:<?= min(100, $pVal) ?>%;background:<?= $barCol ?>;border-radius:999px"></div>
+                            </div>
+                        </div>
+                        <?php endforeach ?>
+                    </div>
+                </div>
+            </div>
             <?php endforeach ?>
         </div>
-        <?php endif ?>
-    </div>
+
+        <!-- Comparative Supplier Summary Table -->
+        <div class="br-wrap" style="padding:18px 20px">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+                <div>
+                    <h3 style="margin:0;font-size:15px;font-weight:800;color:#0f172a">Cement Supplier Comparison Table<?= anTip('One row per glue supplier, showing how their glue performed in the bonding tests. Look for the suppliers with the most red.') ?></h3>
+                    <p style="margin:2px 0 0;font-size:12px;color:#64748b">Side-by-side pass, tolerable, and failure counts per adhesive supplier</p>
+                </div>
+            </div>
+            <table class="br-tbl" style="margin:0">
+                <tr class="hd">
+                    <th style="text-align:left">CEMENT SUPPLIER</th>
+                    <th>QTY PASS</th>
+                    <th>QTY TOLERABLE</th>
+                    <th>QTY FAILED</th>
+                    <th>TOTAL SPECIMENS</th>
+                    <th>FAILURE RATE (%)</th>
+                </tr>
+                <?php foreach ($suppliers as $s): ?>
+                    <tr class="rw">
+                        <td class="nm"><?= esc($supLabel((string) $s['name'])) ?> <span style="font-size:11px;color:#64748b;font-weight:600">(<?= esc($s['name']) ?>)</span></td>
+                        <td style="color:#059669"><?= number_format((int) $s['pass']) ?></td>
+                        <td style="color:#d97706"><?= number_format((int) $s['tol']) ?></td>
+                        <td style="color:#dc2626"><?= number_format((int) $s['fail']) ?></td>
+                        <td><b><?= number_format((int) $s['total']) ?></b></td>
+                        <td><span style="padding:3px 10px;border-radius:999px;font-weight:800;font-size:12px;background:<?= (int) $s['fail'] > 0 ? '#fef2f2' : '#f0fdf4' ?>;color:<?= (int) $s['fail'] > 0 ? '#dc2626' : '#15803d' ?>"><?= $pc((int) $s['fail'], (int) $s['total']) ?></span></td>
+                    </tr>
+                <?php endforeach ?>
+                <tr class="tot">
+                    <td>TOTAL ALL SUPPLIERS</td>
+                    <td style="color:#059669"><?= number_format($sum['pass']) ?></td>
+                    <td style="color:#d97706"><?= number_format($sum['tol']) ?></td>
+                    <td style="color:#dc2626"><?= number_format($sum['fail']) ?></td>
+                    <td><?= number_format($sum['total']) ?></td>
+                    <td class="red"><?= $pc($sum['fail'], $sum['total']) ?></td>
+                </tr>
+            </table>
+        </div>
+    <?php endif ?>
 <?php elseif ($view === 'monthly'): ?>
     <?php
-    $monthName = strtoupper(date('F Y', strtotime(($from !== '' ? $from : ($days ? $days[0]['d'] : date('Y-m-d')))))); // e.g. OCTOBER 2026
-    $monthOnly = strtoupper(date('F', strtotime(($from !== '' ? $from : ($days ? $days[0]['d'] : date('Y-m-d'))))));
+    // "All dates" has no from-date: use the LATEST month with a real production date (the first row can be a bad / blank date)
+    $validDays = array_values(array_filter(array_column($days, 'd'), static fn ($x) => (bool) preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', (string) $x, $mm) && checkdate((int) $mm[2], (int) $mm[3], (int) $mm[1]) && (int) $mm[1] >= 2000));
+    $anchorDay = $from !== '' ? $from : ($validDays ? end($validDays) : date('Y-m-d'));
+    $monthName = strtoupper(date('F Y', strtotime($anchorDay))); // e.g. OCTOBER 2026
+    $monthOnly = strtoupper(date('F', strtotime($anchorDay)));
     $mdY = static fn (string $d) => date('m-d-Y', strtotime($d));
     $totRep = (int) ($status['total'] ?? ((int) $status['pass'] + (int) $status['fail'] + (int) $status['tol']));
     $ratedTot = (int) $status['pass'] + (int) $status['fail'] + (int) $status['tol'];
@@ -450,62 +365,85 @@ html[data-theme="dark"] .br-pie{border:1px solid rgba(148,163,184,.24);box-shado
     $pendRep = max(0, $totRep - $ratedTot);
     $periodLbl = ($from !== '' || $to !== '') ? ucfirst(strtolower($monthName)) : 'all dates';
     ?>
-    <div class="an-top-kpis">
-        <div class="card glass ms-kpi-card">
-            <div>
-                <small>Total Lab Test Reports</small>
-                <b><?= number_format($totRep) ?></b>
-                <span class="sub">Bonding Shoe Collection &middot; <?= esc($periodLbl) ?><?= $pendRep > 0 ? ' (' . number_format($pendRep) . ' pending)' : '' ?></span>
+    <?php
+    $passPct1 = $ratedTot > 0 ? round((int) $status['pass'] / $ratedTot * 100, 1) : 0.0;
+    $tolPct1  = $ratedTot > 0 ? round((int) $status['tol'] / $ratedTot * 100, 1) : 0.0;
+    // every production day with results counts in the rates, including the latest one (a day still being tested is no longer left out)
+    $pendDay = ''; $pendT = 0; $pendF = 0;
+    $daysTested = array_sum(array_map(static fn ($r) => (int) $r['tested'], $days)) - $pendT;
+    $failPct1 = $daysTested > 0 ? round(((int) $status['fail'] - $pendF) / $daysTested * 100, 2) : 0.0;   // failed of all tested specimens: same base as the Failed-by-Line table rate below
+    $shutVal  = (int) ($status['shut'] ?? 0);
+    ?>
+    <div id="ms-yearly-pane" hidden>
+        <?php include __DIR__ . '/bonding_yearly_pies.php'; ?>
+    </div>
+    <div id="ms-monthly-pane">
+    <?php if ($ratedTot > 0): ?>
+        <?= anSummary(
+            $passPct1 . '% of bonding reports passed (' . $periodLbl . ').',
+            number_format($ratedTot) . ' reports have a result: ' . number_format((int) $status['pass']) . ' passed, ' . number_format((int) $status['tol']) . ' were borderline and ' . number_format((int) $status['fail']) . ' failed'
+                . ($shutVal > 0 ? '. ' . number_format($shutVal) . ' line(s) were shut down (not producing).' : '.')
+                . ' A pass rate of 95% or more is good; below 85% needs action.',
+            anTone((float) $passPct1)
+        ) ?>
+    <?php endif ?>
+    <div class="ms2-kpis ms2-kpis-4">
+        <div class="ms2-kpi k-tot">
+            <div class="ms2-kpi-top">
+                <span class="ms2-kpi-lbl">Total Tested</span>
+                <span class="ms2-kpi-ico">&#8721;</span>
             </div>
-            <span class="ms-kpi-ico ms-ico-blue"><svg class="ic" width="18" height="18" aria-hidden="true"><use href="#i-flask"/></svg></span>
+            <div class="ms2-kpi-valrow">
+                <span class="ms2-kpi-val"><?= number_format($ratedTot) ?></span>
+            </div>
+            <div class="ms2-kpi-bar"><i style="width:100%;background:#3b82f6"></i></div>
+            <span class="ms2-kpi-sub">Passed + Tolerable + Failed</span>
         </div>
-        <div class="card glass ms-kpi-card">
-            <div>
-                <small>Passed Reports</small>
-                <div class="kpi-val-row">
-                    <b class="an-pass"><?= number_format((int) $status['pass']) ?></b>
-                    <span class="kpi-pct pct-pass"><?= $passPct ?>%</span>
-                </div>
-                <span class="sub"><?= $passPct ?>% of rated &middot; Meets VF / Vans Specification</span>
+
+        <div class="ms2-kpi k-pass">
+            <div class="ms2-kpi-top">
+                <span class="ms2-kpi-lbl">Passed Reports</span>
+                <span class="ms2-kpi-ico">&#10003;</span>
             </div>
-            <span class="ms-kpi-ico ms-ico-pass">&#10003;</span>
+            <div class="ms2-kpi-valrow">
+                <span class="ms2-kpi-val"><?= number_format((int) $status['pass']) ?></span>
+                <span class="ms2-kpi-pill"><?= number_format($passPct1, 1) ?>%</span>
+            </div>
+            <div class="ms2-kpi-bar"><i style="width:<?= min(100, $passPct1) ?>%;background:#10b981"></i></div>
+            <span class="ms2-kpi-sub">Meets VF / Vans Specification</span>
         </div>
-        <div class="card glass ms-kpi-card">
-            <div>
-                <small>Tolerable / Data</small>
-                <div class="kpi-val-row">
-                    <b class="an-tol"><?= number_format((int) $status['tol']) ?></b>
-                    <span class="kpi-pct pct-tol"><?= $tolPct ?>%</span>
-                </div>
-                <span class="sub"><?= $tolPct ?>% of rated &middot; Within Tolerance Band</span>
+
+        <div class="ms2-kpi k-tol">
+            <div class="ms2-kpi-top">
+                <span class="ms2-kpi-lbl">Tolerable / Data</span>
+                <span class="ms2-kpi-ico">&#9888;</span>
             </div>
-            <span class="ms-kpi-ico ms-ico-warn"><svg class="ic" width="18" height="18" aria-hidden="true"><use href="#i-bolt"/></svg></span>
+            <div class="ms2-kpi-valrow">
+                <span class="ms2-kpi-val"><?= number_format((int) $status['tol']) ?></span>
+                <span class="ms2-kpi-pill"><?= number_format($tolPct1, 1) ?>%</span>
+            </div>
+            <div class="ms2-kpi-bar"><i style="width:<?= min(100, max((int) $status['tol'] > 0 ? 3 : 0, $tolPct1)) ?>%;background:#f59e0b"></i></div>
+            <span class="ms2-kpi-sub">Within Tolerance Band</span>
         </div>
-        <div class="card glass ms-kpi-card">
-            <div>
-                <small>Failed Reports</small>
-                <div class="kpi-val-row">
-                    <b class="an-fail"><?= number_format((int) $status['fail']) ?></b>
-                    <span class="kpi-pct pct-fail"><?= $failPct ?>%</span>
-                </div>
-                <span class="sub"><?= $failPct ?>% of rated &middot; Requires Retest / Action</span>
+
+        <div class="ms2-kpi k-fail">
+            <div class="ms2-kpi-top">
+                <span class="ms2-kpi-lbl">Failed Reports</span>
+                <span class="ms2-kpi-ico">&#10005;</span>
             </div>
-            <span class="ms-kpi-ico ms-ico-fail">&#10005;</span>
-        </div>
-        <div class="card glass ms-kpi-card">
-            <div>
-                <small>Shutdown Lines</small>
-                <b><?= number_format((int) ($status['shut'] ?? 0)) ?></b>
-                <span class="sub">lines marked SHUTDOWN &middot; <?= esc($periodLbl) ?></span>
+            <div class="ms2-kpi-valrow">
+                <span class="ms2-kpi-val"><?= number_format((int) $status['fail']) ?></span>
+                <span class="ms2-kpi-pill"><?= number_format($failPct1, 2) ?>%</span>
             </div>
-            <span class="ms-kpi-ico ms-ico-shut"><svg class="ic" width="18" height="18" aria-hidden="true"><use href="#i-bolt"/></svg></span>
+            <div class="ms2-kpi-bar"><i style="width:<?= min(100, max((int) $status['fail'] > 0 ? 3 : 0, $failPct1)) ?>%;background:#ef4444"></i></div>
+            <span class="ms2-kpi-sub">Requires Retest / Corrective Action</span>
         </div>
     </div>
     <?php if (! $days): ?><div class="card glass"><p class="muted sm" style="margin:0">No bonding tests with a production date in this period.</p></div><?php else: ?>
 
     <?php
     // ---- 1. failure trend (bars: failed + tested, line: % failed) ----
-    $W = 1000; $H = 440; $L = 48; $R = 58; $T = 32; $B = 64;
+    $W = 1000; $H = 420; $L = 48; $R = 58; $T = 32; $B = 64;
     $pw = $W - $L - $R; $ph = $H - $T - $B;
     $maxT = 5; $maxP = 5;
     foreach ($days as $d) { $maxT = max($maxT, (int) $d['tested']); $maxP = max($maxP, $d['tested'] ? ceil((int) $d['failed'] / (int) $d['tested'] * 100 / 5) * 5 : 0); }
@@ -513,79 +451,103 @@ html[data-theme="dark"] .br-pie{border:1px solid rgba(148,163,184,.24);box-shado
     $n = count($days); $slot = $pw / $n; $bw = min(24, $slot * 0.36);
     $yT = static fn ($v) => $T + $ph - $v / $maxT * $ph;
     $yP = static fn ($v) => $T + $ph - $v / $maxP * $ph;
-    $svg = '<defs><linearGradient id="gFail" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f87171"/><stop offset="100%" stop-color="#dc2626"/></linearGradient><linearGradient id="gTest" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#fb923c"/><stop offset="100%" stop-color="#ea580c"/></linearGradient></defs>';
+    $svg = '<defs><linearGradient id="gFail" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f87171"/><stop offset="100%" stop-color="#dc2626"/></linearGradient><linearGradient id="gTest" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#34d399"/><stop offset="100%" stop-color="#059669"/></linearGradient></defs>';
     for ($i = 0; $i <= 6; $i++) {
         $gy = $T + $ph - $i / 6 * $ph;
         $svg .= '<line x1="' . $L . '" x2="' . ($W - $R) . '" y1="' . $gy . '" y2="' . $gy . '" stroke="rgba(148,163,184,0.18)" stroke-dasharray="4 4" stroke-width="1"/>';
         $svg .= '<text x="' . ($L - 8) . '" y="' . ($gy + 4) . '" text-anchor="end" fill="#94a3b8" font-size="11" font-weight="600">' . round($i / 6 * $maxT, 1) . '</text>';
-        $svg .= '<text x="' . ($W - $R + 8) . '" y="' . ($gy + 4) . '" fill="#94a3b8" font-size="11" font-weight="600">' . number_format($i / 6 * $maxP, 2) . '%</text>';
+        $svg .= '<text x="' . ($W - $R + 8) . '" y="' . ($gy + 4) . '" fill="#7dd3fc" font-size="10.5" font-weight="700">' . number_format($i / 6 * $maxP, 1) . '%</text>';
     }
+    $svg .= '<line x1="' . $L . '" x2="' . ($W - $R) . '" y1="' . ($T + $ph) . '" y2="' . ($T + $ph) . '" stroke="rgba(148,163,184,.35)" stroke-width="1.2"/>';
     $pts = []; $dots = ''; $lbls = '';
     foreach ($days as $i => $d) {
         $cx = $L + $slot * ($i + 0.5); $te = (int) $d['tested']; $fa = (int) $d['failed'];
         $hFa = max(0, $T + $ph - $yT($fa));
         $hTe = max(0, $T + $ph - $yT($te));
-        $svg .= '<rect x="' . ($cx - $bw - 1.5) . '" y="' . $yT($fa) . '" width="' . $bw . '" height="' . $hFa . '" rx="3" fill="url(#gFail)"/>';
-        $svg .= '<rect x="' . ($cx + 1.5) . '" y="' . $yT($te) . '" width="' . $bw . '" height="' . $hTe . '" rx="3" fill="url(#gTest)"/>';
+        $svg .= '<rect x="' . ($cx - $bw - 1.5) . '" y="' . $yT($fa) . '" width="' . $bw . '" height="' . $hFa . '" rx="3" fill="url(#gFail)"><title>' . $mdY($d['d']) . ' · Failed: ' . $fa . '</title></rect>';
+        $svg .= '<rect x="' . ($cx + 1.5) . '" y="' . $yT($te) . '" width="' . $bw . '" height="' . $hTe . '" rx="3" fill="url(#gTest)"><title>' . $mdY($d['d']) . ' · Tested: ' . $te . '</title></rect>';
         $svg .= '<text x="' . ($cx - $bw / 2 - 1.5) . '" y="' . ($yT($fa) - 5) . '" text-anchor="middle" fill="#fca5a5" font-size="10.5" font-weight="800">' . $fa . '</text>';
-        $svg .= '<text x="' . ($cx + $bw / 2 + 1.5) . '" y="' . ($yT($te) - 5) . '" text-anchor="middle" fill="#fdba74" font-size="10.5" font-weight="800">' . $te . '</text>';
+        $svg .= '<text x="' . ($cx + $bw / 2 + 1.5) . '" y="' . ($yT($te) - 5) . '" text-anchor="middle" fill="#6ee7b7" font-size="10.5" font-weight="800">' . $te . '</text>';
         $pv = $te ? $fa / $te * 100 : 0;
         $py = round($yP($pv), 1);
         $pts[] = round($cx, 1) . ',' . $py;
-        $dots .= '<circle cx="' . round($cx, 1) . '" cy="' . $py . '" r="3.5" fill="#38bdf8" stroke="#0f172a" stroke-width="1.8"/>';
-        $lbls .= '<text x="' . $cx . '" y="' . ($py - 8) . '" text-anchor="middle" fill="#f8fafc" font-size="10.5" font-weight="800" stroke="#0f172a" stroke-width="3" paint-order="stroke">' . number_format($pv, 2) . '%</text>';
+        $dots .= '<circle cx="' . round($cx, 1) . '" cy="' . $py . '" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2.2"><title>' . $mdY($d['d']) . ' · Failed Rate: ' . number_format($pv, 2) . '%</title></circle>';
+        $lblTxt = number_format($pv, 1) . '%';
+        $ly = $py - 10;
+        if ($ly < $T + 6) {
+            $ly = $py + 18;
+        }
+        $lbls .= '<rect x="' . round($cx - 21, 1) . '" y="' . round($ly - 10, 1) . '" width="42" height="13.5" rx="4" fill="rgba(15,23,42,.86)" stroke="rgba(56,189,248,.4)" stroke-width="0.7"/>';
+        $lbls .= '<text x="' . round($cx, 1) . '" y="' . round($ly, 1) . '" text-anchor="middle" fill="#7dd3fc" font-size="9.5" font-weight="800">' . $lblTxt . '</text>';
         $svg .= '<text transform="translate(' . ($cx + 3) . ',' . ($T + $ph + 14) . ') rotate(-38)" text-anchor="end" fill="#cbd5e1" font-size="10.5" font-weight="600">' . $mdY($d['d']) . '</text>';
     }
-    $svg .= '<polyline points="' . implode(' ', $pts) . '" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>' . $dots . $lbls;
+    $svg .= '<polyline points="' . implode(' ', $pts) . '" fill="none" stroke="#38bdf8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>' . $dots . $lbls;
 
-    // ---- 2. status summary donut ----
-    $sp = [['PASS', (int) $status['pass'], '#10b981'], ['FAILED', (int) $status['fail'], '#ef4444'], ['TOLERABLE', (int) $status['tol'], '#f59e0b']];
-    $cxp = 160; $cyp = 152; $rp = 114; $acc = 0; $ps = ''; $pl = '';
-    foreach ($sp as [$nm, $v, $col]) {
-        if ($v <= 0) { continue; }
-        $a0 = $acc / $stT * 360; $acc += $v; $a1 = $acc / $stT * 360;
-        if ($v >= $stT) { $ps .= '<circle cx="' . $cxp . '" cy="' . $cyp . '" r="' . $rp . '" fill="' . $col . '"/>'; }
-        else {
-            $x0 = $cxp + $rp * sin(deg2rad($a0)); $y0 = $cyp - $rp * cos(deg2rad($a0)); $x1 = $cxp + $rp * sin(deg2rad($a1)); $y1 = $cyp - $rp * cos(deg2rad($a1));
-            $ps .= '<path d="M' . $cxp . ',' . $cyp . ' L' . round($x0, 1) . ',' . round($y0, 1) . ' A' . $rp . ',' . $rp . ' 0 ' . (($a1 - $a0) > 180 ? 1 : 0) . ' 1 ' . round($x1, 1) . ',' . round($y1, 1) . ' Z" fill="' . $col . '" stroke="#fff" stroke-width="2.5"/>';
+    // ---- 2. status summary donut (clean ring + share cards) ----
+    $dR = 72; $dC = 2 * M_PI * $dR; $dOff = 0;
+    $dSvg = '<svg viewBox="0 0 190 190" width="188" height="188" style="display:block;margin:2px auto;font-family:Inter,system-ui,sans-serif">';
+    $dSvg .= '<circle cx="95" cy="95" r="' . $dR . '" fill="none" stroke="#e2e8f0" stroke-width="24"/>';
+    if ($ratedTot > 0) {
+        foreach ([['Passed', (int) $status['pass'], '#10b981'], ['Tolerable', (int) $status['tol'], '#f59e0b'], ['Failed', (int) $status['fail'], '#ef4444']] as [$nm, $val, $col]) {
+            if ($val <= 0) { continue; }
+            $len = ($val / $ratedTot) * $dC;
+            $dSvg .= '<circle cx="95" cy="95" r="' . $dR . '" fill="none" stroke="' . $col . '" stroke-width="24" stroke-dasharray="' . round($len, 2) . ' ' . round($dC - $len, 2) . '" stroke-dashoffset="' . round(-$dOff, 2) . '" transform="rotate(-90 95 95)"><title>' . $nm . ': ' . number_format($val) . ' (' . round($val / $ratedTot * 100, 1) . '%)</title></circle>';
+            $dOff += $len;
         }
-        $mid = deg2rad(($a0 + $a1) / 2);
-        $lx = $cxp + ($rp + 27) * sin($mid); $ly = $cyp - ($rp + 20) * cos($mid);
-        $pl .= '<g transform="translate(' . round($lx, 1) . ',' . round($ly, 1) . ')"><text y="-2" text-anchor="middle" font-size="11.5" font-weight="800" fill="#0f172a" stroke="#fff" stroke-width="3.5" paint-order="stroke">' . $nm . '</text><text y="12" text-anchor="middle" font-size="12" font-weight="800" fill="' . $col . '" stroke="#fff" stroke-width="3.5" paint-order="stroke">' . round($v / $stT * 100) . '%</text></g>';
     }
-    $ps .= '<circle cx="' . $cxp . '" cy="' . $cyp . '" r="52" fill="#fff"/><text x="' . $cxp . '" y="' . ($cyp - 3) . '" text-anchor="middle" font-size="22" font-weight="800" fill="#0f172a">' . number_format($ratedTot) . '</text><text x="' . $cxp . '" y="' . ($cyp + 14) . '" text-anchor="middle" font-size="10" font-weight="800" letter-spacing="0.06em" fill="#64748b">RATED</text>';
+    $dSvg .= '<text x="95" y="92" text-anchor="middle" font-size="25" font-weight="900" fill="currentColor">' . number_format($passPct1, 1) . '%</text>';
+    $dSvg .= '<text x="95" y="111" text-anchor="middle" font-size="10.5" font-weight="800" letter-spacing=".06em" fill="#64748b">PASS RATE</text>';
+    $dSvg .= '</svg>';
     ?>
     <div class="ms-chart-grid">
         <div class="ms-pie-card">
             <div class="ms-pie-head">
-                <h3><?= ucfirst(strtolower($monthOnly)) ?> Summary</h3>
-                <span><?= number_format($ratedTot) ?> Rated</span>
+                <div>
+                    <h3><?= ucfirst(strtolower($monthOnly)) ?> Summary</h3>
+                    <p>Pass, Tolerable, and Fail share across <?= esc($periodLbl) ?></p>
+                </div>
+                <span class="ms-rated-pill"><?= number_format($ratedTot) ?> Rated</span>
             </div>
             <div class="ms-pie-body">
-                <svg viewBox="-12 8 344 288" width="100%" style="display:block;width:100%;max-width:345px;height:auto;margin:auto;font-family:Inter,system-ui,sans-serif"><?= $ps . $pl ?></svg>
+                <?= $dSvg ?>
+                <div class="ms2-share-list">
+                    <?php foreach ([
+                        ['Passed',    (int) $status['pass'], $passPct1, '#10b981'],
+                        ['Tolerable', (int) $status['tol'],  $tolPct1,  '#f59e0b'],
+                        ['Failed',    (int) $status['fail'], $failPct1, '#ef4444'],
+                    ] as [$nm, $val, $pctV, $col]): ?>
+                    <div class="ms2-share-item">
+                        <div class="ms2-share-top">
+                            <span class="nm"><i style="background:<?= $col ?>"></i><?= $nm ?></span>
+                            <span><?= number_format($val) ?> <span style="color:#64748b;font-weight:700">(<?= number_format($pctV, 1) ?>%)</span></span>
+                        </div>
+                        <div class="ms2-share-track"><span style="width:<?= min(100, max($val > 0 ? 2 : 0, $pctV)) ?>%;background:<?= $col ?>"></span></div>
+                    </div>
+                    <?php endforeach ?>
+                </div>
             </div>
         </div>
 
         <div class="ms-trend-card">
             <div class="ms-trend-head">
                 <div>
-                    <h3>Bonding Failure Trend by Production Date &mdash; <?= esc($monthName) ?></h3>
+                    <h3>Bonding Failure Trend by Production Date &mdash; <?= esc($monthName) ?><?= anTip('Production date = the day the shoes were made (not the day they were tested). The line shows the failure rate for each day; a rising line means more problems.') ?></h3>
                     <p>Daily tested specimens vs. bonding failures and failure rate percentage</p>
                 </div>
                 <div class="ms-trend-leg">
                     <span><i style="background:#ef4444"></i>Failed Specimen</span>
-                    <span><i style="background:#f97316"></i>Tested Specimen</span>
+                    <span><i style="background:#10b981"></i>Tested Specimen</span>
                     <span><i class="ln"></i>Percentage Failed</span>
                 </div>
             </div>
-            <svg viewBox="0 0 <?= $W ?> <?= $H ?>" width="100%" style="display:block;font-family:Inter,system-ui,sans-serif"><?= $svg ?></svg>
+            <svg viewBox="0 0 <?= $W ?> <?= $H ?>" width="100%" style="display:block;font-family:Inter,system-ui,sans-serif;overflow:visible"><?= $svg ?></svg>
         </div>
     </div>
 
     <?php
     // ---- 3. failed specimens per line and production date (Building A & B tabs) ----
-    $withTests = array_column($days, 'd');
-    $rangeFrom = $from !== '' ? strtotime($from) : strtotime(date('Y-m-01', strtotime($withTests[0])));
+    $withTests = $validDays ?: array_column($days, 'd');   // real dates only (a blank / bad date would give "As of 2026-90-40")
+    $rangeFrom = $from !== '' ? strtotime($from) : strtotime(date('Y-m-01', strtotime($anchorDay)));
     $rangeTo   = ($to ?? '') !== '' ? strtotime($to) : strtotime(date('Y-m-t', $rangeFrom));
     $dates = [];
     for ($t = $rangeFrom; $t <= $rangeTo && count($dates) < 62; $t = strtotime('+1 day', $t)) { $dates[] = date('Y-m-d', $t); }
@@ -619,6 +581,18 @@ html[data-theme="dark"] .br-pie{border:1px solid rgba(148,163,184,.24);box-shado
             'sum'   => $bSum,
         ];
     }
+    // typed totals (Edit mode) replace the counted ones; the percentage row and the right-hand totals follow them
+    $ovr = $ovr ?? ['B' => [], 'F' => [], 'T' => []];
+    foreach ($bldStats as $bk => &$bs) {
+        foreach ($dates as $d) { if (isset($ovr['B'][$bk][$d])) { $bs['bTot'][$d] = $ovr['B'][$bk][$d]; $bs['sum'] = array_sum($bs['bTot']); } }
+    }
+    unset($bs);
+    foreach ($dates as $d) {
+        if (isset($ovr['F'][$d])) { $totF[$d] = $ovr['F'][$d]; }
+        if (isset($ovr['T'][$d])) { $totT[$d] = $ovr['T'][$d]; }
+    }
+    $grand = array_sum($totF); $grandT = array_sum($totT);
+    if ($pendDay !== '') { $grand -= (int) ($totF[$pendDay] ?? 0); $grandT -= (int) ($totT[$pendDay] ?? 0); }   // shown in the table, not counted in the totals / rate
     $bldKeys = array_keys($bldStats);
     $firstBld = $bldKeys[0] ?? 'A';
     ?>
@@ -629,14 +603,16 @@ html[data-theme="dark"] .br-pie{border:1px solid rgba(148,163,184,.24);box-shado
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
                     Count of Bonding-Failed Specimens by Line &amp; Production Date &mdash; <?= esc($monthName) ?>
                 </h3>
-                <p>As of <?= esc($lastD) ?> &middot; Total Failed: <b><?= number_format($grand) ?></b> of <b><?= number_format($grandT) ?></b> Tested Specimens (<b><?= $grandT ? number_format($grand / $grandT * 100, 2) . '%' : '0.00%' ?></b>)</p>
+                <p>As of <?= esc($lastD) ?> &middot; Total Failed: <b><?= number_format($grand) ?></b> of <b><?= number_format($grandT) ?></b> Tested Specimens (<b><?= $grandT ? number_format($grand / $grandT * 100, 2) . '%' : '0.00%' ?></b>)<?= $pendDay !== '' ? ' &middot; ' . esc(date('m-d', strtotime($pendDay))) . ' is shown but not counted yet (testing in progress)' : '' ?></p>
             </div>
             <div class="mx-head-r">
                 <div class="mx-legend">
                     <span><i style="background:#ffe4e6;border:1px solid #fda4af"></i>Sunday</span>
-                    <span><i style="background:#dc2626"></i>Failed &gt; 0</span>
-                    <span><i style="background:#ea580c"></i>Highest Line</span>
+                    <span><i style="background:#dc2626"></i>Failed Count</span>
+                    <span><i style="background:#cbd5e1"></i>SD = Shutdown Line</span>
+                    <span><i style="background:#ea580c"></i>Highest Failed Line</span>
                 </div>
+                <button type="button" id="mx-edit-btn" class="mx-edit-btn" role="checkbox" aria-checked="false" aria-label="Edit marks" title="Tick to edit: type 0 or 1 in a cell; click the cell itself to make it SHUTDOWN (click again to remove)"></button>
                 <div class="bld-toggle" role="tablist" aria-label="Select Building">
                     <?php foreach ($bldStats as $bld => $stB): ?>
                         <button type="button" role="tab" class="bld-btn <?= $bld === $firstBld ? 'on' : '' ?>" data-bld-target="<?= esc($bld, 'attr') ?>" aria-selected="<?= $bld === $firstBld ? 'true' : 'false' ?>">
@@ -657,69 +633,75 @@ html[data-theme="dark"] .br-pie{border:1px solid rgba(148,163,184,.24);box-shado
             ?>
             <div class="bld-pane" data-bld-pane="<?= esc($bld, 'attr') ?>" <?= $bld === $firstBld ? '' : 'hidden' ?>>
                 <div class="mx-scroll">
-                    <table class="mx-tbl" style="min-width:<?= 380 + count($dates) * 44 ?>px">
+                    <table class="mx-tbl">
                         <colgroup>
-                            <col style="width:276px">
+                            <col style="width:162px">
                             <?php foreach ($dates as $d): ?><col<?= date('w', strtotime($d)) === '0' ? ' class="sun"' : '' ?>><?php endforeach ?>
-                            <col style="width:104px">
+                            <col style="width:68px">
                         </colgroup>
                         <thead>
                             <tr class="dh">
-                                <th class="lc">BUILDING <?= esc($bld) ?> &middot; PRODUCTION DATE</th>
-                                <?php foreach ($dates as $d): ?>
-                                    <th<?= date('w', strtotime($d)) === '0' ? ' class="sun"' : '' ?>><?= $mdHead($d) ?></th>
+                                <th class="lc">Line &middot; Date</th>
+                                <?php foreach ($dates as $d):
+                                    $tsD = strtotime($d);
+                                ?>
+                                    <th<?= date('w', $tsD) === '0' ? ' class="sun"' : '' ?> title="<?= esc(date('F j, Y (l)', $tsD), 'attr') ?>">
+                                        <span class="dh-d"><?= date('j', $tsD) ?></span>
+                                        <span class="dh-w"><?= date('D', $tsD) ?></span>
+                                    </th>
                                 <?php endforeach ?>
-                                <th class="tc">TOTAL FAILED<br>PER LINE AS OF<br><?= esc($lastD) ?></th>
+                                <th class="tc">Total<br>Failed</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php foreach ($nums as $nn): ?>
                                 <tr>
-                                    <td class="lc"><span class="line-tag"><?= esc($bld . $nn) ?></span></td>
+                                    <td class="lc"><span class="line-tag">Line <?= esc($bld . $nn) ?></span></td>
                                     <?php foreach ($dates as $d):
                                         $c = (int) ($cells[$bld][$nn][$d] ?? 0);
                                         $isSun = date('w', strtotime($d)) === '0';
                                     ?>
+                                        <?php $mk = (string) ($marks[$bld][$nn][$d] ?? ''); $ed = ' data-b="' . esc($bld, 'attr') . '" data-n="' . (int) $nn . '" data-d="' . $d . '" data-mark="' . $mk . '"'; ?>
                                         <?php if (! empty($shut[$bld][$nn][$d]) && $c === 0): ?>
-                                            <td class="sd" title="Shutdown">SHUTDOWN</td>
+                                            <td class="sd mx-ed" title="Line <?= esc($bld . $nn) ?> Shutdown on <?= esc($d) ?> (in edit mode: click to remove)"<?= $ed ?> data-shut="1"><b>SD</b></td>
                                         <?php elseif ($c > 0): ?>
-                                            <td class="has-fail<?= $isSun ? ' sun-cell' : '' ?>"><span><?= $c ?></span></td>
+                                            <td class="has-fail mx-ed<?= $isSun ? ' sun-cell' : '' ?>"<?= $ed ?> data-val="<?= $c ?>"><span class="mx-v"><?= $c ?></span><input class="mx-in" type="text" inputmode="numeric" maxlength="1" value="<?= $c > 1 ? 1 : $c ?>" aria-label="Failed specimens (0 or 1)"></td>
                                         <?php else: ?>
-                                            <td class="z<?= $isSun ? ' sun-cell' : '' ?>">0</td>
+                                            <td class="z mx-ed<?= $isSun ? ' sun-cell' : '' ?>"<?= $ed ?> data-val="0"><span class="mx-v"><?= (int) ($totT[$d] ?? 0) > 0 ? '0' : '&ndash;' ?></span><input class="mx-in" type="text" inputmode="numeric" maxlength="1" value="0" aria-label="Failed specimens (0 or 1)"></td>
                                         <?php endif ?>
                                     <?php endforeach ?>
                                     <td class="tc<?= ($mxRow > 0 && $rowT[$nn] === $mxRow) ? ' mx' : '' ?>"><?= $rowT[$nn] ?></td>
                                 </tr>
                             <?php endforeach ?>
                             <tr class="bt">
-                                <td class="lc">TOTAL FAILED BLDG <?= esc($bld) ?></td>
+                                <td class="lc">Building <?= esc($bld) ?> Failed / Day</td>
                                 <?php foreach ($dates as $d): $bv = (int) $bTot[$d]; ?>
-                                    <td<?= $bv === 0 ? ' class="z-sum"' : '' ?>><?= $bv ?></td>
+                                    <td class="mx-tt<?= $bv === 0 ? ' z-sum' : '' ?>" data-kind="B" data-b="<?= esc($bld, 'attr') ?>" data-d="<?= $d ?>" data-ovr="<?= isset($ovr['B'][$bld][$d]) ? 1 : 0 ?>"><span class="mx-v"><?= $bv ?></span><input class="mx-in mx-tin" type="text" inputmode="numeric" maxlength="5" value="<?= $bv ?>" aria-label="Total failed"></td>
                                 <?php endforeach ?>
                                 <td class="tc blue"><?= $stB['sum'] ?></td>
                             </tr>
                             <tr class="rd">
-                                <td class="lc">TOTAL FAILED PER PRODUCTION DATE</td>
+                                <td class="lc">All Buildings Failed (A + B)</td>
                                 <?php foreach ($dates as $d): $fv = (int) ($totF[$d] ?? 0); ?>
-                                    <td<?= $fv === 0 ? ' class="z-sum"' : '' ?>><?= $fv ?></td>
+                                    <td class="mx-tt<?= $fv === 0 ? ' z-sum' : '' ?>" data-kind="F" data-d="<?= $d ?>" data-ovr="<?= isset($ovr['F'][$d]) ? 1 : 0 ?>"><span class="mx-v"><?= $fv ?></span><input class="mx-in mx-tin" type="text" inputmode="numeric" maxlength="5" value="<?= $fv ?>" aria-label="Total failed per date"></td>
                                 <?php endforeach ?>
                                 <td class="tc"><?= $grand ?></td>
                             </tr>
                             <tr class="rt">
-                                <td class="lc">TOTAL TESTED PER PRODUCTION DATE</td>
+                                <td class="lc">Total Shoes Tested (A + B)</td>
                                 <?php foreach ($dates as $d): $tv = (int) $totT[$d]; ?>
-                                    <td<?= $tv === 0 ? ' class="z-sum"' : '' ?>><?= $tv ?></td>
+                                    <td class="mx-tt<?= $tv === 0 ? ' z-sum' : '' ?>" data-kind="T" data-d="<?= $d ?>" data-ovr="<?= isset($ovr['T'][$d]) ? 1 : 0 ?>"><span class="mx-v"><?= $tv ?></span><input class="mx-in mx-tin" type="text" inputmode="numeric" maxlength="5" value="<?= $tv ?>" aria-label="Total tested per date"></td>
                                 <?php endforeach ?>
                                 <td class="tc"><?= $grandT ?></td>
                             </tr>
                             <tr class="rd pct-row">
-                                <td class="lc">TOTAL FAILURE PERCENTAGE PER PRODUCTION DATE</td>
+                                <td class="lc">Daily Failure Rate (%)</td>
                                 <?php foreach ($dates as $d):
                                     $fv = (int) ($totF[$d] ?? 0);
                                     $tv = (int) $totT[$d];
                                     $hasPct = $tv > 0 && $fv > 0;
                                 ?>
-                                    <td class="<?= $hasPct ? 'has-pct' : 'z-sum' ?>"><?= $tv ? number_format($fv / $tv * 100, 2) . '%' : '0.00%' ?></td>
+                                    <td class="<?= $hasPct ? 'has-pct' : 'z-sum' ?>"><?= $tv > 0 ? ($fv > 0 ? number_format($fv / $tv * 100, 2) . '%' : '0.00%') : '&ndash;' ?></td>
                                 <?php endforeach ?>
                                 <td class="tc"><?= $grandT ? number_format($grand / $grandT * 100, 2) . '%' : '0.00%' ?></td>
                             </tr>
@@ -731,19 +713,61 @@ html[data-theme="dark"] .br-pie{border:1px solid rgba(148,163,184,.24);box-shado
     </div>
 
     <?php endif ?>
+    </div>
+    <script>
+    (function () {
+      var btn = document.getElementById('btn-ms-yearly'), back = document.getElementById('btn-ms-back-monthly');
+      var mp = document.getElementById('ms-monthly-pane'), yp = document.getElementById('ms-yearly-pane');
+      if (!btn || !mp || !yp) return;
+      var setYearly = function (on) {
+        yp.hidden = !on;
+        mp.hidden = on;
+        btn.style.background = on ? 'linear-gradient(135deg,#2563eb,#1d4ed8)' : '';
+        btn.style.borderColor = on ? '#1d4ed8' : '';
+        btn.style.color = on ? '#fff' : '';
+      };
+      btn.addEventListener('click', function () { setYearly(yp.hidden); });
+      if (back) back.addEventListener('click', function () { setYearly(false); });
+      if (new URLSearchParams(window.location.search).get('yearly') === '1') setYearly(true);
+    })();
+    </script>
+<?php elseif ($view === 'failure'): ?>
+    <?php include __DIR__ . '/bonding_failure.php'; ?>
+<?php elseif ($view === 'retest'): ?>
+    <?php include __DIR__ . '/bonding_retest.php'; ?>
+<?php elseif ($view === 'utm'): ?>
+    <?php include __DIR__ . '/bonding_utm.php'; ?>
 <?php elseif ($view === 'daily'): ?>
     <?php include __DIR__ . '/bonding_daily.php'; ?>
+<?php elseif ($view === 'pulltest'): ?>
+    <?php include __DIR__ . '/bonding_pulltest.php'; ?>
+<?php elseif ($tab === 'wholeshoe' && ! empty($wsAudit)): ?>
+    <?php include __DIR__ . '/wholeshoe_audit.php'; ?>
+<?php elseif ($tab === 'materials' && ! empty($matAudit)): ?>
+    <?php include __DIR__ . '/materials_audit.php'; ?>
 <?php else: ?>
+    <!-- Executive KPI Cards for Whole Shoe Analytics / Material Test Analytics -->
     <div class="an-kpis">
         <?php foreach ($kpis as $k): ?>
             <?php
-            $icoCls = match ($k[3] ?? '') {
+            $kStyle = $k[3] ?? '';
+            $kBadge = $k[4] ?? '';
+            if ($kBadge === '' && preg_match('/(\d+(?:\.\d+)?%)/', (string) ($k[2] ?? ''), $bm)) {
+                $kBadge = $bm[1];
+            }
+            $icoCls = match ($kStyle) {
                 'an-pass' => 'ms-ico-pass',
                 'an-tol'  => 'ms-ico-warn',
                 'an-fail' => 'ms-ico-fail',
                 default   => 'ms-ico-blue',
             };
-            $icoSym = match ($k[3] ?? '') {
+            $pctCls = match ($kStyle) {
+                'an-pass' => 'pct-pass',
+                'an-tol'  => 'pct-tol',
+                'an-fail' => 'pct-fail',
+                default   => 'pct-pass',
+            };
+            $icoSym = match ($kStyle) {
                 'an-pass' => '&#10003;',
                 'an-tol'  => '<svg class="ic" width="18" height="18" aria-hidden="true"><use href="#i-bolt"/></svg>',
                 'an-fail' => '&#10005;',
@@ -753,7 +777,12 @@ html[data-theme="dark"] .br-pie{border:1px solid rgba(148,163,184,.24);box-shado
             <div class="card glass ms-kpi-card">
                 <div>
                     <small><?= esc($k[0]) ?></small>
-                    <b class="<?= esc($k[3]) ?>"><?= esc($k[1]) ?></b>
+                    <div class="kpi-val-row">
+                        <b class="<?= esc($kStyle) ?>"><?= esc($k[1]) ?></b>
+                        <?php if ($kBadge !== ''): ?>
+                            <span class="kpi-pct <?= $pctCls ?>" style="<?= $kStyle === '' ? 'background:#eff6ff;color:#1d4ed8' : '' ?>"><?= esc($kBadge) ?></span>
+                        <?php endif ?>
+                    </div>
                     <span class="sub"><?= esc($k[2]) ?></span>
                 </div>
                 <span class="ms-kpi-ico <?= $icoCls ?>"><?= $icoSym ?></span>
@@ -761,55 +790,219 @@ html[data-theme="dark"] .br-pie{border:1px solid rgba(148,163,184,.24);box-shado
         <?php endforeach ?>
     </div>
 
-    <div class="card glass" style="padding:18px 20px;border-radius:16px">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">
-            <div>
-                <h3 style="margin:0;font-size:15px;font-weight:800;color:#0f172a"><?= esc($chartTitle) ?></h3>
-                <span style="font-size:11.5px;color:#64748b">Distribution of test volume and results across the selected period</span>
+    <?php
+    // ---- Build Summary Donut + Executive SVG Trend Chart ----
+    $sd = $summaryDonut ?? null;
+    $sdParts = $sd['parts'] ?? [];
+    $sdTot   = array_sum(array_map(static fn ($p) => (int) ($p[1] ?? 0), $sdParts));
+
+    // SVG Trend Chart
+    $W = 860; $H = 320; $L = 46; $R = 20; $T = 28; $B = 54;
+    $pw = $W - $L - $R; $ph = $H - $T - $B;
+    $maxBar = 5;
+    foreach ($months as $m) {
+        $maxBar = max($maxBar, (int) $m['total']);
+    }
+    $stepBar = max(1, (int) ceil($maxBar / 5));
+    $maxBar  = $stepBar * 5;
+    $nM      = max(1, count($months));
+    $slotW   = $pw / $nM;
+    $barW    = min(36, max(10, $slotW * 0.52));
+
+    $trendSvg = '<defs>'
+        . '<linearGradient id="anGPass" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#34d399"/><stop offset="100%" stop-color="#059669"/></linearGradient>'
+        . '<linearGradient id="anGTol" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#fbbf24"/><stop offset="100%" stop-color="#d97706"/></linearGradient>'
+        . '<linearGradient id="anGFail" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f87171"/><stop offset="100%" stop-color="#dc2626"/></linearGradient>'
+        . '<linearGradient id="anGBlue" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#60a5fa"/><stop offset="100%" stop-color="#2563eb"/></linearGradient>'
+        . '</defs>';
+
+    for ($gi = 0; $gi <= 5; $gi++) {
+        $gy = $T + $ph - ($gi / 5) * $ph;
+        $gv = round(($gi / 5) * $maxBar);
+        $trendSvg .= '<line x1="' . $L . '" x2="' . ($W - $R) . '" y1="' . round($gy, 1) . '" y2="' . round($gy, 1) . '" stroke="rgba(148,163,184,0.18)" stroke-dasharray="4 4" stroke-width="1"/>';
+        $trendSvg .= '<text x="' . ($L - 8) . '" y="' . round($gy + 4, 1) . '" text-anchor="end" fill="#94a3b8" font-size="11" font-weight="600">' . $gv . '</text>';
+    }
+
+    foreach ($months as $idx => $m) {
+        $cx  = $L + $slotW * ($idx + 0.5);
+        $tot = (int) $m['total'];
+        $hTot = ($tot / $maxBar) * $ph;
+        $yTop = $T + $ph - $hTot;
+        $x0   = round($cx - $barW / 2, 1);
+
+        if ($segmented && $tot > 0) {
+            $pCnt = (int) ($m['pass'] ?? 0);
+            $tCnt = (int) ($m['tol'] ?? 0);
+            $fCnt = (int) ($m['fail'] ?? 0);
+            $curY = $T + $ph;
+            foreach ([
+                [$pCnt, 'url(#anGPass)', 'Passed'],
+                [$tCnt, 'url(#anGTol)',  'Tolerable'],
+                [$fCnt, 'url(#anGFail)', 'Failed'],
+            ] as [$segV, $segFill, $segNm]) {
+                if ($segV <= 0) {
+                    continue;
+                }
+                $segH = ($segV / $maxBar) * $ph;
+                $curY -= $segH;
+                $trendSvg .= '<rect x="' . $x0 . '" y="' . round($curY, 1) . '" width="' . round($barW, 1) . '" height="' . round($segH, 1) . '" rx="2" fill="' . $segFill . '"><title>' . esc($m['m']) . ' · ' . $segNm . ': ' . $segV . '</title></rect>';
+            }
+        } elseif ($tot > 0) {
+            $trendSvg .= '<rect x="' . $x0 . '" y="' . round($yTop, 1) . '" width="' . round($barW, 1) . '" height="' . round($hTot, 1) . '" rx="4" fill="url(#anGBlue)"><title>' . esc($m['m']) . ': ' . $tot . '</title></rect>';
+        }
+
+        if ($tot > 0) {
+            $trendSvg .= '<text x="' . round($cx, 1) . '" y="' . round($yTop - 6, 1) . '" text-anchor="middle" fill="#f8fafc" font-size="' . ($nM > 20 ? '10' : '11.5') . '" font-weight="800">' . $tot . '</text>';
+        }
+        $lblTxt = $group === 'day' ? substr((string) $m['m'], 5) : (string) $m['m'];
+        if ($nM > 14) {
+            $trendSvg .= '<text transform="translate(' . round($cx + 3, 1) . ',' . ($T + $ph + 14) . ') rotate(-36)" text-anchor="end" fill="#cbd5e1" font-size="10" font-weight="600">' . esc($lblTxt) . '</text>';
+        } else {
+            $trendSvg .= '<text x="' . round($cx, 1) . '" y="' . ($T + $ph + 20) . '" text-anchor="middle" fill="#cbd5e1" font-size="11" font-weight="600">' . esc($lblTxt) . '</text>';
+        }
+    }
+    ?>
+
+    <div class="ms-chart-grid" style="<?= $sd ? '' : 'grid-template-columns:1fr' ?>">
+        <?php if ($sd): ?>
+        <div class="ms-pie-card" style="justify-content:flex-start;gap:12px">
+            <div class="ms-pie-head">
+                <h3><?= esc($sd['title']) ?></h3>
+                <span><?= esc($sd['center']) ?> <?= esc(ucfirst(strtolower($sd['sub']))) ?></span>
             </div>
-            <?php if ($segmented): ?>
-                <div class="an-legend" style="margin:0;font-weight:600">
-                    <span><i class="an-p"></i>Pass</span>
-                    <span><i class="an-t"></i>Tolerable</span>
-                    <span><i class="an-f"></i>Fail</span>
+            <?php
+            $dR = 66; $dC = 2 * M_PI * $dR; $dOff = 0;
+            $dSvg = '<svg viewBox="0 0 180 180" width="175" height="175" style="display:block;margin:2px auto"><circle cx="90" cy="90" r="' . $dR . '" fill="none" stroke="#e2e8f0" stroke-width="22"/>';
+            if ($sdTot > 0) {
+                foreach ($sdParts as [$pNm, $pVal, $pCol]) {
+                    if ($pVal <= 0) {
+                        continue;
+                    }
+                    $pLen = ($pVal / $sdTot) * $dC;
+                    $dSvg .= '<circle cx="90" cy="90" r="' . $dR . '" fill="none" stroke="' . $pCol . '" stroke-width="22" stroke-dasharray="' . round($pLen, 2) . ' ' . round($dC - $pLen, 2) . '" stroke-dashoffset="' . round(-$dOff, 2) . '" transform="rotate(-90 90 90)"><title>' . esc($pNm) . ': ' . $pVal . '</title></circle>';
+                    $dOff += $pLen;
+                }
+            }
+            $dSvg .= '<text x="90" y="92" text-anchor="middle" font-size="23" font-weight="900" fill="#0f172a">' . esc($sd['center']) . '</text>';
+            $dSvg .= '<text x="90" y="109" text-anchor="middle" font-size="10" font-weight="800" letter-spacing=".06em" fill="#64748b">' . esc($sd['sub']) . '</text></svg>';
+            echo $dSvg;
+            ?>
+            <div style="display:flex;flex-direction:column;gap:8px">
+                <?php foreach ($sdParts as [$pNm, $pVal, $pCol]):
+                    $pShare = $sdTot > 0 ? round(($pVal / $sdTot) * 100, 1) : 0;
+                ?>
+                <div style="padding:7px 10px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc">
+                    <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:800;color:#0f172a;margin-bottom:4px">
+                        <span style="display:inline-flex;align-items:center;gap:7px">
+                            <i style="width:9px;height:9px;border-radius:50%;background:<?= esc($pCol) ?>;display:inline-block"></i>
+                            <?= esc($pNm) ?>
+                        </span>
+                        <span><?= number_format((int) $pVal) ?> <span style="color:#64748b;font-weight:700">(<?= $pShare ?>%)</span></span>
+                    </div>
+                    <div style="height:6px;border-radius:999px;background:#e2e8f0;overflow:hidden">
+                        <div style="height:100%;width:<?= min(100, $pShare) ?>%;background:<?= esc($pCol) ?>;border-radius:999px"></div>
+                    </div>
                 </div>
+                <?php endforeach ?>
+            </div>
+        </div>
+        <?php endif ?>
+
+        <div class="ms-trend-card">
+            <div class="ms-trend-head">
+                <div>
+                    <h3><?= esc($chartTitle) ?></h3>
+                    <p>Distribution of test volume and results across the selected period</p>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                    <?php if ($segmented): ?>
+                        <div class="ms-trend-leg">
+                            <span><i style="background:#10b981"></i>Passed</span>
+                            <span><i style="background:#f59e0b"></i>Tolerable</span>
+                            <span><i style="background:#ef4444"></i>Failed</span>
+                        </div>
+                    <?php else: ?>
+                        <div class="ms-trend-leg">
+                            <span><i style="background:#3b82f6"></i>Collected Specimens</span>
+                        </div>
+                    <?php endif ?>
+                    <div style="display:inline-flex;background:rgba(15,23,42,.55);padding:3px;border-radius:9px;border:1px solid rgba(255,255,255,.14);gap:2px">
+                        <?php foreach (['day' => 'Day', 'week' => 'Week', 'month' => 'Month', 'year' => 'Year'] as $gk => $gl):
+                            $gUrl = site_url('analytics') . '?' . http_build_query(array_filter([
+                                'tab'   => $tab,
+                                'view'  => $view,
+                                'group' => $gk,
+                                'from'  => $from,
+                                'to'    => $to,
+                                'all'   => ($from === '' && $to === '') ? '1' : null,
+                            ], static fn ($v) => $v !== null && $v !== ''));
+                        ?>
+                            <a href="<?= esc($gUrl, 'attr') ?>" style="padding:4px 10px;border-radius:6px;font-size:11.5px;font-weight:700;text-decoration:none;<?= $group === $gk ? 'background:#2563eb;color:#fff' : 'color:#cbd5e1' ?>"><?= esc($gl) ?></a>
+                        <?php endforeach ?>
+                    </div>
+                </div>
+            </div>
+            <?php if (! $months): ?>
+                <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px 20px;color:#94a3b8;font-size:13px;font-weight:600">
+                    No dated records found in this period. Try selecting "Show all dates" or a broader date range.
+                </div>
+            <?php else: ?>
+                <svg viewBox="0 0 <?= $W ?> <?= $H ?>" width="100%" style="display:block;font-family:Inter,system-ui,sans-serif"><?= $trendSvg ?></svg>
             <?php endif ?>
         </div>
-        <?php if (! $months): ?>
-            <p class="muted sm">No dated records yet.</p>
-        <?php else: ?>
-            <div class="an-bars">
-                <?php foreach ($months as $m): ?>
-                    <?php $t = (int) $m['total']; $h = $t / $maxM * 100; ?>
-                    <div class="an-col" title="<?= esc($m['m']) ?>: <?= $segmented ? (int) $m['pass'] . ' pass, ' . (int) $m['tol'] . ' tolerable, ' . (int) $m['fail'] . ' fail' : $t ?>">
-                        <span class="an-num"><?= $t ?></span>
-                        <div class="an-stack" style="height:<?= round($h * 1.35, 1) ?>px">
-                            <?php if ($segmented): ?>
-                                <i class="an-p" style="height:<?= $t ? round($m['pass'] / $t * 100, 2) : 0 ?>%"></i>
-                                <i class="an-t" style="height:<?= $t ? round($m['tol'] / $t * 100, 2) : 0 ?>%"></i>
-                                <i class="an-f" style="height:<?= $t ? round($m['fail'] / $t * 100, 2) : 0 ?>%"></i>
-                            <?php else: ?>
-                                <i class="an-b" style="height:100%"></i>
-                            <?php endif ?>
-                        </div>
-                        <span class="an-lbl"><?= esc($group === 'day' ? substr((string) $m['m'], 5) : $m['m']) ?></span>
-                    </div>
-                <?php endforeach ?>
-            </div>
-        <?php endif ?>
     </div>
 
-    <div class="an-two">
-        <?php foreach ($lists as [$title, $mode, $rows]): ?>
-            <div class="card glass" style="padding:18px 20px;border-radius:16px">
-                <h3 style="margin:0 0 12px;font-size:14.5px;font-weight:800;color:#0f172a"><?= esc($title) ?></h3>
-                <?php $mx = max(1, (int) ($rows[0]['a'] ?? 1)); foreach ($rows as $r): ?>
-                    <?php $w = $mode === 'ratio' ? ((int) $r['b'] > 0 ? round((int) $r['a'] / (int) $r['b'] * 100, 1) : 0) : round((int) $r['a'] / $mx * 100); ?>
-                    <div class="an-row" style="padding:7px 0"><span class="nm" style="font-weight:600;color:#1e293b" title="<?= esc($r['name'], 'attr') ?>"><?= esc($r['name']) ?></span>
-                        <span class="an-meter"><i class="<?= $mode === 'ratio' ? '' : 'an-neutral' ?>" style="width:<?= $w ?>%"></i></span>
-                        <span class="v" style="font-size:12px;color:#0f172a"><?= (int) $r['a'] ?><?= $mode === 'ratio' ? '<span style="color:#64748b;font-weight:500">/' . (int) $r['b'] . '</span>' : '' ?></span></div>
-                <?php endforeach ?>
-                <?php if (! $rows): ?><p class="muted sm">No data.</p><?php endif ?>
+    <!-- 3 Ranked Breakdown Cards -->
+    <div class="an-two" style="grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:16px">
+        <?php foreach ($lists as $listItem):
+            $title = $listItem[0];
+            $mode  = $listItem[1];
+            $rows  = $listItem[2];
+            $sub   = $listItem[3] ?? ($mode === 'ratio' ? 'Ranked by failure ratio and test volume' : 'Ranked by total volume in the selected period');
+        ?>
+            <div style="background:#fff;border:1px solid #cbd5e1;border-radius:16px;box-shadow:0 4px 12px rgba(15,23,42,.05);overflow:hidden;display:flex;flex-direction:column">
+                <div style="background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%);padding:12px 16px;color:#fff">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                        <h3 style="margin:0;font-size:14px;font-weight:800;color:#fff;letter-spacing:.01em"><?= esc($title) ?></h3>
+                        <span style="padding:2px 9px;border-radius:999px;background:rgba(255,255,255,.16);color:#f8fafc;font-size:11px;font-weight:700"><?= count($rows) ?> Listed</span>
+                    </div>
+                    <p style="margin:3px 0 0;font-size:11.5px;color:#cbd5e1"><?= esc($sub) ?></p>
+                </div>
+                <div style="padding:14px 16px;display:flex;flex-direction:column;gap:9px;flex:1">
+                    <?php if (! $rows): ?>
+                        <p class="muted sm" style="margin:12px 0;text-align:center">No records in this period.</p>
+                    <?php else: ?>
+                        <?php
+                        $mx = max(1, (int) ($rows[0]['a'] ?? 1));
+                        foreach ($rows as $rIdx => $r):
+                            $aVal = (int) ($r['a'] ?? 0);
+                            $bVal = (int) ($r['b'] ?? 0);
+                            $w    = $mode === 'ratio' ? ($bVal > 0 ? round(($aVal / $bVal) * 100, 1) : 0) : round(($aVal / $mx) * 100, 1);
+                            $barCol = $mode === 'ratio' ? ($aVal > 0 ? '#ef4444' : '#10b981') : '#2563eb';
+                        ?>
+                        <div style="padding:8px 10px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc">
+                            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:5px">
+                                <span style="display:inline-flex;align-items:center;gap:7px;min-width:0">
+                                    <span style="display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;padding:0 5px;border-radius:6px;font-size:10.5px;font-weight:800;background:<?= $rIdx === 0 ? '#dbeafe' : '#e2e8f0' ?>;color:<?= $rIdx === 0 ? '#1d4ed8' : '#475569' ?>">#<?= $rIdx + 1 ?></span>
+                                    <span style="font-size:12.5px;font-weight:800;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="<?= esc($r['name'], 'attr') ?>"><?= esc($r['name']) ?></span>
+                                </span>
+                                <span style="display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap;flex-shrink:0">
+                                    <?php if ($mode === 'ratio'): ?>
+                                        <b style="font-size:13.5px;font-weight:900;color:<?= $aVal > 0 ? '#dc2626' : '#059669' ?>"><?= $aVal ?></b>
+                                        <span style="font-size:11.5px;color:#64748b;font-weight:700">/ <?= $bVal ?></span>
+                                        <span style="padding:1px 6px;border-radius:999px;font-size:10.5px;font-weight:800;background:<?= $aVal > 0 ? '#fef2f2' : '#f0fdf4' ?>;color:<?= $aVal > 0 ? '#dc2626' : '#15803d' ?>"><?= $w ?>%</span>
+                                    <?php else: ?>
+                                        <b style="font-size:14px;font-weight:900;color:#0f172a"><?= number_format($aVal) ?></b>
+                                    <?php endif ?>
+                                </span>
+                            </div>
+                            <div style="height:6px;border-radius:999px;background:#e2e8f0;overflow:hidden">
+                                <div style="height:100%;width:<?= min(100, max($aVal > 0 ? 4 : 0, $w)) ?>%;background:<?= $barCol ?>;border-radius:999px"></div>
+                            </div>
+                        </div>
+                        <?php endforeach ?>
+                    <?php endif ?>
+                </div>
             </div>
         <?php endforeach ?>
     </div>
@@ -836,6 +1029,56 @@ html[data-theme="dark"] .br-pie{border:1px solid rgba(148,163,184,.24);box-shado
       });
     });
   }
+  var editBtn = document.getElementById('mx-edit-btn');
+  if (bldCard && editBtn) {
+    editBtn.addEventListener('click', function () {
+      var on = bldCard.classList.toggle('editing');
+      editBtn.innerHTML = on ? '&#10003;' : '';
+      editBtn.setAttribute('aria-checked', on ? 'true' : 'false');
+    });
+    var send = function (td, next) {
+      var body = new URLSearchParams({ building: td.dataset.b, line: td.dataset.n, date: td.dataset.d, mark: next });
+      var tok = document.querySelector('meta[name="X-CSRF-TOKEN"]');
+      td.style.opacity = '.5';
+      fetch('<?= site_url('analytics/bonding-mark') ?>', { method: 'POST', body: body, headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': tok ? tok.content : '' } })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { if (j && j.ok) { location.reload(); } else { td.style.opacity = ''; alert((j && j.message) || 'Could not save the mark.'); } })
+        .catch(function () { td.style.opacity = ''; alert('Could not save the mark.'); });
+    };
+    // type 0 or 1 in a cell (Enter / leaving the box saves it)
+    bldCard.addEventListener('change', function (e) {
+      var inp = e.target; if (!inp.classList || !inp.classList.contains('mx-in')) return;
+      if (inp.classList.contains('mx-tin')) {   // bottom rows: a typed total (empty = back to the counted one)
+        var tt = inp.closest('td.mx-tt'), val = inp.value.trim();
+        if (val !== '' && !/^\d{1,5}$/.test(val)) { inp.value = inp.defaultValue; return; }
+        if (val === inp.defaultValue) return;
+        var tb = new URLSearchParams({ kind: tt.dataset.kind, building: tt.dataset.b || '', date: tt.dataset.d, value: val });
+        var tk = document.querySelector('meta[name="X-CSRF-TOKEN"]');
+        tt.style.opacity = '.5';
+        fetch('<?= site_url('analytics/bonding-total') ?>', { method: 'POST', body: tb, headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': tk ? tk.content : '' } })
+          .then(function (r) { return r.json(); })
+          .then(function (j) { if (j && j.ok) { location.reload(); } else { tt.style.opacity = ''; alert((j && j.message) || 'Could not save the total.'); } })
+          .catch(function () { tt.style.opacity = ''; alert('Could not save the total.'); });
+        return;
+      }
+      var td = inp.closest('td.mx-ed'), v = inp.value.trim();
+      var was = Number(td.dataset.val || 0) > 0 ? 1 : 0;
+      if (v !== '0' && v !== '1') { inp.value = was; return; }
+      if (Number(v) === was && (td.dataset.mark || '') === '') return;
+      send(td, v === '1' ? '1' : (Number(td.dataset.val || 0) > 0 ? '0' : ''));
+    });
+    bldCard.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('mx-in')) { e.preventDefault(); e.target.blur(); }
+    });
+    // click the cell itself (not the 0/1 box): make it SHUTDOWN, or take the shutdown away
+    bldCard.addEventListener('click', function (e) {
+      var td = e.target.closest && e.target.closest('td.mx-ed');
+      if (!td || !bldCard.classList.contains('editing') || e.target.classList.contains('mx-in')) return;
+      var mk = td.getAttribute('data-mark') || '', isShut = td.dataset.shut === '1';
+      var next = mk === 'N' ? '' : (isShut ? (mk === 'S' ? '' : 'N') : 'S');
+      send(td, next);
+    });
+  }
   var form = document.getElementById('an-form'); if (!form) return;
   var $ = function (id) { return document.getElementById(id); };
   var pad = function (n) { return (n < 10 ? '0' : '') + n; };
@@ -852,72 +1095,14 @@ html[data-theme="dark"] .br-pie{border:1px solid rgba(148,163,184,.24);box-shado
     form.submit();
   };
 
-  // popover
-  var pop = $('an-pop'), btn = $('an-dr-btn');
-  btn.addEventListener('click', function (e) { e.stopPropagation(); pop.hidden = !pop.hidden; btn.setAttribute('aria-expanded', String(!pop.hidden)); });
-  document.addEventListener('click', function (e) { if (!pop.hidden && !pop.contains(e.target) && !btn.contains(e.target)) { pop.hidden = true; } });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') pop.hidden = true; });
-
-  // quick picks
-  form.querySelectorAll('[data-quick]').forEach(function (b) {
-    b.addEventListener('click', function () {
-      var d = new Date(today); if (b.dataset.quick === 'yesterday') d.setDate(d.getDate() - 1);
-      go(iso(d), iso(d), 'day');
-    });
-  });
-
-  // weekly (Monday - Sunday, last 12 weeks), monthly (last 12)
-  var wk = $('an-week'), mo = $('an-month');
-  var mon = new Date(today); mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
-  for (var i = 0; i < 12; i++) {
-    var s = new Date(mon); s.setDate(s.getDate() - 7 * i); var e = new Date(s); e.setDate(e.getDate() + 6);
-    wk.add(new Option(short(s) + ' – ' + short(e) + (i === 0 ? '  (this week)' : ''), iso(s) + '|' + iso(e)));
-  }
-  for (var m = 0; m < 12; m++) {
-    var ms = new Date(today.getFullYear(), today.getMonth() - m, 1), me = new Date(ms.getFullYear(), ms.getMonth() + 1, 0);
-    mo.add(new Option(MONTHS[ms.getMonth()] + ' ' + ms.getFullYear(), iso(ms) + '|' + iso(me)));
-  }
-  var pick = function (sel, group) { sel.addEventListener('change', function () { if (!sel.value) return; var p = sel.value.split('|'); go(p[0], p[1], group); }); };
-  pick(wk, 'day'); pick(mo, 'day');
-  $('an-all').addEventListener('click', function () { go('', '', 'month'); });
-
-  // custom range calendar
-  var from = $('an-from').value ? parse($('an-from').value) : null, to = $('an-to').value ? parse($('an-to').value) : null;
-  var view = new Date((to || from || today).getFullYear(), (to || from || today).getMonth(), 1);
-  var grid = $('an-cal-grid');
-  var sync = function () { $('an-pick-from').value = from ? iso(from) : ''; $('an-pick-to').value = to ? iso(to) : ''; };
-  var draw = function () {
-    $('an-cal-title').textContent = MONTHS[view.getMonth()] + ' ' + view.getFullYear();
-    var h = ['S','M','T','W','T','F','S'].map(function (x) { return '<span class="dow">' + x + '</span>'; }).join('');
-    var first = new Date(view.getFullYear(), view.getMonth(), 1), start = new Date(first); start.setDate(1 - first.getDay());
-    for (var k = 0; k < 42; k++) {
-      var d = new Date(start); d.setDate(start.getDate() + k);
-      var cls = [];
-      if (d.getMonth() !== view.getMonth()) cls.push('out');
-      if (iso(d) === iso(today)) cls.push('today');
-      if (from && iso(d) === iso(from)) cls.push('edge');
-      if (to && iso(d) === iso(to)) cls.push('edge');
-      if (from && to && d > from && d < to) cls.push('mid');
-      h += '<button type="button" data-d="' + iso(d) + '" class="' + cls.join(' ') + '">' + d.getDate() + '</button>';
+  // calendar filter: same popup as the Lab Tracker (shared assets/js/datefilter.js)
+  window.NxDateFilter.mount({
+    host: document.querySelector('.an-dr'), btn: $('an-dr-btn'), from: $('an-from').value, to: $('an-to').value, allowAll: true,
+    onApply: function (f, t) {
+      if (!f) { go('', '', 'month'); return; }
+      var days = Math.round((parse(t) - parse(f)) / 86400000) + 1;
+      go(f, t, days <= 31 ? 'day' : (days <= 120 ? 'week' : 'month'));
     }
-    grid.innerHTML = h; sync();
-  };
-  grid.addEventListener('click', function (e) {
-    var b = e.target.closest('button[data-d]'); if (!b) return;
-    var d = parse(b.dataset.d);
-    if (!from || (from && to)) { from = d; to = null; }
-    else if (d < from) { to = from; from = d; }
-    else { to = d; }
-    draw();
   });
-  $('an-prev').addEventListener('click', function () { view.setMonth(view.getMonth() - 1); draw(); });
-  $('an-next').addEventListener('click', function () { view.setMonth(view.getMonth() + 1); draw(); });
-  $('an-custom').addEventListener('click', function () { this.classList.add('on'); });
-  $('an-apply').addEventListener('click', function () {
-    if (!from) return;
-    var f = from, t = to || from, days = Math.round((t - f) / 86400000) + 1;
-    go(iso(f), iso(t), days <= 31 ? 'day' : (days <= 120 ? 'week' : 'month'));
-  });
-  draw();
 })();
 </script>

@@ -12,6 +12,14 @@
 $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
 ?>
 
+<?= view('partials/plain_help') ?>
+<?= anGuide('interlink', 'New here? How this page works', [
+    'InterLink is the customer portal where finished test reports are filed. This page lets you send reports there from NEXUS-L without retyping them.',
+    'Each row is one lab application. "Pending Upload" means the report is ready but not yet in InterLink; "Synced" means it was already sent.',
+    'Choose the report to send. A check window shows the details that will be sent. Read it, fix anything wrong, then confirm.',
+    'Use Sync History to see what was sent, when, and whether it worked.',
+], 'Tip: the small "i" badges explain unfamiliar words. Hover over one, or tap it on a phone.') ?>
+
 <!-- Top NEXUS-L Status & Quick Actions Bar -->
 <div class="il-top-cards">
     <div class="card glass il-stat">
@@ -45,6 +53,10 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                 <button type="button" id="btn-manage-reports" class="il-btn il-btn-outline">
                     <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
                     Company Reports
+                </button>
+                <button type="button" id="btn-batch-approval" class="il-btn il-btn-outline">
+                    <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    Batch Approval
                 </button>
                 <button type="button" id="btn-sync-logs" class="il-btn il-btn-outline">
                     <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -83,6 +95,8 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
             <input type="text" id="il-url-input" class="il-url-input" readonly
                    value="<?= esc($searchUrl) ?>"
                    data-search-url="<?= esc($searchUrl) ?>"
+                   data-source="<?= esc($source ?? 'interlink') ?>"
+                   data-source="<?= esc($source ?? 'interlink') ?>"
                    data-upload-url="<?= esc($uploadUrl) ?>"
                    data-normal-url="<?= esc($normalUrl ?? '') ?>">
             <span id="il-page-badge" class="il-page-badge il-badge-search">SearchFormWithHeader.aspx [10102]</span>
@@ -821,10 +835,12 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                     <div class="uf-subgrid-head">
                         <b>Test Item Result</b>
                         <span class="uf-sync-tag">Pass / Fail / Data</span>
+                        <button type="button" class="uf-action-btn uf-rm-btn" data-uf-rm="items" title="Tick the rows that do not apply, then remove them: they are not sent to InterLink">Remove selected</button>
                     </div>
                     <table class="il-sync-table uf-subtable">
                         <thead>
                             <tr>
+                                <th class="uf-ck"><input type="checkbox" data-uf-all="items" aria-label="Select all test items"></th>
                                 <th style="width:110px">* Sample ID</th>
                                 <th>* Test Item Name</th>
                                 <th style="width:180px">Standard / Method</th>
@@ -843,10 +859,12 @@ $portalUser = $currentUser['name'] ?? 'Faye Ann Elaysa';
                     <div class="uf-subgrid-head">
                         <b>Test Item Result For Reading</b>
                         <span class="uf-sync-tag">Specimen Readings</span>
+                        <button type="button" class="uf-action-btn uf-rm-btn" data-uf-rm="readings" title="Tick the rows that do not apply, then remove them: they are not sent to InterLink">Remove selected</button>
                     </div>
                     <table class="il-sync-table uf-subtable">
                         <thead>
                             <tr>
+                                <th class="uf-ck"><input type="checkbox" data-uf-all="readings" aria-label="Select all readings"></th>
                                 <th style="width:90px">* Sample ID</th>
                                 <th>* Test Item Name</th>
                                 <th>Test method</th>

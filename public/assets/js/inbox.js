@@ -525,7 +525,7 @@
     });
     if (removedAny) loadList();
   };
-  setInterval(tickExpiringMessages, 1000);
+  setInterval(tickExpiringMessages, 5000);
 
   const updateApprovalBanner = (group) => {
     if (!el.approvalBanner) return;
@@ -2063,7 +2063,7 @@
 
   // ---------- polling (paused while the tab is hidden) ----------
   updateSend(); loadList(); initNotifBanner();
-  setInterval(() => { if (!document.hidden) pull(false); }, 4000);
+  setInterval(() => { if (!document.hidden) pull(false); }, 10000);
   setInterval(() => { if (!document.hidden && !el.q.value.trim()) loadList(); }, 10000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { pull(false); loadList(); } });
 })();

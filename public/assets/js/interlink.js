@@ -208,7 +208,7 @@
       if (cp) cp.textContent = '1';
       if (tp) tp.textContent = '1';
       const nums = $('#itk-pager-nums');
-      if (nums) nums.innerHTML = `<span style="padding:4px 8px;font-size:12px;color:#475569">Search results: ${state.reports.length}${info.capped ? '+' : ''} of ${info.loaded || 0} loaded applications${info.complete ? '' : ' (still loading the rest…)'}</span>`;
+      if (nums) nums.innerHTML = `<span style="padding:4px 8px;font-size:12px;color:#1d4ed8;font-weight:600">Live InterLink results: ${state.reports.length}${info.liveAccount ? ` (${escHtml(info.liveAccount)})` : ''}</span>`;
       return;
     }
     const currPageEl = $('#itk-curr-page');
@@ -299,7 +299,7 @@
     if ($('#stat-synced')) $('#stat-synced').textContent = syncedCount;
 
     if (!filtered.length) {
-      tbody.innerHTML = `<tr><td colspan="38" style="text-align:center;padding:20px;color:#6b7280">${state.searchMode ? `Nothing matches in all ${(state.searchInfo && state.searchInfo.loaded) || 0} loaded applications.${state.searchInfo && !state.searchInfo.complete ? ' The rest of InterLink is still being loaded in the background; try again in a few minutes.' : ''}` : `No matching InterLink applications found on Page ${state.currentPage}.`}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="38" style="text-align:center;padding:20px;color:#6b7280">${state.searchMode ? 'No matching applications found in live InterLink.' : `Loading live InterLink Page ${state.currentPage}…`}</td></tr>`;
       return;
     }
 
@@ -431,7 +431,9 @@
       if (!state.queuedFetch || (state.queuedFetch.silent && !silent)) state.queuedFetch = { page, pageSize, forceRefresh, silent };
       return;
     }
-    if (!(await checkService(!silent))) { showConnectionError(); return; }
+    // Settings > InterLink service: "database" lists from the Mirror's copy, so the service need not be reachable to read
+    const dbMode = (($('#il-url-input') || {}).dataset || {}).source === 'database';
+    if (!dbMode && !(await checkService(!silent))) { showConnectionError(); return; }
     state.isFetchingPage = true;
     const pb = $('#itk-pager-bar'); if (pb) pb.style.display = '';
 
@@ -443,8 +445,8 @@
     // Page clicks and the Live Refresh button read InterLink. Timer-driven and first-load calls (silent) only do so while
     // the reader tab is still open from a recent read (it closes by itself about a minute after the last one): they never
     // open a tab on their own, so nothing pops up while you work.
-    if (state.serviceOnline === undefined) await checkService();
-    const useSender = serviceReady() && Date.now() >= (state.serviceBackoffUntil || 0) && (!silent || Date.now() < (state.liveWarmUntil || 0));
+    if (!dbMode && state.serviceOnline === undefined) await checkService();
+    const useSender = dbMode || (serviceReady() && Date.now() >= (state.serviceBackoffUntil || 0) && (!silent || Date.now() < (state.liveWarmUntil || 0)));
 
     try {
       if (!silent) {
@@ -483,7 +485,7 @@
         if (liveDot) liveDot.className = res.live ? 'itk-live-dot is-online' : 'itk-live-dot';
         if (liveText) {
           liveText.textContent = res.live
-            ? `Live Synced (${nowStr})`
+            ? (res.source === 'database' ? `Database (Mirror ${res.mirrorAt ? String(res.mirrorAt).slice(11, 16) : '—'})` : `Live Synced (${nowStr})`)
             : `Cached DB (${nowStr})`;
         }
 
@@ -1475,7 +1477,13 @@
         const lr = (j.rows || []).find((x) => x.tr_no === appNo) || (j.rows || [])[0];
         if (!lr) throw new Error(`No Lab Reference is linked to ${appNo}, so there is no report to show.`);
         labRef = lr.lab_ref_no;
-        b64 = await reportPdfOf(lr, appNo);
+        const isPullLr = lr.form_slug === 'pull' || lr.form_slug === 'pulltest' || /pull\s*test/i.test(lr.form_category || '') || /^DTP\d{8}(HP|EY|DR|RVT|LLH)/i.test(lr.lab_ref_no || '');
+        const isWholeShoeLr = lr.form_slug === 'wholeshoe' || /whole\s*shoe/i.test(lr.form_category || '') || /^DTP\d{8}(WH|FX|HA|HY|WG|UV|DT)/i.test(lr.lab_ref_no || '');
+        b64 = (lr.form_slug === 'bonding' || isPullLr)
+          ? await window.nxReportPdf({ slug: isPullLr ? 'pull' : 'bonding', id: lr.source_id || lr.id })
+          : isWholeShoeLr
+            ? await pdfAsB64(`dtr/wholeshoe-report-pdf?inline=1&lab_ref=${encodeURIComponent(lr.lab_ref_no)}`)
+            : await pdfAsB64(`dtr/report-pdf?lab_ref=${encodeURIComponent(lr.lab_ref_no)}&app=${encodeURIComponent(appNo)}`);
         status = 'Generated now from the NEXUS-L record - not approved yet';
       }
       const url = URL.createObjectURL(b64ToBlob(b64));
@@ -1646,23 +1654,42 @@
       } else renderSearchGrid();
       return;
     }
+    const sameKey = JSON.stringify(f);
+    if (state.searchMode && state.lastLiveKey === sameKey && Date.now() - (state.lastLiveAt || 0) < 10000 && state.reports && state.reports.length) return;   // the same search a moment ago: its rows are on the screen
     if (!(await checkService(false))) { showConnectionError(); return; }
     if (!state.searchMode) state.liveReturnPage = state.currentPage;
     state.searchMode = true;
     const seq = ++searchSeq;
+    const firstKey = f.application_no ? 'application_no' : (f.report_no ? 'report_no' : (f.__all ? '__all' : Object.keys(f)[0]));
+    const rawInp = firstKey === '__all'
+      ? $('#itk-general-search')
+      : ($(`#itk-search-table .itk-filter-row input[data-col="${firstKey}"]`) || $(`#itk-search-criteria-panel [data-top-filter="${firstKey}"]`));
+    const qVal = String((rawInp && rawInp.value) || f[firstKey] || '').trim();
     const tbody = $('#itk-grid-tbody');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="38" style="text-align:center;padding:20px;color:#6b7280"><span class="nx-spin" aria-hidden="true"></span> Searching all InterLink applications…</td></tr>';
+    if (qVal.length < 3) {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="38" style="text-align:center;padding:20px;color:#6b7280">Type at least 3 characters (or press Enter) to search live InterLink…</td></tr>';
+      return;
+    }
+    if (tbody) tbody.innerHTML = `<tr><td colspan="38" style="text-align:center;padding:20px;color:#1d4ed8"><span class="nx-spin" aria-hidden="true"></span> Searching ${(($('#il-url-input') || {}).dataset || {}).source === 'database' ? 'the database' : 'live InterLink'} for <b>${escHtml(qVal)}</b>…</td></tr>`;
     try {
-      const res = await apiFetch('interlink/search?filters=' + encodeURIComponent(JSON.stringify(f)));
+      const live = await apiFetch('interlink/service-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ q: qVal, col: firstKey }),
+      });
       if (seq !== searchSeq) return;               // a newer search started
-      state.reports = res.rows || [];
-      state.searchInfo = res;
+      state.lastLiveKey = sameKey; state.lastLiveAt = Date.now();
+      state.reports = (live && Array.isArray(live.rows)) ? live.rows : [];
+      state.searchInfo = { liveSearched: true, liveAccount: (live && live.account) || '' };
+      if (state.reports.length > 0) {
+        showToast(`✓ Found ${state.reports.length} live result(s) in InterLink${live.account ? ` (${live.account})` : ''}.`);
+      }
       renderSearchGrid();
     } catch (err) {
-      if (seq === searchSeq) showToast(err.message || 'Search failed.', true);
+      if (seq === searchSeq) showToast(err.message || 'Live InterLink search failed.', true);
     }
   };
-  const searchSoon = () => { clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 350); };
+  const searchSoon = () => { clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 900); };
   $('#itk-general-search')?.addEventListener('input', searchSoon);
   $('#itk-general-search')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearTimeout(searchTimer); runSearch(); } });
   $$('#itk-search-table .itk-filter-row input[data-col], #itk-search-criteria-panel [data-top-filter]').forEach((inp) => {
@@ -1972,6 +1999,41 @@
     document.body.appendChild(m);
     (m.querySelector('[data-ask="in"]') || m.querySelector('[data-ask="yes"]')).focus();
   });
+  // Who should approve? The requester ticks up to 2 signatories; only they are notified and can open the report.
+  const pickApprovers = async () => {
+    const j = await apiFetch('dtr/approval/approvers');
+    const rows = j.rows || [];
+    if (!rows.length) return [];                                  // no signatories registered: the server decides
+    return new Promise((resolve) => {
+      document.getElementById('nx-pick')?.remove();
+      const m = document.createElement('div');
+      m.id = 'nx-pick';
+      m.style.cssText = 'position:fixed;inset:0;z-index:10100;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+      m.innerHTML = `<div style="background:#fff;color:#0f172a;border-radius:10px;max-width:460px;width:100%;padding:18px;box-shadow:0 20px 50px rgba(0,0,0,.35)">
+        <h3 style="margin:0 0 4px;font-size:16px">Request approval</h3>
+        <p style="margin:0 0 10px;font-size:13px;color:#475569">Choose up to 2 approvers. Only they are notified and can see this report in their approval list.</p>
+        <div data-pk="list" style="max-height:280px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px">${rows.map((r) => `<label style="display:flex;gap:10px;align-items:center;padding:9px 12px;border-bottom:1px solid #f1f5f9;cursor:pointer"><input type="checkbox" value="${r.id}"><span><b>${escHtml(r.full_name)}</b>${r.title ? `<br><small style="color:#64748b">${escHtml(r.title)}</small>` : ''}</span></label>`).join('')}</div>
+        <div data-pk="msg" style="min-height:18px;margin:8px 0;font-size:12px;color:#b91c1c"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" class="uf-action-btn" data-pk="no">Cancel</button><button type="button" class="uf-action-btn uf-btn-gen" data-pk="yes">Send for approval</button></div></div>`;
+      const done = (v) => { m.remove(); resolve(v); };
+      const boxes = () => [...m.querySelectorAll('input[type=checkbox]')];
+      m.addEventListener('change', (e) => {
+        const on = boxes().filter((b) => b.checked);
+        if (on.length > 2) { e.target.checked = false; m.querySelector('[data-pk="msg"]').textContent = 'You can choose at most 2 approvers.'; } else m.querySelector('[data-pk="msg"]').textContent = '';
+      });
+      m.addEventListener('click', (e) => {
+        const a = e.target.dataset && e.target.dataset.pk;
+        if (a === 'yes') {
+          const ids = boxes().filter((b) => b.checked).map((b) => +b.value);
+          if (!ids.length) { m.querySelector('[data-pk="msg"]').textContent = 'Choose at least 1 approver.'; return; }
+          done(ids);
+        } else if (a === 'no' || e.target === m) done(null);
+      });
+      m.addEventListener('keydown', (e) => { if (e.key === 'Escape') done(null); });
+      document.body.appendChild(m);
+      m.querySelector('input').focus();
+    });
+  };
   state.appLabRef = state.appLabRef || {};                                  // the Lab Ref chosen for an application in this session
   const currentLabRef = () => {
     const appNo = state.activeAppNo || $('#uf_application_no')?.value || '';
@@ -2021,15 +2083,6 @@
     if (!lr.form_slug) throw new Error('This report has no sheet to show.');
     pdf.sheet = await window.nxReportHtml({ slug: lr.form_slug, id: lr.source_id || lr.id });
     return pdf.sheet;
-  };
-
-  // The report PDF of a Lab Ref, made by NEXUS-L itself (no Access): the VF sheet for bonding and the pull test report are made from the Digital Test Report in the browser,
-  // the material reports are filled on the server from the lab's report forms.
-  const reportPdfOf = (lr, app) => {
-    const slug = lr.form_slug === 'pulltest' ? 'pull' : lr.form_slug;
-    return (slug === 'bonding' || slug === 'pull')
-      ? window.nxReportPdf({ slug, id: lr.source_id || lr.id })
-      : pdfAsB64(`dtr/report-pdf?lab_ref=${encodeURIComponent(lr.lab_ref_no)}&app=${encodeURIComponent(app)}`);
   };
 
   const pdfAsB64 = async (path) => {
@@ -2220,6 +2273,9 @@
     const pdf = window.nxAttachedPdf;
     if (!pdf || !pdf.lab_ref_no) { showToast('Generate the report (or Browse for it) first.', true); return; }
     const btn = $('#uf-apv-request');
+    let approverIds;
+    try { approverIds = await pickApprovers(); } catch (e) { showToast('Could not load the approvers: ' + e.message, true); return; }
+    if (approverIds === null) return;                                   // cancelled
     btn.disabled = true;
     try {
       // the sheet the approver reads comes from the same record as the PDF, captured now so it is current
@@ -2229,7 +2285,7 @@
       const j = await apiFetch('dtr/approval/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lab_ref: pdf.lab_ref_no, application_no: pdf.app, pdf_b64: pdf.b64, sheet_html: sheet, replace: !!pdf.regenerate }),
+        body: JSON.stringify({ lab_ref: pdf.lab_ref_no, application_no: pdf.app, pdf_b64: pdf.b64, sheet_html: sheet, replace: !!pdf.regenerate, approver_ids: approverIds }),
       });
       pdf.regenerate = false;                       // the new version is now the report on record
       showApproval(j.approval, 1);
@@ -2287,8 +2343,14 @@
       if (!lr.form_slug || !(lr.source_id || lr.id)) throw new Error(`${labRef} has no Digital Test Report form to print.`);
       const app = state.activeAppNo || $('#uf_application_no')?.value || lr.tr_no || lr.lab_ref_no;
       showToast(`Creating the ${lr.form_category || ''} report PDF for ${lr.lab_ref_no}…`);
-      // material reports: the lab's report form filled by NEXUS-L; bonding and pull test: the report sheet made in the browser (no Access anywhere)
-      const b64 = await reportPdfOf(lr, app);
+      // material reports: the lab's official Access report; bonding & pull test: VF sheet made in the browser; whole shoe: Form # Lab VF 002 PDF
+      const isPullLr = lr.form_slug === 'pull' || lr.form_slug === 'pulltest' || /pull\s*test/i.test(lr.form_category || '') || /^DTP\d{8}(HP|EY|DR|RVT|LLH)/i.test(lr.lab_ref_no || '');
+      const isWholeShoeLr = lr.form_slug === 'wholeshoe' || /whole\s*shoe/i.test(lr.form_category || '') || /^DTP\d{8}(WH|FX|HA|HY|WG|UV|DT)/i.test(lr.lab_ref_no || '');
+      const b64 = (lr.form_slug === 'bonding' || isPullLr)
+        ? await window.nxReportPdf({ slug: isPullLr ? 'pull' : 'bonding', id: lr.source_id || lr.id })
+        : isWholeShoeLr
+          ? await pdfAsB64(`dtr/wholeshoe-report-pdf?inline=1&lab_ref=${encodeURIComponent(lr.lab_ref_no)}`)
+          : await pdfAsB64(`dtr/report-pdf?lab_ref=${encodeURIComponent(lr.lab_ref_no)}&app=${encodeURIComponent(app)}`);
       // a generated report of about 1 KB is an empty / failed print, never a report: nothing is replaced by it
       if (!b64 || b64.length < 3000 || !b64.startsWith('JVBER')) throw new Error(`The report PDF came out empty (${Math.max(1, Math.round((b64 || '').length * 3 / 4 / 1024))} KB), so nothing was replaced. Open the Digital Test Report once, then press Generate again.`);
       // a name typed by hand for this report is kept when it is generated again
@@ -2529,6 +2591,23 @@
   // opening the view reads the live page straight away when the sender is installed (the saved copy shows meanwhile / if it is not)
   setTimeout(() => fetchLiveInterlinkPage(1, 15, true, false), 500);
   startOrStopAutoSync();
+
+  // Batch Approval's "Move to InterLink": opens the application on the Upload Form, syncs the Lab Reference chosen for it and shows its signed report
+  window.nxMoveToInterlink = async (app, labRef) => {
+    state.appLabRef[app] = labRef;
+    await navigateToUploadForm(app);
+    try {
+      const j = await apiFetch(`interlink/labrefs?limit=5&q=${encodeURIComponent(labRef)}`);
+      const lr = (j.rows || []).find((x) => x.lab_ref_no === labRef) || (j.rows || [])[0];
+      if (!lr) throw new Error(`${labRef} was not found in the Lab Reference list.`);
+      state.labrefs = [lr].concat((state.labrefs || []).filter((x) => x.id !== lr.id));
+      await openSyncDialog();                         // fills the field rows of this application
+      renderLabRefComboOptions(state.labrefs, lr.id);
+      await applyLabRefToSyncDialog(lr.id);           // then the chosen Lab Reference
+      await executeSync(false);
+    } catch (e) { showToast('Could not sync the Lab Reference: ' + e.message, true); }
+    await restoreApproval(labRef);                    // the approved report appears, signed, as the attachment
+  };
 })();
 
 // grid cells are cut to one line: show the whole value when the pointer rests on a cut cell

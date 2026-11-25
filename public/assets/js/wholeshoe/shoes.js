@@ -11,15 +11,17 @@
   const BASE = baseMeta ? baseMeta.content.replace(/\/+$/, '') + '/' : location.origin + '/';
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   let page = 1;
-  let data = { shoes: [], can_edit: false, page: 1 };
+  let data = { shoes: [], can_edit: false, page: 1, per_page: 12 };
   let timer = null;
   let modal = null;
   let curParent = '';
+  let loadCtl = null;
 
   const csrf = () => document.querySelector('meta[name="X-CSRF-TOKEN"]')?.content || '';
-  const api = async (path, body) => {
+  const api = async (path, body, signal) => {
     const res = await fetch(BASE + path, {
       method: body ? 'POST' : 'GET',
+      signal,
       headers: Object.assign({ 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf() }, body ? { 'Content-Type': 'application/json' } : {}),
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -59,7 +61,7 @@
       list.innerHTML = '<tr><td colspan="9" class="muted" style="text-align:center;padding:24px">No whole shoes found.</td></tr>';
       return;
     }
-    const base = (data.page - 1) * 30;
+    const base = (data.page - 1) * (data.per_page || 12);
     list.innerHTML = data.shoes.map((s, i) => {
       const done = s.tests.filter((t) => t.status === 'COMPLETED').length;
       return `<tr class="clickable-row wst-row" data-ws-parent="${esc(s.parent)}" style="cursor:pointer">
@@ -126,10 +128,21 @@
   };
 
   const load = async () => {
+    if (loadCtl) { try { loadCtl.abort(); } catch (_) {} }
+    loadCtl = new AbortController();
     const q = encodeURIComponent($('#ws-search').value.trim());
-    const r = await api(`wst/shoes?q=${q}&from=${$('#ws-from').value}&to=${$('#ws-to').value}&page=${page}`);
+    list.innerHTML = '<tr><td colspan="9" class="muted" style="text-align:center;padding:24px">Loading page ' + page + '...</td></tr>';
+    let r;
+    try {
+      r = await api(`wst/shoes?q=${q}&from=${$('#ws-from').value}&to=${$('#ws-to').value}&page=${page}`, null, loadCtl.signal);
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+      list.innerHTML = '<tr><td colspan="9" class="muted" style="padding:20px;text-align:center">Could not load the whole shoes.</td></tr>';
+      return;
+    }
     if (!r.ok) { list.innerHTML = '<tr><td colspan="9" class="muted" style="padding:20px;text-align:center">Could not load the whole shoes.</td></tr>'; return; }
     data = r;
+    page = r.page || page;
     $('#ws-count').textContent = `${r.total} record(s)`;
     $('#ws-page').textContent = `${r.page} / ${r.pages}`;
     $('#ws-prev').disabled = r.page <= 1;
@@ -144,14 +157,14 @@
     const pop = document.createElement('div');
     pop.className = 'ws-pop';
     pop.innerHTML = r.options && r.options.length
-      ? '<div class="muted sm" style="padding:4px 8px">Add which test?</div>' + r.options.map((o) => `<button type="button" data-ws-pick="${esc(o.type)}">${esc(o.type)}</button>`).join('')
-      : '<div class="muted sm" style="padding:6px 10px">Every test is already on this whole shoe.</div>';
+      ? '<div class="muted sm" style="padding:4px 8px">Add which test?</div>' + r.options.map((o) => `<button type="button" data-ws-pick="${esc(o.type)}" data-ws-side="${esc(o.side)}">${esc(o.type)} &middot; ${o.side === 'R' ? 'Right' : 'Left'} (${esc(o.side)})</button>`).join('')
+      : '<div class="muted sm" style="padding:6px 10px">Every test (Left and Right) is already recorded on this whole shoe.</div>';
     btn.parentNode.appendChild(pop);
     pop.addEventListener('click', async (e) => {
-      const b = e.target.closest('[data-ws-pick]');
-      if (!b) return;
+      const sd = e.target.closest('[data-ws-pick]');
+      if (!sd) return;
       pop.remove();
-      const a = await api('wst/shoe-test-add', { parent, type: b.dataset.wsPick });
+      const a = await api('wst/shoe-test-add', { parent, type: sd.dataset.wsPick, side: sd.dataset.wsSide });
       note(a.message || (a.ok ? 'Added.' : 'Could not add the test.'), !!a.ok);
       if (a.ok) load();
     });

@@ -919,13 +919,13 @@ private function labRefIntent(string $text): ?array
         $approvalUrl = site_url('approve/' . $token);
         // 4. Find active registered signatories and their SynologyIDs
         $signRows = $db->table('tbl_dtr_signatories s')
-            ->select('s.full_name, s.title, s.user_id, u.SynologyID, u.name as user_name, u.role')
+            ->select('s.id, s.full_name, s.title, s.user_id, u.SynologyID, u.name as user_name, u.role')
             ->join('tbl_users u', 'u.UserID = s.user_id', 'left')
             ->where('s.is_active', 1)
             ->get()->getResultArray();
         // If a required name is printed on the report, filter to matching signatory
-        if (! empty($apv['required_name'])) {
-            $filtered = array_values(array_filter($signRows, static fn ($r) => \App\Libraries\ReportPdf::nameMatches((string) $apv['required_name'], (string) $r['full_name'])));
+        if (! empty($apv['required_name']) || ! empty($apv['approver_ids'])) {
+            $filtered = array_values(array_filter($signRows, static fn ($r) => \App\Libraries\ReportPdf::mayDecide($apv, $r)));
             if (! empty($filtered)) {
                 $signRows = $filtered;
             }
@@ -2914,6 +2914,13 @@ private function computeIntent(string $text, string $prev = '', string $lastBotM
             'ai_enabled'  => \App\Libraries\SystemSettings::get('ai.enabled', '1') !== '0',
             'user_unread' => (int) ($db->table('tbl_bot_threads')->selectSum('user_unread', 's')->where('user_id', (int) $u['id'])->get()->getRow()->s ?? 0),
         ];
+        // the AI Brain never stays stopped: every page polls this, so a service that died is started again (aiOnline() launches run-ai.cmd, checked every 8 s)
+        if ($out['ai_enabled']) {
+            if (\App\Libraries\SystemSettings::get('ai.mode', 'shadow') === 'off') {
+                \App\Libraries\SystemSettings::set('ai.mode', 'live', 'auto');
+            }
+            $out['ai_online'] = \App\Libraries\BrainEvents::aiOnline();
+        }
         $out['user_live'] = $db->table('tbl_bot_sessions')->where(['user_id' => (int) $u['id'], 'status' => 'open'])->where('last_activity_at >=', date('Y-m-d H:i:s', time() - BotSessions::IDLE))->countAllResults() > 0;
         if ($this->isAdmin()) {
             BotSessions::expire();

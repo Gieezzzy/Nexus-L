@@ -98,6 +98,10 @@
                             <input type="date" class="wst-meta-val" id="wst-card-dt-date" value="2026-10-28" title="Test Date - click to change" style="border:1px solid #cbd5e1;border-radius:6px;padding:2px 6px;background:#fff;font:inherit;max-width:100%">
                         </div>
                         <div class="wst-meta-card">
+                            <span class="wst-meta-label">End Date</span>
+                            <input type="date" class="wst-meta-val" id="wst-card-dt-end" value="" title="Target End Date - click to customize" style="border:1px solid #cbd5e1;border-radius:6px;padding:2px 6px;background:#fff;font:inherit;max-width:100%">
+                        </div>
+                        <div class="wst-meta-card">
                             <span class="wst-meta-label">Material / Type</span>
                             <span class="wst-meta-val" id="wst-card-dt-type" title="Standard Whole Shoe Flexing">Standard Whole Shoe Flexing</span>
                         </div>
@@ -286,6 +290,40 @@
                 <span class="muted sm" style="color:#94a3b8;font-size:11.5px">Runs in background while closed</span>
                 <button type="button" id="btn-wst-cancel-monitor-modal" class="dtr-btn wst-btn-secondary" style="padding:6px 18px">Close Monitor</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Start Test: Customize Target End Date Prompt -->
+<div id="wst-start-date-backdrop" class="dtr-modal-backdrop hidden" style="z-index:10075">
+    <div class="dtr-modal-dialog wst-theme-modal" style="max-width:460px;width:94%">
+        <div class="dtr-modal-header" style="padding:14px 20px">
+            <h3 style="margin:0;font-size:15.5px;font-weight:700">Start Test &amp; Set End Date</h3>
+            <button type="button" id="btn-wst-start-date-close" class="dtr-modal-close" title="Close">&times;</button>
+        </div>
+        <div class="dtr-modal-body" style="padding:18px 20px">
+            <p class="muted sm" style="margin:0 0 12px">Confirm or customize when this test should end. The live countdown timer will follow your selected End Date &amp; Time.</p>
+            <div class="dtr-grid-2" style="gap:12px;margin-bottom:12px">
+                <div class="dtr-field">
+                    <label for="wst-start-end-date">Target End Date *</label>
+                    <input type="date" id="wst-start-end-date" class="dtr-input" style="width:100%">
+                </div>
+                <div class="dtr-field">
+                    <label for="wst-start-end-time">Target End Time</label>
+                    <input type="time" id="wst-start-end-time" class="dtr-input" style="width:100%">
+                </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px" id="wst-start-presets">
+                <button type="button" class="dtr-btn-xs dtr-btn-outline" data-add-hrs="24">+24 hrs</button>
+                <button type="button" class="dtr-btn-xs dtr-btn-outline" data-add-hrs="72">+3 Days</button>
+                <button type="button" class="dtr-btn-xs dtr-btn-outline" data-add-hrs="168">+7 Days</button>
+                <button type="button" class="dtr-btn-xs dtr-btn-outline" data-add-hrs="default">Default</button>
+            </div>
+            <div id="wst-start-end-preview" class="muted sm" style="padding:8px 10px;border-radius:8px;background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.22);font-weight:600"></div>
+        </div>
+        <div class="dtr-modal-footer" style="padding:12px 20px;display:flex;justify-content:flex-end;gap:10px">
+            <button type="button" id="btn-wst-start-date-cancel" class="dtr-btn wst-btn-secondary">Cancel</button>
+            <button type="button" id="btn-wst-confirm-start" class="dtr-btn dtr-btn-primary" style="font-weight:700">Start Test</button>
         </div>
     </div>
 </div>

@@ -6,14 +6,8 @@ namespace App\Controllers;
 class ThirdPartyController extends BaseController
 {
     public const TYPES = [
-        'qima'   => ['QIMA', 'QIMA inspection and test reports'],
-        'cfa'    => ['CFA', 'CFA reports'],
-        'rsl'    => ['RSL', 'Restricted Substances List test reports'],
-        'kc'     => ['KC Test', 'KC (Korea Certification) test reports'],
-        'cpsia'  => ['CPSIA', 'CPSIA (US consumer product safety) test reports'],
-        'gb'     => ['GB', 'GB (China national standard) test reports'],
-        'coc'    => ['COC', 'Certificates of Conformity'],
-        'bom'    => ['BOM', 'Bill of Materials documents'],
+        'qima' => ['QIMA', 'QIMA inspection and test reports'],
+        'cfa'  => ['CFA Loading', 'CFA loading and inspection reports'],
     ];
 
     private const IMAGE_DIR   = 'D:\\BACK UP\\OUTDATA\\QIMA image\\';
@@ -218,7 +212,7 @@ class ThirdPartyController extends BaseController
         }
 
         return $this->render('thirdparty/index', [
-            'title'  => 'Third Party Test - ' . self::TYPES[$type][0],
+            'title'  => self::TYPES[$type][0],
             'type'   => $type,
             'types'  => self::TYPES,
             'orders' => $orders,

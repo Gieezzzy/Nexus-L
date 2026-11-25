@@ -108,13 +108,20 @@ class MaterialsController extends BaseController
             $b->where('ReceivedDate <=', $to);
         }
         $mothers = [];
-        foreach ($b->get()->getResultArray() as $m0) {      // one line per Lab Ref (the tracker may hold a Lab Ref on several rows)
-            if (! isset($mothers[$m0['LabRefNo']])) {
-                $mothers[$m0['LabRefNo']] = $m0;
+        $kids = [];
+        foreach ($b->get()->getResultArray() as $m0) {      // one line per mother Lab Ref; rows saved by Material Receive are child Lab Refs (one per sample per test) of it
+            $mk = trim((string) ($m0['MotherLabRefNo'] ?? '')) !== '' ? (string) $m0['MotherLabRefNo'] : (string) $m0['LabRefNo'];
+            if (! isset($mothers[$mk])) {
+                $mothers[$mk] = ['LabRefNo' => $mk] + $m0;
+            }
+            if (trim((string) ($m0['TestCode'] ?? '')) !== '' && $mk !== (string) $m0['LabRefNo']) {
+                $kids[$mk][] = [
+                    'src' => 't', 'id' => (int) $m0['TrackerID'], 'child' => (string) $m0['LabRefNo'], 'code' => (string) $m0['TestCode'], 'name' => (string) ($m0['TestType'] ?? ''), 'method' => '', 'unit' => '',
+                    'status' => (string) (($m0['Status'] ?? '') ?: 'Pending'), 'result' => (string) ($m0['Result'] ?? ''), 'tested' => '', 'tech' => '', 'remarks' => (string) ($m0['Remarks'] ?? ''),
+                ];
             }
         }
         $mothers = array_values($mothers);
-        $kids    = [];
         if ($mothers) {
             foreach ($db->table('tbl_dtr_MaterialTrackerTests')->whereIn('MotherLabRefNo', array_column($mothers, 'LabRefNo'))->orderBy('SortNo')->orderBy('TestID')->get()->getResultArray() as $k) {
                 $kids[$k['MotherLabRefNo']][] = [
@@ -127,9 +134,16 @@ class MaterialsController extends BaseController
         $names  = array_column(\App\Libraries\MaterialCatalog::categories(), 'name', 'slug');
         $mine   = array_flip(array_column($mothers, 'LabRefNo'));
         $counts = array_fill_keys(array_keys($names), 0);
+        $allCodes = array_unique(array_filter(array_column($mothers, 'MaterialCode'), fn ($c) => $c !== '' && $c !== null));
+        $specMap  = [];
+        if ($allCodes) {
+            foreach ($db->table('tbl_dtr_material_type_status')->select('MaterialCode, MaterialType')->whereIn('MaterialCode', array_values($allCodes))->get()->getResultArray() as $sm) {
+                $specMap[$sm['MaterialCode']] = (string) $sm['MaterialType'];
+            }
+        }
         $rows   = [];
         foreach ($mothers as $m) {
-            $spec = (string) ($db->query('SELECT MaterialType FROM tbl_dtr_material_type_status WHERE MaterialCode = ? LIMIT 1', [$m['MaterialCode']])->getRow('MaterialType') ?? '');
+            $spec = $specMap[$m['MaterialCode']] ?? '';
             $res  = \App\Libraries\MaterialCatalog::resolve($spec !== '' ? $spec : (string) $m['MaterialType']) ?? \App\Libraries\MaterialCatalog::resolve((string) $m['MaterialType']);
             $slug = $res['category'] ?? '';
             if ($slug !== '') {
@@ -307,6 +321,9 @@ class MaterialsController extends BaseController
         if (! $t) {
             return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'That test no longer exists.', 'csrf' => csrf_hash()]);
         }
+        if (\App\Libraries\ReportPdf::signedLocked((string) $t['ChildLabRefNo']) || \App\Libraries\ReportPdf::signedLocked((string) $t['MotherLabRefNo'])) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'message' => 'This report is approved and signed. Only an Admin can change it.', 'csrf' => csrf_hash()]);
+        }
         $mother = $db->table('tbl_dtr_MaterialTracker')->where('LabRefNo', $t['MotherLabRefNo'])->get()->getRowArray();
         $ty     = $this->sheetType($mother ?: ['MaterialCode' => '', 'MaterialType' => (string) $t['MaterialType']]);
         $clean  = [];
@@ -400,6 +417,17 @@ class MaterialsController extends BaseController
         }
         $p  = $this->request->getJSON(true) ?? [];
         $db = \Config\Database::connect();
+        if (($p['src'] ?? '') === 't') {   // a Material Receive child Lab Ref (a row of tbl_dtr_MaterialTracker)
+            $row = $db->table('tbl_dtr_MaterialTracker')->where('TrackerID', (int) ($p['id'] ?? 0))->where('MotherLabRefNo !=', '')->where('TestCode !=', '')->get()->getRowArray();
+            if (! $row) {
+                return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'That test is already gone.', 'csrf' => csrf_hash()]);
+            }
+            $db->table('tbl_dtr_MaterialTracker')->where('TrackerID', (int) $row['TrackerID'])->delete();
+            \App\Libraries\DataCache::bump('material');
+            \App\Libraries\ActivityLog::record('materials', 'test-remove', (string) $row['LabRefNo'], 'deleted: ' . $row['TestType'] . ($row['Result'] ? ' (it had result ' . $row['Result'] . ')' : ''));
+
+            return $this->response->setJSON(['ok' => true, 'message' => $row['TestType'] . ' (' . $row['LabRefNo'] . ') was deleted.', 'csrf' => csrf_hash()]);
+        }
         $t  = $db->table('tbl_dtr_MaterialTrackerTests')->where('TestID', (int) ($p['id'] ?? 0))->get()->getRowArray();
         if (! $t) {
             return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'That test is already gone.', 'csrf' => csrf_hash()]);
@@ -417,11 +445,19 @@ class MaterialsController extends BaseController
         $db   = \Config\Database::connect();
         $spec = (string) ($db->query('SELECT MaterialType FROM tbl_dtr_material_type_status WHERE MaterialCode = ? LIMIT 1', [$mother['MaterialCode']])->getRow('MaterialType') ?? '');
         $res  = \App\Libraries\MaterialCatalog::resolve($spec !== '' ? $spec : (string) $mother['MaterialType']) ?? \App\Libraries\MaterialCatalog::resolve((string) $mother['MaterialType']);
-        if (! $res) {
-            return [[], null];
-        }
         $have = array_column($db->table('tbl_dtr_MaterialTrackerTests')->select('TestCode')->where('MotherLabRefNo', $mother['LabRefNo'])->get()->getResultArray(), 'TestCode');
         $out  = [];
+        if (! $res) {   // the material type has no test list: any test of the Select-tests list can be added
+            $i = 0;
+            foreach (\App\Controllers\DtrController::MATERIAL_TESTS as $name => $code) {
+                $i++;
+                if (! in_array($code, $have, true)) {
+                    $out[] = ['code' => $code, 'name' => $name, 'method' => '', 'sort' => $i];
+                }
+            }
+
+            return [$out, ['type' => (string) $mother['MaterialType'], 'tests' => []]];
+        }
         foreach ($res['tests'] as $i => $code) {
             if (! in_array($code, $have, true)) {
                 $d     = \App\Libraries\MaterialCatalog::test($code);
@@ -432,10 +468,106 @@ class MaterialsController extends BaseController
         return [$out, $res];
     }
 
+    /** POST /materials/delete {mother}: the whole received material (its Lab Ref, every test and result, its container log line) is deleted */
+    public function deleteMaterial(): ResponseInterface
+    {
+        if (! self::canEdit()) {
+            return $this->noEdit();
+        }
+        $p   = $this->request->getJSON(true) ?? [];
+        $ref = trim((string) ($p['mother'] ?? ''));
+        $db  = \Config\Database::connect();
+        if ($ref === '') {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => 'No Lab Reference given.', 'csrf' => csrf_hash()]);
+        }
+        $rows = $db->table('tbl_dtr_MaterialTracker')->groupStart()->where('LabRefNo', $ref)->orWhere('MotherLabRefNo', $ref)->groupEnd()->get()->getResultArray();
+        if (! $rows) {
+            return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'That material is already gone.', 'csrf' => csrf_hash()]);
+        }
+        $kids = array_merge([$ref], array_column($rows, 'LabRefNo'), array_column($db->table('tbl_dtr_MaterialTrackerTests')->select('ChildLabRefNo')->where('MotherLabRefNo', $ref)->get()->getResultArray(), 'ChildLabRefNo'));
+        foreach ($kids as $k) {
+            if (\App\Libraries\ReportPdf::signedLocked(trim((string) $k))) {
+                return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'message' => 'A Lab Ref of this material is approved and signed. Only an Admin can delete it.', 'csrf' => csrf_hash()]);
+            }
+        }
+        $db->transStart();
+        $db->table('tbl_dtr_MaterialTrackerTests')->where('MotherLabRefNo', $ref)->delete();
+        $db->table('tbl_dtr_MaterialTracker')->groupStart()->where('LabRefNo', $ref)->orWhere('MotherLabRefNo', $ref)->groupEnd()->delete();
+        $db->table('tbl_dtr_containers')->where('ContainerNo', $ref)->delete();
+        $db->transComplete();
+        \App\Libraries\DataCache::bump('material');
+        \App\Libraries\ActivityLog::record('materials', 'material-delete', $ref, 'material deleted with ' . count($rows) . ' Lab Ref row(s)');
+
+        return $this->response->setJSON(['ok' => $db->transStatus(), 'message' => $ref . ' was deleted completely.', 'csrf' => csrf_hash()]);
+    }
+
+    /** a Material Receive line (child Lab Refs under a mother): its rows, and the tests of the Select-tests list that are not on it yet */
+    private function receiveTests(string $mother): ?array
+    {
+        $rows = \Config\Database::connect()->table('tbl_dtr_MaterialTracker')->where('MotherLabRefNo', $mother)->orderBy('TrackerID')->get()->getResultArray();
+        if (! $rows) {
+            return null;
+        }
+        $have = array_column($rows, 'TestType');
+        $opts = [];
+        foreach (\App\Controllers\DtrController::MATERIAL_TESTS as $name => $code) {
+            if (! in_array($name, $have, true)) {
+                $opts[] = ['code' => $code, 'name' => $name, 'method' => ''];
+            }
+        }
+
+        return ['rows' => $rows, 'options' => $opts];
+    }
+
+    /** the test is added to a Material Receive line: one child Lab Ref per sample, numbered on from the line's last one */
+    private function addReceiveTest(array $rc, string $code): ResponseInterface
+    {
+        $name = array_search($code, \App\Controllers\DtrController::MATERIAL_TESTS, true);
+        $ok   = false;
+        foreach ($rc['options'] as $o) {
+            $ok = $ok || $o['code'] === $code;
+        }
+        if (! $ok || $name === false) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => 'That test is already on the list.', 'csrf' => csrf_hash()]);
+        }
+        $db   = \Config\Database::connect();
+        $base = $rc['rows'][0];
+        $per  = [];
+        foreach ($rc['rows'] as $r) {
+            $per[$r['TestType']] = ($per[$r['TestType']] ?? 0) + 1;
+        }
+        $n = max(1, (int) max($per));
+        if (! preg_match('/^(.*)-(\d+)$/', (string) $base['LabRefNo'], $m)) {
+            return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => 'Could not number the new Lab Ref.', 'csrf' => csrf_hash()]);
+        }
+        $last = 0;
+        foreach ($db->query('SELECT LabRefNo FROM tbl_dtr_MaterialTracker WHERE LabRefNo LIKE ?', [$db->escapeLikeString($m[1]) . '-%'])->getResultArray() as $x) {
+            if (preg_match('/-(\d+)$/', (string) $x['LabRefNo'], $mm)) {
+                $last = max($last, (int) $mm[1]);
+            }
+        }
+        unset($base['TrackerID']);
+        $made = 0;
+        for ($i = 1; $i <= $n; $i++) {
+            try {
+                $made += $db->table('tbl_dtr_MaterialTracker')->insert(array_merge($base, ['LabRefNo' => $m[1] . '-' . ($last + $i), 'TestType' => $name, 'TestCode' => $code, 'Status' => 'Pending', 'Result' => null, 'CreatedAt' => date('Y-m-d H:i:s')])) ? 1 : 0;
+            } catch (\Throwable $e) {
+            }
+        }
+        \App\Libraries\DataCache::bump('material');
+        \App\Libraries\ActivityLog::record('materials', 'test-add', $base['MotherLabRefNo'], 'test added: ' . $name . ' x' . $made);
+
+        return $this->response->setJSON(['ok' => $made > 0, 'message' => $name . ' was added to ' . $base['MotherLabRefNo'] . ' (' . $made . ' Lab Ref' . ($made === 1 ? '' : 's') . ').', 'csrf' => csrf_hash()]);
+    }
+
     /** GET /materials/test-options?mother=: the tests that can be added back to this Lab Ref */
     public function testOptions(): ResponseInterface
     {
-        $mother = \Config\Database::connect()->table('tbl_dtr_MaterialTracker')->where('LabRefNo', trim((string) $this->request->getGet('mother')))->get()->getRowArray();
+        $ref    = trim((string) $this->request->getGet('mother'));
+        $mother = \Config\Database::connect()->table('tbl_dtr_MaterialTracker')->where('LabRefNo', $ref)->get()->getRowArray();
+        if (! $mother && ($rc = $this->receiveTests($ref)) !== null) {
+            return $this->response->setJSON(['ok' => true, 'options' => $rc['options'], 'can_edit' => self::canEdit()]);
+        }
         if (! $mother) {
             return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'That Lab Reference was not found.']);
         }
@@ -453,6 +585,9 @@ class MaterialsController extends BaseController
         $p      = $this->request->getJSON(true) ?? [];
         $db     = \Config\Database::connect();
         $mother = $db->table('tbl_dtr_MaterialTracker')->where('LabRefNo', trim((string) ($p['mother'] ?? '')))->get()->getRowArray();
+        if (! $mother && ($rc = $this->receiveTests(trim((string) ($p['mother'] ?? '')))) !== null) {
+            return $this->addReceiveTest($rc, trim((string) ($p['code'] ?? '')));
+        }
         if (! $mother) {
             return $this->response->setStatusCode(404)->setJSON(['ok' => false, 'message' => 'That Lab Reference was not found.', 'csrf' => csrf_hash()]);
         }
@@ -467,6 +602,7 @@ class MaterialsController extends BaseController
             return $this->response->setStatusCode(422)->setJSON(['ok' => false, 'message' => 'That test is not one of this material type\'s tests, or it is already on the list.', 'csrf' => csrf_hash()]);
         }
         $d = \App\Libraries\MaterialCatalog::test($pick['code']);
+        $d = ['name' => $d['name'] ?? $pick['name'], 'method' => $d['method'] ?? '', 'unit' => $d['unit'] ?? ''];
         $db->query('INSERT IGNORE INTO tbl_dtr_MaterialTrackerTests (TrackerID, MotherLabRefNo, ChildLabRefNo, MaterialCode, MaterialType, TestType, TestCode, Status, CreatedAt, TestMethod, Unit, SortNo)
             VALUES (?, ?, ?, ?, ?, ?, ?, "Pending", NOW(), ?, ?, ?)', [(int) $mother['TrackerID'], $mother['LabRefNo'], $mother['LabRefNo'] . '-' . $pick['code'], (string) ($mother['MaterialCode'] ?? ''), $res['type'], $d['name'], $pick['code'], $d['method'], $d['unit'], $pick['sort']]);
         \App\Libraries\DataCache::bump('material');
@@ -550,17 +686,35 @@ class MaterialsController extends BaseController
         if ($q !== '') {
             $b->groupStart()->like('LabRefNo', $q)->orLike('MaterialName', $q)->orLike('MaterialCode', $q)->orLike('Supplier', $q)->groupEnd();
         }
-        $seen = [];
-        $out  = [];
+        $seen    = [];
+        $allRows = [];
         foreach ($b->get()->getResultArray() as $m) {
             if (isset($seen[$m['LabRefNo']])) {
                 continue;
             }
             $seen[$m['LabRefNo']] = true;
-            $spec = (string) ($db->query('SELECT MaterialType FROM tbl_dtr_material_type_status WHERE MaterialCode = ? LIMIT 1', [$m['MaterialCode']])->getRow('MaterialType') ?? '');
+            $allRows[] = $m;
+        }
+        $crCodes  = array_unique(array_filter(array_column($allRows, 'MaterialCode'), fn ($c) => $c !== '' && $c !== null));
+        $crSpec   = [];
+        if ($crCodes) {
+            foreach ($db->table('tbl_dtr_material_type_status')->select('MaterialCode, MaterialType')->whereIn('MaterialCode', array_values($crCodes))->get()->getResultArray() as $sm) {
+                $crSpec[$sm['MaterialCode']] = (string) $sm['MaterialType'];
+            }
+        }
+        $crRefs = array_column($allRows, 'LabRefNo');
+        $crKids = [];
+        if ($crRefs) {
+            foreach ($db->table('tbl_dtr_MaterialTrackerTests')->whereIn('MotherLabRefNo', $crRefs)->orderBy('SortNo')->orderBy('TestID')->get()->getResultArray() as $k) {
+                $crKids[$k['MotherLabRefNo']][] = $k;
+            }
+        }
+        $out = [];
+        foreach ($allRows as $m) {
+            $spec = $crSpec[$m['MaterialCode']] ?? '';
             $res  = \App\Libraries\MaterialCatalog::resolve($spec !== '' ? $spec : (string) $m['MaterialType']) ?? \App\Libraries\MaterialCatalog::resolve((string) $m['MaterialType']);
             $cat  = $names[$res['category'] ?? ''] ?? (string) $m['MaterialType'];
-            $kids = $db->table('tbl_dtr_MaterialTrackerTests')->where('MotherLabRefNo', $m['LabRefNo'])->orderBy('SortNo')->orderBy('TestID')->get()->getResultArray();
+            $kids = $crKids[$m['LabRefNo']] ?? [];
             $base = ['appsheet_material_id' => '', 'lab_ref_no' => $m['LabRefNo'], 'material_category_name' => $cat, 'machine_number' => '', 'possible_cause' => '', 'detail_count' => 0, 'started_at_fmt' => '', 'finished_at' => ''];
             if (! $kids) {
                 $out[] = $base + ['id' => 'm' . $m['TrackerID'], 'test_code' => '', 'material_test_name' => (string) $m['MaterialName'], 'technician' => (string) $m['EncodedBy'], 'result' => 'Pending', 'remarks' => 'Received ' . substr((string) $m['ReceivedDate'], 0, 10), 'test_date' => substr((string) $m['ReceivedDate'], 0, 10), 'details_summary' => 'No test list for this material type'];

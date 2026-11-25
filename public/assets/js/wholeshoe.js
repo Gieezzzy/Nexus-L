@@ -79,6 +79,8 @@
 
   let currentWstCategory = $('.dtr-subtab[data-wst-cat].active, .wst-cat-tab.active')?.dataset?.wstCat || 'hydrolysis';
   let currentWstTestId = null;
+  let currentWstRecord = null;
+  let currentWstTimer = null;
   let activeWstGroup = 'dry';
 
   const getMethod = (cat = currentWstCategory) => (window.WholeshoeMethods && window.WholeshoeMethods[cat]) || null;
@@ -943,11 +945,21 @@
       currentWstGroups = res.groups || {};
       currentWstState = res.state || {};
 
+      currentWstRecord = r;
+      currentWstTimer = res.timer || null;
       if ($('#wst-modal-dt-labref')) $('#wst-modal-dt-labref').value = r.labreference;
       if ($('#wst-card-dt-labref')) $('#wst-card-dt-labref').textContent = r.labreference;
       if ($('#wst-modal-labref-badge')) $('#wst-modal-labref-badge').textContent = r.labreference;
       if ($('#wst-modal-dt-date')) $('#wst-modal-dt-date').value = r.testdate || '';
       if ($('#wst-card-dt-date')) { const dEl = $('#wst-card-dt-date'); dEl.tagName === 'INPUT' ? (dEl.value = (r.testdate || '').slice(0, 10)) : (dEl.textContent = r.testdate || '—'); }
+      if ($('#wst-card-dt-end')) {
+        let endYmd = (r.target_end_at || '').slice(0, 10);
+        if (!endYmd && res.timer && res.timer.has_timer && res.timer.remaining_sec > 0) {
+          const dEnd = new Date(Date.now() + res.timer.remaining_sec * 1000);
+          endYmd = `${dEnd.getFullYear()}-${String(dEnd.getMonth() + 1).padStart(2, '0')}-${String(dEnd.getDate()).padStart(2, '0')}`;
+        }
+        $('#wst-card-dt-end').value = endYmd;
+      }
       const sampleSummary = `${r.samplecountdry}D / ${r.samplecountwet}W / ${r.samplecounthydro}H`;
       if ($('#wst-modal-dt-samples')) $('#wst-modal-dt-samples').value = sampleSummary;
       if ($('#wst-card-dt-samples')) $('#wst-card-dt-samples').textContent = sampleSummary;
@@ -1524,15 +1536,95 @@
     }
   });
 
+  // Start Test with End Date customization prompt
+  const startDateBackdrop = $('#wst-start-date-backdrop');
+  const startEndDateIn = $('#wst-start-end-date');
+  const startEndTimeIn = $('#wst-start-end-time');
+  const startEndPrev = $('#wst-start-end-preview');
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const setStartEndFromTs = (ms) => {
+    const dt = new Date(ms);
+    if (startEndDateIn) startEndDateIn.value = `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`;
+    if (startEndTimeIn) startEndTimeIn.value = `${pad2(dt.getHours())}:${pad2(dt.getMinutes())}`;
+    updateStartEndPreview();
+  };
+  const updateStartEndPreview = () => {
+    if (!startEndPrev || !startEndDateIn) return;
+    const d = startEndDateIn.value;
+    const t = (startEndTimeIn && startEndTimeIn.value) ? startEndTimeIn.value : '17:00';
+    if (!d) { startEndPrev.textContent = 'Select a target end date.'; return; }
+    const target = new Date(`${d}T${t}:00`);
+    const diffSec = Math.round((target.getTime() - Date.now()) / 1000);
+    if (!isFinite(diffSec) || diffSec <= 0) {
+      startEndPrev.textContent = 'End date & time must be in the future.';
+      startEndPrev.style.color = '#dc2626';
+      return;
+    }
+    startEndPrev.style.color = '';
+    const days = Math.floor(diffSec / 86400);
+    const hrs = Math.floor((diffSec % 86400) / 3600);
+    const mins = Math.floor((diffSec % 3600) / 60);
+    const dur = (days > 0 ? `${days}d ` : '') + `${hrs}h ${mins}m`;
+    startEndPrev.textContent = `Duration: ${dur} · Ends ${target.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+  };
+  const closeStartDatePrompt = () => { startDateBackdrop?.classList.add('hidden'); };
+  $('#btn-wst-start-date-close')?.addEventListener('click', closeStartDatePrompt);
+  $('#btn-wst-start-date-cancel')?.addEventListener('click', closeStartDatePrompt);
+  startEndDateIn?.addEventListener('input', updateStartEndPreview);
+  startEndTimeIn?.addEventListener('input', updateStartEndPreview);
+  $('#wst-start-presets')?.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-add-hrs]'); if (!b) return;
+    const v = b.dataset.addHrs;
+    const sec = v === 'default' ? (currentWstRecord?.timer_duration_sec || 7 * 86400) : Number(v) * 3600;
+    setStartEndFromTs(Date.now() + sec * 1000);
+  });
+
   // Modal actions (Start / Stop)
-  $('#btn-wst-modal-start')?.addEventListener('click', async () => {
+  $('#btn-wst-modal-start')?.addEventListener('click', () => {
     if (!currentWstTestId) return;
+    if (startDateBackdrop) {
+      const existing = currentWstRecord?.target_end_at;
+      const exTs = existing ? Date.parse(String(existing).replace(' ', 'T')) : NaN;
+      if (isFinite(exTs) && exTs > Date.now() + 60000) {
+        setStartEndFromTs(exTs);
+      } else {
+        const defSec = (currentWstTimer && currentWstTimer.remaining_sec > 60)
+          ? currentWstTimer.remaining_sec
+          : (currentWstRecord?.timer_duration_sec || 7 * 86400);
+        setStartEndFromTs(Date.now() + defSec * 1000);
+      }
+      startDateBackdrop.classList.remove('hidden');
+      startEndDateIn?.focus();
+    }
+  });
+
+  $('#btn-wst-confirm-start')?.addEventListener('click', async () => {
+    if (!currentWstTestId) return;
+    const endDate = startEndDateIn?.value || '';
+    const endTime = startEndTimeIn?.value || '';
+    const btn = $('#btn-wst-confirm-start');
+    if (btn) btn.disabled = true;
     try {
-      const res = await apiFetch(`wst/start/${currentWstTestId}`, { method: 'POST' });
+      const res = await apiFetch(`wst/start/${currentWstTestId}`, {
+        method: 'POST',
+        body: JSON.stringify({ end_date: endDate, end_time: endTime }),
+      });
       if (res.success) {
-        showToast('Test session started successfully.', 'success');
+        closeStartDatePrompt();
+        showToast(res.message || 'Test session started successfully.', 'success');
         await openWstMonitorModal(currentWstTestId);
-        $('#btn-wst-save-checkpoint-remark')?.addEventListener('click', async () => {
+        loadWstRecords(currentWstCategory, false, true);
+      } else {
+        showToast(res.message || 'Failed to start test.', 'error');
+      }
+    } catch (err) {
+      showToast(`Error: ${err.message}`, 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  $('#btn-wst-save-checkpoint-remark')?.addEventListener('click', async () => {
     if (!currentWstTestId) return;
     const dayInput = $('#wst-checkpoint-day');
     const remarkInput = $('#wst-checkpoint-remark-input');
@@ -1573,15 +1665,6 @@
         saveBtn.disabled = false;
         saveBtn.textContent = '+ Add Remark';
       }
-    }
-  });
-
-  loadWstRecords(currentWstCategory);
-      } else {
-        showToast(res.message || 'Could not start test.', 'error');
-      }
-    } catch (err) {
-      showToast(`Error: ${err.message}`, 'error');
     }
   });
 
@@ -2385,6 +2468,29 @@ The result (PASS / FAIL / COMPLETED), the timer, the cycles, the findings and th
       loadWstRecords(currentWstCategory, false, true);
     } else {
       showToast(res.message || 'Could not change the Test Date', 'error');
+    }
+  });
+
+  // Target End Date can also be customized directly from the monitor card
+  $('#wst-card-dt-end')?.addEventListener('change', async (e) => {
+    const el = e.target;
+    if (!currentWstTestId || !el.value) return;
+    const picked = el.value;
+    const saved  = (currentWstRecord?.target_end_at || '').slice(0, 10);
+    try {
+      const res = await apiFetch(`wst/end-date/${currentWstTestId}`, { method: 'POST', body: JSON.stringify({ end_date: picked }) });
+      if (res.success) {
+        showToast('End Date saved: ' + (res.end_date || picked), 'success');
+        await openWstMonitorModal(currentWstTestId);
+        loadWstRecords(currentWstCategory, false, true);
+      } else {
+        if (saved) el.value = saved;
+        showToast(res.message || 'Could not update End Date', 'error');
+      }
+    } catch (err) {
+      // a failed request (expired session / token, server error) used to fail silently and leave the picked date on screen
+      if (saved) el.value = saved;
+      showToast('End Date was NOT saved. Please refresh the page (Ctrl+F5) and try again.', 'error');
     }
   });
 

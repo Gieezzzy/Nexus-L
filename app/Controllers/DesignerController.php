@@ -29,7 +29,11 @@ class DesignerController extends BaseController
      */
     private function bondingFormFields(): array
     {
+        // the DTR page is split into partials (dtr/partials/*.php): read them together with the page itself
         $html = (string) @file_get_contents(APPPATH . 'Views/dtr/index.php');
+        foreach (glob(APPPATH . 'Views/dtr/partials/*.php') ?: [] as $part) {
+            $html .= "\n" . (string) @file_get_contents($part);
+        }
         $from = strpos($html, 'id="dtr-bonding-form"');
         $to   = strpos($html, 'dtr-bonding-points-tbody', (int) $from);
         if ($from === false) {

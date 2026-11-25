@@ -433,7 +433,7 @@ class LabMonitoringController extends BaseController
                 $skipped++;
                 continue;
             }
-            preg_match('/^DTP(\d{4})(\d{2})(\d{2})(?:WH|SH|FA)([A-Z]\d+)-([RL])\b/i', $lab, $m);
+            preg_match('/^DTP(\d{4})(\d{2})(\d{2})(?:WS|WH|SH|FA)([A-Z]\d+)-([RL])\b/i', $lab, $m);
             $done = $db->table('tbl_dtr_wholeshoetracker')->selectMax('TimeCompleted')->where('WholeshoeLabRefNo', $lab)->get()->getRowArray();
             $vsp  = trim((string) $rows['po_lot_no']);
             $payload = [

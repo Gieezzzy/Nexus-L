@@ -62,13 +62,13 @@
 
   function childRows(r) {
     if (!r.tests.length) return '<p class="mt-empty">This material type has no test list.</p>';
-    const head = '<thead><tr><th>#</th><th>Test</th><th>Child Lab Ref</th><th>Status</th><th>Result</th><th>Tested</th><th>Technician</th>' + (canEdit && r.source !== 'bench' ? '<th></th>' : '') + '</tr></thead>';
+    const head = '<thead><tr><th>#</th><th>Test</th><th>Child Lab Ref</th><th>Status</th><th>Result</th><th>Tested</th><th>Technician</th>' + (canEdit && r.source !== 'bench' ? '<th class="mt-act"></th>' : '') + '</tr></thead>';
     const body = r.tests.map((t, i) => {
       const meta = [t.method, t.unit].filter(Boolean).join(' · ');
       const name = `<b>${esc(t.name)}</b>${meta ? `<small>${esc(meta)}</small>` : ''}`;
       const link = r.source === 'bench' ? `<span class="mono">${esc(t.child)}</span>` : `<button type="button" class="mt-link mono" data-open-test="${t.id}" data-mother="${esc(r.lab_ref)}" title="Open the test sheet">${esc(t.child)}</button>`;
       {
-        return `<tr class="${tint(t.result)}"><td>${i + 1}</td><td>${name}</td><td>${link}</td><td>${chip(t.status)}</td><td>${resChip(t.result)}</td><td>${esc(day(t.tested)) || '-'}</td><td>${esc(t.tech) || '-'}</td>${canEdit && r.source !== 'bench' ? `<td class="mt-act"><button type="button" class="mt-x" data-rm-test="${t.id}" data-name="${esc(t.name)}" data-lab="${esc(r.lab_ref)}" title="Remove this test: it does not apply to this material" aria-label="Remove ${esc(t.name)}">&#10005;</button></td>` : ''}</tr>`;
+        return `<tr class="${tint(t.result)}"><td>${i + 1}</td><td>${name}</td><td>${link}</td><td>${chip(t.status)}</td><td>${resChip(t.result)}</td><td>${esc(day(t.tested)) || '-'}</td><td>${esc(t.tech) || '-'}</td>${canEdit && r.source !== 'bench' ? `<td class="mt-act"><button type="button" class="mt-x" data-rm-test="${t.id}" data-src="${t.src || ''}" data-name="${esc(t.name)}" data-lab="${esc(r.lab_ref)}" title="Delete this test completely" aria-label="Delete ${esc(t.name)}">&#128465; Delete</button></td>` : ''}</tr>`;
       }
       const sel = (opts, cur) => opts.map((o) => `<option value="${esc(o)}"${o === cur ? ' selected' : ''}>${o || '-'}</option>`).join('');
       return `<tr data-tid="${t.id}"><td>${i + 1}</td><td>${name}</td><td>${link}</td>`
@@ -78,7 +78,7 @@
         + `<td><input type="text" data-f="technician" value="${esc(t.tech)}" maxlength="120" placeholder="Technician"></td>`
         + '<td class="mt-act"><button type="button" class="dtr-btn dtr-btn-primary" data-save>Save</button><small class="mt-msg" role="status"></small></td></tr>';
     }).join('');
-    return `<div class="mt-tw"><table class="mt-t">${head}<tbody>${body}</tbody></table></div>`;
+    return `<div class="mt-tw${r.tests.length > 10 ? ' mt-tw-scroll' : ''}"><table class="mt-t">${head}<tbody>${body}</tbody></table></div>`;
   }
 
   function group(r) {
@@ -89,10 +89,10 @@
     const gt = r.fail ? 't-fail' : (r.tol ? 't-tol' : (r.state === 'Completed' ? 't-pass' : ''));   // red: a test failed, blue: tolerable, green: every test passed
     return `<article class="mt-group card glass${open ? ' open' : ''} ${gt}" data-id="${r.id}">`
       + `<button type="button" class="mt-head" aria-expanded="${open}"><svg class="mt-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>`
-      + `<b class="mt-ref">${esc(r.lab_ref)}</b><span class="mt-name">${esc(r.name || r.code)}</span>`
+      + `<b class="mt-ref mt-reflink" role="link" tabindex="0" data-open-mother="${esc(r.lab_ref)}" title="Open the whole view: every test and its status">${esc(r.lab_ref)}</b><span class="mt-name">${esc(r.name || r.code)}</span>`
       + `<span class="mt-type">${esc(r.category_name ? r.category_name + ' · ' : '')}${esc(r.type)}</span><span class="mt-date">${esc(day(r.received))}</span>`
       + `<span class="mt-prog" title="${r.done} of ${r.total} tests completed"><i style="width:${pct}%"></i></span><span class="mt-count">${r.done}/${r.total}</span>${r.fail ? `<span class="mt-res r-fail">${r.fail} fail</span>` : ''}${chip(r.state)}</button>`
-      + `<div class="mt-body"${open ? '' : ' hidden'}><div class="mt-info">${info}${r.tests.length && r.source !== 'bench' ? `<button type="button" class="dtr-btn dtr-btn-primary mt-opens" data-open-mother="${esc(r.lab_ref)}">Open test sheet</button>` : ''}${canEdit && r.source !== 'bench' ? `<span class="mt-addtest" data-addwrap="${esc(r.lab_ref)}"><button type="button" class="dtr-btn dtr-btn-outline" data-add-test="${esc(r.lab_ref)}" title="Put a test of this material type back on the list">+ Add test</button></span>` : ''}</div>${childRows(r)}</div></article>`;
+      + `<div class="mt-body"${open ? '' : ' hidden'}><div class="mt-info">${info}${r.tests.length && r.source !== 'bench' ? `<button type="button" class="dtr-btn dtr-btn-primary mt-opens" data-open-mother="${esc(r.lab_ref)}">Open test sheet</button>` : ''}${canEdit && r.source !== 'bench' ? `<span class="mt-delwrap">${canEdit && r.source !== 'bench' ? `<button type="button" class="mt-x mt-delmat" data-del-mat="${esc(r.lab_ref)}" data-n="${r.tests.length}" title="Delete this whole material with all its tests">&#128465; Delete material</button>` : ''}</span><span class="mt-addtest" data-addwrap="${esc(r.lab_ref)}"><button type="button" class="dtr-btn dtr-btn-outline" data-add-test="${esc(r.lab_ref)}" title="Put a test of this material type back on the list">+ Add test</button></span>` : ''}</div>${childRows(r)}</div></article>`;
   }
 
   function draw() {
@@ -228,7 +228,20 @@
       $('#mt-sh-title').textContent = (test && j.tests[0] ? j.tests[0].name + ' · ' : '') + 'Lab ' + mother + ' · ' + (j.mother.type || '') + ' Test Results';
       $('#mt-sh-body').innerHTML = sheetHtml(j);
       $('#mt-sh-saveall').hidden = !(sheet.canEdit && j.tests.length > 1);
-    } catch (e) { $('#mt-sh-body').innerHTML = `<p class="mt-empty">${esc(e.message || 'Could not open the sheet.')}</p>`; }
+    } catch (e) {
+      const g = state.rows.find((x) => x.lab_ref === mother);
+      // Material Receive items have no test sheet yet: show the monitoring view of what is on record
+      if (g && g.tests.length) { $('#mt-sh-body').innerHTML = statusView(g, test); $('#mt-sh-title').textContent = (test ? 'Test status · ' : 'Lab ') + (test ? ((g.tests.find((t) => t.id === test) || {}).child || mother) : mother + ' · All tests'); return; }
+      $('#mt-sh-body').innerHTML = `<p class="mt-empty">${esc(e.message || 'Could not open the sheet.')}</p>`;
+    }
+  }
+  // read-only monitoring view: every test of the Lab Ref with its own Lab Ref, status and result (or just the clicked test)
+  function statusView(g, test) {
+    const list = test ? g.tests.filter((t) => t.id === test) : g.tests;
+    const info = [['Material', g.name || g.code], ['Type', g.type], ['Supplier', g.supplier], ['Style', g.style], ['Received', day(g.received)], ['Progress', g.done + ' / ' + g.total + ' tests completed']]
+      .filter(([, v]) => v).map(([l, v]) => `<span><em>${l}</em> ${esc(v)}</span>`).join('');
+    const rows = list.map((t, i) => `<tr class="${tint(t.result)}"><td>${i + 1}</td><td><b>${esc(t.name)}</b></td><td>${test ? `<span class="mono">${esc(t.child)}</span>` : `<button type="button" class="mt-link mono" data-open-test="${t.id}" data-mother="${esc(g.lab_ref)}">${esc(t.child)}</button>`}</td><td>${chip(t.status)}</td><td>${resChip(t.result)}</td><td>${esc(day(t.tested)) || '-'}</td><td>${esc(t.tech) || '-'}</td><td>${esc(t.remarks) || ''}</td></tr>`).join('');
+    return `<div class="mt-info">${info}</div>${test ? `<p><button type="button" class="dtr-btn dtr-btn-outline" data-open-mother="${esc(g.lab_ref)}">&#8249; All tests of ${esc(g.lab_ref)}</button></p>` : ''}<div class="mt-tw${list.length > 10 ? ' mt-tw-scroll' : ''}"><table class="mt-t"><thead><tr><th>#</th><th>Test</th><th>Lab Ref</th><th>Status</th><th>Result</th><th>Tested</th><th>Technician</th><th>Remarks</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
   // next / previous test of the same Lab Ref (only when ONE test is open): the tests as the list shows them
   function sibNav() {
@@ -299,7 +312,7 @@
 
   root.addEventListener('click', async (e) => {
     const om = e.target.closest('[data-open-mother]');
-    if (om) { openSheet(om.dataset.openMother, 0); return; }
+    if (om) { e.stopPropagation(); openSheet(om.dataset.openMother, 0); return; }
     const ot = e.target.closest('[data-open-test]');
     if (ot) { openSheet(ot.dataset.mother, +ot.dataset.openTest); return; }
     if (e.target.closest('#mt-sh-close') || e.target === $('#mt-sheet')) { closeSheet(); return; }
@@ -325,10 +338,17 @@
       if (sheet.test) { const at = sheet.sibs.findIndex((x) => x.id === t.id); const go = sheet.sibs[at + 1] || sheet.sibs[at - 1]; sibNav(); if (go) await openSheet(sheet.mother, go.id); else closeSheet(); } else await openSheet(sheet.mother, 0);
       return;
     }
+    const dm = e.target.closest('[data-del-mat]');
+    if (dm) {
+      if (!window.confirm('Delete ' + dm.dataset.delMat + ' completely?\n\nThe material line, its ' + dm.dataset.n + ' test(s) with their Lab References and every result entered are deleted. This cannot be undone.')) return;
+      const j = await post('delete', { mother: dm.dataset.delMat });
+      if (j.ok) { note(j.message, true); await load(); } else note(j.message || 'Could not delete the material.', false);
+      return;
+    }
     const rmt = e.target.closest('[data-rm-test]');
     if (rmt) {
       if (!window.confirm('Remove "' + rmt.dataset.name + '" from ' + rmt.dataset.lab + '?\n\nUse this when the test does not apply to this material. Any result already entered for it is deleted. You can add it back with "+ Add test".')) return;
-      const j = await post('test-remove', { id: +rmt.dataset.rmTest });
+      const j = await post('test-remove', { id: +rmt.dataset.rmTest, src: rmt.dataset.src || '' });
       if (j.ok) { note(j.message, true); await load(); } else note(j.message || 'Could not remove the test.', false);
       return;
     }
@@ -338,14 +358,24 @@
       try {
         const r = await fetch(base + 'test-options?mother=' + encodeURIComponent(lab), { credentials: 'same-origin', headers: { Accept: 'application/json' } }); const j = await r.json();
         if (!j.options || !j.options.length) { note('Every test of this material type is already on the list.', true); return; }
-        wrap.innerHTML = `<select data-add-sel aria-label="Test to add">${j.options.map((o) => `<option value="${esc(o.code)}">${esc(o.name)}${o.method ? ' (' + esc(o.method) + ')' : ''}</option>`).join('')}</select><button type="button" class="dtr-btn dtr-btn-primary" data-add-go="${esc(lab)}">Add</button><button type="button" class="dtr-btn dtr-btn-outline" data-add-cancel>Cancel</button>`;
+        wrap.classList.add('open');
+        wrap.innerHTML = `<div class="mt-addbox"><div class="mt-addhead"><b>Add tests</b><span class="mt-addcount" data-add-count>0 selected</span><input type="search" class="mt-addsearch" data-add-q placeholder="Search tests..." aria-label="Search tests"><button type="button" class="mt-addlink" data-add-all>Select all</button><button type="button" class="mt-addlink" data-add-none>Clear</button></div><div class="mt-addlist">${j.options.map((o) => `<label class="mt-addopt" data-n="${esc((o.name + ' ' + o.code).toLowerCase())}"><input type="checkbox" data-add-chk value="${esc(o.code)}"><span>${esc(o.name)}${o.method ? ' <small>' + esc(o.method) + '</small>' : ''}</span></label>`).join('')}</div><div class="mt-addbar"><button type="button" class="dtr-btn dtr-btn-primary" data-add-go="${esc(lab)}">Add selected</button><button type="button" class="dtr-btn dtr-btn-outline" data-add-cancel>Cancel</button></div></div>`;
       } catch (err) { note('Could not read the tests of this material type.', false); }
       return;
     }
+    const aw = e.target.closest('.mt-addtest');
+    if (aw && (e.target.closest('[data-add-all]') || e.target.closest('[data-add-none]'))) {
+      const on = !!e.target.closest('[data-add-all]');
+      aw.querySelectorAll('.mt-addopt:not([hidden]) [data-add-chk]').forEach((c) => { c.checked = on; });
+      aw.dispatchEvent(new Event('change', { bubbles: true })); return;
+    }
     const ago = e.target.closest('[data-add-go]');
     if (ago) {
-      const sel = $('[data-add-sel]', ago.closest('.mt-addtest')); const j = await post('test-add', { mother: ago.dataset.addGo, code: sel ? sel.value : '' });
-      if (j.ok) { note(j.message, true); await load(); } else note(j.message || 'Could not add the test.', false);
+      const codes = [...ago.closest('.mt-addtest').querySelectorAll('[data-add-chk]:checked')].map((c) => c.value);
+      if (!codes.length) { note('Tick at least one test to add.', false); return; }
+      ago.disabled = true; let okN = 0; let bad = '';
+      for (const code of codes) { const j = await post('test-add', { mother: ago.dataset.addGo, code }); if (j.ok) okN++; else bad = j.message || 'Could not add a test.'; }
+      if (okN) { note(okN + ' test' + (okN === 1 ? '' : 's') + ' added.' + (bad ? ' ' + bad : ''), !bad); await load(); } else { ago.disabled = false; note(bad || 'Could not add the tests.', false); }
       return;
     }
     if (e.target.closest('[data-add-cancel]')) { await load(); return; }
@@ -367,4 +397,16 @@
   $('#mt-expand').addEventListener('click', () => { state.rows.filter((r) => stOf(r) === state.st).slice((state.page - 1) * PER, state.page * PER).forEach((r) => state.open.add(String(r.id))); draw(); });
   $('#mt-collapse').addEventListener('click', () => { state.open.clear(); draw(); });
   load();
+
+  document.addEventListener('change', (e) => {
+    const w = e.target.closest && e.target.closest('.mt-addtest'); if (!w) return;
+    const n = w.querySelectorAll('[data-add-chk]:checked').length;
+    const c = w.querySelector('[data-add-count]'); if (c) c.textContent = n + ' selected';
+    w.querySelectorAll('.mt-addopt').forEach((l) => l.classList.toggle('on', l.querySelector('input').checked));
+  });
+  document.addEventListener('input', (e) => {
+    if (!e.target.matches || !e.target.matches('[data-add-q]')) return;
+    const q = e.target.value.trim().toLowerCase();
+    e.target.closest('.mt-addtest').querySelectorAll('.mt-addopt').forEach((l) => { l.hidden = q && !l.dataset.n.includes(q); });
+  });
 })();

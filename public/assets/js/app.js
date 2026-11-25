@@ -306,7 +306,7 @@
     };
     window.nxSvcWatch = () => { fastUntil = Date.now() + 5 * 60 * 1000; tick(); };
     tick();
-    setInterval(() => { if (fastUntil) tick(); }, 3000);
+    setInterval(() => { if (fastUntil && !document.hidden) tick(); }, 8000);
     setInterval(() => { if (!fastUntil) tick(); }, 15000);
   })();
 

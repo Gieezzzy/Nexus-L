@@ -1,22 +1,5 @@
 <?php /** ERP Extract: control page for the ERP Extract Agent (admin only, under settings/). */ ?>
-<style>
-.ex{max-width:980px;margin:0 auto;color:#0f172a}
-.ex h1{font-size:26px;margin:4px 0 4px}.ex p.s{color:#475569;margin:0 0 18px}
-.ex .bar{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;padding:12px 16px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;margin-bottom:16px}
-.ex .dot{width:10px;height:10px;border-radius:50%;background:#94a3b8;display:inline-block;margin-right:6px}
-.ex .dot.on{background:#16a34a}.ex .dot.warn{background:#d97706}.ex .dot.off{background:#dc2626}
-.ex form{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px 16px;padding:16px;border:1px solid #e2e8f0;border-radius:12px;background:#fff}
-.ex label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600;color:#334155}
-.ex input,.ex select{height:40px;padding:0 10px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;font-weight:400}
-.ex .act{grid-column:1/-1;display:flex;gap:10px;flex-wrap:wrap}
-.ex button{min-height:42px;padding:0 18px;border-radius:10px;border:1px solid #0f766e;background:#0f766e;color:#fff;font-weight:600;cursor:pointer}
-.ex button.alt{background:#fff;color:#b91c1c;border-color:#fca5a5}.ex button:disabled{opacity:.45;cursor:not-allowed}
-.ex .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:16px 0}
-.ex .stats div{border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;background:#fff}.ex .stats b{display:block;font-size:24px}
-.ex .stats span{font-size:12px;color:#64748b}
-.ex pre{height:300px;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:12px;padding:12px;font-size:12.5px;line-height:1.5;white-space:pre-wrap}
-.ex .msg{margin:10px 0;color:#b91c1c;min-height:20px}
-</style>
+<link rel="stylesheet" href="<?= base_url('assets/css/views/settings-erp_extract-1.css') ?>?v=<?= @filemtime(FCPATH . 'assets/css/views/settings-erp_extract-1.css') ?>">
 <div class="ex" id="ex" data-base="<?= esc(site_url('settings/erp-extract')) ?>">
     <p class="s">Starts, stops and watches the extract agent on the ERP PC. The agent writes the production orders, detail rows, section materials and photos into the central database.
         Address, port and token: <a href="<?= esc(site_url('settings')) ?>">Settings</a> &gt; ERP agent.</p>

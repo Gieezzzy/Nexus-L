@@ -208,6 +208,14 @@ class ApprovalController extends BaseController
         if ($lr['form_slug'] === 'bonding') {
             return $this->response->setStatusCode(422)->setBody('Bonding reports are made from the VF sheet in the browser.');
         }
+        $isWholeShoe = ($lr['form_slug'] ?? '') === 'wholeshoe'
+            || stripos((string) ($lr['form_category'] ?? ''), 'whole') !== false
+            || preg_match('/^DTP\d{8}(WH|FX|HA|HY|WG|UV|DT)/i', (string) ($lr['lab_ref_no'] ?? ''));
+        if ($isWholeShoe) {
+            $dtr = new DtrController();
+            $dtr->initController($this->request, $this->response, $this->logger);
+            return $dtr->wholeShoeReportPdf();
+        }
         $pdf = ReportPdf::material((string) $lr['form_slug'], (int) $lr['source_id']);
         if (! $pdf) {
             return $this->response->setStatusCode(500)->setBody('The Access report could not be printed for ' . $lr['lab_ref_no'] . ' (there is no report form for this type of test: pull tests and bonding are generated in the browser).');
@@ -243,7 +251,15 @@ class ApprovalController extends BaseController
         }
         $signers = (int) $this->db()->table('tbl_dtr_signatories')->where('is_active', 1)->countAllResults();
 
-        return $this->json(['ok' => true, 'approval' => $this->publicRow($a), 'signatories' => $signers]);
+        return $this->json(['ok' => true, 'approval' => $this->publicRow($a), 'signatories' => $signers, 'admin' => \App\Libraries\Roles::isAdmin((string) (service('auth')->user()['role'] ?? ''))]);
+    }
+
+    /** GET dtr/approval/approvers: the active signatories the requester can choose from (max 2 per report) */
+    public function approvers()
+    {
+        $rows = $this->db()->table('tbl_dtr_signatories')->select('id, full_name, title')->where('is_active', 1)->orderBy('full_name')->get()->getResultArray();
+
+        return $this->json(['ok' => true, 'rows' => $rows]);
     }
 
     /** POST dtr/approval/request {lab_ref, application_no, pdf_b64}: stores the report PDF and asks the signatories */
@@ -256,6 +272,7 @@ class ApprovalController extends BaseController
         if (! $lr || $pdf === false || ! str_starts_with($pdf, '%PDF') || strlen($pdf) > 20 * 1024 * 1024) {
             return $this->json(['ok' => false, 'error' => 'Generate the report first, then ask for approval.'], 422);
         }
+        $this->ensureUsedToken();
         $me  = $this->me();
         $now = date('Y-m-d H:i:s');
         $a   = $this->latest($lr['lab_ref_no']);
@@ -276,6 +293,21 @@ class ApprovalController extends BaseController
         $printed = trim((string) (ReportPdf::signoff($tmp)['approved']['name'] ?? ''));
         @unlink($tmp);
         $signRows = $this->db()->table('tbl_dtr_signatories')->where('is_active', 1)->get()->getResultArray();
+        // the requester picks up to 2 approvers: only they are notified and can open / decide this report
+        $pick = array_values(array_unique(array_filter(array_map('intval', (array) ($p['approver_ids'] ?? [])))));
+        if (count($pick) > 2) {
+            return $this->json(['ok' => false, 'error' => 'Choose at most 2 approvers.'], 422);
+        }
+        if ($pick) {
+            $signRows = array_values(array_filter($signRows, static fn ($r) => in_array((int) $r['id'], $pick, true)));
+            if (! $signRows) {
+                return $this->json(['ok' => false, 'error' => 'The chosen approver is not an active signatory.'], 422);
+            }
+            $printed = '';
+        } elseif ($signRows) {
+            return $this->json(['ok' => false, 'error' => 'Choose 1 or 2 approvers for this report.'], 422);
+        }
+        $pickIds = $pick ? ',' . implode(',', array_map(static fn ($r) => (int) $r['id'], $signRows)) . ',' : null;
         if ($printed !== '') {
             $signRows = array_values(array_filter($signRows, static fn ($r) => ReportPdf::nameMatches($printed, (string) $r['full_name'])));
             if (! $signRows) {
@@ -299,7 +331,7 @@ class ApprovalController extends BaseController
             $this->db()->table('tbl_dtr_report_approvals')->where('id', $a['id'])->update([
                 'token' => $token, 'file_key' => $key, 'expires_at' => $expires, 'application_no' => $app ?: $a['application_no'],
                 'requested_by' => (int) ($me['id'] ?? 0), 'requested_name' => (string) ($me['name'] ?? $me['username'] ?? ''), 'requested_at' => $now, 'updated_at' => $now,
-                'required_name' => $printed !== '' ? mb_substr($printed, 0, 120) : null,
+                'required_name' => $printed !== '' ? mb_substr($printed, 0, 120) : null, 'approver_ids' => $pickIds,
             ]);
         } else {
             $key = bin2hex(random_bytes(20));
@@ -309,7 +341,7 @@ class ApprovalController extends BaseController
                 'token' => $token, 'file_key' => $key, 'lab_ref_no' => $lr['lab_ref_no'], 'application_no' => $app ?: $lr['tr_no'], 'form_slug' => $lr['form_slug'],
                 'source_id' => (int) $lr['source_id'], 'status' => 'pending', 'requested_by' => (int) ($me['id'] ?? 0),
                 'requested_name' => (string) ($me['name'] ?? $me['username'] ?? ''), 'requested_at' => $now, 'expires_at' => $expires, 'updated_at' => $now,
-                'required_name' => $printed !== '' ? mb_substr($printed, 0, 120) : null,
+                'required_name' => $printed !== '' ? mb_substr($printed, 0, 120) : null, 'approver_ids' => $pickIds,
             ]);
         }
         // each required signatory gets their own message with the QR code (a picture Synology fetches from qr.png) and the link
@@ -470,6 +502,9 @@ class ApprovalController extends BaseController
         if (! $db->fieldExists('used_token', 'tbl_dtr_report_approvals')) {
             $db->query('ALTER TABLE tbl_dtr_report_approvals ADD COLUMN used_token VARCHAR(40) NULL, ADD INDEX ix_used_token (used_token)');
         }
+        if (! $db->fieldExists('approver_ids', 'tbl_dtr_report_approvals')) {
+            $db->query('ALTER TABLE tbl_dtr_report_approvals ADD COLUMN approver_ids VARCHAR(40) NULL');
+        }
         $done = true;
     }
 
@@ -493,7 +528,7 @@ class ApprovalController extends BaseController
         $queue = [];
         if ($sg = $this->mySignatory()) {
             foreach ($this->db()->table('tbl_dtr_report_approvals')->where('status', 'pending')->where('expires_at >', date('Y-m-d H:i:s'))->where('id !=', (int) $a['id'])->orderBy('id')->get(60)->getResultArray() as $q) {
-                if (empty($q['required_name']) || ReportPdf::nameMatches((string) $q['required_name'], (string) $sg['full_name'])) {
+                if (ReportPdf::mayDecide($q, $sg)) {
                     $queue[] = $q;
                 }
             }
@@ -658,8 +693,8 @@ class ApprovalController extends BaseController
         if (! $sg) {
             return $this->json(['ok' => false, 'error' => 'Only a registered Manager or Supervisor can approve reports.'], 403);
         }
-        if (! empty($a['required_name']) && ! ReportPdf::nameMatches((string) $a['required_name'], (string) $sg['full_name'])) {
-            return $this->json(['ok' => false, 'error' => 'This report is signed off by ' . $a['required_name'] . '. Only ' . $a['required_name'] . ' can approve it: sign in with that account.'], 403);
+        if (! ReportPdf::mayDecide($a, $sg)) {
+            return $this->json(['ok' => false, 'error' => 'This report was sent to other approvers. Only the approvers chosen by the requester can approve it.'], 403);
         }
         // one approver at a time: whoever holds the report (or anybody, when nobody holds it any more)
         $holder = $this->holderOf((int) $a['id']);
@@ -705,7 +740,7 @@ class ApprovalController extends BaseController
         $this->synology([(int) $a['requested_by']], "NEXUS-L: report {$a['lab_ref_no']} ({$a['application_no']}) was " . strtoupper($action)
             . " by {$sg['full_name']} at {$when}" . ($remark !== '' ? ": {$remark}" : '') . ($action === 'approved' ? '. The signed report is ready: you can now send it to InterLink.' : '. Correct it and request approval again.'));
         $others = array_column(array_filter($this->db()->table('tbl_dtr_signatories')->where('is_active', 1)->get()->getResultArray(),
-            static fn ($r) => empty($a['required_name']) || ReportPdf::nameMatches((string) $a['required_name'], (string) $r['full_name'])), 'user_id');
+            static fn ($r) => ReportPdf::mayDecide($a, $r)), 'user_id');
         $others = array_values(array_diff(array_map('intval', $others), [(int) $sg['user_id'], (int) $a['requested_by']]));
         $this->synology($others, "NEXUS-L: report {$a['lab_ref_no']} ({$a['application_no']}) was already " . $action . " by {$sg['full_name']} at {$when}. Its approval link no longer works; nothing more to do.");
 
@@ -721,12 +756,13 @@ class ApprovalController extends BaseController
         $me    = $this->me();
         $uid   = (int) ($me['id'] ?? 0);
         $after = (string) $this->request->getGet('after');
+        $this->ensureUsedToken();
         $out   = ['ok' => true, 'pending' => 0, 'events' => [], 'cursor' => date('Y-m-d H:i:s')];
         if ($sg = $this->mySignatory()) {
             // only what this signatory can still act on: link not expired, not decided, and (when the report names its approver) theirs
             $live = array_values(array_filter(
                 $this->db()->table('tbl_dtr_report_approvals')->where('status', 'pending')->where('expires_at >', date('Y-m-d H:i:s'))->orderBy('id', 'DESC')->get(60)->getResultArray(),
-                static fn ($a) => empty($a['required_name']) || ReportPdf::nameMatches((string) $a['required_name'], (string) $sg['full_name']),
+                static fn ($a) => ReportPdf::mayDecide($a, $sg),
             ));
             $out['pending'] = count($live);
             $out['waiting'] = array_map(static fn ($a) => ['text' => "{$a['lab_ref_no']} · {$a['application_no']} · {$a['requested_name']}", 'url' => site_url('approve/' . $a['token'])], array_slice($live, 0, 10));
